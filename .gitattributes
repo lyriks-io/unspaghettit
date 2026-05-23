@@ -1,0 +1,28 @@
+# Normalize text files to LF on commit; check out as LF on every platform.
+# Eliminates Windows CRLF churn for files npm/tsx/svelte-kit regenerate.
+* text=auto eol=lf
+
+# Explicit text files for clarity.
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+*.svelte text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+
+# Binary files — git should never try to convert these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.7z binary
+*.zip binary
+*.tar binary
+*.gz binary
