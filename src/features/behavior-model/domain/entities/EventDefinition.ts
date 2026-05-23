@@ -1,0 +1,35 @@
+import type { EventName } from '../value-objects/EventName';
+import type { EventDefinitionId } from '../value-objects/ids';
+import type { StateType } from '../value-objects/StateValue';
+
+/**
+ * One field on an event's payload. Matches the shape Parameter uses for its
+ * inputs so the LLM can read a single mental model: name + type + required.
+ * `type` is restricted to the basic state primitives + object/array. This is
+ * a documentation schema, not a runtime validator, so we don't need every
+ * Parameter format here.
+ */
+export type EventPayloadField = {
+  readonly name: string;
+  readonly type: StateType;
+  readonly required: boolean;
+  readonly description?: string;
+};
+
+/**
+ * First-class event registered on the Feature. Action.emittedEvents
+ * and emit_event effects reference these by name. Making events explicit
+ * lets the dashboard show "this event has N producers and a known payload"
+ * instead of treating every emission as an anonymous string.
+ *
+ * Subscribers are not stored on the definition (actions subscribe via
+ * surface_rule conditions on a state path that an emit_event writes); the
+ * EventCatalog service still derives the "where is this fired from" view
+ * from the existing emission traversal.
+ */
+export type EventDefinition = {
+  readonly id: EventDefinitionId;
+  readonly name: EventName;
+  readonly description?: string;
+  readonly payloadSchema?: readonly EventPayloadField[];
+};

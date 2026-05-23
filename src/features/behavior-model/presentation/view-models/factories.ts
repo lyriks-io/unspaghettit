@@ -1,0 +1,132 @@
+import type { Action } from '$features/behavior-model/domain/entities/Action';
+import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
+import type { Rule } from '$features/behavior-model/domain/entities/Rule';
+import type { StateDefinition } from '$features/behavior-model/domain/entities/StateDefinition';
+import type { Surface, SurfaceType } from '$features/behavior-model/domain/entities/Surface';
+import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
+import type { Operator } from '$features/behavior-model/domain/value-objects/Operator';
+import {
+  asActionId,
+  asEffectId,
+  asInvariantId,
+  asRuleId,
+  asStateDefinitionId,
+  asSurfaceId
+} from '$features/behavior-model/domain/value-objects/ids';
+import { asStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
+import type { IdGenerator } from '$shared/domain/IdGenerator';
+
+export const newSurface = (
+  ids: IdGenerator,
+  init: { name: string; type: SurfaceType; description?: string }
+): Surface => ({
+  id: asSurfaceId(ids()),
+  name: init.name,
+  type: init.type,
+  description: init.description,
+  stateDefinitions: [],
+  actions: [],
+  rules: [],
+  invariants: [],
+  transitions: []
+});
+
+export const newAction = (
+  ids: IdGenerator,
+  init: { name: string; intent?: string }
+): Action => ({
+  id: asActionId(ids()),
+  name: init.name,
+  intent: init.intent ?? '',
+  parameters: [],
+  requiredStates: [],
+  rules: [],
+  invariants: [],
+  effects: [],
+  emittedEvents: [],
+  transitions: []
+});
+
+export const newStateDefinition = (
+  ids: IdGenerator,
+  init: { path: string; type: StateDefinition['type'] }
+): StateDefinition => {
+  const defaultValue =
+    init.type === 'number'
+      ? 0
+      : init.type === 'boolean'
+        ? false
+        : init.type === 'object'
+          ? {}
+          : init.type === 'array'
+            ? []
+        : init.type === 'enum'
+          ? ''
+          : '';
+  return {
+    id: asStateDefinitionId(ids()),
+    path: asStatePath(init.path),
+    type: init.type,
+    defaultValue
+  };
+};
+
+export const newRule = (
+  ids: IdGenerator,
+  init: { category: Rule['category']; left: string; operator: Operator }
+): Rule => ({
+  id: asRuleId(ids()),
+  category: init.category,
+  condition: {
+    left: asStatePath(init.left),
+    operator: init.operator
+  },
+  effect: {
+    id: asEffectId(ids()),
+    type: 'block_action',
+    reason: 'Action blocked by rule'
+  }
+});
+
+export const newEffect = (ids: IdGenerator, type: Effect['type']): Effect => {
+  switch (type) {
+    case 'set_state':
+      return {
+        id: asEffectId(ids()),
+        type: 'set_state',
+        path: asStatePath('state.path'),
+        value: ''
+      };
+    case 'show_message':
+      return { id: asEffectId(ids()), type: 'show_message', message: 'Message', tone: 'info' };
+    case 'emit_event':
+      return {
+        id: asEffectId(ids()),
+        type: 'emit_event',
+        event: 'event.name' as never
+      };
+    case 'block_action':
+      return { id: asEffectId(ids()), type: 'block_action', reason: 'Reason' };
+    case 'allow_action':
+      return { id: asEffectId(ids()), type: 'allow_action' };
+    case 'transition_surface':
+      return {
+        id: asEffectId(ids()),
+        type: 'transition_surface',
+        target: asSurfaceId('')
+      };
+  }
+};
+
+export const newInvariant = (
+  ids: IdGenerator,
+  init: { name: string; left: string }
+): Invariant => ({
+  id: asInvariantId(ids()),
+  name: init.name,
+  condition: {
+    left: asStatePath(init.left),
+    operator: 'exists'
+  },
+  message: 'Invariant violated'
+});

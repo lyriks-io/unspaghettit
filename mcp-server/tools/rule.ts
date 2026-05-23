@@ -1,0 +1,302 @@
+﻿import { z } from 'zod';
+import {
+  addRuleToCapability,
+  addRuleToSurface,
+  removeRuleFromCapability,
+  removeRuleFromSurface,
+  updateRuleOnCapability,
+  updateRuleOnSurface
+} from '../../src/features/behavior-model/domain/services/FeatureTransforms';
+import type { Rule } from '../../src/features/behavior-model/domain/entities/Rule';
+import { ALL_RULE_CATEGORIES } from '../../src/features/behavior-model/domain/value-objects/RuleCategory';
+import type { RuleCategory } from '../../src/features/behavior-model/domain/value-objects/RuleCategory';
+import {
+  asActionId,
+  asEffectId,
+  asFeatureId,
+  asRuleId,
+  asSurfaceId
+} from '../../src/features/behavior-model/domain/value-objects/ids';
+import { runMutation, type ToolDeps } from './_shared';
+
+const ruleCategorySchema = z.enum(
+  ALL_RULE_CATEGORIES as unknown as [RuleCategory, ...RuleCategory[]]
+);
+
+const ruleSchemaDescription =
+  '{ category, condition?, effect:{..., description}, description }. Rule and nested effect descriptions are mandatory. condition is OPTIONAL (omit it to make the rule fire unconditionally, useful for "always run this side-effect when the action fires"). Otherwise condition is either { left: statePath, operator: equals|not_equals|greater_than|lower_than|contains|is_true|is_false|exists|does_not_exist, right? } (the leaf form) OR a composite { kind: "all"|"any", conditions: [...] } / { kind: "not", condition: {...} } that combines other conditions. condition.right accepts a raw literal OR a structured Expression for state-vs-state, state-vs-parameter, and arithmetic comparisons. Expression AST (discriminated by `kind`): { kind:"literal", value } | { kind:"state", path:"dotted.path" } | { kind:"param", name:"paramName" } | { kind:"add"|"sub"|"mul"|"div"|"mod"|"min"|"max", left:Expression, right:Expression } | { kind:"neg"|"not", operand:Expression }. Example win condition: condition:{ left:"player.lapsCompleted", operator:"greater_than", right:{ kind:"state", path:"match.lapsToWin" } } expresses "player.lapsCompleted > match.lapsToWin" honestly. Similarly, effect.value on set_state accepts the same Expression form.';
+
+const KNOWN_EFFECT_TYPES = [
+  'set_state',
+  'show_message',
+  'emit_event',
+  'block_action',
+  'allow_action',
+  'transition_surface'
+] as const;
+
+const ruleInputSchema = z
+  .object({
+    category: ruleCategorySchema,
+    condition: z.record(z.string(), z.unknown()).optional(),
+    effect: z.record(z.string(), z.unknown()),
+    description: z.string().min(1)
+  })
+  .superRefine((rule, ctx) => {
+    if (
+      typeof rule.effect.description !== 'string' ||
+      rule.effect.description.trim().length === 0
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['effect', 'description'],
+        message: 'Rule effect description is required'
+      });
+    }
+    // Match effect.ts: refuse rules whose nested effect has an unknown
+    // type. The simulator would crash later with a baffling "Cannot read
+    // properties of undefined (reading 'blocked')". Common slip:
+    // {type:"block"} for what should be {type:"block_action"}.
+    const effectType = (rule.effect as { type?: unknown }).type;
+    if (
+      typeof effectType !== 'string' ||
+      !(KNOWN_EFFECT_TYPES as readonly string[]).includes(effectType)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['effect', 'type'],
+        message: `Rule effect.type must be one of ${KNOWN_EFFECT_TYPES.join(', ')} (got ${JSON.stringify(effectType)})`
+      });
+    }
+  })
+  .describe(ruleSchemaDescription);
+
+type RuleInput = z.infer<typeof ruleInputSchema>;
+
+const buildRule = (ids: () => string, input: RuleInput): Rule => ({
+  id: asRuleId(ids()),
+  category: input.category,
+  ...(input.condition !== undefined
+    ? { condition: input.condition as unknown as Rule['condition'] }
+    : {}),
+  effect: {
+    ...(input.effect as object),
+    id: asEffectId(((input.effect as { id?: string }).id ?? ids()))
+  } as unknown as Rule['effect'],
+  description: input.description
+});
+
+export const registerRuleTools = (deps: ToolDeps): void => {
+  const { server, ids } = deps;
+
+  // ─── Action rules ──────────────────────────────────────────────────────
+
+  server.registerTool(
+    'add_action_rule',
+    {
+      description: 'Append Rule to Action. Categories: business, security, permissions, compliance, validation, data, ux_feedback, error_handling, async, collaboration, billing_quota, audit. Use one of {security, permissions, compliance} to satisfy the "permissions" maturity check on data-mutating actions (anything with a set_state effect). Use validation for input-shape gates.',
+      inputSchema: {
+        featureId: z.string(),
+        surfaceId: z.string(),
+        actionId: z.string(),
+        rule: ruleInputSchema
+      }
+    },
+    async ({ featureId, surfaceId, actionId, rule }) => {
+      const built = buildRule(ids, rule);
+      return runMutation(
+        deps,
+        {
+          featureId: asFeatureId(featureId),
+          transform: (exp) =>
+            addRuleToCapability(
+              exp,
+              asSurfaceId(surfaceId),
+              asActionId(actionId),
+              built
+            )
+        },
+        {
+          createdId: built.id,
+          scenarioScope: { surfaceId: asSurfaceId(surfaceId), actionId: asActionId(actionId) }
+        }
+      );
+    }
+  );
+
+  server.registerTool(
+    'update_action_rule',
+    {
+      description: 'Patch Rule fields (any of category/condition/effect/description). Id preserved.',
+      inputSchema: {
+        featureId: z.string(),
+        surfaceId: z.string(),
+        actionId: z.string(),
+        ruleId: z.string(),
+        patch: z
+          .object({
+            category: ruleCategorySchema.optional(),
+            condition: z.record(z.string(), z.unknown()).optional(),
+            effect: z.record(z.string(), z.unknown()).optional(),
+            description: z.string().min(1).optional()
+          })
+          .describe('Partial Rule. Effect id is preserved when patching effect; new id minted if missing.')
+      }
+    },
+    async ({ featureId, surfaceId, actionId, ruleId, patch }) =>
+      runMutation(
+        deps,
+        {
+          featureId: asFeatureId(featureId),
+          transform: (exp) => {
+            const surface = exp.surfaces.find((s) => s.id === asSurfaceId(surfaceId));
+            const cap = surface?.actions.find((c) => c.id === asActionId(actionId));
+            const existing = cap?.rules.find((r) => r.id === asRuleId(ruleId));
+            if (!existing) return exp;
+            const merged: Rule = {
+              ...existing,
+              ...(patch.category !== undefined ? { category: patch.category } : {}),
+              ...(patch.condition !== undefined
+                ? { condition: patch.condition as unknown as Rule['condition'] }
+                : {}),
+              ...(patch.effect !== undefined
+                ? {
+                    effect: {
+                      ...(patch.effect as object),
+                      id: asEffectId(((patch.effect as { id?: string }).id ?? existing.effect.id))
+                    } as unknown as Rule['effect']
+                  }
+                : {}),
+              ...(patch.description !== undefined ? { description: patch.description } : {})
+            };
+            return updateRuleOnCapability(
+              exp,
+              asSurfaceId(surfaceId),
+              asActionId(actionId),
+              merged
+            );
+          }
+        },
+        {
+          scenarioScope: { surfaceId: asSurfaceId(surfaceId), actionId: asActionId(actionId) }
+        }
+      )
+  );
+
+  server.registerTool(
+    'remove_action_rule',
+    {
+      description: 'Delete Rule from Action.',
+      inputSchema: {
+        featureId: z.string(),
+        surfaceId: z.string(),
+        actionId: z.string(),
+        ruleId: z.string()
+      }
+    },
+    async ({ featureId, surfaceId, actionId, ruleId }) =>
+      runMutation(deps, {
+        featureId: asFeatureId(featureId),
+        transform: (exp) =>
+          removeRuleFromCapability(
+            exp,
+            asSurfaceId(surfaceId),
+            asActionId(actionId),
+            asRuleId(ruleId)
+          )
+      })
+  );
+
+  // ─── Surface rules ─────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'add_surface_rule',
+    {
+      description: 'Append surface-level Rule. Evaluated before action rules. Use for cross-cutting (auth gate, kill-switch). Same categories as add_action_rule; {security, permissions, compliance} are the "sensitive" set that the maturity scorer credits for data-mutating actions.',
+      inputSchema: {
+        featureId: z.string(),
+        surfaceId: z.string(),
+        rule: ruleInputSchema
+      }
+    },
+    async ({ featureId, surfaceId, rule }) => {
+      const built = buildRule(ids, rule);
+      return runMutation(
+        deps,
+        {
+          featureId: asFeatureId(featureId),
+          transform: (exp) => addRuleToSurface(exp, asSurfaceId(surfaceId), built)
+        },
+        { createdId: built.id, scenarioScope: { surfaceId: asSurfaceId(surfaceId) } }
+      );
+    }
+  );
+
+  server.registerTool(
+    'update_surface_rule',
+    {
+      description: 'Patch surface-level Rule fields. Id preserved.',
+      inputSchema: {
+        featureId: z.string(),
+        surfaceId: z.string(),
+        ruleId: z.string(),
+        patch: z
+          .object({
+            category: ruleCategorySchema.optional(),
+            condition: z.record(z.string(), z.unknown()).optional(),
+            effect: z.record(z.string(), z.unknown()).optional(),
+            description: z.string().min(1).optional()
+          })
+          .describe('Partial Rule. Effect id preserved when patching effect.')
+      }
+    },
+    async ({ featureId, surfaceId, ruleId, patch }) =>
+      runMutation(
+        deps,
+        {
+          featureId: asFeatureId(featureId),
+          transform: (exp) => {
+            const surface = exp.surfaces.find((s) => s.id === asSurfaceId(surfaceId));
+            const existing = surface?.rules.find((r) => r.id === asRuleId(ruleId));
+            if (!existing) return exp;
+            const merged: Rule = {
+              ...existing,
+              ...(patch.category !== undefined ? { category: patch.category } : {}),
+              ...(patch.condition !== undefined
+                ? { condition: patch.condition as unknown as Rule['condition'] }
+                : {}),
+              ...(patch.effect !== undefined
+                ? {
+                    effect: {
+                      ...(patch.effect as object),
+                      id: asEffectId(((patch.effect as { id?: string }).id ?? existing.effect.id))
+                    } as unknown as Rule['effect']
+                  }
+                : {}),
+              ...(patch.description !== undefined ? { description: patch.description } : {})
+            };
+            return updateRuleOnSurface(exp, asSurfaceId(surfaceId), merged);
+          }
+        },
+        { scenarioScope: { surfaceId: asSurfaceId(surfaceId) } }
+      )
+  );
+
+  server.registerTool(
+    'remove_surface_rule',
+    {
+      description: 'Delete surface-level Rule.',
+      inputSchema: {
+        featureId: z.string(),
+        surfaceId: z.string(),
+        ruleId: z.string()
+      }
+    },
+    async ({ featureId, surfaceId, ruleId }) =>
+      runMutation(deps, {
+        featureId: asFeatureId(featureId),
+        transform: (exp) =>
+          removeRuleFromSurface(exp, asSurfaceId(surfaceId), asRuleId(ruleId))
+      })
+  );
+};

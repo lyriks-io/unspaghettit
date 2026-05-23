@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "unspa": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npm.cmd", "run", "mcp"],
+      "env": {}
+    }
+  }
+}

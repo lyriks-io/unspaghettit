@@ -1,0 +1,45 @@
+node_modules
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# build artifacts
+.svelte-kit
+build
+dist
+
+# editor / per-machine AI client configs
+.vscode
+.idea
+.cursor
+.kiro
+.codex/config.toml
+.claude/settings.local.json
+.claude/skills/unspa-quest-modeler/
+
+# unspa local caches and artifacts
+.unspa.json
+# Per-project snapshot layout. Default-deny everything under unspa/ so the
+# OSS repo doesn't accumulate user-generated projects, features, history
+# files, implementation-status files, or orphan buckets. Real projects live
+# in the developer's own clone; ready-made example projects ship via
+# samples/ and load through the dashboard's "Load Sample Project" button.
+unspa/*
+# Only exception: the npm CLI test fixture used by NpmCliFeature.test.ts
+# must ship so the test passes on a fresh clone. Its sibling README explains
+# why the file is there so contributors don't mistake it for sample content.
+!unspa/__unassigned/
+unspa/__unassigned/*
+!unspa/__unassigned/npm-cli-package-management.feature.json
+!unspa/__unassigned/README.md
+*.7z
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# os
+Thumbs.db

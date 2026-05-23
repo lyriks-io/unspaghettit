@@ -1,0 +1,208 @@
+﻿import { z } from 'zod';
+import type { Action } from '../../src/features/behavior-model/domain/entities/Action';
+import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
+import type { Surface } from '../../src/features/behavior-model/domain/entities/Surface';
+import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
+import { trackTokens } from '../metrics';
+import { errorText, text, type ToolDeps } from './_shared';
+import { expandFeatureId } from './short-ids';
+
+type Severity = 'critical' | 'recommended';
+type EntityKind = 'feature' | 'surface' | 'action';
+
+export type SpecGap = {
+  readonly severity: Severity;
+  readonly entityType: EntityKind;
+  readonly entityId: string;
+  readonly entityName: string;
+  readonly reason: string;
+  readonly suggestedFix: string;
+};
+
+const normalizeName = (s: string): string => s.trim().toLowerCase();
+
+const hasLoadingOrErrorCoverage = (action: Action): boolean => {
+  const scenarios = action.scenarios ?? [];
+  return scenarios.some((sc) => {
+    const overridePaths = sc.stateOverrides.map((o) => String(o.path).toLowerCase());
+    const assertionPaths = (sc.expectedAssertions ?? []).map((a) =>
+      String(a.path).toLowerCase()
+    );
+    const all = [...overridePaths, ...assertionPaths];
+    return all.some((p) => p.includes('loading') || p.includes('error'));
+  });
+};
+
+const hasBlockingValidationRule = (action: Action): boolean =>
+  action.rules.some(
+    (r) => r.condition.operator === 'is_false' || r.condition.operator === 'does_not_exist'
+  );
+
+/**
+ * Pure detector. Walks the feature + implementation-status sidecar and
+ * returns spec-depth gaps in priority order: critical first, then
+ * recommended; stable surface-index / action-index ordering within each
+ * group. Reuses existing entity references, no new validation fork.
+ */
+export const detectSpecGaps = (
+  feature: Feature,
+  implementedCapabilityIds: ReadonlySet<string>
+): readonly SpecGap[] => {
+  const critical: SpecGap[] = [];
+  const recommended: SpecGap[] = [];
+
+  const allActionNames = new Set<string>();
+  for (const s of feature.surfaces) {
+    for (const c of s.actions) allActionNames.add(normalizeName(c.name));
+  }
+
+  // Feature-level: expectedActions without a matching Action.
+  for (const expected of feature.expectedActions ?? []) {
+    if (!allActionNames.has(normalizeName(expected))) {
+      critical.push({
+        severity: 'critical',
+        entityType: 'feature',
+        entityId: String(feature.id),
+        entityName: feature.name,
+        reason: `expectedActions entry "${expected}" has no matching Action.`,
+        suggestedFix: `Add an Action for ${expected}`
+      });
+    }
+  }
+
+  // A surface counts as having state if it owns at least one stateDefinition
+  // OR another surface shares one into it via stateDefinition.sharedWith.
+  // Without this, a modal that legitimately operates entirely on shared state
+  // (e.g. a payment-hold modal sharing payment.* from the parent screen)
+  // gets flagged as critical even though every action on it reads + writes
+  // state.
+  const sharedIntoSurface = new Set<string>();
+  for (const s of feature.surfaces) {
+    for (const def of s.stateDefinitions) {
+      for (const target of def.sharedWith ?? []) {
+        sharedIntoSurface.add(String(target));
+      }
+    }
+  }
+
+  feature.surfaces.forEach((surface: Surface, surfaceIndex: number) => {
+    if (
+      surface.stateDefinitions.length === 0 &&
+      !sharedIntoSurface.has(String(surface.id))
+    ) {
+      critical.push({
+        severity: 'critical',
+        entityType: 'surface',
+        entityId: String(surface.id),
+        entityName: surface.name,
+        reason: `Surface "${surface.name}" has no stateDefinitions.`,
+        suggestedFix: 'Define at least one state path'
+      });
+    }
+
+    surface.actions.forEach((cap: Action, capIndex: number) => {
+      const roles = new Set<string>(cap.roles ?? []);
+
+      if (cap.effects.length === 0) {
+        critical.push({
+          severity: 'critical',
+          entityType: 'action',
+          entityId: String(cap.id),
+          entityName: cap.name,
+          reason: `Action "${cap.name}" has no effects.`,
+          suggestedFix: 'Add at least one effect'
+        });
+      }
+
+      if (roles.has('destructive') && (cap.scenarios ?? []).length === 0) {
+        critical.push({
+          severity: 'critical',
+          entityType: 'action',
+          entityId: String(cap.id),
+          entityName: cap.name,
+          reason: `Destructive action "${cap.name}" has no scenario covering its path.`,
+          suggestedFix: 'Add a scenario covering the destructive path'
+        });
+      }
+
+      if (roles.has('async') && !hasLoadingOrErrorCoverage(cap)) {
+        recommended.push({
+          severity: 'recommended',
+          entityType: 'action',
+          entityId: String(cap.id),
+          entityName: cap.name,
+          reason: `Async action "${cap.name}" has no scenario setting or asserting a loading/error state.`,
+          suggestedFix: 'Add loading + error scenarios'
+        });
+      }
+
+      if (roles.has('validation') && !hasBlockingValidationRule(cap)) {
+        recommended.push({
+          severity: 'recommended',
+          entityType: 'action',
+          entityId: String(cap.id),
+          entityName: cap.name,
+          reason: `Validation action "${cap.name}" has no rule with operator is_false/does_not_exist.`,
+          suggestedFix: 'Add a rule blocking invalid input'
+        });
+      }
+
+      if (!implementedCapabilityIds.has(String(cap.id))) {
+        recommended.push({
+          severity: 'recommended',
+          entityType: 'action',
+          entityId: String(cap.id),
+          entityName: cap.name,
+          reason: `Action "${cap.name}" has no ImplementationStatus entry.`,
+          suggestedFix: 'Report implementation via report_implementation_status'
+        });
+      }
+
+      // surfaceIndex / capIndex are captured implicitly: forEach iterates in
+      // declaration order and we push as we go.
+      void surfaceIndex;
+      void capIndex;
+    });
+
+    if (surface.stateDefinitions.length > 1 && surface.transitions.length === 0) {
+      recommended.push({
+        severity: 'recommended',
+        entityType: 'surface',
+        entityId: String(surface.id),
+        entityName: surface.name,
+        reason: `Surface "${surface.name}" declares multiple states but no transitions wire them.`,
+        suggestedFix: 'Add transitions wiring the states'
+      });
+    }
+  });
+
+  return [...critical, ...recommended];
+};
+
+export const registerSpecGapsTool = (deps: ToolDeps): void => {
+  const { server, repo, getImplementationStatus } = deps;
+
+  server.registerTool(
+    'get_spec_gaps',
+    {
+      description:
+        'Diagnose spec depth: returns a prioritized to-do list of critical + recommended gaps grounded in existing entities. Critical gaps must be resolved before claiming the spec complete (missing expectedActions, stateless surfaces, effect-less actions, untested destructive actions). Recommended gaps catch shallow modeling (async without loading/error coverage, validation without blocking rule, multi-state surface without transitions, action never implemented). Use after build/edit sessions, especially after a "don\'t-ask-just-build" pass.',
+      inputSchema: { featureId: z.string() }
+    },
+    async ({ featureId }) => {
+      try {
+        featureId = await expandFeatureId(repo, featureId);
+      } catch (e) {
+        return errorText((e as Error).message);
+      }
+      const exp = await repo.get(asFeatureId(featureId));
+      if (!exp) return errorText(`Feature ${featureId} not found`);
+      const status = await getImplementationStatus(asFeatureId(featureId));
+      const implementedIds = new Set<string>(
+        (status?.actions ?? []).map((c) => String(c.actionId))
+      );
+      const gaps = detectSpecGaps(exp, implementedIds);
+      return text(trackTokens('get_spec_gaps', { gaps }));
+    }
+  );
+};

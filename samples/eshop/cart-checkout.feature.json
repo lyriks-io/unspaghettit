@@ -1,0 +1,1922 @@
+{
+  "format": "unspaghettit",
+  "version": 1,
+  "feature": {
+    "id": "33fbb26d",
+    "name": "Cart & checkout",
+    "description": "Cart updates, coupons, addresses, payment selection, and place order. Refuses empty carts and unverified accounts, prices the order from line items, and lets admins override the subtotal.",
+    "surfaces": [
+      {
+        "id": "8412e977",
+        "name": "Cart",
+        "type": "screen",
+        "description": "Cart line items, totals, coupon application.",
+        "stateDefinitions": [
+          {
+            "id": "aaf0b580",
+            "path": "cart.lineItems",
+            "type": "array",
+            "defaultValue": [
+              {
+                "productId": "wireless-headphones",
+                "qty": 1,
+                "amount": 2999
+              },
+              {
+                "productId": "phone-case",
+                "qty": 1,
+                "amount": 1499
+              }
+            ],
+            "description": "Cart line items: each {productId, qty, amount in cents}.",
+            "sharedWith": [
+              "2102bf6e"
+            ]
+          },
+          {
+            "id": "227fd9a4",
+            "path": "cart.subtotal",
+            "type": "number",
+            "defaultValue": 4498,
+            "description": "Cents. Recomputed via sum_pluck on cart.lineItems[amount].",
+            "sharedWith": [
+              "2102bf6e"
+            ]
+          },
+          {
+            "id": "994eb5cf",
+            "path": "cart.shipping",
+            "type": "number",
+            "defaultValue": 599,
+            "description": "Shipping cost in cents.",
+            "sharedWith": [
+              "2102bf6e"
+            ]
+          },
+          {
+            "id": "56730178",
+            "path": "coupon.code",
+            "type": "string",
+            "defaultValue": "",
+            "description": "Most recently entered coupon code."
+          },
+          {
+            "id": "bbe228d1",
+            "path": "coupon.applied",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether a coupon is currently applied."
+          },
+          {
+            "id": "75344680",
+            "path": "coupon.discount",
+            "type": "number",
+            "defaultValue": 0,
+            "description": "Discount in cents."
+          },
+          {
+            "id": "87b28027",
+            "path": "user.authenticated",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Sign-in status (mirrored).",
+            "sharedWith": [
+              "864ef35d",
+              "2102bf6e"
+            ]
+          },
+          {
+            "id": "e044d003",
+            "path": "user.emailVerified",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Email verification status.",
+            "sharedWith": [
+              "2102bf6e"
+            ]
+          }
+        ],
+        "actions": [
+          {
+            "id": "8d775a6f",
+            "name": "Update quantity",
+            "intent": "Change the quantity of a cart line item.",
+            "parameters": [
+              {
+                "id": "dde3fd4a",
+                "name": "lineIndex",
+                "type": "number",
+                "required": true,
+                "description": "Number parameter lineIndex for action Update quantity."
+              },
+              {
+                "id": "d99ffbce",
+                "name": "newQuantity",
+                "type": "number",
+                "required": true,
+                "description": "Number parameter newQuantity for action Update quantity."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "e91bd3df",
+                "category": "validation",
+                "condition": {
+                  "left": "cart.subtotal",
+                  "operator": "lower_than",
+                  "right": 0
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Cart in an invalid state.",
+                  "id": "12ef7300",
+                  "description": "Effect block_action from a validation rule on action Update quantity."
+                },
+                "description": "Validation rule on action Update quantity."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "cart.quantity.updated",
+                "id": "408bd4ce",
+                "description": "Effect emit_event on action Update quantity."
+              }
+            ],
+            "emittedEvents": [
+              "cart.quantity.updated"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "f888a546",
+                "name": "Happy path: update quantity",
+                "stateOverrides": [],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "lineIndex",
+                    "value": 0
+                  },
+                  {
+                    "parameterName": "newQuantity",
+                    "value": 3
+                  }
+                ],
+                "expectedStatus": "success",
+                "description": "Scenario Happy path: update quantity on action Update quantity."
+              }
+            ]
+          },
+          {
+            "id": "bdccba9e",
+            "name": "Remove item",
+            "intent": "Remove a line item from the cart.",
+            "parameters": [
+              {
+                "id": "871f9b58",
+                "name": "lineIndex",
+                "type": "number",
+                "required": true,
+                "description": "Number parameter lineIndex for action Remove item."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "1fee7533",
+                "category": "validation",
+                "condition": {
+                  "left": "cart.subtotal",
+                  "operator": "equals",
+                  "right": 0
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Cart is empty; nothing to remove.",
+                  "id": "68a4cf29",
+                  "description": "Effect block_action from a validation rule on action Remove item."
+                },
+                "description": "Validation rule on action Remove item."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "cart.item.removed",
+                "id": "6b4660cd",
+                "description": "Effect emit_event on action Remove item."
+              }
+            ],
+            "emittedEvents": [
+              "cart.item.removed"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "8c397a00",
+                "name": "Happy path: remove item",
+                "stateOverrides": [
+                  {
+                    "path": "cart.subtotal",
+                    "value": 4498
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "lineIndex",
+                    "value": 0
+                  }
+                ],
+                "expectedStatus": "success",
+                "description": "Scenario Happy path: remove item on action Remove item."
+              }
+            ]
+          },
+          {
+            "id": "cd9130fa",
+            "name": "Apply coupon",
+            "intent": "Redeem a coupon code against the cart.",
+            "parameters": [
+              {
+                "id": "3c6923bf",
+                "name": "code",
+                "type": "string",
+                "required": true,
+                "bindToStatePath": "coupon.code",
+                "description": "String parameter code for action Apply coupon."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "35481398",
+                "category": "business",
+                "condition": {
+                  "left": "coupon.applied",
+                  "operator": "is_true"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "A coupon is already applied.",
+                  "id": "b1052107",
+                  "description": "Effect block_action from a business rule on action Apply coupon."
+                },
+                "description": "Business rule on action Apply coupon."
+              },
+              {
+                "id": "8b5d3925",
+                "category": "validation",
+                "condition": {
+                  "left": "coupon.code",
+                  "operator": "equals",
+                  "right": "EXPIRED2025"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Coupon expired.",
+                  "id": "daa0e5ce",
+                  "description": "Effect block_action from a validation rule on action Apply coupon."
+                },
+                "description": "Reject expired codes."
+              },
+              {
+                "id": "07798ac9",
+                "category": "permissions",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in to apply coupons.",
+                  "id": "093f70b3",
+                  "description": "Effect block_action from a permissions rule on action Apply coupon."
+                },
+                "description": "Permissions rule on action Apply coupon."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "coupon.applied",
+                "value": true,
+                "id": "5266266c",
+                "description": "Effect set_state on action Apply coupon."
+              },
+              {
+                "type": "set_state",
+                "path": "coupon.discount",
+                "value": 500,
+                "id": "631226ec",
+                "description": "Effect set_state on action Apply coupon."
+              },
+              {
+                "type": "set_state",
+                "path": "cart.subtotal",
+                "value": {
+                  "kind": "sub",
+                  "left": {
+                    "kind": "state",
+                    "path": "cart.subtotal"
+                  },
+                  "right": {
+                    "kind": "literal",
+                    "value": 500
+                  }
+                },
+                "id": "5987b360",
+                "description": "Effect set_state on action Apply coupon."
+              },
+              {
+                "type": "emit_event",
+                "event": "cart.coupon.applied",
+                "id": "3d6d11b8",
+                "description": "Effect emit_event on action Apply coupon."
+              }
+            ],
+            "emittedEvents": [
+              "cart.coupon.applied"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "d1fffba7",
+                "name": "Happy path: apply valid coupon (sub Expression discounts subtotal)",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "coupon.applied",
+                    "value": false
+                  },
+                  {
+                    "path": "cart.subtotal",
+                    "value": 4498
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "code",
+                    "value": "SAVE10"
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "coupon.applied",
+                    "operator": "is_true",
+                    "description": "Asserts coupon.applied is_true."
+                  },
+                  {
+                    "path": "cart.subtotal",
+                    "operator": "equals",
+                    "value": 3998,
+                    "description": "Asserts cart.subtotal equals 3998."
+                  }
+                ],
+                "description": "Scenario Happy path: apply valid coupon (sub Expression discounts subtotal) on action Apply coupon."
+              }
+            ]
+          },
+          {
+            "id": "524a7937",
+            "name": "Recalculate subtotal",
+            "intent": "Recompute the cart subtotal from line items using a sum_pluck Expression.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "e9a53085",
+                "category": "validation",
+                "condition": {
+                  "left": "cart.subtotal",
+                  "operator": "lower_than",
+                  "right": 0
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Cart state is invalid.",
+                  "id": "ae4c77e4",
+                  "description": "Effect block_action from a validation rule on action Recalculate subtotal."
+                },
+                "description": "Don't recompute when the cart is empty."
+              },
+              {
+                "id": "90cccab0",
+                "category": "permissions",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in to modify your cart.",
+                  "id": "11b23665",
+                  "description": "Effect block_action from a permissions rule on action Recalculate subtotal."
+                },
+                "description": "Permissions rule on action Recalculate subtotal."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "cart.subtotal",
+                "value": {
+                  "kind": "sum_pluck",
+                  "operand": {
+                    "kind": "state",
+                    "path": "cart.lineItems"
+                  },
+                  "field": "amount"
+                },
+                "id": "123eb629",
+                "description": "Effect set_state on action Recalculate subtotal."
+              },
+              {
+                "type": "emit_event",
+                "event": "cart.subtotal.recomputed",
+                "id": "af4b13da",
+                "description": "Effect emit_event on action Recalculate subtotal."
+              }
+            ],
+            "emittedEvents": [
+              "cart.subtotal.recomputed"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "edc2e9e8",
+                "name": "sum_pluck: recompute subtotal from line items",
+                "description": "Two line items, 2999 + 1499 = 4498.",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "cart.lineItems",
+                    "value": [
+                      {
+                        "productId": "wireless-headphones",
+                        "qty": 1,
+                        "amount": 2999
+                      },
+                      {
+                        "productId": "phone-case",
+                        "qty": 1,
+                        "amount": 1499
+                      }
+                    ]
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "cart.subtotal",
+                    "operator": "equals",
+                    "value": 4498,
+                    "description": "Asserts cart.subtotal equals 4498."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "825ebb2e",
+            "name": "Proceed to checkout",
+            "intent": "Hand off to the checkout flow.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "49d89bf5",
+                "category": "business",
+                "condition": {
+                  "left": "cart.subtotal",
+                  "operator": "equals",
+                  "right": 0
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Cart is empty.",
+                  "id": "e6b8954c",
+                  "description": "Effect block_action from a business rule on action Proceed to checkout."
+                },
+                "description": "Business rule on action Proceed to checkout."
+              },
+              {
+                "id": "5a6d8cdd",
+                "category": "permissions",
+                "condition": {
+                  "kind": "any",
+                  "conditions": [
+                    {
+                      "left": "user.authenticated",
+                      "operator": "is_false"
+                    },
+                    {
+                      "left": "user.emailVerified",
+                      "operator": "is_false"
+                    }
+                  ]
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in with a verified email to continue to checkout.",
+                  "id": "5784edf8",
+                  "description": "Effect block_action from a permissions rule on action Proceed to checkout."
+                },
+                "description": "Composite ANY: any unverified condition blocks checkout."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "checkout.started",
+                "id": "1be6e7ed",
+                "description": "Effect emit_event on action Proceed to checkout."
+              },
+              {
+                "type": "transition_surface",
+                "target": "2102bf6e",
+                "id": "28cfd4e5",
+                "description": "Effect transition_surface on action Proceed to checkout."
+              }
+            ],
+            "emittedEvents": [
+              "checkout.started",
+              "ui.checkout.opened"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "e64ef0bc",
+                "name": "Happy path: proceed to checkout",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "user.emailVerified",
+                    "value": true
+                  },
+                  {
+                    "path": "cart.subtotal",
+                    "value": 4498
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedTransition": "2102bf6e",
+                "description": "Scenario Happy path: proceed to checkout on action Proceed to checkout."
+              },
+              {
+                "id": "2e3aa293",
+                "name": "Blocked: composite ANY catches unverified buyer",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "user.emailVerified",
+                    "value": false
+                  },
+                  {
+                    "path": "cart.subtotal",
+                    "value": 4498
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "blocked",
+                "description": "Scenario Blocked: composite ANY catches unverified buyer on action Proceed to checkout."
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "a41974e6",
+            "category": "ux_feedback",
+            "condition": {
+              "kind": "all",
+              "conditions": [
+                {
+                  "left": "cart.subtotal",
+                  "operator": "greater_than",
+                  "right": 3499
+                },
+                {
+                  "left": "coupon.applied",
+                  "operator": "is_false"
+                }
+              ]
+            },
+            "effect": {
+              "type": "show_message",
+              "message": "You qualify for free shipping! Apply a coupon for an extra discount.",
+              "id": "cc94cc62",
+              "description": "Effect show_message from a surface-level ux_feedback rule on Cart."
+            },
+            "description": "Free-shipping nudge: composite ALL fires for any cart action."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "71de2e0f",
+            "name": "Cart subtotal non-negative",
+            "condition": {
+              "left": "cart.subtotal",
+              "operator": "greater_than",
+              "right": -1
+            },
+            "message": "Cart subtotal went negative.",
+            "description": "Surface invariant on Cart: Cart subtotal non-negative."
+          }
+        ],
+        "transitions": [
+          {
+            "id": "f142df3b",
+            "target": "2102bf6e",
+            "label": "Checkout",
+            "description": "From the cart to the checkout flow."
+          }
+        ]
+      },
+      {
+        "id": "864ef35d",
+        "name": "Address book",
+        "type": "screen",
+        "description": "Manage shipping addresses; capped at 5 entries.",
+        "stateDefinitions": [
+          {
+            "id": "1ef22ea6",
+            "path": "addresses.count",
+            "type": "number",
+            "defaultValue": 0,
+            "description": "Saved shipping addresses count. Cap at 5.",
+            "sharedWith": [
+              "2102bf6e"
+            ]
+          },
+          {
+            "id": "442ddcb7",
+            "path": "address.postalValid",
+            "type": "boolean",
+            "defaultValue": true,
+            "description": "Whether the entered postal code passes the country check."
+          }
+        ],
+        "actions": [
+          {
+            "id": "2fd0ec30",
+            "name": "Add shipping address",
+            "intent": "Save a new shipping address.",
+            "parameters": [
+              {
+                "id": "92c7a84e",
+                "name": "fullName",
+                "type": "string",
+                "required": true,
+                "description": "String parameter fullName for action Add shipping address."
+              },
+              {
+                "id": "332ff42d",
+                "name": "street",
+                "type": "string",
+                "required": true,
+                "description": "String parameter street for action Add shipping address."
+              },
+              {
+                "id": "982b5098",
+                "name": "city",
+                "type": "string",
+                "required": true,
+                "description": "String parameter city for action Add shipping address."
+              },
+              {
+                "id": "f92b9a0e",
+                "name": "postalCode",
+                "type": "string",
+                "required": true,
+                "description": "String parameter postalCode for action Add shipping address."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "61efc813",
+                "category": "billing_quota",
+                "condition": {
+                  "left": "addresses.count",
+                  "operator": "greater_than",
+                  "right": 4
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Maximum of 5 addresses reached. Remove one first.",
+                  "id": "56fb74b8",
+                  "description": "Effect block_action from a billing_quota rule on action Add shipping address."
+                },
+                "description": "Cap the address book at 5 entries."
+              },
+              {
+                "id": "c4548f96",
+                "category": "validation",
+                "condition": {
+                  "left": "address.postalValid",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Postal code is invalid for the selected country.",
+                  "id": "ed73f7c6",
+                  "description": "Effect block_action from a validation rule on action Add shipping address."
+                },
+                "description": "Validation rule on action Add shipping address."
+              },
+              {
+                "id": "a5d2ff41",
+                "category": "permissions",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in to add an address.",
+                  "id": "959c6b46",
+                  "description": "Effect block_action from a permissions rule on action Add shipping address."
+                },
+                "description": "Permissions rule on action Add shipping address."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "addresses.count",
+                "value": {
+                  "kind": "add",
+                  "left": {
+                    "kind": "state",
+                    "path": "addresses.count"
+                  },
+                  "right": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                },
+                "id": "997776a4",
+                "description": "Effect set_state on action Add shipping address."
+              },
+              {
+                "type": "emit_event",
+                "event": "address.created",
+                "id": "6a19a96a",
+                "description": "Effect emit_event on action Add shipping address."
+              }
+            ],
+            "emittedEvents": [
+              "address.created"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "e10449e7",
+                "name": "Happy path: first address added",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "addresses.count",
+                    "value": 0
+                  },
+                  {
+                    "path": "address.postalValid",
+                    "value": true
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "fullName",
+                    "value": "Ada Lovelace"
+                  },
+                  {
+                    "parameterName": "street",
+                    "value": "1 Babbage Way"
+                  },
+                  {
+                    "parameterName": "city",
+                    "value": "London"
+                  },
+                  {
+                    "parameterName": "postalCode",
+                    "value": "WC1E 6BT"
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "addresses.count",
+                    "operator": "equals",
+                    "value": 1,
+                    "description": "Asserts addresses.count equals 1."
+                  }
+                ],
+                "description": "Scenario Happy path: first address added on action Add shipping address."
+              },
+              {
+                "id": "0418d579",
+                "name": "Blocked: address book full",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "addresses.count",
+                    "value": 5
+                  },
+                  {
+                    "path": "address.postalValid",
+                    "value": true
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "fullName",
+                    "value": "Ada Lovelace"
+                  },
+                  {
+                    "parameterName": "street",
+                    "value": "1 Babbage Way"
+                  },
+                  {
+                    "parameterName": "city",
+                    "value": "London"
+                  },
+                  {
+                    "parameterName": "postalCode",
+                    "value": "WC1E 6BT"
+                  }
+                ],
+                "expectedStatus": "blocked",
+                "description": "Scenario Blocked: address book full on action Add shipping address."
+              }
+            ]
+          },
+          {
+            "id": "21a6676c",
+            "name": "Continue to checkout",
+            "intent": "Return to checkout once an address is on file.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "3e9db1fa",
+                "category": "validation",
+                "condition": {
+                  "left": "addresses.count",
+                  "operator": "equals",
+                  "right": 0
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Add an address before continuing.",
+                  "id": "d890ff42",
+                  "description": "Effect block_action from a validation rule on action Continue to checkout."
+                },
+                "description": "Validation rule on action Continue to checkout."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "transition_surface",
+                "target": "2102bf6e",
+                "id": "c5d58fe1",
+                "description": "Effect transition_surface on action Continue to checkout."
+              }
+            ],
+            "emittedEvents": [
+              "ui.checkout.opened"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "cf547783",
+                "name": "Happy path: continue",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "addresses.count",
+                    "value": 1
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedTransition": "2102bf6e",
+                "description": "Scenario Happy path: continue on action Continue to checkout."
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "dfccca82",
+            "category": "permissions",
+            "condition": {
+              "left": "user.authenticated",
+              "operator": "is_false"
+            },
+            "effect": {
+              "type": "block_action",
+              "reason": "Sign in to manage your address book.",
+              "id": "bc3dd8cf",
+              "description": "Effect block_action from a surface-level permissions rule on Address book."
+            },
+            "description": "Surface-level permissions rule on Address book."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "5a73fdb1",
+            "name": "Address count bounded",
+            "condition": {
+              "left": "addresses.count",
+              "operator": "lower_than",
+              "right": 6
+            },
+            "message": "Address book exceeded its cap.",
+            "description": "Surface invariant on Address book: Address count bounded."
+          }
+        ],
+        "transitions": [
+          {
+            "id": "95b990e1",
+            "target": "2102bf6e",
+            "label": "Continue to checkout",
+            "description": "Transition from Address book to Continue to checkout."
+          }
+        ]
+      },
+      {
+        "id": "2102bf6e",
+        "name": "Checkout",
+        "type": "workflow",
+        "description": "Multi-step checkout: address → payment → review → place.",
+        "stateDefinitions": [
+          {
+            "id": "b51bc100",
+            "path": "checkout.step",
+            "type": "enum",
+            "defaultValue": "address",
+            "enumValues": [
+              "address",
+              "payment",
+              "review"
+            ],
+            "description": "Current step in the checkout wizard."
+          },
+          {
+            "id": "953ac567",
+            "path": "shipping.addressConfirmed",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the buyer confirmed a shipping address."
+          },
+          {
+            "id": "2c7ce796",
+            "path": "payment.method",
+            "type": "enum",
+            "defaultValue": "none",
+            "enumValues": [
+              "none",
+              "card",
+              "wallet"
+            ],
+            "description": "Selected payment method."
+          },
+          {
+            "id": "ce1709f3",
+            "path": "payment.cardValid",
+            "type": "boolean",
+            "defaultValue": true,
+            "description": "Whether the card details pass validation."
+          },
+          {
+            "id": "2ad3e033",
+            "path": "order.amount",
+            "type": "number",
+            "defaultValue": 5097,
+            "description": "Final order amount in cents. Computed via add Expression: subtotal + shipping - discount.",
+            "sharedWith": [
+              "8412e977"
+            ]
+          },
+          {
+            "id": "3e485a8d",
+            "path": "fraud.flagged",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the buyer was flagged by fraud detection."
+          },
+          {
+            "id": "a2170d25",
+            "path": "admin.signedIn",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether a store admin is signed in (for override actions)."
+          }
+        ],
+        "actions": [
+          {
+            "id": "b5108b6e",
+            "name": "Confirm shipping address",
+            "intent": "Confirm the shipping address; advance to the payment step.",
+            "parameters": [
+              {
+                "id": "82b76492",
+                "name": "addressIndex",
+                "type": "number",
+                "required": true,
+                "defaultValue": 0,
+                "description": "Number parameter addressIndex for action Confirm shipping address."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "567f16d8",
+                "category": "business",
+                "condition": {
+                  "left": "checkout.step",
+                  "operator": "not_equals",
+                  "right": "address"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Wrong step.",
+                  "id": "72d952fc",
+                  "description": "Effect block_action from a business rule on action Confirm shipping address."
+                },
+                "description": "Business rule on action Confirm shipping address."
+              },
+              {
+                "id": "72f9a84a",
+                "category": "validation",
+                "condition": {
+                  "left": "addresses.count",
+                  "operator": "equals",
+                  "right": 0
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Add an address before confirming.",
+                  "id": "dcfbf283",
+                  "description": "Effect block_action from a validation rule on action Confirm shipping address."
+                },
+                "description": "Validation rule on action Confirm shipping address."
+              },
+              {
+                "id": "8d7ff7ec",
+                "category": "permissions",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in to confirm a shipping address.",
+                  "id": "0af9d7b3",
+                  "description": "Effect block_action from a permissions rule on action Confirm shipping address."
+                },
+                "description": "Permissions rule on action Confirm shipping address."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "shipping.addressConfirmed",
+                "value": true,
+                "id": "af421388",
+                "description": "Effect set_state on action Confirm shipping address."
+              },
+              {
+                "type": "set_state",
+                "path": "checkout.step",
+                "value": "payment",
+                "id": "7bb5f14d",
+                "description": "Effect set_state on action Confirm shipping address."
+              },
+              {
+                "type": "emit_event",
+                "event": "checkout.address.confirmed",
+                "id": "6552db5b",
+                "description": "Effect emit_event on action Confirm shipping address."
+              }
+            ],
+            "emittedEvents": [
+              "checkout.address.confirmed"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "c4891e30",
+                "name": "Happy path: confirm address",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "user.emailVerified",
+                    "value": true
+                  },
+                  {
+                    "path": "checkout.step",
+                    "value": "address"
+                  },
+                  {
+                    "path": "addresses.count",
+                    "value": 1
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "addressIndex",
+                    "value": 0
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "checkout.step",
+                    "operator": "equals",
+                    "value": "payment",
+                    "description": "Asserts checkout.step equals 'payment'."
+                  }
+                ],
+                "description": "Scenario Happy path: confirm address on action Confirm shipping address."
+              }
+            ]
+          },
+          {
+            "id": "e177190c",
+            "name": "Select payment method",
+            "intent": "Pick a payment method and advance to review.",
+            "parameters": [
+              {
+                "id": "63e23674",
+                "name": "method",
+                "type": "enum",
+                "required": true,
+                "enumValues": [
+                  "card",
+                  "wallet"
+                ],
+                "bindToStatePath": "payment.method",
+                "description": "Enum parameter method for action Select payment method."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "4d3207bb",
+                "category": "business",
+                "condition": {
+                  "left": "checkout.step",
+                  "operator": "not_equals",
+                  "right": "payment"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Wrong step.",
+                  "id": "cc589b0f",
+                  "description": "Effect block_action from a business rule on action Select payment method."
+                },
+                "description": "Business rule on action Select payment method."
+              },
+              {
+                "id": "2dba50cc",
+                "category": "validation",
+                "condition": {
+                  "left": "payment.cardValid",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Card details look invalid.",
+                  "id": "5bc88ad0",
+                  "description": "Effect block_action from a validation rule on action Select payment method."
+                },
+                "description": "Validation rule on action Select payment method."
+              },
+              {
+                "id": "dc31c9fe",
+                "category": "permissions",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in to select a payment method.",
+                  "id": "286bd399",
+                  "description": "Effect block_action from a permissions rule on action Select payment method."
+                },
+                "description": "Permissions rule on action Select payment method."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "checkout.step",
+                "value": "review",
+                "id": "0e56006e",
+                "description": "Effect set_state on action Select payment method."
+              },
+              {
+                "type": "emit_event",
+                "event": "checkout.payment.selected",
+                "id": "8e03b860",
+                "description": "Effect emit_event on action Select payment method."
+              }
+            ],
+            "emittedEvents": [
+              "checkout.payment.selected"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "70ffb8ae",
+                "name": "Happy path: pick card",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "user.emailVerified",
+                    "value": true
+                  },
+                  {
+                    "path": "checkout.step",
+                    "value": "payment"
+                  },
+                  {
+                    "path": "payment.cardValid",
+                    "value": true
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "method",
+                    "value": "card"
+                  }
+                ],
+                "expectedStatus": "success",
+                "description": "Scenario Happy path: pick card on action Select payment method."
+              }
+            ]
+          },
+          {
+            "id": "fd227eae",
+            "name": "Place order",
+            "intent": "Submit the order; computes order.amount via an add Expression and emits order.placed.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "e155ba56",
+                "category": "business",
+                "condition": {
+                  "left": "checkout.step",
+                  "operator": "not_equals",
+                  "right": "review"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Complete the previous steps first.",
+                  "id": "0b6a6d67",
+                  "description": "Effect block_action from a business rule on action Place order."
+                },
+                "description": "Business rule on action Place order."
+              },
+              {
+                "id": "bb30fdb4",
+                "category": "validation",
+                "condition": {
+                  "left": "payment.method",
+                  "operator": "equals",
+                  "right": "none"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Pick a payment method.",
+                  "id": "3f3fab2a",
+                  "description": "Effect block_action from a validation rule on action Place order."
+                },
+                "description": "Validation rule on action Place order."
+              },
+              {
+                "id": "6a580bb1",
+                "category": "security",
+                "condition": {
+                  "left": "fraud.flagged",
+                  "operator": "is_true"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Account flagged for fraud review.",
+                  "id": "2efc4871",
+                  "description": "Effect block_action from a security rule on action Place order."
+                },
+                "description": "Security rule on action Place order."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "order.amount",
+                "value": {
+                  "kind": "add",
+                  "left": {
+                    "kind": "state",
+                    "path": "cart.subtotal"
+                  },
+                  "right": {
+                    "kind": "state",
+                    "path": "cart.shipping"
+                  }
+                },
+                "id": "863dd5df",
+                "description": "Effect set_state on action Place order."
+              },
+              {
+                "type": "emit_event",
+                "event": "order.placed",
+                "id": "e271f733",
+                "description": "Effect emit_event on action Place order."
+              },
+              {
+                "type": "show_message",
+                "message": "Order placed!",
+                "id": "52c4c22e",
+                "description": "Effect show_message on action Place order."
+              }
+            ],
+            "emittedEvents": [
+              "order.placed"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "fc64632a",
+                "name": "add Expression: order.amount = subtotal + shipping",
+                "description": "4498 + 599 = 5097.",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "user.emailVerified",
+                    "value": true
+                  },
+                  {
+                    "path": "checkout.step",
+                    "value": "review"
+                  },
+                  {
+                    "path": "payment.method",
+                    "value": "card"
+                  },
+                  {
+                    "path": "fraud.flagged",
+                    "value": false
+                  },
+                  {
+                    "path": "cart.subtotal",
+                    "value": 4498
+                  },
+                  {
+                    "path": "cart.shipping",
+                    "value": 599
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "order.amount",
+                    "operator": "equals",
+                    "value": 5097,
+                    "description": "Asserts order.amount equals 5097."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "047ed331",
+            "name": "Override subtotal (admin)",
+            "intent": "Admin-only manual subtotal adjustment. Bypasses the non-negative subtotal invariant so support staff can issue post-hoc adjustments.",
+            "parameters": [
+              {
+                "id": "03e23e7c",
+                "name": "newSubtotal",
+                "type": "number",
+                "required": true,
+                "description": "New cart subtotal in cents (may be negative for credits)."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "719cca37",
+                "category": "permissions",
+                "condition": {
+                  "left": "admin.signedIn",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Admin sign-in required.",
+                  "id": "a135b33b",
+                  "description": "Effect block_action from a permissions rule on action Override subtotal (admin)."
+                },
+                "description": "Admin-only."
+              },
+              {
+                "id": "aa323d6c",
+                "category": "audit",
+                "condition": {
+                  "left": "cart.subtotal",
+                  "operator": "greater_than",
+                  "right": 1000000
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Subtotal beyond audit ceiling.",
+                  "id": "cf727dfb",
+                  "description": "Effect block_action from a audit rule on action Override subtotal (admin)."
+                },
+                "description": "Sanity ceiling. Even admins can't set subtotal beyond reason."
+              },
+              {
+                "id": "07b4024f",
+                "category": "validation",
+                "condition": {
+                  "left": "cart.subtotal",
+                  "operator": "lower_than",
+                  "right": -100000
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Subtotal below the audit floor.",
+                  "id": "33e0fa53",
+                  "description": "Effect block_action from a validation rule on action Override subtotal (admin)."
+                },
+                "description": "Sanity floor: refuse adjustments below the audit floor (-100k cents = -$1k)."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "cart.subtotal",
+                "value": -100,
+                "id": "81829fc0",
+                "description": "Effect set_state on action Override subtotal (admin)."
+              },
+              {
+                "type": "emit_event",
+                "event": "audit.subtotal.override",
+                "id": "76908bf8",
+                "description": "Effect emit_event on action Override subtotal (admin)."
+              }
+            ],
+            "emittedEvents": [
+              "audit.subtotal.override"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "8d0a4317",
+                "name": "bypassInvariants: admin sets negative subtotal",
+                "description": "Subtotal goes to -100. The feature invariant \"Cart subtotal non-negative\" would normally block this; the action's bypassInvariants list lets it through.",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "user.emailVerified",
+                    "value": true
+                  },
+                  {
+                    "path": "admin.signedIn",
+                    "value": true
+                  },
+                  {
+                    "path": "cart.subtotal",
+                    "value": 4498
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "newSubtotal",
+                    "value": -100
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "cart.subtotal",
+                    "operator": "equals",
+                    "value": -100,
+                    "description": "Asserts cart.subtotal equals -100."
+                  }
+                ]
+              }
+            ],
+            "bypassInvariants": true
+          }
+        ],
+        "rules": [
+          {
+            "id": "512109db",
+            "category": "permissions",
+            "condition": {
+              "kind": "any",
+              "conditions": [
+                {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                {
+                  "left": "user.emailVerified",
+                  "operator": "is_false"
+                }
+              ]
+            },
+            "effect": {
+              "type": "block_action",
+              "reason": "Sign in with a verified email to check out.",
+              "id": "1a807122",
+              "description": "Effect block_action from a surface-level permissions rule on Checkout."
+            },
+            "description": "Cross-cutting: sign-in required for the whole checkout."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "50f2269a",
+            "name": "Order amount non-negative",
+            "condition": {
+              "left": "order.amount",
+              "operator": "greater_than",
+              "right": -1
+            },
+            "message": "Order amount went negative.",
+            "description": "Surface invariant on Checkout: Order amount non-negative."
+          }
+        ],
+        "transitions": [
+          {
+            "id": "695c325f",
+            "target": "864ef35d",
+            "label": "Manage addresses",
+            "description": "Side trip to add or pick an address."
+          }
+        ]
+      }
+    ],
+    "personas": [
+      {
+        "id": "a6bdf1b5",
+        "name": "Guest with full cart",
+        "description": "Two items, no coupon, not signed in.",
+        "stateOverrides": [
+          {
+            "path": "cart.lineItems",
+            "value": [
+              {
+                "productId": "wireless-headphones",
+                "qty": 1,
+                "amount": 2999
+              },
+              {
+                "productId": "phone-case",
+                "qty": 1,
+                "amount": 1499
+              }
+            ]
+          },
+          {
+            "path": "cart.subtotal",
+            "value": 4498
+          }
+        ],
+        "parameterOverrides": []
+      },
+      {
+        "id": "137e4026",
+        "name": "Verified buyer at checkout",
+        "description": "Signed in, email verified, address on file.",
+        "stateOverrides": [
+          {
+            "path": "user.authenticated",
+            "value": true
+          },
+          {
+            "path": "user.emailVerified",
+            "value": true
+          },
+          {
+            "path": "addresses.count",
+            "value": 1
+          },
+          {
+            "path": "shipping.addressConfirmed",
+            "value": true
+          }
+        ],
+        "parameterOverrides": []
+      },
+      {
+        "id": "a3df9644",
+        "name": "Store admin",
+        "description": "Privileged operator who can manually adjust subtotals.",
+        "stateOverrides": [
+          {
+            "path": "admin.signedIn",
+            "value": true
+          }
+        ],
+        "parameterOverrides": []
+      }
+    ],
+    "resources": [
+      {
+        "id": "5411c8d7",
+        "name": "Cart store",
+        "description": "Per-device cart state (anonymous + signed-in).",
+        "kind": "browser_storage",
+        "provider": "localStorage",
+        "scope": "device",
+        "sensitivity": "low",
+        "containsPii": false,
+        "complianceTags": [],
+        "accessMode": "read_write"
+      },
+      {
+        "id": "6262d5ec",
+        "name": "Orders database",
+        "description": "Persisted orders. PII (shipping address, payment method).",
+        "kind": "database",
+        "provider": "PostgreSQL",
+        "scope": "shared",
+        "sensitivity": "high",
+        "containsPii": true,
+        "complianceTags": [],
+        "accessMode": "read_write"
+      }
+    ],
+    "entities": [
+      {
+        "id": "8786fba9",
+        "namespace": "cart",
+        "description": "Shopping cart state. Stored on-device.",
+        "fields": [
+          {
+            "id": "3901d6e8",
+            "name": "lineItems",
+            "type": "array",
+            "path": "cart.lineItems",
+            "description": "Array field lineItems on entity cart."
+          },
+          {
+            "id": "c3f23562",
+            "name": "subtotal",
+            "type": "number",
+            "path": "cart.subtotal",
+            "description": "Number field subtotal on entity cart."
+          }
+        ],
+        "resourceId": "5411c8d7"
+      },
+      {
+        "id": "a2da9cd2",
+        "namespace": "order",
+        "description": "Order summary.",
+        "fields": [
+          {
+            "id": "e0b1c395",
+            "name": "amount",
+            "type": "number",
+            "path": "order.amount",
+            "description": "Number field amount on entity order."
+          }
+        ],
+        "resourceId": "6262d5ec"
+      }
+    ],
+    "events": [
+      {
+        "id": "7256bcf8",
+        "name": "cart.item.added",
+        "description": "Item added to cart.",
+        "payloadSchema": [
+          {
+            "name": "productId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field productId on event cart.item.added."
+          }
+        ]
+      },
+      {
+        "id": "138c817e",
+        "name": "cart.item.removed",
+        "description": "Item removed from cart.",
+        "payloadSchema": [
+          {
+            "name": "lineIndex",
+            "type": "number",
+            "required": true,
+            "description": "Number payload field lineIndex on event cart.item.removed."
+          }
+        ]
+      },
+      {
+        "id": "753192d6",
+        "name": "cart.quantity.updated",
+        "description": "Cart line quantity changed.",
+        "payloadSchema": [
+          {
+            "name": "lineIndex",
+            "type": "number",
+            "required": true,
+            "description": "Number payload field lineIndex on event cart.quantity.updated."
+          },
+          {
+            "name": "quantity",
+            "type": "number",
+            "required": true,
+            "description": "Number payload field quantity on event cart.quantity.updated."
+          }
+        ]
+      },
+      {
+        "id": "ca058af6",
+        "name": "cart.subtotal.recomputed",
+        "description": "Cart subtotal recomputed from line items via sum_pluck."
+      },
+      {
+        "id": "98f40a67",
+        "name": "cart.coupon.applied",
+        "description": "Coupon redeemed.",
+        "payloadSchema": [
+          {
+            "name": "code",
+            "type": "string",
+            "required": true,
+            "description": "String payload field code on event cart.coupon.applied."
+          }
+        ]
+      },
+      {
+        "id": "500fea79",
+        "name": "address.created",
+        "description": "Shipping address saved.",
+        "payloadSchema": [
+          {
+            "name": "addressIndex",
+            "type": "number",
+            "required": true,
+            "description": "Number payload field addressIndex on event address.created."
+          }
+        ]
+      },
+      {
+        "id": "2fef55d9",
+        "name": "checkout.started",
+        "description": "Buyer entered the checkout flow."
+      },
+      {
+        "id": "dcc9b300",
+        "name": "checkout.address.confirmed",
+        "description": "Shipping address confirmed."
+      },
+      {
+        "id": "ed856699",
+        "name": "checkout.payment.selected",
+        "description": "Payment method selected."
+      },
+      {
+        "id": "94ed41de",
+        "name": "order.placed",
+        "description": "Order successfully placed.",
+        "payloadSchema": [
+          {
+            "name": "amount",
+            "type": "number",
+            "required": true,
+            "description": "Number payload field amount on event order.placed."
+          }
+        ]
+      },
+      {
+        "id": "eb50d2ea",
+        "name": "audit.subtotal.override",
+        "description": "Admin overrode the cart subtotal; bypassed the subtotal invariant."
+      },
+      {
+        "id": "7653d828",
+        "name": "ui.checkout.opened",
+        "description": "Buyer navigated to the Checkout surface."
+      },
+      {
+        "id": "706dad5b",
+        "name": "ui.addresses.opened",
+        "description": "Buyer navigated to the Address book surface."
+      }
+    ],
+    "createdAt": "2026-05-18T23:53:41.168Z",
+    "updatedAt": "2026-05-19T00:18:56.499Z",
+    "featureInvariants": [
+      {
+        "id": "1e29895a",
+        "name": "Cart subtotal non-negative",
+        "condition": {
+          "left": "cart.subtotal",
+          "operator": "greater_than",
+          "right": -1
+        },
+        "message": "Cart subtotal went negative across surfaces."
+      },
+      {
+        "id": "8b1ce764",
+        "name": "Order amount non-negative",
+        "condition": {
+          "left": "order.amount",
+          "operator": "greater_than",
+          "right": -1
+        },
+        "message": "Order amount went negative."
+      },
+      {
+        "id": "b44e6a4e",
+        "name": "Address count never exceeds cap",
+        "condition": {
+          "left": "addresses.count",
+          "operator": "lower_than",
+          "right": 6
+        },
+        "message": "Address cap violated."
+      }
+    ],
+    "expectedActions": [
+      "Update quantity",
+      "Remove item",
+      "Apply coupon",
+      "Recalculate subtotal",
+      "Proceed to checkout",
+      "Add shipping address",
+      "Continue to checkout",
+      "Confirm shipping address",
+      "Select payment method",
+      "Place order",
+      "Override subtotal (admin)"
+    ],
+    "nonGoals": [
+      "Tax calculation by region / VAT",
+      "Multi-currency pricing",
+      "Stored / saved payment methods",
+      "Gift cards, store credit, loyalty redemption",
+      "Real-time fraud-scoring integration (only fraud.flagged is modelled)",
+      "Carrier rate shopping and dynamic shipping options"
+    ]
+  }
+}

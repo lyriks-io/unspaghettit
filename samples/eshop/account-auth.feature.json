@@ -1,0 +1,1348 @@
+{
+  "format": "unspaghettit",
+  "version": 1,
+  "feature": {
+    "id": "941e4158",
+    "name": "Account & auth",
+    "description": "Sign up, sign in, and verify email. Locks out repeated failures, caps verification retries, and sends a welcome email after signup.",
+    "surfaces": [
+      {
+        "id": "86fcdef9",
+        "name": "Sign up",
+        "type": "screen",
+        "description": "Account creation form. Validates the buyer's input, blocks duplicates, and hands off to email verification.",
+        "stateDefinitions": [
+          {
+            "id": "d209fd87",
+            "path": "user.authenticated",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the visitor is signed in.",
+            "sharedWith": [
+              "493e1030",
+              "ab24f04f"
+            ]
+          },
+          {
+            "id": "2db43325",
+            "path": "user.exists",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the email already has an account.",
+            "sharedWith": [
+              "493e1030"
+            ]
+          },
+          {
+            "id": "6428c5f0",
+            "path": "user.emailVerified",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the user's email has been verified.",
+            "sharedWith": [
+              "ab24f04f"
+            ]
+          },
+          {
+            "id": "319bd866",
+            "path": "form.emailValid",
+            "type": "boolean",
+            "defaultValue": true,
+            "description": "Result of the client-side email format check."
+          },
+          {
+            "id": "9032b8fa",
+            "path": "form.passwordStrong",
+            "type": "boolean",
+            "defaultValue": true,
+            "description": "Whether the proposed password passes the strength meter."
+          },
+          {
+            "id": "5323156a",
+            "path": "form.termsAccepted",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the buyer accepted the Terms of Service."
+          }
+        ],
+        "actions": [
+          {
+            "id": "b336163d",
+            "name": "Create account",
+            "intent": "Create a new account for a first-time visitor.",
+            "parameters": [
+              {
+                "id": "1f033700",
+                "name": "email",
+                "type": "string",
+                "required": true,
+                "description": "Email address for the new account."
+              },
+              {
+                "id": "14a13b71",
+                "name": "password",
+                "type": "string",
+                "required": true,
+                "description": "Proposed password; the strength meter writes form.passwordStrong."
+              },
+              {
+                "id": "87abdd09",
+                "name": "acceptTerms",
+                "type": "boolean",
+                "required": true,
+                "description": "Whether the buyer ticked the Terms checkbox. Bound to form.termsAccepted.",
+                "defaultValue": false,
+                "bindToStatePath": "form.termsAccepted"
+              }
+            ],
+            "requiredStates": [
+              "form.emailValid",
+              "form.passwordStrong",
+              "form.termsAccepted",
+              "user.exists"
+            ],
+            "rules": [
+              {
+                "id": "61136c8a",
+                "category": "validation",
+                "condition": {
+                  "kind": "not",
+                  "condition": {
+                    "kind": "all",
+                    "conditions": [
+                      {
+                        "left": "form.emailValid",
+                        "operator": "is_true"
+                      },
+                      {
+                        "left": "form.passwordStrong",
+                        "operator": "is_true"
+                      },
+                      {
+                        "left": "form.termsAccepted",
+                        "operator": "is_true"
+                      }
+                    ]
+                  }
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Complete every required field before creating an account.",
+                  "id": "9c5798b8",
+                  "description": "Effect block_action from a validation rule on action Create account."
+                },
+                "description": "Composite NOT: block until every form check passes. One rule replaces three flat ones."
+              },
+              {
+                "id": "ee2466e9",
+                "category": "security",
+                "condition": {
+                  "left": "user.exists",
+                  "operator": "is_true"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "An account with that email exists. Sign in instead.",
+                  "id": "a60124df",
+                  "description": "Effect block_action from a security rule on action Create account."
+                },
+                "description": "Security rule on action Create account."
+              },
+              {
+                "id": "2a4bfa4d",
+                "category": "business",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_true"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "You are already signed in.",
+                  "id": "c070af8b",
+                  "description": "Effect block_action from a business rule on action Create account."
+                },
+                "description": "Business rule on action Create account."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "user.authenticated",
+                "value": true,
+                "id": "43358ff6",
+                "description": "Effect set_state on action Create account."
+              },
+              {
+                "type": "set_state",
+                "path": "user.exists",
+                "value": true,
+                "id": "5bb8fad9",
+                "description": "Effect set_state on action Create account."
+              },
+              {
+                "type": "emit_event",
+                "event": "account.signup.completed",
+                "id": "7e87b898",
+                "description": "Effect emit_event on action Create account."
+              },
+              {
+                "type": "show_message",
+                "message": "Account created. Check your email for the verification code.",
+                "id": "e8645f9e",
+                "description": "Effect show_message on action Create account."
+              },
+              {
+                "type": "transition_surface",
+                "target": "ab24f04f",
+                "id": "d245def4",
+                "description": "Effect transition_surface on action Create account."
+              }
+            ],
+            "emittedEvents": [
+              "account.signup.requested",
+              "account.signup.completed",
+              "account.signup.blocked"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "1d6ac381",
+                "name": "Happy path: new visitor signs up",
+                "description": "Form valid, no existing account.",
+                "stateOverrides": [
+                  {
+                    "path": "form.termsAccepted",
+                    "value": true
+                  },
+                  {
+                    "path": "user.exists",
+                    "value": false
+                  },
+                  {
+                    "path": "user.authenticated",
+                    "value": false
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "email",
+                    "value": "ada@example.com"
+                  },
+                  {
+                    "parameterName": "password",
+                    "value": "StrongPass1!"
+                  },
+                  {
+                    "parameterName": "acceptTerms",
+                    "value": true
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "user.authenticated",
+                    "operator": "is_true",
+                    "description": "Asserts user.authenticated is_true."
+                  },
+                  {
+                    "path": "user.exists",
+                    "operator": "is_true",
+                    "description": "Asserts user.exists is_true."
+                  }
+                ],
+                "expectedTransition": "ab24f04f"
+              },
+              {
+                "id": "ef8d7c77",
+                "name": "Blocked: terms not accepted",
+                "description": "Composite NOT rule trips when any form check fails.",
+                "stateOverrides": [
+                  {
+                    "path": "form.termsAccepted",
+                    "value": false
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "email",
+                    "value": "ada@example.com"
+                  },
+                  {
+                    "parameterName": "password",
+                    "value": "StrongPass1!"
+                  },
+                  {
+                    "parameterName": "acceptTerms",
+                    "value": false
+                  }
+                ],
+                "expectedStatus": "blocked"
+              }
+            ]
+          },
+          {
+            "id": "450141bc",
+            "name": "Go to sign in",
+            "intent": "Navigate to the sign-in surface for an existing account.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "fad5bb4b",
+                "category": "business",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_true"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "You are already signed in.",
+                  "id": "b36283a4",
+                  "description": "Effect block_action from a business rule on action Go to sign in."
+                },
+                "description": "Business rule on action Go to sign in."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "ui.signin.opened",
+                "id": "d30adf06",
+                "description": "Effect emit_event on action Go to sign in."
+              },
+              {
+                "type": "transition_surface",
+                "target": "493e1030",
+                "id": "2fc3f2c1",
+                "description": "Effect transition_surface on action Go to sign in."
+              }
+            ],
+            "emittedEvents": [
+              "ui.signin.opened"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "4bf97a05",
+                "name": "Navigate to sign in",
+                "description": "Pure navigation; no gates.",
+                "stateOverrides": [],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedTransition": "493e1030"
+              }
+            ]
+          },
+          {
+            "id": "ee9e011e",
+            "name": "Send welcome email",
+            "intent": "Cascade side-effect: send the welcome email after a successful signup.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "6fdcb82b",
+                "category": "validation",
+                "condition": {
+                  "left": "user.exists",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Cannot send welcome email to a nonexistent user.",
+                  "id": "dc14bf7b",
+                  "description": "Effect block_action from a validation rule on action Send welcome email."
+                },
+                "description": "Cascade handler runs only after a real signup. Defensive: don't send welcome to a nonexistent user."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "account.welcome_email.sent",
+                "id": "14f94d65",
+                "description": "Effect emit_event on action Send welcome email."
+              }
+            ],
+            "emittedEvents": [
+              "account.welcome_email.sent"
+            ],
+            "transitions": [],
+            "triggeredByEvent": "account.signup.completed"
+          }
+        ],
+        "rules": [
+          {
+            "id": "21bb6bee",
+            "category": "permissions",
+            "condition": {
+              "left": "user.authenticated",
+              "operator": "is_true"
+            },
+            "effect": {
+              "type": "block_action",
+              "reason": "You are already signed in.",
+              "id": "e287654b",
+              "description": "Effect block_action from a surface-level permissions rule on Sign up."
+            },
+            "description": "Cross-cutting: an already-signed-in visitor should not be on the sign-up surface."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "a7cd0f5e",
+            "name": "Sign-up form initialized",
+            "condition": {
+              "left": "form.emailValid",
+              "operator": "exists"
+            },
+            "message": "Sign-up form fields must be initialized before any action runs.",
+            "description": "Surface invariant on Sign up: Sign-up form initialized."
+          }
+        ],
+        "transitions": [
+          {
+            "id": "02a2ffbd",
+            "target": "493e1030",
+            "label": "Already have an account? Sign in",
+            "description": "Header link from sign up to sign in."
+          },
+          {
+            "id": "bfe9c28f",
+            "target": "ab24f04f",
+            "label": "After signup",
+            "description": "On successful create, hand off to email verification."
+          }
+        ]
+      },
+      {
+        "id": "493e1030",
+        "name": "Sign in",
+        "type": "screen",
+        "description": "Authentication. Tracks failed attempts and locks the account after the fifth failure.",
+        "stateDefinitions": [
+          {
+            "id": "484d1248",
+            "path": "auth.credentialsValid",
+            "type": "boolean",
+            "defaultValue": true,
+            "description": "Whether the email/password combination matches the user record."
+          },
+          {
+            "id": "cd58dcba",
+            "path": "auth.failedAttempts",
+            "type": "number",
+            "defaultValue": 0,
+            "description": "Running count of consecutive failed sign-in attempts."
+          },
+          {
+            "id": "7a116f8c",
+            "path": "auth.locked",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "True once the account is locked after repeated failures."
+          }
+        ],
+        "actions": [
+          {
+            "id": "810b4632",
+            "name": "Sign in",
+            "intent": "Authenticate a returning customer.",
+            "parameters": [
+              {
+                "id": "eb2366ce",
+                "name": "email",
+                "type": "string",
+                "required": true,
+                "description": "String parameter email for action Sign in."
+              },
+              {
+                "id": "5509f24b",
+                "name": "password",
+                "type": "string",
+                "required": true,
+                "description": "String parameter password for action Sign in."
+              }
+            ],
+            "requiredStates": [
+              "auth.credentialsValid",
+              "auth.failedAttempts",
+              "auth.locked"
+            ],
+            "rules": [
+              {
+                "id": "0ca01598",
+                "category": "security",
+                "condition": {
+                  "kind": "any",
+                  "conditions": [
+                    {
+                      "left": "auth.locked",
+                      "operator": "is_true"
+                    },
+                    {
+                      "left": "auth.failedAttempts",
+                      "operator": "greater_than",
+                      "right": 4
+                    }
+                  ]
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Account locked. Reset your password to continue.",
+                  "id": "07274118",
+                  "description": "Effect block_action from a security rule on action Sign in."
+                },
+                "description": "Composite ANY: locked OR over the attempt ceiling = locked out."
+              },
+              {
+                "id": "9e0bf599",
+                "category": "validation",
+                "condition": {
+                  "left": "auth.credentialsValid",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Email or password is incorrect.",
+                  "id": "603b8255",
+                  "description": "Effect block_action from a validation rule on action Sign in."
+                },
+                "description": "Wrong credentials: bump the failed-attempt counter via Expression arithmetic."
+              },
+              {
+                "id": "160dc1e9",
+                "category": "business",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_true"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "You are already signed in.",
+                  "id": "16a28782",
+                  "description": "Effect block_action from a business rule on action Sign in."
+                },
+                "description": "Business rule on action Sign in."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "user.authenticated",
+                "value": true,
+                "id": "60944aa3",
+                "description": "Effect set_state on action Sign in."
+              },
+              {
+                "type": "set_state",
+                "path": "auth.failedAttempts",
+                "value": 0,
+                "id": "2726ac14",
+                "description": "Effect set_state on action Sign in."
+              },
+              {
+                "type": "emit_event",
+                "event": "account.signin.succeeded",
+                "id": "ee0420b3",
+                "description": "Effect emit_event on action Sign in."
+              }
+            ],
+            "emittedEvents": [
+              "account.signin.succeeded",
+              "account.signin.failed"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "a4b369a9",
+                "name": "Happy path: valid credentials",
+                "stateOverrides": [
+                  {
+                    "path": "auth.credentialsValid",
+                    "value": true
+                  },
+                  {
+                    "path": "auth.locked",
+                    "value": false
+                  },
+                  {
+                    "path": "auth.failedAttempts",
+                    "value": 0
+                  },
+                  {
+                    "path": "user.authenticated",
+                    "value": false
+                  },
+                  {
+                    "path": "user.exists",
+                    "value": true
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "email",
+                    "value": "ada@example.com"
+                  },
+                  {
+                    "parameterName": "password",
+                    "value": "StrongPass1!"
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "user.authenticated",
+                    "operator": "is_true",
+                    "description": "Asserts user.authenticated is_true."
+                  }
+                ],
+                "description": "Scenario Happy path: valid credentials on action Sign in."
+              },
+              {
+                "id": "c4fb666d",
+                "name": "Blocked: account locked",
+                "description": "Composite ANY rule trips when the user is locked or over the attempt ceiling.",
+                "stateOverrides": [
+                  {
+                    "path": "auth.failedAttempts",
+                    "value": 5
+                  },
+                  {
+                    "path": "auth.locked",
+                    "value": true
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "email",
+                    "value": "ada@example.com"
+                  },
+                  {
+                    "parameterName": "password",
+                    "value": "wrong"
+                  }
+                ],
+                "expectedStatus": "blocked"
+              },
+              {
+                "id": "5ff9d6a8",
+                "name": "Blocked: invalid credentials",
+                "stateOverrides": [
+                  {
+                    "path": "auth.credentialsValid",
+                    "value": false
+                  },
+                  {
+                    "path": "auth.locked",
+                    "value": false
+                  },
+                  {
+                    "path": "auth.failedAttempts",
+                    "value": 1
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "email",
+                    "value": "ada@example.com"
+                  },
+                  {
+                    "parameterName": "password",
+                    "value": "wrong"
+                  }
+                ],
+                "expectedStatus": "blocked",
+                "description": "Scenario Blocked: invalid credentials on action Sign in."
+              }
+            ]
+          },
+          {
+            "id": "de61b2f3",
+            "name": "Go to sign up",
+            "intent": "Navigate to sign up for a new visitor.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "f7342898",
+                "category": "business",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_true"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "You are already signed in.",
+                  "id": "b81dedf1",
+                  "description": "Effect block_action from a business rule on action Go to sign up."
+                },
+                "description": "Business rule on action Go to sign up."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "ui.signup.opened",
+                "id": "a04ec02f",
+                "description": "Effect emit_event on action Go to sign up."
+              },
+              {
+                "type": "transition_surface",
+                "target": "86fcdef9",
+                "id": "a210a2da",
+                "description": "Effect transition_surface on action Go to sign up."
+              }
+            ],
+            "emittedEvents": [
+              "ui.signup.opened"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "3720bc70",
+                "name": "Navigate to sign up",
+                "stateOverrides": [],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedTransition": "86fcdef9",
+                "description": "Scenario Navigate to sign up on action Go to sign up."
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "790ca684",
+            "category": "permissions",
+            "condition": {
+              "left": "user.authenticated",
+              "operator": "is_true"
+            },
+            "effect": {
+              "type": "block_action",
+              "reason": "You are already signed in.",
+              "id": "3a326348",
+              "description": "Effect block_action from a surface-level permissions rule on Sign in."
+            },
+            "description": "Surface-level permissions rule on Sign in."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "5c73680d",
+            "name": "Failed-attempt counter bounded",
+            "condition": {
+              "left": "auth.failedAttempts",
+              "operator": "lower_than",
+              "right": 100
+            },
+            "message": "Failed-attempt counter exceeded a sane upper bound; counter likely corrupted.",
+            "description": "Surface invariant on Sign in: Failed-attempt counter bounded."
+          }
+        ],
+        "transitions": [
+          {
+            "id": "fcb9ecd7",
+            "target": "86fcdef9",
+            "label": "Create an account",
+            "description": "Link from sign in back to sign up."
+          }
+        ]
+      },
+      {
+        "id": "ab24f04f",
+        "name": "Email verification",
+        "type": "screen",
+        "description": "Six-digit code verification. Caps retries to defend against brute-force.",
+        "stateDefinitions": [
+          {
+            "id": "a6eddc32",
+            "path": "verification.codeMatches",
+            "type": "boolean",
+            "defaultValue": true,
+            "description": "Whether the submitted verification code matches the one on file."
+          },
+          {
+            "id": "a4feec92",
+            "path": "verification.attempts",
+            "type": "number",
+            "defaultValue": 0,
+            "description": "Number of verification attempts so far."
+          }
+        ],
+        "actions": [
+          {
+            "id": "fb476114",
+            "name": "Verify email",
+            "intent": "Confirm the buyer's email with the code that was emailed.",
+            "parameters": [
+              {
+                "id": "3f8a4f5c",
+                "name": "code",
+                "type": "string",
+                "required": true,
+                "description": "The six-digit verification code."
+              }
+            ],
+            "requiredStates": [
+              "user.authenticated",
+              "user.emailVerified",
+              "verification.codeMatches",
+              "verification.attempts"
+            ],
+            "rules": [
+              {
+                "id": "006225f7",
+                "category": "business",
+                "condition": {
+                  "left": "user.emailVerified",
+                  "operator": "is_true"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Your email is already verified.",
+                  "id": "aa328e4f",
+                  "description": "Effect block_action from a business rule on action Verify email."
+                },
+                "description": "Business rule on action Verify email."
+              },
+              {
+                "id": "8200c996",
+                "category": "security",
+                "condition": {
+                  "left": "verification.attempts",
+                  "operator": "greater_than",
+                  "right": 4
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Too many attempts. Request a new code.",
+                  "id": "322b1acd",
+                  "description": "Effect block_action from a security rule on action Verify email."
+                },
+                "description": "Verification cap; brute-force defense."
+              },
+              {
+                "id": "95f19dc5",
+                "category": "validation",
+                "condition": {
+                  "left": "verification.codeMatches",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Invalid verification code.",
+                  "id": "373ce15c",
+                  "description": "Effect block_action from a validation rule on action Verify email."
+                },
+                "description": "Wrong code: bump the counter via Expression add and block."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "user.emailVerified",
+                "value": true,
+                "id": "502e0267",
+                "description": "Effect set_state on action Verify email."
+              },
+              {
+                "type": "emit_event",
+                "event": "account.email.verified",
+                "id": "fed1dd63",
+                "description": "Effect emit_event on action Verify email."
+              }
+            ],
+            "emittedEvents": [
+              "account.email.verified"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "8b8c386b",
+                "name": "Happy path: code matches",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "user.exists",
+                    "value": true
+                  },
+                  {
+                    "path": "verification.codeMatches",
+                    "value": true
+                  },
+                  {
+                    "path": "verification.attempts",
+                    "value": 0
+                  },
+                  {
+                    "path": "user.emailVerified",
+                    "value": false
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "code",
+                    "value": "123456"
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "user.emailVerified",
+                    "operator": "is_true",
+                    "description": "Asserts user.emailVerified is_true."
+                  }
+                ],
+                "description": "Scenario Happy path: code matches on action Verify email."
+              },
+              {
+                "id": "1a98d863",
+                "name": "Blocked: attempt cap reached",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "verification.attempts",
+                    "value": 5
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "code",
+                    "value": "000000"
+                  }
+                ],
+                "expectedStatus": "blocked",
+                "description": "Scenario Blocked: attempt cap reached on action Verify email."
+              }
+            ]
+          },
+          {
+            "id": "fc906d3b",
+            "name": "Resend verification code",
+            "intent": "Regenerate and re-send the verification code; bumps the counter using Expression arithmetic.",
+            "parameters": [],
+            "requiredStates": [
+              "verification.attempts"
+            ],
+            "rules": [
+              {
+                "id": "22562373",
+                "category": "security",
+                "condition": {
+                  "left": "verification.attempts",
+                  "operator": "greater_than",
+                  "right": 4
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Too many resend requests. Try again later.",
+                  "id": "1a3a7507",
+                  "description": "Effect block_action from a security rule on action Resend verification code."
+                },
+                "description": "Security rule on action Resend verification code."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "verification.attempts",
+                "value": {
+                  "kind": "add",
+                  "left": {
+                    "kind": "state",
+                    "path": "verification.attempts"
+                  },
+                  "right": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                },
+                "id": "b1064561",
+                "description": "Effect set_state on action Resend verification code."
+              },
+              {
+                "type": "emit_event",
+                "event": "account.email.verification_sent",
+                "id": "699c56b7",
+                "description": "Effect emit_event on action Resend verification code."
+              }
+            ],
+            "emittedEvents": [
+              "account.email.verification_sent"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "46251091",
+                "name": "Happy path: resend bumps counter",
+                "description": "Expression add: verification.attempts <- attempts + 1.",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "user.exists",
+                    "value": true
+                  },
+                  {
+                    "path": "verification.attempts",
+                    "value": 2
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "verification.attempts",
+                    "operator": "equals",
+                    "value": 3,
+                    "description": "Asserts verification.attempts equals 3."
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "9fd50090",
+            "category": "permissions",
+            "condition": {
+              "left": "user.authenticated",
+              "operator": "is_false"
+            },
+            "effect": {
+              "type": "block_action",
+              "reason": "Sign in to verify your email.",
+              "id": "45bf17a5",
+              "description": "Effect block_action from a surface-level permissions rule on Email verification."
+            },
+            "description": "Surface-level permissions rule on Email verification."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "ca8fab52",
+            "name": "Verification counter bounded",
+            "condition": {
+              "left": "verification.attempts",
+              "operator": "lower_than",
+              "right": 100
+            },
+            "message": "Verification-attempt counter exceeded a sane upper bound.",
+            "description": "Surface invariant on Email verification: Verification counter bounded."
+          }
+        ],
+        "transitions": [
+          {
+            "id": "5c00c58d",
+            "target": "86fcdef9",
+            "label": "Cancel and start over",
+            "description": "Back to the sign-up surface."
+          }
+        ]
+      }
+    ],
+    "personas": [
+      {
+        "id": "0ec7aa6b",
+        "name": "First-time visitor",
+        "description": "Brand-new visitor; not signed in, no record on file.",
+        "stateOverrides": [
+          {
+            "path": "user.authenticated",
+            "value": false
+          },
+          {
+            "path": "user.exists",
+            "value": false
+          },
+          {
+            "path": "user.emailVerified",
+            "value": false
+          }
+        ],
+        "parameterOverrides": []
+      },
+      {
+        "id": "f5a109a8",
+        "name": "Returning customer",
+        "description": "Account exists, email verified, valid credentials on file.",
+        "stateOverrides": [
+          {
+            "path": "user.exists",
+            "value": true
+          },
+          {
+            "path": "user.emailVerified",
+            "value": true
+          },
+          {
+            "path": "auth.credentialsValid",
+            "value": true
+          }
+        ],
+        "parameterOverrides": []
+      },
+      {
+        "id": "4730bb34",
+        "name": "Locked-out user",
+        "description": "Hit the failed-attempts ceiling.",
+        "stateOverrides": [
+          {
+            "path": "auth.failedAttempts",
+            "value": 5
+          },
+          {
+            "path": "auth.locked",
+            "value": true
+          }
+        ],
+        "parameterOverrides": []
+      }
+    ],
+    "resources": [
+      {
+        "id": "bf5aef00",
+        "name": "Users database",
+        "description": "Primary store for user accounts and authentication state.",
+        "kind": "database",
+        "provider": "PostgreSQL",
+        "scope": "shared",
+        "sensitivity": "high",
+        "containsPii": true,
+        "complianceTags": [],
+        "accessMode": "read_write"
+      },
+      {
+        "id": "ced6cb3e",
+        "name": "Transactional email service",
+        "description": "Sends verification codes and welcome emails.",
+        "kind": "http_api",
+        "provider": "Postmark",
+        "scope": "external",
+        "sensitivity": "medium",
+        "containsPii": true,
+        "complianceTags": [],
+        "accessMode": "write_only"
+      }
+    ],
+    "entities": [
+      {
+        "id": "8f6b148c",
+        "namespace": "user",
+        "description": "Authenticated customer record. PII; mirrored from the Users database.",
+        "fields": [
+          {
+            "id": "99b3783f",
+            "name": "authenticated",
+            "type": "boolean",
+            "path": "user.authenticated",
+            "description": "Boolean field authenticated on entity user."
+          },
+          {
+            "id": "1b756e10",
+            "name": "exists",
+            "type": "boolean",
+            "path": "user.exists",
+            "description": "Boolean field exists on entity user."
+          },
+          {
+            "id": "0e57fb6b",
+            "name": "emailVerified",
+            "type": "boolean",
+            "path": "user.emailVerified",
+            "description": "Boolean field emailVerified on entity user."
+          }
+        ],
+        "resourceId": "bf5aef00"
+      }
+    ],
+    "events": [
+      {
+        "id": "a38afde5",
+        "name": "account.signup.requested",
+        "description": "Signup form submitted with validation passing."
+      },
+      {
+        "id": "021215a4",
+        "name": "account.signup.completed",
+        "description": "Account created and the visitor is now signed in.",
+        "payloadSchema": [
+          {
+            "name": "userId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field userId on event account.signup.completed."
+          },
+          {
+            "name": "email",
+            "type": "string",
+            "required": true,
+            "description": "String payload field email on event account.signup.completed."
+          }
+        ]
+      },
+      {
+        "id": "95e958c1",
+        "name": "account.signup.blocked",
+        "description": "Signup attempt blocked.",
+        "payloadSchema": [
+          {
+            "name": "reason",
+            "type": "string",
+            "required": true,
+            "description": "String payload field reason on event account.signup.blocked."
+          }
+        ]
+      },
+      {
+        "id": "39710215",
+        "name": "account.email.verified",
+        "description": "Email verification succeeded.",
+        "payloadSchema": [
+          {
+            "name": "userId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field userId on event account.email.verified."
+          }
+        ]
+      },
+      {
+        "id": "e43b97b9",
+        "name": "account.email.verification_sent",
+        "description": "Verification code generated and dispatched.",
+        "payloadSchema": [
+          {
+            "name": "userId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field userId on event account.email.verification_sent."
+          }
+        ]
+      },
+      {
+        "id": "971b5ef9",
+        "name": "account.signin.succeeded",
+        "description": "Successful sign-in.",
+        "payloadSchema": [
+          {
+            "name": "userId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field userId on event account.signin.succeeded."
+          }
+        ]
+      },
+      {
+        "id": "2dddaca8",
+        "name": "account.signin.failed",
+        "description": "Failed sign-in attempt.",
+        "payloadSchema": [
+          {
+            "name": "reason",
+            "type": "string",
+            "required": true,
+            "description": "String payload field reason on event account.signin.failed."
+          }
+        ]
+      },
+      {
+        "id": "017ee9e4",
+        "name": "account.welcome_email.sent",
+        "description": "Welcome email dispatched by the cascade handler.",
+        "payloadSchema": [
+          {
+            "name": "userId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field userId on event account.welcome_email.sent."
+          }
+        ]
+      },
+      {
+        "id": "3cf5f42f",
+        "name": "ui.signin.opened",
+        "description": "Buyer navigated to the Sign in surface."
+      },
+      {
+        "id": "61e75089",
+        "name": "ui.signup.opened",
+        "description": "Buyer navigated to the Sign up surface."
+      }
+    ],
+    "createdAt": "2026-05-18T23:53:41.104Z",
+    "updatedAt": "2026-05-19T00:14:43.583Z",
+    "featureInvariants": [
+      {
+        "id": "8ca8e119",
+        "name": "Authenticated implies known user",
+        "condition": {
+          "kind": "any",
+          "conditions": [
+            {
+              "left": "user.authenticated",
+              "operator": "is_false"
+            },
+            {
+              "left": "user.exists",
+              "operator": "is_true"
+            }
+          ]
+        },
+        "message": "Authenticated sessions must correspond to an existing user record.",
+        "description": "A session can only be authenticated for an account that exists. Composite implication: not(authenticated) OR exists."
+      },
+      {
+        "id": "95d5d961",
+        "name": "Failed attempts never negative",
+        "condition": {
+          "left": "auth.failedAttempts",
+          "operator": "greater_than",
+          "right": -1
+        },
+        "message": "Failed-attempts counter must stay non-negative."
+      },
+      {
+        "id": "8b3696a7",
+        "name": "Verification attempts never negative",
+        "condition": {
+          "left": "verification.attempts",
+          "operator": "greater_than",
+          "right": -1
+        },
+        "message": "Verification-attempts counter must stay non-negative."
+      }
+    ],
+    "expectedActions": [
+      "Create account",
+      "Sign in",
+      "Verify email",
+      "Resend verification code"
+    ],
+    "nonGoals": [
+      "Password reset / forgot-password flow",
+      "Social login (OAuth, SAML)",
+      "Multi-factor authentication",
+      "Session management and refresh tokens",
+      "User profile editing"
+    ]
+  }
+}

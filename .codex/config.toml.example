@@ -1,0 +1,8 @@
+[mcp_servers.unspa]
+command = "npm.cmd"
+args = ["--silent", "run", "mcp"]
+# Update `cwd` to the absolute path of your local clone of this repo.
+cwd = "/absolute/path/to/your/unspaghettit/clone"
+enabled = true
+startup_timeout_sec = 30
+tool_timeout_sec = 120

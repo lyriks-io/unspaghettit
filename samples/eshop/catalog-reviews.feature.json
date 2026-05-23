@@ -1,0 +1,1482 @@
+{
+  "format": "unspaghettit",
+  "version": 1,
+  "feature": {
+    "id": "6abcf051",
+    "name": "Catalog & reviews",
+    "description": "Search the catalog, open a product, post and filter reviews. Blocks profanity and link spam, gates age-restricted products to 18+ buyers, and assigns a review badge from the rating.",
+    "surfaces": [
+      {
+        "id": "0f9668ac",
+        "name": "Catalog",
+        "type": "screen",
+        "description": "Browse and search. Stock, prices, age flags surface here.",
+        "stateDefinitions": [
+          {
+            "id": "cf528800",
+            "path": "user.authenticated",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the visitor is signed in (mirrored from Account feature).",
+            "sharedWith": [
+              "584d0e24",
+              "ed79f2cb"
+            ]
+          },
+          {
+            "id": "6ae3339f",
+            "path": "user.age",
+            "type": "number",
+            "defaultValue": 30,
+            "description": "Visitor age. Drives the age-gate on restricted products.",
+            "sharedWith": [
+              "584d0e24"
+            ]
+          },
+          {
+            "id": "5d4c1e4b",
+            "path": "search.query",
+            "type": "string",
+            "defaultValue": "",
+            "description": "Most recent search query."
+          },
+          {
+            "id": "658868bd",
+            "path": "search.resultCount",
+            "type": "number",
+            "defaultValue": 0,
+            "description": "Number of results returned by the most recent search."
+          },
+          {
+            "id": "6e42b820",
+            "path": "product.viewing",
+            "type": "string",
+            "defaultValue": "",
+            "description": "ID of the currently focused product. Bound across surfaces.",
+            "sharedWith": [
+              "584d0e24",
+              "ed79f2cb"
+            ]
+          },
+          {
+            "id": "e81afb4e",
+            "path": "product.stock",
+            "type": "number",
+            "defaultValue": 12,
+            "description": "Units in stock for the focused product."
+          }
+        ],
+        "actions": [
+          {
+            "id": "b8888760",
+            "name": "Search products",
+            "intent": "Run a catalog search and store the query + result count.",
+            "parameters": [
+              {
+                "id": "fd95766a",
+                "name": "query",
+                "type": "string",
+                "required": true,
+                "description": "Search query text.",
+                "bindToStatePath": "search.query"
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "1fee0314",
+                "category": "validation",
+                "condition": {
+                  "left": "search.query",
+                  "operator": "equals",
+                  "right": ""
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Enter at least one character to search.",
+                  "id": "0f5c1a81",
+                  "description": "Effect block_action from a validation rule on action Search products."
+                },
+                "description": "Reject empty searches."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "catalog.search.executed",
+                "id": "4fc1435e",
+                "description": "Effect emit_event on action Search products."
+              }
+            ],
+            "emittedEvents": [
+              "catalog.search.executed"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "9413f83b",
+                "name": "Happy path: search runs",
+                "stateOverrides": [],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "query",
+                    "value": "wireless headphones"
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "search.query",
+                    "operator": "equals",
+                    "value": "wireless headphones",
+                    "description": "Asserts search.query equals 'wireless headphones'."
+                  }
+                ],
+                "description": "Scenario Happy path: search runs on action Search products."
+              },
+              {
+                "id": "01e19621",
+                "name": "Blocked: empty query",
+                "stateOverrides": [],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "query",
+                    "value": ""
+                  }
+                ],
+                "expectedStatus": "blocked",
+                "description": "Scenario Blocked: empty query on action Search products."
+              }
+            ]
+          },
+          {
+            "id": "8cba27eb",
+            "name": "View product",
+            "intent": "Open the product detail page for a focused product.",
+            "parameters": [
+              {
+                "id": "862fcdb4",
+                "name": "productId",
+                "type": "string",
+                "required": true,
+                "description": "Identifier of the product to focus.",
+                "bindToStatePath": "product.viewing"
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "6fb8638f",
+                "category": "validation",
+                "condition": {
+                  "left": "product.viewing",
+                  "operator": "equals",
+                  "right": ""
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Pick a product to view.",
+                  "id": "d989cd88",
+                  "description": "Effect block_action from a validation rule on action View product."
+                },
+                "description": "Validation rule on action View product."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "catalog.product.viewed",
+                "id": "ffcac9aa",
+                "description": "Effect emit_event on action View product."
+              },
+              {
+                "type": "transition_surface",
+                "target": "584d0e24",
+                "id": "a544c757",
+                "description": "Effect transition_surface on action View product."
+              }
+            ],
+            "emittedEvents": [
+              "ui.product.opened",
+              "catalog.product.viewed"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "8ebaba9f",
+                "name": "Happy path: open product",
+                "stateOverrides": [],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "productId",
+                    "value": "wireless-headphones"
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedTransition": "584d0e24",
+                "description": "Scenario Happy path: open product on action View product."
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "34197871",
+            "category": "ux_feedback",
+            "condition": {
+              "left": "product.stock",
+              "operator": "lower_than",
+              "right": 0
+            },
+            "effect": {
+              "type": "block_action",
+              "reason": "Stock data is missing.",
+              "id": "225068f9",
+              "description": "Effect block_action from a surface-level ux_feedback rule on Catalog."
+            },
+            "description": "Light gate so the panel shows visible gating."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "8e9d4754",
+            "name": "Stock counter non-negative",
+            "condition": {
+              "left": "product.stock",
+              "operator": "greater_than",
+              "right": -1
+            },
+            "message": "Stock counter went negative; inventory feed is corrupted.",
+            "description": "Surface invariant on Catalog: Stock counter non-negative."
+          }
+        ],
+        "transitions": [
+          {
+            "id": "dffa9ad3",
+            "target": "584d0e24",
+            "label": "Open product",
+            "description": "Tap a search result to focus a product."
+          }
+        ]
+      },
+      {
+        "id": "584d0e24",
+        "name": "Product details",
+        "type": "screen",
+        "description": "Single product. Reviews, recommendations, submit-review form.",
+        "stateDefinitions": [
+          {
+            "id": "93737004",
+            "path": "product.ageRestricted",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the focused product requires an 18+ buyer."
+          },
+          {
+            "id": "0ebce981",
+            "path": "product.reviews",
+            "type": "array",
+            "defaultValue": [],
+            "description": "Reviews array (each: { rating, verified, helpful }). Used by sum_pluck and count_where Expressions.",
+            "sharedWith": [
+              "ed79f2cb"
+            ]
+          },
+          {
+            "id": "17b904fa",
+            "path": "review.draft.rating",
+            "type": "number",
+            "defaultValue": 5,
+            "description": "Rating from the in-flight review draft (1-5)."
+          },
+          {
+            "id": "581ef07d",
+            "path": "review.draft.text",
+            "type": "string",
+            "defaultValue": "",
+            "description": "Free-text body of the in-flight review draft."
+          },
+          {
+            "id": "29340300",
+            "path": "review.draft.verifiedPurchase",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the reviewer purchased the product."
+          },
+          {
+            "id": "54579da7",
+            "path": "review.draft.profanityFlagged",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the moderation pass flagged profanity."
+          },
+          {
+            "id": "3e6fbfe5",
+            "path": "review.lastBadge",
+            "type": "string",
+            "defaultValue": "",
+            "description": "Badge label written by the switch Expression after a submit (\"Positive\" | \"Mixed\" | \"Critical\")."
+          }
+        ],
+        "actions": [
+          {
+            "id": "7b685cfb",
+            "name": "View product",
+            "intent": "Refocus the product page on a different product.",
+            "parameters": [
+              {
+                "id": "82e680c1",
+                "name": "productId",
+                "type": "string",
+                "required": true,
+                "bindToStatePath": "product.viewing",
+                "description": "String parameter productId for action View product."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "c5413b3c",
+                "category": "validation",
+                "condition": {
+                  "left": "product.viewing",
+                  "operator": "equals",
+                  "right": ""
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Pick a product first.",
+                  "id": "0394e153",
+                  "description": "Effect block_action from a validation rule on action View product."
+                },
+                "description": "Validation rule on action View product."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "catalog.product.viewed",
+                "id": "c455d58f",
+                "description": "Effect emit_event on action View product."
+              }
+            ],
+            "emittedEvents": [
+              "catalog.product.viewed"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "202e7dca",
+                "name": "Happy path: refocus product",
+                "stateOverrides": [],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "productId",
+                    "value": "kindle-paperwhite"
+                  }
+                ],
+                "expectedStatus": "success",
+                "description": "Scenario Happy path: refocus product on action View product."
+              }
+            ]
+          },
+          {
+            "id": "c2f761d2",
+            "name": "Submit review",
+            "intent": "Submit a new product review; sets review.lastBadge via a switch Expression based on rating.",
+            "parameters": [
+              {
+                "id": "19faee1f",
+                "name": "rating",
+                "type": "number",
+                "required": true,
+                "bindToStatePath": "review.draft.rating",
+                "description": "Number parameter rating for action Submit review."
+              },
+              {
+                "id": "2b419c21",
+                "name": "reviewText",
+                "type": "string",
+                "required": true,
+                "bindToStatePath": "review.draft.text",
+                "description": "String parameter reviewText for action Submit review."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "88b60113",
+                "category": "permissions",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in to submit a review.",
+                  "id": "dd348b1b",
+                  "description": "Effect block_action from a permissions rule on action Submit review."
+                },
+                "description": "Permissions rule on action Submit review."
+              },
+              {
+                "id": "2de96ce6",
+                "category": "compliance",
+                "condition": {
+                  "kind": "any",
+                  "conditions": [
+                    {
+                      "left": "review.draft.profanityFlagged",
+                      "operator": "is_true"
+                    },
+                    {
+                      "left": "review.draft.text",
+                      "operator": "contains",
+                      "right": "http"
+                    }
+                  ]
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Review violates the content policy (profanity or external links).",
+                  "id": "52c90123",
+                  "description": "Effect block_action from a compliance rule on action Submit review."
+                },
+                "description": "Composite OR: profanity OR external link."
+              },
+              {
+                "id": "d86b6a19",
+                "category": "validation",
+                "condition": {
+                  "left": "review.draft.rating",
+                  "operator": "lower_than",
+                  "right": 1
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Rating must be at least 1.",
+                  "id": "d1798897",
+                  "description": "Effect block_action from a validation rule on action Submit review."
+                },
+                "description": "Validation rule on action Submit review."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "review.lastBadge",
+                "value": {
+                  "kind": "switch",
+                  "cases": [
+                    {
+                      "when": {
+                        "left": "review.draft.rating",
+                        "operator": "greater_than",
+                        "right": 3
+                      },
+                      "then": {
+                        "kind": "literal",
+                        "value": "Positive"
+                      }
+                    },
+                    {
+                      "when": {
+                        "left": "review.draft.rating",
+                        "operator": "greater_than",
+                        "right": 1
+                      },
+                      "then": {
+                        "kind": "literal",
+                        "value": "Mixed"
+                      }
+                    }
+                  ],
+                  "default": {
+                    "kind": "literal",
+                    "value": "Critical"
+                  }
+                },
+                "id": "e61a7485",
+                "description": "Effect set_state on action Submit review."
+              },
+              {
+                "type": "emit_event",
+                "event": "review.submitted",
+                "id": "546c5e8a",
+                "description": "Effect emit_event on action Submit review."
+              },
+              {
+                "type": "show_message",
+                "message": "Thanks for your review!",
+                "id": "2ac282ef",
+                "description": "Effect show_message on action Submit review."
+              }
+            ],
+            "emittedEvents": [
+              "review.submitted"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "7105dc9f",
+                "name": "Happy path: 5-star → Positive badge",
+                "description": "Switch Expression picks the first case (rating > 3).",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "review.draft.profanityFlagged",
+                    "value": false
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "rating",
+                    "value": 5
+                  },
+                  {
+                    "parameterName": "reviewText",
+                    "value": "Loved it."
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "review.lastBadge",
+                    "operator": "equals",
+                    "value": "Positive",
+                    "description": "Asserts review.lastBadge equals 'Positive'."
+                  }
+                ]
+              },
+              {
+                "id": "649c187b",
+                "name": "Switch: 2-star → Mixed badge",
+                "description": "Switch Expression falls to the second case (rating > 1 but not > 3).",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "rating",
+                    "value": 2
+                  },
+                  {
+                    "parameterName": "reviewText",
+                    "value": "It was OK."
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "review.lastBadge",
+                    "operator": "equals",
+                    "value": "Mixed",
+                    "description": "Asserts review.lastBadge equals 'Mixed'."
+                  }
+                ]
+              },
+              {
+                "id": "8840a966",
+                "name": "Switch: 1-star → Critical badge",
+                "description": "Switch Expression falls through to default.",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "rating",
+                    "value": 1
+                  },
+                  {
+                    "parameterName": "reviewText",
+                    "value": "Not great."
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "review.lastBadge",
+                    "operator": "equals",
+                    "value": "Critical",
+                    "description": "Asserts review.lastBadge equals 'Critical'."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "9dc15c7e",
+            "name": "Click recommendation",
+            "intent": "Refocus the page on a recommended product.",
+            "parameters": [
+              {
+                "id": "d184dcd3",
+                "name": "recommendedProductId",
+                "type": "string",
+                "required": true,
+                "bindToStatePath": "product.viewing",
+                "description": "String parameter recommendedProductId for action Click recommendation."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "ce82b017",
+                "category": "validation",
+                "condition": {
+                  "left": "product.viewing",
+                  "operator": "equals",
+                  "right": ""
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "No product to refocus.",
+                  "id": "c831dceb",
+                  "description": "Effect block_action from a validation rule on action Click recommendation."
+                },
+                "description": "Validation rule on action Click recommendation."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "recommendation.clicked",
+                "id": "9de80b1d",
+                "description": "Effect emit_event on action Click recommendation."
+              }
+            ],
+            "emittedEvents": [
+              "recommendation.clicked"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "efaf9525",
+                "name": "Happy path: click reco",
+                "stateOverrides": [],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "recommendedProductId",
+                    "value": "phone-case"
+                  }
+                ],
+                "expectedStatus": "success",
+                "description": "Scenario Happy path: click reco on action Click recommendation."
+              }
+            ]
+          },
+          {
+            "id": "1fecaf55",
+            "name": "Open all reviews",
+            "intent": "Navigate to the dedicated reviews page.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "3ce0bcab",
+                "category": "validation",
+                "condition": {
+                  "left": "product.viewing",
+                  "operator": "equals",
+                  "right": ""
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Focus a product before opening its reviews.",
+                  "id": "6a570826",
+                  "description": "Effect block_action from a validation rule on action Open all reviews."
+                },
+                "description": "Validation rule on action Open all reviews."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "ui.allreviews.opened",
+                "id": "a025767b",
+                "description": "Effect emit_event on action Open all reviews."
+              },
+              {
+                "type": "transition_surface",
+                "target": "ed79f2cb",
+                "id": "7735a99a",
+                "description": "Effect transition_surface on action Open all reviews."
+              }
+            ],
+            "emittedEvents": [
+              "ui.allreviews.opened"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "5db2f15b",
+                "name": "Happy path: open all reviews",
+                "stateOverrides": [
+                  {
+                    "path": "product.viewing",
+                    "value": "wireless-headphones"
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedTransition": "ed79f2cb",
+                "description": "Scenario Happy path: open all reviews on action Open all reviews."
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "6c457370",
+            "category": "compliance",
+            "condition": {
+              "kind": "all",
+              "conditions": [
+                {
+                  "left": "user.age",
+                  "operator": "lower_than",
+                  "right": 18
+                },
+                {
+                  "left": "product.ageRestricted",
+                  "operator": "is_true"
+                }
+              ]
+            },
+            "effect": {
+              "type": "block_action",
+              "reason": "This product is restricted to buyers aged 18 or over.",
+              "id": "87bed071",
+              "description": "Effect block_action from a surface-level compliance rule on Product details."
+            },
+            "description": "Composite ALL: under-18 buyer AND age-restricted product = block. Demonstrates composite condition that fixes the legacy over-broad gate."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "174c1555",
+            "name": "Review rating range",
+            "condition": {
+              "left": "review.draft.rating",
+              "operator": "lower_than",
+              "right": 6
+            },
+            "message": "Review rating must be 1–5.",
+            "description": "Surface invariant on Product details: Review rating range."
+          }
+        ],
+        "transitions": [
+          {
+            "id": "02bf7369",
+            "target": "ed79f2cb",
+            "label": "See all reviews",
+            "description": "From product details to the dedicated reviews list."
+          },
+          {
+            "id": "dbd4cbfc",
+            "target": "0f9668ac",
+            "label": "Back to catalog",
+            "description": "Header link back to the catalog."
+          }
+        ]
+      },
+      {
+        "id": "ed79f2cb",
+        "name": "All reviews",
+        "type": "screen",
+        "description": "Dedicated reviews list with filter, sort, and helpful counter.",
+        "stateDefinitions": [
+          {
+            "id": "11c1d139",
+            "path": "reviews.filter.minRating",
+            "type": "number",
+            "defaultValue": 1,
+            "description": "Minimum rating filter."
+          },
+          {
+            "id": "2cb0d263",
+            "path": "reviews.filter.verifiedOnly",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether to only show verified-purchase reviews."
+          },
+          {
+            "id": "bbacecfd",
+            "path": "reviews.sortBy",
+            "type": "enum",
+            "defaultValue": "helpful",
+            "enumValues": [
+              "helpful",
+              "newest",
+              "highest",
+              "lowest"
+            ],
+            "description": "Sort order for the reviews list."
+          },
+          {
+            "id": "cc811899",
+            "path": "reviews.helpfulCount",
+            "type": "number",
+            "defaultValue": 0,
+            "description": "Number of reviews marked helpful so far. Recomputed via count_where Expression."
+          }
+        ],
+        "actions": [
+          {
+            "id": "72990024",
+            "name": "Filter reviews",
+            "intent": "Adjust the reviews list filter.",
+            "parameters": [
+              {
+                "id": "dd48b21c",
+                "name": "minRating",
+                "type": "number",
+                "required": true,
+                "bindToStatePath": "reviews.filter.minRating",
+                "description": "Number parameter minRating for action Filter reviews."
+              },
+              {
+                "id": "baa4a1c2",
+                "name": "verifiedOnly",
+                "type": "boolean",
+                "required": true,
+                "defaultValue": false,
+                "bindToStatePath": "reviews.filter.verifiedOnly",
+                "description": "Boolean parameter verifiedOnly for action Filter reviews."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "1205fc2e",
+                "category": "validation",
+                "condition": {
+                  "left": "reviews.filter.minRating",
+                  "operator": "greater_than",
+                  "right": 5
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Rating filter must be 1-5.",
+                  "id": "0490f009",
+                  "description": "Effect block_action from a validation rule on action Filter reviews."
+                },
+                "description": "Rating filter must be within 1–5."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "reviews.filtered",
+                "id": "ef3132d5",
+                "description": "Effect emit_event on action Filter reviews."
+              }
+            ],
+            "emittedEvents": [
+              "reviews.filtered"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "02569a00",
+                "name": "Filter to verified 5-star",
+                "stateOverrides": [
+                  {
+                    "path": "product.viewing",
+                    "value": "wireless-headphones"
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "minRating",
+                    "value": 5
+                  },
+                  {
+                    "parameterName": "verifiedOnly",
+                    "value": true
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "reviews.filter.minRating",
+                    "operator": "equals",
+                    "value": 5,
+                    "description": "Asserts reviews.filter.minRating equals 5."
+                  }
+                ],
+                "description": "Scenario Filter to verified 5-star on action Filter reviews."
+              }
+            ]
+          },
+          {
+            "id": "f2542d6b",
+            "name": "Sort reviews",
+            "intent": "Adjust the reviews list sort order.",
+            "parameters": [
+              {
+                "id": "1271ac52",
+                "name": "sortBy",
+                "type": "enum",
+                "required": true,
+                "enumValues": [
+                  "helpful",
+                  "newest",
+                  "highest",
+                  "lowest"
+                ],
+                "bindToStatePath": "reviews.sortBy",
+                "description": "Enum parameter sortBy for action Sort reviews."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "15ef098f",
+                "category": "validation",
+                "condition": {
+                  "left": "reviews.sortBy",
+                  "operator": "equals",
+                  "right": ""
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Pick a supported sort order.",
+                  "id": "c1520400",
+                  "description": "Effect block_action from a validation rule on action Sort reviews."
+                },
+                "description": "Sort key must be supported."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "emit_event",
+                "event": "reviews.sorted",
+                "id": "6248f179",
+                "description": "Effect emit_event on action Sort reviews."
+              }
+            ],
+            "emittedEvents": [
+              "reviews.sorted"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "5c7d69ac",
+                "name": "Sort by newest",
+                "stateOverrides": [
+                  {
+                    "path": "product.viewing",
+                    "value": "wireless-headphones"
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "sortBy",
+                    "value": "newest"
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "reviews.sortBy",
+                    "operator": "equals",
+                    "value": "newest",
+                    "description": "Asserts reviews.sortBy equals 'newest'."
+                  }
+                ],
+                "description": "Scenario Sort by newest on action Sort reviews."
+              }
+            ]
+          },
+          {
+            "id": "c201af29",
+            "name": "Mark review helpful",
+            "intent": "Mark a review helpful and recompute the helpful counter via count_where Expression.",
+            "parameters": [
+              {
+                "id": "8e1b084c",
+                "name": "reviewIndex",
+                "type": "number",
+                "required": true,
+                "description": "Position of the review in the array."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "4369bdbd",
+                "category": "permissions",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in to mark reviews helpful.",
+                  "id": "5a9027ae",
+                  "description": "Effect block_action from a permissions rule on action Mark review helpful."
+                },
+                "description": "Permissions rule on action Mark review helpful."
+              },
+              {
+                "id": "21e417e1",
+                "category": "validation",
+                "condition": {
+                  "left": "reviews.helpfulCount",
+                  "operator": "lower_than",
+                  "right": 0
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Review index out of range.",
+                  "id": "a5a76100",
+                  "description": "Effect block_action from a validation rule on action Mark review helpful."
+                },
+                "description": "reviewIndex must point at a real entry."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "reviews.helpfulCount",
+                "value": {
+                  "kind": "count_where",
+                  "operand": {
+                    "kind": "state",
+                    "path": "product.reviews"
+                  },
+                  "field": "helpful",
+                  "equals": {
+                    "kind": "literal",
+                    "value": true
+                  }
+                },
+                "id": "5d46da1e",
+                "description": "Effect set_state on action Mark review helpful."
+              },
+              {
+                "type": "emit_event",
+                "event": "review.helpful_clicked",
+                "id": "17132f7d",
+                "description": "Effect emit_event on action Mark review helpful."
+              }
+            ],
+            "emittedEvents": [
+              "review.helpful_clicked"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "f201d9c1",
+                "name": "count_where: recompute helpful counter",
+                "description": "Array has 3 entries with helpful=true. count_where Expression sets the counter to 3.",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "product.viewing",
+                    "value": "wireless-headphones"
+                  },
+                  {
+                    "path": "product.reviews",
+                    "value": [
+                      {
+                        "rating": 5,
+                        "verified": true,
+                        "helpful": true
+                      },
+                      {
+                        "rating": 4,
+                        "verified": true,
+                        "helpful": false
+                      },
+                      {
+                        "rating": 5,
+                        "verified": false,
+                        "helpful": true
+                      },
+                      {
+                        "rating": 3,
+                        "verified": true,
+                        "helpful": true
+                      }
+                    ]
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "reviewIndex",
+                    "value": 0
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "reviews.helpfulCount",
+                    "operator": "equals",
+                    "value": 3,
+                    "description": "Asserts reviews.helpfulCount equals 3."
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "3862c8e6",
+            "category": "permissions",
+            "condition": {
+              "left": "product.viewing",
+              "operator": "equals",
+              "right": ""
+            },
+            "effect": {
+              "type": "block_action",
+              "reason": "Open a product first.",
+              "id": "d8589297",
+              "description": "Effect block_action from a surface-level permissions rule on All reviews."
+            },
+            "description": "Browsing reviews requires a focused product."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "94f42470",
+            "name": "Helpful counter non-negative",
+            "condition": {
+              "left": "reviews.helpfulCount",
+              "operator": "greater_than",
+              "right": -1
+            },
+            "message": "Helpful counter went negative.",
+            "description": "Surface invariant on All reviews: Helpful counter non-negative."
+          }
+        ],
+        "transitions": [
+          {
+            "id": "806b6d90",
+            "target": "584d0e24",
+            "label": "Back to product",
+            "description": "Return to the product detail page."
+          }
+        ]
+      }
+    ],
+    "personas": [
+      {
+        "id": "783f1e9d",
+        "name": "Anonymous browser",
+        "description": "Not signed in. Can browse and search but not review.",
+        "stateOverrides": [
+          {
+            "path": "user.authenticated",
+            "value": false
+          }
+        ],
+        "parameterOverrides": []
+      },
+      {
+        "id": "5d051dee",
+        "name": "Signed-in reviewer",
+        "description": "Authenticated; verified purchase; may submit a review.",
+        "stateOverrides": [
+          {
+            "path": "user.authenticated",
+            "value": true
+          },
+          {
+            "path": "review.draft.verifiedPurchase",
+            "value": true
+          }
+        ],
+        "parameterOverrides": []
+      },
+      {
+        "id": "9623ae70",
+        "name": "Under-18 shopper",
+        "description": "Authenticated minor; age-restricted products are blocked.",
+        "stateOverrides": [
+          {
+            "path": "user.authenticated",
+            "value": true
+          },
+          {
+            "path": "user.age",
+            "value": 16
+          }
+        ],
+        "parameterOverrides": []
+      }
+    ],
+    "resources": [
+      {
+        "id": "1d5ddcd1",
+        "name": "Catalog database",
+        "description": "Product listings, stock, prices.",
+        "kind": "database",
+        "provider": "PostgreSQL",
+        "scope": "shared",
+        "sensitivity": "low",
+        "containsPii": false,
+        "complianceTags": [],
+        "accessMode": "read_only"
+      },
+      {
+        "id": "27e74da1",
+        "name": "Reviews database",
+        "description": "User-submitted reviews. Reviewer identity is PII.",
+        "kind": "database",
+        "provider": "PostgreSQL",
+        "scope": "shared",
+        "sensitivity": "medium",
+        "containsPii": true,
+        "complianceTags": [],
+        "accessMode": "read_write"
+      }
+    ],
+    "entities": [
+      {
+        "id": "2c3d7620",
+        "namespace": "product",
+        "description": "Product catalog entry.",
+        "fields": [
+          {
+            "id": "557d045b",
+            "name": "viewing",
+            "type": "string",
+            "path": "product.viewing",
+            "description": "String field viewing on entity product."
+          },
+          {
+            "id": "ff59001c",
+            "name": "stock",
+            "type": "number",
+            "path": "product.stock",
+            "description": "Number field stock on entity product."
+          },
+          {
+            "id": "f033e0a9",
+            "name": "ageRestricted",
+            "type": "boolean",
+            "path": "product.ageRestricted",
+            "description": "Boolean field ageRestricted on entity product."
+          }
+        ],
+        "resourceId": "1d5ddcd1"
+      },
+      {
+        "id": "a7fd9281",
+        "namespace": "review",
+        "description": "Product review with rating and helpful counter.",
+        "fields": [
+          {
+            "id": "ec6c18c0",
+            "name": "rating",
+            "type": "number",
+            "path": "review.draft.rating",
+            "description": "Number field rating on entity review."
+          },
+          {
+            "id": "4ec7adbc",
+            "name": "text",
+            "type": "string",
+            "path": "review.draft.text",
+            "description": "String field text on entity review."
+          },
+          {
+            "id": "065b2d57",
+            "name": "verifiedPurchase",
+            "type": "boolean",
+            "path": "review.draft.verifiedPurchase",
+            "description": "Boolean field verifiedPurchase on entity review."
+          }
+        ],
+        "resourceId": "27e74da1"
+      }
+    ],
+    "events": [
+      {
+        "id": "87125567",
+        "name": "catalog.search.executed",
+        "description": "Catalog search ran.",
+        "payloadSchema": [
+          {
+            "name": "query",
+            "type": "string",
+            "required": true,
+            "description": "String payload field query on event catalog.search.executed."
+          },
+          {
+            "name": "resultCount",
+            "type": "number",
+            "required": false,
+            "description": "Number payload field resultCount on event catalog.search.executed."
+          }
+        ]
+      },
+      {
+        "id": "7846cf41",
+        "name": "catalog.product.viewed",
+        "description": "Product detail page opened.",
+        "payloadSchema": [
+          {
+            "name": "productId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field productId on event catalog.product.viewed."
+          }
+        ]
+      },
+      {
+        "id": "f3eafd64",
+        "name": "review.submitted",
+        "description": "A new product review was submitted.",
+        "payloadSchema": [
+          {
+            "name": "productId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field productId on event review.submitted."
+          },
+          {
+            "name": "rating",
+            "type": "number",
+            "required": true,
+            "description": "Number payload field rating on event review.submitted."
+          }
+        ]
+      },
+      {
+        "id": "6f742e8d",
+        "name": "review.helpful_clicked",
+        "description": "A review was marked helpful.",
+        "payloadSchema": [
+          {
+            "name": "reviewIndex",
+            "type": "number",
+            "required": true,
+            "description": "Number payload field reviewIndex on event review.helpful_clicked."
+          }
+        ]
+      },
+      {
+        "id": "92724e5f",
+        "name": "recommendation.clicked",
+        "description": "\"You may also like\" recommendation clicked.",
+        "payloadSchema": [
+          {
+            "name": "productId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field productId on event recommendation.clicked."
+          }
+        ]
+      },
+      {
+        "id": "b60206d2",
+        "name": "reviews.filtered",
+        "description": "Reviews list filter changed.",
+        "payloadSchema": [
+          {
+            "name": "minRating",
+            "type": "number",
+            "required": true,
+            "description": "Number payload field minRating on event reviews.filtered."
+          },
+          {
+            "name": "verifiedOnly",
+            "type": "boolean",
+            "required": true,
+            "description": "Boolean payload field verifiedOnly on event reviews.filtered."
+          }
+        ]
+      },
+      {
+        "id": "a7f25598",
+        "name": "reviews.sorted",
+        "description": "Reviews list sort order changed.",
+        "payloadSchema": [
+          {
+            "name": "sortBy",
+            "type": "string",
+            "required": true,
+            "description": "String payload field sortBy on event reviews.sorted."
+          }
+        ]
+      },
+      {
+        "id": "bf8f9645",
+        "name": "ui.allreviews.opened",
+        "description": "Buyer opened the all-reviews page."
+      },
+      {
+        "id": "71f0d82a",
+        "name": "ui.product.opened",
+        "description": "Buyer opened a product detail page."
+      }
+    ],
+    "createdAt": "2026-05-18T23:53:41.140Z",
+    "updatedAt": "2026-05-19T00:14:49.203Z",
+    "featureInvariants": [
+      {
+        "id": "283d71a1",
+        "name": "Helpful counter non-negative",
+        "condition": {
+          "left": "reviews.helpfulCount",
+          "operator": "greater_than",
+          "right": -1
+        },
+        "message": "Helpful counter went negative across surfaces."
+      },
+      {
+        "id": "72fb047b",
+        "name": "Product stock never negative",
+        "condition": {
+          "left": "product.stock",
+          "operator": "greater_than",
+          "right": -1
+        },
+        "message": "Product stock went negative."
+      }
+    ],
+    "expectedActions": [
+      "Search products",
+      "View product",
+      "Submit review",
+      "Click recommendation",
+      "Open all reviews",
+      "Filter reviews",
+      "Sort reviews",
+      "Mark review helpful"
+    ],
+    "nonGoals": [
+      "Personalised recommendations engine",
+      "Review moderation queue and reviewer reputation",
+      "Product comparison tables",
+      "Saved lists and wishlists",
+      "Catalog ingestion / vendor product onboarding"
+    ]
+  }
+}

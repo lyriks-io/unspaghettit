@@ -1,0 +1,11 @@
+# Force contributors through the structured templates. Blank issues hide intent
+# and tend to land as "doesn't work" with no reproduction.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/lyriks-io/unspaghettit/security/advisories/new
+    about: Report security issues privately via GitHub Security Advisories instead of a public issue. See SECURITY.md for the threat model.
+  - name: Lyriks.io
+    url: https://lyriks.io
+    about: The team behind Unspaghettit. For commercial inquiries or partnership questions.

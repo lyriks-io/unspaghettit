@@ -1,0 +1,33 @@
+import type { Brand } from '$shared/domain/Brand';
+
+export type FeatureId = Brand<string, 'FeatureId'>;
+export type SurfaceId = Brand<string, 'SurfaceId'>;
+export type ActionId = Brand<string, 'ActionId'>;
+export type RuleId = Brand<string, 'RuleId'>;
+export type InvariantId = Brand<string, 'InvariantId'>;
+export type EffectId = Brand<string, 'EffectId'>;
+export type StateDefinitionId = Brand<string, 'StateDefinitionId'>;
+export type ParameterId = Brand<string, 'ParameterId'>;
+export type TransitionId = Brand<string, 'TransitionId'>;
+export type PersonaId = Brand<string, 'PersonaId'>;
+export type ResourceId = Brand<string, 'ResourceId'>;
+export type EntityId = Brand<string, 'EntityId'>;
+export type EntityFieldId = Brand<string, 'EntityFieldId'>;
+export type ScenarioId = Brand<string, 'ScenarioId'>;
+export type EventDefinitionId = Brand<string, 'EventDefinitionId'>;
+
+export const asFeatureId = (v: string): FeatureId => v as FeatureId;
+export const asSurfaceId = (v: string): SurfaceId => v as SurfaceId;
+export const asActionId = (v: string): ActionId => v as ActionId;
+export const asRuleId = (v: string): RuleId => v as RuleId;
+export const asInvariantId = (v: string): InvariantId => v as InvariantId;
+export const asEffectId = (v: string): EffectId => v as EffectId;
+export const asStateDefinitionId = (v: string): StateDefinitionId => v as StateDefinitionId;
+export const asParameterId = (v: string): ParameterId => v as ParameterId;
+export const asTransitionId = (v: string): TransitionId => v as TransitionId;
+export const asPersonaId = (v: string): PersonaId => v as PersonaId;
+export const asResourceId = (v: string): ResourceId => v as ResourceId;
+export const asEntityId = (v: string): EntityId => v as EntityId;
+export const asEntityFieldId = (v: string): EntityFieldId => v as EntityFieldId;
+export const asScenarioId = (v: string): ScenarioId => v as ScenarioId;
+export const asEventDefinitionId = (v: string): EventDefinitionId => v as EventDefinitionId;

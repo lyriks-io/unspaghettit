@@ -1,0 +1,1067 @@
+{
+  "format": "unspaghettit",
+  "version": 1,
+  "feature": {
+    "id": "5da6bb5c",
+    "name": "Order fulfillment",
+    "description": "Order lifecycle from preparing to delivered. Cancellation is allowed before shipping; signature is required on delivery confirmation. Automatically kicks off when an order is placed.",
+    "surfaces": [
+      {
+        "id": "da9b0526",
+        "name": "Order tracking & delivery",
+        "type": "screen",
+        "description": "Order status state machine. Preparing → shipped → out for delivery → delivered.",
+        "stateDefinitions": [
+          {
+            "id": "05ff3f48",
+            "path": "order.status",
+            "type": "enum",
+            "defaultValue": "preparing",
+            "enumValues": [
+              "preparing",
+              "shipped",
+              "out_for_delivery",
+              "delivered",
+              "cancelled"
+            ],
+            "description": "Current order status. Drives the state machine."
+          },
+          {
+            "id": "549cba7d",
+            "path": "order.id",
+            "type": "string",
+            "defaultValue": "ORD-1042",
+            "description": "Order identifier (server-issued)."
+          },
+          {
+            "id": "b7a31432",
+            "path": "order.statusLabel",
+            "type": "string",
+            "defaultValue": "Preparing your order",
+            "description": "Human-readable label, derived from order.status via a switch Expression on every transition."
+          },
+          {
+            "id": "041bb67f",
+            "path": "order.trackingInitialized",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the tracking record was initialized by the cascade handler."
+          },
+          {
+            "id": "e4993a5a",
+            "path": "delivery.signatureRequired",
+            "type": "boolean",
+            "defaultValue": true,
+            "description": "Whether a signature is required for confirmation."
+          },
+          {
+            "id": "8c3e844e",
+            "path": "delivery.signatureCollected",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the buyer's signature was captured."
+          },
+          {
+            "id": "d4bbd9a4",
+            "path": "user.authenticated",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Sign-in status (mirrored)."
+          },
+          {
+            "id": "b5a76912",
+            "path": "carrier.signedIn",
+            "type": "boolean",
+            "defaultValue": false,
+            "description": "Whether the carrier system is authenticated."
+          }
+        ],
+        "actions": [
+          {
+            "id": "712a0ef0",
+            "name": "Initialize tracking",
+            "intent": "Cascade handler: when an order is placed, create its tracking record and seed the status label.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "a4067017",
+                "category": "permissions",
+                "condition": {
+                  "left": "order.trackingInitialized",
+                  "operator": "is_true"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Tracking already initialized for this order.",
+                  "id": "588820a5",
+                  "description": "Effect block_action from a permissions rule on action Initialize tracking."
+                },
+                "description": "System-level cascade; never gated by user auth."
+              }
+            ],
+            "invariants": [],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "order.trackingInitialized",
+                "value": true,
+                "id": "7b22452f",
+                "description": "Effect set_state on action Initialize tracking."
+              },
+              {
+                "type": "set_state",
+                "path": "order.status",
+                "value": "preparing",
+                "id": "733310f6",
+                "description": "Effect set_state on action Initialize tracking."
+              },
+              {
+                "type": "set_state",
+                "path": "order.statusLabel",
+                "value": {
+                  "kind": "switch",
+                  "cases": [
+                    {
+                      "when": {
+                        "left": "order.status",
+                        "operator": "equals",
+                        "right": "preparing"
+                      },
+                      "then": {
+                        "kind": "literal",
+                        "value": "Preparing your order"
+                      }
+                    },
+                    {
+                      "when": {
+                        "left": "order.status",
+                        "operator": "equals",
+                        "right": "shipped"
+                      },
+                      "then": {
+                        "kind": "literal",
+                        "value": "On its way"
+                      }
+                    },
+                    {
+                      "when": {
+                        "left": "order.status",
+                        "operator": "equals",
+                        "right": "out_for_delivery"
+                      },
+                      "then": {
+                        "kind": "literal",
+                        "value": "Out for delivery"
+                      }
+                    },
+                    {
+                      "when": {
+                        "left": "order.status",
+                        "operator": "equals",
+                        "right": "delivered"
+                      },
+                      "then": {
+                        "kind": "literal",
+                        "value": "Delivered"
+                      }
+                    }
+                  ],
+                  "default": {
+                    "kind": "literal",
+                    "value": "Cancelled"
+                  }
+                },
+                "id": "0533fe02",
+                "description": "Effect set_state on action Initialize tracking."
+              },
+              {
+                "type": "emit_event",
+                "event": "order.tracking.initialized",
+                "id": "3409d7f5",
+                "description": "Effect emit_event on action Initialize tracking."
+              }
+            ],
+            "emittedEvents": [
+              "order.tracking.initialized"
+            ],
+            "transitions": [],
+            "triggeredByEvent": "order.placed",
+            "scenarios": [
+              {
+                "id": "2fe5b481",
+                "name": "Cascade: initialize tracking on order.placed",
+                "description": "Triggered by the order.placed event in the Cart & checkout feature. Sets the initial status + label via switch Expression.",
+                "stateOverrides": [
+                  {
+                    "path": "carrier.signedIn",
+                    "value": true
+                  },
+                  {
+                    "path": "order.trackingInitialized",
+                    "value": false
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "order.trackingInitialized",
+                    "operator": "is_true",
+                    "description": "Asserts order.trackingInitialized is_true."
+                  },
+                  {
+                    "path": "order.statusLabel",
+                    "operator": "equals",
+                    "value": "Preparing your order",
+                    "description": "Asserts order.statusLabel equals 'Preparing your order'."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "70046ae1",
+            "name": "Cancel order",
+            "intent": "Buyer cancels their order before it ships.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "46706576",
+                "category": "permissions",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in to manage your orders.",
+                  "id": "2b504026",
+                  "description": "Effect block_action from a permissions rule on action Cancel order."
+                },
+                "description": "Permissions rule on action Cancel order."
+              },
+              {
+                "id": "c0d778dc",
+                "category": "business",
+                "condition": {
+                  "left": "order.status",
+                  "operator": "not_equals",
+                  "right": "preparing"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Order has already shipped and cannot be cancelled.",
+                  "id": "3317ba4c",
+                  "description": "Effect block_action from a business rule on action Cancel order."
+                },
+                "description": "Only preparing orders can be cancelled."
+              },
+              {
+                "id": "4ec18c0a",
+                "category": "validation",
+                "condition": {
+                  "left": "order.id",
+                  "operator": "equals",
+                  "right": ""
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Missing order id.",
+                  "id": "45cbcacc",
+                  "description": "Effect block_action from a validation rule on action Cancel order."
+                },
+                "description": "Validation rule on action Cancel order."
+              }
+            ],
+            "invariants": [
+              {
+                "id": "baf92824",
+                "name": "Cancel leaves order in cancelled state",
+                "condition": {
+                  "left": "order.status",
+                  "operator": "equals",
+                  "right": "cancelled"
+                },
+                "message": "Cancel did not leave the order in the cancelled state.",
+                "description": "Action-level post-condition: after Cancel order runs successfully, status must be \"cancelled\"."
+              }
+            ],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "order.status",
+                "value": "cancelled",
+                "id": "39add89d",
+                "description": "Effect set_state on action Cancel order."
+              },
+              {
+                "type": "set_state",
+                "path": "order.statusLabel",
+                "value": "Cancelled",
+                "id": "0e185a8c",
+                "description": "Effect set_state on action Cancel order."
+              },
+              {
+                "type": "emit_event",
+                "event": "order.cancelled",
+                "id": "4b655d10",
+                "description": "Effect emit_event on action Cancel order."
+              }
+            ],
+            "emittedEvents": [
+              "order.cancelled"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "315705e5",
+                "name": "Happy path: cancel preparing order",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "order.status",
+                    "value": "preparing"
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "order.status",
+                    "operator": "equals",
+                    "value": "cancelled",
+                    "description": "Asserts order.status equals 'cancelled'."
+                  }
+                ],
+                "description": "Scenario Happy path: cancel preparing order on action Cancel order."
+              },
+              {
+                "id": "a18b77eb",
+                "name": "Blocked: cannot cancel after shipping",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "order.status",
+                    "value": "shipped"
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "blocked",
+                "description": "Scenario Blocked: cannot cancel after shipping on action Cancel order."
+              }
+            ]
+          },
+          {
+            "id": "b5746e17",
+            "name": "Mark as shipped (system)",
+            "intent": "System action: order has shipped; status moves to \"shipped\".",
+            "parameters": [
+              {
+                "id": "5daa85c0",
+                "name": "trackingNumber",
+                "type": "string",
+                "required": true,
+                "description": "Carrier tracking number."
+              }
+            ],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "e55898b9",
+                "category": "permissions",
+                "condition": {
+                  "left": "carrier.signedIn",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Carrier authentication required.",
+                  "id": "07b09ab5",
+                  "description": "Effect block_action from a permissions rule on action Mark as shipped (system)."
+                },
+                "description": "Only the carrier system can mark shipping."
+              },
+              {
+                "id": "0046ea0a",
+                "category": "business",
+                "condition": {
+                  "left": "order.status",
+                  "operator": "not_equals",
+                  "right": "preparing"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Order cannot be marked shipped from its current state.",
+                  "id": "b4e89a6c",
+                  "description": "Effect block_action from a business rule on action Mark as shipped (system)."
+                },
+                "description": "State machine: must come from preparing."
+              },
+              {
+                "id": "5f0bda62",
+                "category": "validation",
+                "condition": {
+                  "left": "order.id",
+                  "operator": "equals",
+                  "right": ""
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Missing order id.",
+                  "id": "478d5d8b",
+                  "description": "Effect block_action from a validation rule on action Mark as shipped (system)."
+                },
+                "description": "Validation rule on action Mark as shipped (system)."
+              }
+            ],
+            "invariants": [
+              {
+                "id": "605d7dd1",
+                "name": "Shipped leaves status shipped",
+                "condition": {
+                  "left": "order.status",
+                  "operator": "equals",
+                  "right": "shipped"
+                },
+                "message": "Mark shipped did not advance the status to shipped.",
+                "description": "Action invariant on Mark as shipped (system): Shipped leaves status shipped."
+              }
+            ],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "order.status",
+                "value": "shipped",
+                "id": "17b81e02",
+                "description": "Effect set_state on action Mark as shipped (system)."
+              },
+              {
+                "type": "set_state",
+                "path": "order.statusLabel",
+                "value": "On its way",
+                "id": "60ba4f99",
+                "description": "Effect set_state on action Mark as shipped (system)."
+              },
+              {
+                "type": "emit_event",
+                "event": "order.shipped",
+                "id": "766518b8",
+                "description": "Effect emit_event on action Mark as shipped (system)."
+              }
+            ],
+            "emittedEvents": [
+              "order.shipped"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "685d4281",
+                "name": "Happy path: order shipped",
+                "stateOverrides": [
+                  {
+                    "path": "carrier.signedIn",
+                    "value": true
+                  },
+                  {
+                    "path": "order.status",
+                    "value": "preparing"
+                  }
+                ],
+                "parameterOverrides": [
+                  {
+                    "parameterName": "trackingNumber",
+                    "value": "1Z9999W19999999999"
+                  }
+                ],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "order.status",
+                    "operator": "equals",
+                    "value": "shipped",
+                    "description": "Asserts order.status equals 'shipped'."
+                  }
+                ],
+                "description": "Scenario Happy path: order shipped on action Mark as shipped (system)."
+              }
+            ]
+          },
+          {
+            "id": "9fdd0a83",
+            "name": "Mark as out for delivery (carrier)",
+            "intent": "Carrier event: order is on the truck for the last mile.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "bb366827",
+                "category": "permissions",
+                "condition": {
+                  "left": "carrier.signedIn",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Carrier authentication required.",
+                  "id": "3e42c8b4",
+                  "description": "Effect block_action from a permissions rule on action Mark as out for delivery (carrier)."
+                },
+                "description": "Permissions rule on action Mark as out for delivery (carrier)."
+              },
+              {
+                "id": "365f9e21",
+                "category": "business",
+                "condition": {
+                  "left": "order.status",
+                  "operator": "not_equals",
+                  "right": "shipped"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Order is not yet shipped.",
+                  "id": "c5dcf26a",
+                  "description": "Effect block_action from a business rule on action Mark as out for delivery (carrier)."
+                },
+                "description": "State machine: must come from shipped."
+              },
+              {
+                "id": "10f5086d",
+                "category": "validation",
+                "condition": {
+                  "left": "order.id",
+                  "operator": "equals",
+                  "right": ""
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Missing order id.",
+                  "id": "81a0c5ca",
+                  "description": "Effect block_action from a validation rule on action Mark as out for delivery (carrier)."
+                },
+                "description": "Validation rule on action Mark as out for delivery (carrier)."
+              }
+            ],
+            "invariants": [
+              {
+                "id": "1f8d3025",
+                "name": "Out-for-delivery leaves status out_for_delivery",
+                "condition": {
+                  "left": "order.status",
+                  "operator": "equals",
+                  "right": "out_for_delivery"
+                },
+                "message": "Mark out-for-delivery did not advance the status.",
+                "description": "Action invariant on Mark as out for delivery (carrier): Out-for-delivery leaves status out_for_delivery."
+              }
+            ],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "order.status",
+                "value": "out_for_delivery",
+                "id": "e223b29b",
+                "description": "Effect set_state on action Mark as out for delivery (carrier)."
+              },
+              {
+                "type": "set_state",
+                "path": "order.statusLabel",
+                "value": "Out for delivery",
+                "id": "8b310c4a",
+                "description": "Effect set_state on action Mark as out for delivery (carrier)."
+              },
+              {
+                "type": "emit_event",
+                "event": "order.out_for_delivery",
+                "id": "0c724e62",
+                "description": "Effect emit_event on action Mark as out for delivery (carrier)."
+              }
+            ],
+            "emittedEvents": [
+              "order.out_for_delivery"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "2bc5885d",
+                "name": "Happy path: shipped → out for delivery",
+                "stateOverrides": [
+                  {
+                    "path": "carrier.signedIn",
+                    "value": true
+                  },
+                  {
+                    "path": "order.status",
+                    "value": "shipped"
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "description": "Scenario Happy path: shipped → out for delivery on action Mark as out for delivery (carrier)."
+              }
+            ]
+          },
+          {
+            "id": "b988e8dc",
+            "name": "Confirm delivery",
+            "intent": "Buyer confirms receipt of the package.",
+            "parameters": [],
+            "requiredStates": [],
+            "rules": [
+              {
+                "id": "51541e34",
+                "category": "permissions",
+                "condition": {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Sign in to confirm delivery.",
+                  "id": "ae1c2db4",
+                  "description": "Effect block_action from a permissions rule on action Confirm delivery."
+                },
+                "description": "Permissions rule on action Confirm delivery."
+              },
+              {
+                "id": "904e7e6a",
+                "category": "business",
+                "condition": {
+                  "left": "order.status",
+                  "operator": "not_equals",
+                  "right": "out_for_delivery"
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Order is not out for delivery.",
+                  "id": "48d76dfe",
+                  "description": "Effect block_action from a business rule on action Confirm delivery."
+                },
+                "description": "Business rule on action Confirm delivery."
+              },
+              {
+                "id": "9b224745",
+                "category": "validation",
+                "condition": {
+                  "kind": "all",
+                  "conditions": [
+                    {
+                      "left": "delivery.signatureRequired",
+                      "operator": "is_true"
+                    },
+                    {
+                      "left": "delivery.signatureCollected",
+                      "operator": "is_false"
+                    }
+                  ]
+                },
+                "effect": {
+                  "type": "block_action",
+                  "reason": "Signature required but not collected.",
+                  "id": "e377e24f",
+                  "description": "Effect block_action from a validation rule on action Confirm delivery."
+                },
+                "description": "Composite ALL: if signature is required, it must be collected."
+              }
+            ],
+            "invariants": [
+              {
+                "id": "fda7f463",
+                "name": "Confirm delivery leaves status delivered",
+                "condition": {
+                  "left": "order.status",
+                  "operator": "equals",
+                  "right": "delivered"
+                },
+                "message": "Confirm delivery did not finalize the order.",
+                "description": "Action invariant on Confirm delivery: Confirm delivery leaves status delivered."
+              }
+            ],
+            "effects": [
+              {
+                "type": "set_state",
+                "path": "order.status",
+                "value": "delivered",
+                "id": "7e68e970",
+                "description": "Effect set_state on action Confirm delivery."
+              },
+              {
+                "type": "set_state",
+                "path": "order.statusLabel",
+                "value": "Delivered",
+                "id": "219b820d",
+                "description": "Effect set_state on action Confirm delivery."
+              },
+              {
+                "type": "emit_event",
+                "event": "delivery.confirmed",
+                "id": "5adacc34",
+                "description": "Effect emit_event on action Confirm delivery."
+              },
+              {
+                "type": "emit_event",
+                "event": "order.delivered",
+                "id": "612d51df",
+                "description": "Effect emit_event on action Confirm delivery."
+              }
+            ],
+            "emittedEvents": [
+              "delivery.confirmed",
+              "order.delivered"
+            ],
+            "transitions": [],
+            "scenarios": [
+              {
+                "id": "7a1f2032",
+                "name": "Happy path: confirm delivery with signature",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "order.status",
+                    "value": "out_for_delivery"
+                  },
+                  {
+                    "path": "delivery.signatureRequired",
+                    "value": true
+                  },
+                  {
+                    "path": "delivery.signatureCollected",
+                    "value": true
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "success",
+                "expectedAssertions": [
+                  {
+                    "path": "order.status",
+                    "operator": "equals",
+                    "value": "delivered",
+                    "description": "Asserts order.status equals 'delivered'."
+                  }
+                ],
+                "description": "Scenario Happy path: confirm delivery with signature on action Confirm delivery."
+              },
+              {
+                "id": "abe17979",
+                "name": "Blocked: signature required but missing",
+                "description": "Composite ALL rule trips.",
+                "stateOverrides": [
+                  {
+                    "path": "user.authenticated",
+                    "value": true
+                  },
+                  {
+                    "path": "order.status",
+                    "value": "out_for_delivery"
+                  },
+                  {
+                    "path": "delivery.signatureRequired",
+                    "value": true
+                  },
+                  {
+                    "path": "delivery.signatureCollected",
+                    "value": false
+                  }
+                ],
+                "parameterOverrides": [],
+                "expectedStatus": "blocked"
+              }
+            ]
+          }
+        ],
+        "rules": [
+          {
+            "id": "05037aef",
+            "category": "permissions",
+            "condition": {
+              "kind": "all",
+              "conditions": [
+                {
+                  "left": "user.authenticated",
+                  "operator": "is_false"
+                },
+                {
+                  "left": "carrier.signedIn",
+                  "operator": "is_false"
+                }
+              ]
+            },
+            "effect": {
+              "type": "block_action",
+              "reason": "Either a buyer or carrier session is required.",
+              "id": "9ba47119",
+              "description": "Effect block_action from a surface-level permissions rule on Order tracking & delivery."
+            },
+            "description": "Either the buyer or the carrier may interact with this surface."
+          }
+        ],
+        "invariants": [
+          {
+            "id": "12f3ea29",
+            "name": "Order id present",
+            "condition": {
+              "left": "order.id",
+              "operator": "not_equals",
+              "right": ""
+            },
+            "message": "Order id must be set.",
+            "description": "Surface invariant on Order tracking & delivery: Order id present."
+          }
+        ],
+        "transitions": []
+      }
+    ],
+    "personas": [
+      {
+        "id": "7e7ff3a9",
+        "name": "Buyer awaiting delivery",
+        "description": "Order is preparing. Cancellation still possible.",
+        "stateOverrides": [
+          {
+            "path": "order.status",
+            "value": "preparing"
+          },
+          {
+            "path": "user.authenticated",
+            "value": true
+          }
+        ],
+        "parameterOverrides": []
+      },
+      {
+        "id": "068ee6f9",
+        "name": "Carrier system",
+        "description": "Backend system that pushes carrier status updates.",
+        "stateOverrides": [
+          {
+            "path": "carrier.signedIn",
+            "value": true
+          }
+        ],
+        "parameterOverrides": []
+      }
+    ],
+    "resources": [
+      {
+        "id": "24e275a2",
+        "name": "Orders database",
+        "description": "Persisted orders + fulfillment state.",
+        "kind": "database",
+        "provider": "PostgreSQL",
+        "scope": "shared",
+        "sensitivity": "high",
+        "containsPii": true,
+        "complianceTags": [],
+        "accessMode": "read_write"
+      },
+      {
+        "id": "ac3ad07c",
+        "name": "Shipping carrier API",
+        "description": "Carrier integration for tracking events.",
+        "kind": "http_api",
+        "provider": "EasyPost",
+        "scope": "external",
+        "sensitivity": "medium",
+        "containsPii": true,
+        "complianceTags": [],
+        "accessMode": "read_write"
+      }
+    ],
+    "entities": [
+      {
+        "id": "1dc0be2d",
+        "namespace": "order",
+        "description": "Order fulfillment record.",
+        "fields": [
+          {
+            "id": "0b5ee7ff",
+            "name": "status",
+            "type": "enum",
+            "path": "order.status",
+            "description": "Enum field status on entity order."
+          },
+          {
+            "id": "5dcafab0",
+            "name": "id",
+            "type": "string",
+            "path": "order.id",
+            "description": "String field id on entity order."
+          },
+          {
+            "id": "7554575f",
+            "name": "statusLabel",
+            "type": "string",
+            "path": "order.statusLabel",
+            "description": "String field statusLabel on entity order."
+          }
+        ],
+        "resourceId": "24e275a2"
+      }
+    ],
+    "events": [
+      {
+        "id": "3d6ef3a8",
+        "name": "order.placed",
+        "description": "Order successfully placed (emitted by the Cart & checkout feature; subscribed here for cascade init).",
+        "payloadSchema": [
+          {
+            "name": "amount",
+            "type": "number",
+            "required": true,
+            "description": "Number payload field amount on event order.placed."
+          }
+        ]
+      },
+      {
+        "id": "fa6c24a5",
+        "name": "order.tracking.initialized",
+        "description": "Tracking record created for a new order.",
+        "payloadSchema": [
+          {
+            "name": "orderId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field orderId on event order.tracking.initialized."
+          }
+        ]
+      },
+      {
+        "id": "9140be16",
+        "name": "order.shipped",
+        "description": "Order handed off to the carrier.",
+        "payloadSchema": [
+          {
+            "name": "orderId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field orderId on event order.shipped."
+          },
+          {
+            "name": "trackingNumber",
+            "type": "string",
+            "required": false,
+            "description": "String payload field trackingNumber on event order.shipped."
+          }
+        ]
+      },
+      {
+        "id": "f0db2357",
+        "name": "order.out_for_delivery",
+        "description": "Carrier marked the order out for delivery.",
+        "payloadSchema": [
+          {
+            "name": "orderId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field orderId on event order.out_for_delivery."
+          }
+        ]
+      },
+      {
+        "id": "6a13d4d6",
+        "name": "order.delivered",
+        "description": "Order delivered to the buyer.",
+        "payloadSchema": [
+          {
+            "name": "orderId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field orderId on event order.delivered."
+          }
+        ]
+      },
+      {
+        "id": "084f8e4e",
+        "name": "order.cancelled",
+        "description": "Order cancelled before shipping.",
+        "payloadSchema": [
+          {
+            "name": "orderId",
+            "type": "string",
+            "required": true,
+            "description": "String payload field orderId on event order.cancelled."
+          }
+        ]
+      },
+      {
+        "id": "835f563a",
+        "name": "delivery.confirmed",
+        "description": "Buyer confirmed receipt (with signature if required)."
+      }
+    ],
+    "createdAt": "2026-05-18T23:53:41.194Z",
+    "updatedAt": "2026-05-19T00:14:55.404Z",
+    "featureInvariants": [
+      {
+        "id": "f88f4ada",
+        "name": "Status label always set",
+        "condition": {
+          "left": "order.statusLabel",
+          "operator": "not_equals",
+          "right": ""
+        },
+        "message": "Order status label must be populated."
+      },
+      {
+        "id": "600aef2f",
+        "name": "Status is a known value",
+        "condition": {
+          "kind": "any",
+          "conditions": [
+            {
+              "left": "order.status",
+              "operator": "equals",
+              "right": "preparing"
+            },
+            {
+              "left": "order.status",
+              "operator": "equals",
+              "right": "shipped"
+            },
+            {
+              "left": "order.status",
+              "operator": "equals",
+              "right": "out_for_delivery"
+            },
+            {
+              "left": "order.status",
+              "operator": "equals",
+              "right": "delivered"
+            },
+            {
+              "left": "order.status",
+              "operator": "equals",
+              "right": "cancelled"
+            }
+          ]
+        },
+        "message": "Order status drifted to an unknown value.",
+        "description": "Composite ANY: status must match one of the 5 valid states."
+      }
+    ],
+    "expectedActions": [
+      "Initialize tracking",
+      "Cancel order",
+      "Mark as shipped (system)",
+      "Mark as out for delivery (carrier)",
+      "Confirm delivery"
+    ],
+    "nonGoals": [
+      "Live carrier tracking polling",
+      "Return label generation",
+      "Address verification at delivery time",
+      "Re-routing in-flight packages",
+      "Photo proof of delivery"
+    ]
+  }
+}

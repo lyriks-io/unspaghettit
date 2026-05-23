@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "$features": ["./src/features"],
+      "$features/*": ["./src/features/*"],
+      "$shared": ["./src/shared"],
+      "$shared/*": ["./src/shared/*"],
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+    },
+    "esModuleInterop": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "target": "es2022",
+    "module": "esnext"
+  }
+}

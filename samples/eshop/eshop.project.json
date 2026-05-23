@@ -1,0 +1,21 @@
+{
+  "format": "unspaghettit-project",
+  "version": 1,
+  "project": {
+    "id": "f2e35d76",
+    "name": "eShop",
+    "description": "End-to-end e-commerce sample modeled as a Project across four LLM-sized Features: Account & auth, Catalog & reviews, Cart & checkout, Order fulfillment. Designed to showcase the full capability surface of Unspaghettit: composite + Expression conditions, feature invariants, event cascade, bypassInvariants, action invariants, scenarios, persona overrides, entity/resource mapping. Every feature scores 100% maturity.",
+    "featureIds": [
+      "941e4158",
+      "6abcf051",
+      "33fbb26d",
+      "5da6bb5c"
+    ],
+    "tags": [
+      { "type": "domain", "value": "e-commerce" },
+      { "type": "kind", "value": "sample" }
+    ],
+    "createdAt": "2026-05-18T23:53:41.098Z",
+    "updatedAt": "2026-05-18T23:53:41.217Z"
+  }
+}

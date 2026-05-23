@@ -1,0 +1,68 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand-50: #ecfeff;
+  --color-brand-100: #cffafe;
+  --color-brand-200: #a5f3fc;
+  --color-brand-300: #67e8f9;
+  --color-brand-400: #22d3ee;
+  --color-brand-500: #06b6d4;
+  --color-brand-600: #0891b2;
+  --color-brand-700: #0e7490;
+  --color-brand-800: #155e75;
+  --color-brand-900: #164e63;
+  --color-canvas: #f8fafc;
+  --color-surface-soft: #f1f5f9;
+  --color-surface-card: #ffffff;
+  --color-surface-strong: #e2e8f0;
+  --color-brand-pink: #db2777;
+  --color-brand-teal: #0f766e;
+  --color-brand-lavender: #7c3aed;
+  --color-brand-peach: #ea580c;
+  --color-brand-ochre: #ca8a04;
+  --color-brand-mint: #14b8a6;
+  --color-brand-coral: #dc2626;
+  --color-ink: #0f172a;
+  --color-body: #334155;
+  --color-muted: #64748b;
+  --color-hairline: #e2e8f0;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --font-brand: 'Dancing Script', ui-serif, cursive;
+  --font-grotesk: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/*
+ * Pulses a brief project-accent ring + soft fill on whatever element is being
+ * focused via editorStore.navigateTo. Triggered by adding the
+ * `.focus-flash` class for ~1.6s.
+ */
+@keyframes focus-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(8, 145, 178, 0.5);
+    background-color: rgba(207, 250, 254, 0.55);
+  }
+  60% {
+    box-shadow: 0 0 0 8px rgba(8, 145, 178, 0);
+    background-color: rgba(207, 250, 254, 0.25);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+    background-color: transparent;
+  }
+}
+.focus-flash {
+  animation: focus-flash 1.6s ease-out;
+  border-radius: 0.5rem;
+}
