@@ -81,7 +81,7 @@
     "@sveltejs/kit": "^2.60.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tailwindcss/vite": "^4.0.0",
-    "@types/node": "^22.9.0",
+    "@types/node": "^25.9.1",
     "@types/prompts": "^2.4.9",
     "@types/write-file-atomic": "^4.0.3",
     "@types/ws": "^8.18.1",
