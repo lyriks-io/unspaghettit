@@ -22,15 +22,15 @@ actionRef: a_new }\` works when only the action was minted in this batch.
 
   add_surface              { ref?, name, type, description, parentRef?|parentSurfaceId? }
   add_action           { ref?, surfaceRef|surfaceId, name, intent, requiredStates?, emittedEvents?, bypassInvariants?, triggeredByEvent? }
-. \`requiredStates\` is \`string[]\` of state paths declared on (or shared into) the action's surface — NOT condition objects. Use rules / invariants for value-level constraints.
+. \`requiredStates\` is \`string[]\` of state paths declared on (or shared into) the action's surface - NOT condition objects. Use rules / invariants for value-level constraints.
 . Subscribe an action to an event with \`triggeredByEvent:"event.name"\`. When ANY action in the feature emits that event, the simulator runs this action as a cascaded handler against the post-emit snapshot. Bounded by depth limit (8) and per-cascade cycle guard. Handlers must not have required parameters without defaults.
   add_state_definition     { ref?, surfaceRef|surfaceId, path, type, defaultValue, enumValues?, description, sharedWith? }
   add_parameter            { ref?, surfaceRef|surfaceId, actionRef|actionId, name, type, required, description, enumValues?, defaultValue?, bindToStatePath?, validations? }
 . \`validations\` is an array of tagged checks that fire before any rules. Tags: { type:"non_empty"|"email"|"url"|"uuid"|"ipv4"|"ipv6"|"hex"|"base64"|"slug"|"phone_e164"|"color_hex"|"semver"|"json"|"iso_date"|"iso_datetime"|"iso_time"|"alphanumeric"|"alphabetic"|"lowercase"|"uppercase"|"no_whitespace"|"integer"|"positive"|"negative"|"non_negative"|"non_positive"|"finite"|"safe_integer" } for the no-arg checks, OR { type:"min_length"|"max_length"|"length"|"min"|"max"|"multiple_of", value:N } / { type:"pattern"|"starts_with"|"ends_with"|"contains", value:"..." }. All accept an optional \`message:"..."\` override.
   add_action_rule      { ref?, surfaceRef|surfaceId, actionRef|actionId, rule: { category, condition?, effect:{type,..., description}, description } }
-. \`category\` enum: business | security | permissions | compliance | validation | data | ux_feedback | error_handling | async | collaboration | billing_quota | audit. Not "blocking" — pick the closest semantic.
-. \`effect.type\` enum: set_state | show_message | emit_event | block_action | allow_action | transition_surface. To block an action, use \`{type:"block_action", reason:"...", description:"..."}\` — NOT \`{type:"block",...}\`. Unknown effect types are rejected at validation; if you see "unknown effect.type" in the response, fix the spelling.
-. \`condition.left\` is a state-path string only — Expression objects (e.g. \`{kind:"param",...}\`) are NOT accepted here, only \`condition.right\` takes Expressions. For parameter-side constraints use the parameter's \`validations\` field.
+. \`category\` enum: business | security | permissions | compliance | validation | data | ux_feedback | error_handling | async | collaboration | billing_quota | audit. Not "blocking" - pick the closest semantic.
+. \`effect.type\` enum: set_state | show_message | emit_event | block_action | allow_action | transition_surface. To block an action, use \`{type:"block_action", reason:"...", description:"..."}\` - NOT \`{type:"block",...}\`. Unknown effect types are rejected at validation; if you see "unknown effect.type" in the response, fix the spelling.
+. \`condition.left\` is a state-path string only - Expression objects (e.g. \`{kind:"param",...}\`) are NOT accepted here, only \`condition.right\` takes Expressions. For parameter-side constraints use the parameter's \`validations\` field.
   add_surface_rule         { ref?, surfaceRef|surfaceId, rule }
   add_effect               { ref?, surfaceRef|surfaceId, actionRef|actionId, effect }
 . Same effect.type enum as above. transition_surface accepts \`targetRef\` for surfaces minted earlier in the same batch.
@@ -46,7 +46,7 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   add_entity                 { ref?, namespace, fields, description, resourceRef?|resourceId? }
   add_entity_field           { ref?, dataRef|entityId, name, type, ... }
   add_scenario             { ref?, surfaceRef|surfaceId, actionRef|actionId, name, description, personaId?|personaRef?, stateOverrides?, parameterOverrides?, expectedStatus?, expectedAssertions?, expectedTransition?|expectedTransitionRef? }
-. \`parameterOverrides\` items are \`{parameterName, value}\` — must match a declared parameter on the target action (NOT parameterId, NOT name). \`stateOverrides\` items are \`{path, value}\`. \`expectedStatus\` enum: \`"success"\` | \`"blocked"\` (NOT "ok"). \`expectedTransition\` is the target surfaceId, or null to assert "no transition fires", or omitted to skip the check. If you author expectedAssertions but the action gets blocked, the scenario FAILS — set expectedStatus:"blocked" if the block is intentional.
+. \`parameterOverrides\` items are \`{parameterName, value}\` - must match a declared parameter on the target action (NOT parameterId, NOT name). \`stateOverrides\` items are \`{path, value}\`. \`expectedStatus\` enum: \`"success"\` | \`"blocked"\` (NOT "ok"). \`expectedTransition\` is the target surfaceId, or null to assert "no transition fires", or omitted to skip the check. If you author expectedAssertions but the action gets blocked, the scenario FAILS - set expectedStatus:"blocked" if the block is intentional.
   add_event                { ref?, name, description, payloadSchema? }
 
 ## UPDATE ops

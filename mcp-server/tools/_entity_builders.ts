@@ -63,7 +63,7 @@ const buildOverrides = (raw: unknown): {
       // Refuse entries without parameterName. Otherwise a slip like
       // `{parameterId: "x"}` (legacy guess) or `{name: "x"}` silently maps
       // to {parameterName: undefined} and the override no-ops at simulate
-      // time — invisible until a scenario "passes" by skipping all its
+      // time - invisible until a scenario "passes" by skipping all its
       // assertions because the action got blocked for a missing required
       // param.
       if (typeof x.parameterName !== 'string' || x.parameterName.length === 0) {

@@ -67,7 +67,7 @@ ask for it or write a concise one from the provided context before calling tools
      project: pick the right featureId from features[] for the task based
      on context (file paths being edited, action name in the prompt, the
      surrounding code). When genuinely ambiguous, ask the user which
-     feature they mean — don't guess.
+     feature they mean - don't guess.
    - If linked:false → call list_projects, then list_features inside the
      project the user picks.
 
@@ -145,7 +145,7 @@ Examples:
 ## Tagging Projects and Features
 
 Projects and Features carry an optional list of \`{type, value}\` tags. Tags
-are cross-cutting metadata for filtering and grouping — they do not change
+are cross-cutting metadata for filtering and grouping - they do not change
 behavior, they just let humans and agents slice the index along axes the
 hierarchy doesn't capture: "Team: Growth", "Domain: Commerce", "Status:
 WIP", "Quarter: 2026Q2".
@@ -157,7 +157,7 @@ WIP", "Quarter: 2026Q2".
 Both fields are required and trimmed. Tags dedupe case-insensitively by
 \`tagKey(tag) = lowercase(type) + ":" + lowercase(value)\`, so
 \`{ "Team", "Growth" }\` and \`{ "team", "growth" }\` are the same tag.
-The first-written casing wins — re-adding a tag is a no-op, never an
+The first-written casing wins - re-adding a tag is a no-op, never an
 overwrite.
 
 ### Tools
@@ -328,7 +328,7 @@ Sample what already exists. Open:
 If the repo has conventions, MATCH them. Place new code where similar
 code already lives. Use the same test framework. Use the same naming.
 Even if you would have chosen differently, consistency beats local
-optimization — the user will refactor globally if they want a different
+optimization - the user will refactor globally if they want a different
 pattern.
 
 If the existing code is informal or inconsistent, do not introduce
@@ -342,7 +342,7 @@ If the repo is greenfield, pick the minimum structure that fits the work.
 Hexagonal architecture is the right answer when the feature is big enough
 that "where does this go" becomes a recurring question, or when multiple
 adapters will exist (in-memory for tests, real one for production). It is
-the wrong answer for a 50-line utility — ports with one implementation
+the wrong answer for a 50-line utility - ports with one implementation
 each are dead weight.
 
   One-off script / single function       one file, no folders.
@@ -360,7 +360,7 @@ each are dead weight.
 
 When in doubt, start lighter and split when a second use case shares the
 logic. Premature layering and premature flatness are both reversible, but
-ceremony added by reflex is harder to remove later — it pretends to be
+ceremony added by reflex is harder to remove later - it pretends to be
 necessary.
 
 ### 3. Three principles that always hold
@@ -371,20 +371,20 @@ Regardless of how much layering you choose:
 A function that computes, validates, or transforms domain data does not
 reach for the network, the file system, the DOM, or the current time.
 If it needs the time, the time gets passed in. If it needs an ID, the
-ID gets passed in. This is the rule even when there are no "layers" —
+ID gets passed in. This is the rule even when there are no "layers" -
 it just means the I/O happens in the calling function, not this one.
 
 **UI does not contain business logic.**
 Components, views, CLI argument handlers render and dispatch. A
 condition that decides what is allowed, a transform that reshapes data
-for a downstream system, a calculation that combines inputs — these
+for a downstream system, a calculation that combines inputs - these
 belong in a function the UI calls, not inline in JSX/markup/argument
 parsing. The test for "is this business logic" is: would the rule
 still be true if we replaced the UI? If yes, extract it.
 
 **External dependencies are substitutable.**
-Time, storage, network, IDs, randomness — anything that talks to the
-outside world — is injected as a parameter, an object, or a function
+Time, storage, network, IDs, randomness - anything that talks to the
+outside world - is injected as a parameter, an object, or a function
 so a test can swap a fake in. You do not have to define a formal port
 (an interface, a class) for this; you do have to make it overridable.
 A function that calls \`Date.now()\` directly is harder to test than
@@ -392,14 +392,14 @@ one that takes a \`now: () => number\` parameter. Lean toward the
 testable shape.
 
 These three are non-negotiable because violating them costs more later
-than respecting them costs now. Everything else — folder names, layer
-count, naming conventions, whether to formalize ports as interfaces —
+than respecting them costs now. Everything else - folder names, layer
+count, naming conventions, whether to formalize ports as interfaces -
 is a judgment call governed by §1 and §2.
 
 ### 4. Quality bar
 
 Aim for "a senior reviewer would accept without rewriting from scratch".
-Not perfection — the user will refactor further. Concretely:
+Not perfection - the user will refactor further. Concretely:
 
   - Names describe intent, not type or mechanism. \`addToCart\`, not
     \`handleClick\` or \`postCart\`.
@@ -410,7 +410,7 @@ Not perfection — the user will refactor further. Concretely:
     can be loose if the boundary type is honest.
   - Errors name the failure mode ("CartItem not found: \${id}"), not
     "Something went wrong". Either return them as values (\`Result<T,E>\`)
-    or throw intentionally — match what the rest of the repo does.
+    or throw intentionally - match what the rest of the repo does.
   - Tests exist for non-trivial logic. Test names read as "given X,
     when Y, then Z". One assertion per test where reasonable.
   - One reason to change per module. If a file would split cleanly

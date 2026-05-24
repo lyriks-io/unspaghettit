@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+﻿import { readFileSync } from 'node:fs';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { trackTokens } from '../metrics';
 import { text, type ToolDeps } from './_shared';

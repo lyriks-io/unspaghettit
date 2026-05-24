@@ -263,7 +263,7 @@ export type OrphanKeyReport = {
 /**
  * Types whose id portion of the index key must be the entity's spec id
  * (8-char hex; or a 36-char legacy UUID for snapshots minted pre-0.1.x).
- * Slugs / kebab-case names are NOT accepted — the spec never mints them.
+ * Slugs / kebab-case names are NOT accepted - the spec never mints them.
  * Used by `findOrphanKeys` to detect "looks like a slug" mistakes and
  * surface a targeted hint instead of a generic "not found".
  */
@@ -283,7 +283,7 @@ const HEX_ID_RE = /^[a-f0-9]{8}$|^[a-f0-9-]{36}$/i;
  * Compare the user's `.unspa.json` keys against every key the spec actually
  * expects, and return entries that point at nothing. Without this report
  * a typo'd or wrong-format key (e.g. `action:add-to-cart` when the spec
- * mints hex ids like `action:a1b2c3d4`) silently does nothing — the entry
+ * mints hex ids like `action:a1b2c3d4`) silently does nothing - the entry
  * sits in the file, sync skips it, and the dashboard shows zero coverage
  * with no diagnostic.
  */
@@ -309,7 +309,7 @@ export const findOrphanKeys = (
         key,
         hint:
           `\`${type}\` keys must use the spec entity's id (8-char hex). ` +
-          `Got \`${idPart}\` — looks like a slug or name. ` +
+          `Got \`${idPart}\` - looks like a slug or name. ` +
           'Call `get_behavioral_index` or `get_feature(verbose:true)` to find the right id.'
       });
       continue;
@@ -391,7 +391,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'report_implementation_status',
     {
       description:
-        'Sync one action or surface worth of implementation data from the behavioral index into the dashboard. Pass `actionId` for action-scoped reports (action + events + rules + invariants + transitions) OR `surfaceId` for surface-scoped reports (states + data + surface_rules + surface_invariants). `foundEntities[]` is the entities you resolved. Each with file + line + snippet AND optional `capturedFields` (real values from the implementation for spec-vs-code diff). `entityId` is the 8-char hex id from `get_implementation_gaps` / `get_feature(verbose:true)`, except: `state` entities accept either the dotted path (e.g. `cart.itemCount`) or the hex id, and `event` entities use the event\'s literal name string. Missing entities are inferred (expected − found). Any reported entity whose id doesn\'t match the spec lands in `rejectedEntities` with a reason — `ok:false` when any are present so wrong-format ids cannot pass silently.',
+        'Sync one action or surface worth of implementation data from the behavioral index into the dashboard. Pass `actionId` for action-scoped reports (action + events + rules + invariants + transitions) OR `surfaceId` for surface-scoped reports (states + data + surface_rules + surface_invariants). `foundEntities[]` is the entities you resolved. Each with file + line + snippet AND optional `capturedFields` (real values from the implementation for spec-vs-code diff). `entityId` is the 8-char hex id from `get_implementation_gaps` / `get_feature(verbose:true)`, except: `state` entities accept either the dotted path (e.g. `cart.itemCount`) or the hex id, and `event` entities use the event\'s literal name string. Missing entities are inferred (expected − found). Any reported entity whose id doesn\'t match the spec lands in `rejectedEntities` with a reason - `ok:false` when any are present so wrong-format ids cannot pass silently.',
       inputSchema: {
         featureId: z.string(),
         actionId: z.string().optional(),
@@ -435,7 +435,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
         });
         return text(
           trackTokens('report_implementation_status', {
-            // ok is false when any reported entity was rejected — the caller
+            // ok is false when any reported entity was rejected - the caller
             // should not silently pass over wrong-format ids.
             ok: result.rejectedEntities.length === 0,
             featureId: result.featureId,
@@ -461,7 +461,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'report_implementation_status_batch',
     {
       description:
-        'Sync the full behavioral index into the dashboard in one call. Use after writing (or updating) .unspa.json with the behavioral index. Post one report per action and per surface. Preferred over the single-entity variant for whole-feature syncs. Each item in `reports` carries its own `actionId` xor `surfaceId`. Returns one slim ack per item; per-item failures are reported in-place without aborting the batch. Each ack carries `rejectedCount` + `rejected[]` listing reported entities whose ids didn\'t match the spec (with a per-entry reason), and `ok:false` whenever rejections are present — wrong-format ids cannot pass silently. For state entities the report tool accepts either the path or the hex id; for event entities it accepts the literal event name.',
+        'Sync the full behavioral index into the dashboard in one call. Use after writing (or updating) .unspa.json with the behavioral index. Post one report per action and per surface. Preferred over the single-entity variant for whole-feature syncs. Each item in `reports` carries its own `actionId` xor `surfaceId`. Returns one slim ack per item; per-item failures are reported in-place without aborting the batch. Each ack carries `rejectedCount` + `rejected[]` listing reported entities whose ids didn\'t match the spec (with a per-entry reason), and `ok:false` whenever rejections are present - wrong-format ids cannot pass silently. For state entities the report tool accepts either the path or the hex id; for event entities it accepts the literal event name.',
       inputSchema: {
         featureId: z.string(),
         reports: z
@@ -608,7 +608,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'sync_from_index',
     {
       description:
-        'Read .unspa.json and push a full implementation-status report for every action and surface in one call. No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) — slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) — each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
+        'Read .unspa.json and push a full implementation-status report for every action and surface in one call. No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
       inputSchema: {}
     },
     async () => {
@@ -631,7 +631,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       if (!project) return errorText(`Project ${rawLink.projectId} not found`);
 
       // Walk every feature that belongs to the linked project. The index is
-      // a flat keyed map (action:<id>, surface:<id>, ...) — ids are UUIDs
+      // a flat keyed map (action:<id>, surface:<id>, ...) - ids are UUIDs
       // unique system-wide, so a single index covers all the project's
       // features without per-feature partitioning.
       const features: Feature[] = [];
@@ -679,7 +679,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       const acks: unknown[] = [];
 
       // Build the universe of keys the spec expects to find in the index.
-      // Used after the loop to detect orphan entries in `.unspa.json` —
+      // Used after the loop to detect orphan entries in `.unspa.json` -
       // keys the user wrote that don't correspond to any spec entity.
       const expectedKeys = new Set<string>();
       for (const exp of features) {
