@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import { computeChangeDescriptor, formatChangeLabel } from './changeDescriptor';
 
 const feature = (overrides: Record<string, unknown> = {}) => ({
@@ -54,7 +54,7 @@ describe('computeChangeDescriptor — feature', () => {
     expect(d).toEqual({ op: 'added', path: ['Inbox', 'Cart'] });
   });
 
-  it('adding an action breadcrumbs feature › surface › action', () => {
+  it('adding an action breadcrumbs feature â€º surface â€º action', () => {
     const prev = feature();
     const baseSurface = feature().surfaces[0]!;
     const next = feature({
@@ -151,7 +151,7 @@ describe('computeChangeDescriptor — project', () => {
 describe('formatChangeLabel', () => {
   it('formats added with the breadcrumb path', () => {
     expect(formatChangeLabel({ op: 'added', path: ['Inbox', 'Inbox List', 'Archive Item'] })).toBe(
-      'Added Inbox › Inbox List › Archive Item'
+      'Added Inbox â€º Inbox List â€º Archive Item'
     );
   });
 

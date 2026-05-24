@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+﻿import { join } from 'node:path';
 import { removeMarkdownBlock, upsertMarkdownBlock } from './markdown-block';
 
 /**
@@ -33,7 +33,7 @@ and produce smaller diffs. Workflow:
 
 1. Discover with \`list_features\` then \`list_actions\`. \`get_feature\`
    returns an INDEX (ids + names + counts) by default; pass \`verbose:true\` only
-   when you genuinely need the full blob (it's ~10× larger).
+   when you genuinely need the full blob (it's ~10Ã- larger).
 2. Drill into one entity at a time with \`get_action\`.
 3. For multi-step edits use \`apply_batch\`. N ops in one atomic load + validate +
    save. Add ops can capture their new id under \`op.ref\` so later ops in the same

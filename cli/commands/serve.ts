@@ -29,7 +29,7 @@ export const runServeCommand = async (
   // Pass the published runtime tsconfig explicitly so the child can locate
   // the Unspaghettit source. `tsconfig.json` (the dev one) extends the
   // SvelteKit-generated `.svelte-kit/tsconfig.json`, which isn't shipped in
-  // the npm tarball — pointing at it under `npm install -g` would crash tsx
+  // the npm tarball - pointing at it under `npm install -g` would crash tsx
   // on load before MCP could speak a byte. The aliases themselves are
   // resolved by `cli/_aliases.cjs` in the bin shim, not by this tsconfig.
   const tsconfigPath = resolve(repoRoot, 'tsconfig.runtime.json');

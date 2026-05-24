@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import type { Action } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
@@ -288,7 +288,7 @@ describe('MaturityScorer', () => {
         right: {
           kind: 'add' as const,
           left: { kind: 'state' as const, path: asStatePath('cart.subtotal') },
-          right: 1 // ← malformed: should be {kind:"literal",value:1}
+          right: 1 // â† malformed: should be {kind:"literal",value:1}
         }
       },
       message: 'Discount cannot exceed subtotal.'

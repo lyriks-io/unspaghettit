@@ -1,4 +1,4 @@
-/**
+﻿/**
  * In-memory registry of the human identities currently connected to the
  * dashboard's WebSocket sync layer. Drives the "AI · John" sub-label on
  * MCP-driven history entries and toasts: when the MCP makes a change,

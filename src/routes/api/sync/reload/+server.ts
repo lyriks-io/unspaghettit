@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+﻿import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSyncManager } from '$lib/server/sync';
 import { getSyncEventsHub, type SyncEvent } from '$lib/server/sync/syncEventsHub';
@@ -96,7 +96,7 @@ export const POST: RequestHandler = async ({ request }) => {
   let resolveFeatureName: ((featureId: string) => string | undefined) | undefined;
   if (roomKind === 'project') {
     // Resolve newly attached/detached/queued feature ids to names so the
-    // breadcrumb reads "Project › Feature Name" instead of "Project ›
+    // breadcrumb reads "Project â€º Feature Name" instead of "Project â€º
     // feature abcd1234". One bulk fetch up front beats N round-trips
     // inside the synchronous diff path — list() returns slim summaries
     // (id + name + counts) so this is cheap.
@@ -114,7 +114,7 @@ export const POST: RequestHandler = async ({ request }) => {
       : computeChangeDescriptor(roomKind, previousSnapshot, nextSnapshot, resolveFeatureName);
 
   // For feature events, find the containing project so toasts can
-  // breadcrumb "Project › Feature › ...". Best-effort; missing project
+  // breadcrumb "Project â€º Feature â€º ...". Best-effort; missing project
   // just leaves projectName undefined and the toast renders without it.
   let projectName: string | undefined;
   if (roomKind === 'feature' && op !== 'delete') {

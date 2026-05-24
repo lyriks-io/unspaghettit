@@ -1,4 +1,4 @@
-import { authStore } from './authStore.svelte';
+﻿import { authStore } from './authStore.svelte';
 import { promptDialog } from '$shared/presentation/dialogs/dialogStore.svelte';
 
 /**

@@ -1,4 +1,4 @@
-import {
+﻿import {
   existsSync,
   mkdirSync,
   readdirSync,

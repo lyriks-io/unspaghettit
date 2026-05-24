@@ -5,23 +5,23 @@
  * with both the per-tab SSE consumers AND the activity-toast renderer.
  *
  * Required:
- *   kind, id  — the entity that changed; also the key for refetches.
+ *   kind, id  - the entity that changed; also the key for refetches.
  *
  * Optional, for human-facing UI:
- *   name        — the entity's own display name.
- *   projectName — for kind=feature, the containing project (lookup done
+ *   name        - the entity's own display name.
+ *   projectName - for kind=feature, the containing project (lookup done
  *                 server-side in the reload endpoint so each consumer
  *                 doesn't have to re-query).
- *   op          — 'save' | 'delete' — what the MCP did to the entity.
- *   changeOp    — the *specific* sub-change ('added', 'removed',
+ *   op          - 'save' | 'delete' - what the MCP did to the entity.
+ *   changeOp    - the *specific* sub-change ('added', 'removed',
  *                 'renamed', 'edited', 'queued', 'unqueued', 'created',
  *                 'saved'), produced by diffing the pre- and post-reload
  *                 snapshots. Lets the toast say "added Action X under
  *                 Surface Y" instead of just "saved feature Z".
- *   changePath  — breadcrumb names from the entity root inward to the
+ *   changePath  - breadcrumb names from the entity root inward to the
  *                 leaf that changed. e.g. ["Inbox v2", "Inbox List",
  *                 "Archive Item"] for an Action add.
- *   previousName — for renames, the entity's prior name.
+ *   previousName - for renames, the entity's prior name.
  *
  * Subscribers must tolerate every optional field being undefined (older
  * MCP versions, deletes where the post-state isn't available, etc.).

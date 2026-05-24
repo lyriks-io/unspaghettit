@@ -1,4 +1,4 @@
-import * as Y from 'yjs';
+﻿import * as Y from 'yjs';
 import { parseRoomId, ROOM_DOC_MAP, ROOM_DOC_FIELD, type RoomId } from '../../sync/roomId';
 import type { HistoryEntry } from '../../sync/protocol';
 import { loadSnapshotFromDisk, persistSnapshotToDisk } from './snapshotIo';

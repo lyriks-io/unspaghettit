@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+﻿import { spawn } from 'node:child_process';
 import { existsSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -135,7 +135,7 @@ export const runUninstallCommand = async (options: UninstallOptions = {}): Promi
 
   log.step(`Uninstalling Unspaghettit from ${pc.cyan(cwd)}`);
 
-  // 1. Strip MCP server entries from every selected client × scope.
+  // 1. Strip MCP server entries from every selected client Ã- scope.
   const clients = resolveClients(options.clients);
   for (const client of clients) {
     for (const scope of ALL_SCOPES) {

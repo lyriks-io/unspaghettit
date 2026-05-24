@@ -190,7 +190,7 @@ const runOne = (
   // Silent-pass guard: a scenario that authored expectedAssertions but had
   // every one skip (because the action got blocked) AND didn't explicitly
   // set expectedStatus: "blocked" hasn't actually verified anything. Without
-  // this check the scenario "passes" by vacuous truth — masking authoring
+  // this check the scenario "passes" by vacuous truth - masking authoring
   // bugs (typo'd parameterName, missing required param, accidentally
   // permissive overrides).
   const allAssertionsSkipped =

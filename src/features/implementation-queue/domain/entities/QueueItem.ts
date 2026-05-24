@@ -1,4 +1,4 @@
-import type { Brand } from '$shared/domain/Brand';
+﻿import type { Brand } from '$shared/domain/Brand';
 import type {
   ActionId,
   FeatureId,

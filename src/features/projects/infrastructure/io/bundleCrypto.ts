@@ -1,4 +1,4 @@
-import type { EncryptedBundleEnvelope } from '$features/projects/domain/entities/ProjectBundle';
+﻿import type { EncryptedBundleEnvelope } from '$features/projects/domain/entities/ProjectBundle';
 
 /**
  * Client-side encryption for .unspa bundles. Uses the platform-native

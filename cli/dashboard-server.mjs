@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 // ESM shim for the dashboard server. We MUST load dashboard-server.ts
 // through the ESM tsx loader (not tsx/cjs) so that `import * as Y from
 // 'yjs'` resolves to `yjs/dist/yjs.mjs` — the same file the bundled

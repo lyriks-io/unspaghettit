@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { projectsStore } from '$features/projects/presentation/stores/projectsStore.svelte';
@@ -313,7 +313,7 @@
           disabled={importing}
           title="Restore a project from a .unspa file"
         >
-          <span aria-hidden="true">⬆</span>
+          <span aria-hidden="true">â¬†</span>
           {importing ? 'Importing...' : 'Import .unspa'}
         </button>
         <input

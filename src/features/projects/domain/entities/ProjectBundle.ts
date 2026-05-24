@@ -1,4 +1,4 @@
-import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+﻿import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { ImplementationStatus } from '$features/implementation-status/domain/ImplementationStatus';
 import type { Project } from './Project';
 

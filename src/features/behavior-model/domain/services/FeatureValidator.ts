@@ -299,7 +299,7 @@ export const validateFeature = (feature: Feature): ValidationResult => {
           );
         }
         // Catch the silent-noop pattern where parameterOverrides reference a
-        // name that doesn't exist on the action — the simulator blocks for
+        // name that doesn't exist on the action - the simulator blocks for
         // missing-required-param and the scenario "passes" by skipping every
         // assertion. We'd rather fail loudly at validation time.
         for (const override of scenario.parameterOverrides ?? []) {

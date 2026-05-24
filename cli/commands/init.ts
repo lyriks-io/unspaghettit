@@ -42,7 +42,7 @@ const resolveHubPath = (raw: string, home: string, cwd: string): string => {
 /**
  * Treat a client as "present" only when its adapter reports an on-disk signal
  * (existing config dir for either scope). Adapters that don't implement
- * `detect` — Codex VS Code — fall through as undetected. Used to
+ * `detect` - Codex VS Code - fall through as undetected. Used to
  * pre-select sensible defaults in the interactive prompt AND to scope the
  * `--yes` non-interactive run, so neither path silently creates dotfolders
  * (`.kiro/`, `.cursor/`, `.gemini/`, ...) for AI clients the user has never
@@ -75,7 +75,7 @@ export type InitOptions = {
    * Where to write the MCP server entry. Defaults to 'project' (per-repo
    * `.mcp.json`). Pass `'global'` to write to `~/.claude.json` / `~/.cursor/`
    * etc. for advanced workflows where the MCP should attach to every project.
-   * Most users never set this — the default pairs with the per-project
+   * Most users never set this - the default pairs with the per-project
    * `unspa/` folder, skills, and CLAUDE.md block that this command also writes.
    */
   readonly scope?: ConfigScope;
@@ -98,7 +98,7 @@ export type InitOptions = {
    * - `string`: hub mode with a user-supplied absolute or `~/`-prefixed path.
    *
    * Required pairing for Claude Desktop, which has no project-scoped MCP
-   * config and no useful cwd at launch time — without an absolute env var
+   * config and no useful cwd at launch time - without an absolute env var
    * its MCP would always discover whatever folder happens to be near it.
    */
   readonly hub?: boolean | string;
@@ -147,7 +147,7 @@ const resolveClientsArg = async (
     instructions: false,
     hint: anyDetected
       ? 'space to toggle, enter to confirm (pre-selected = detected on disk)'
-      : 'space to toggle, enter to confirm (none detected on disk — pick manually)'
+      : 'space to toggle, enter to confirm (none detected on disk - pick manually)'
   });
   const ids: string[] = answer.clients ?? [];
   return ids.map((id) => clientById(id)).filter((c): c is ClientAdapter => c !== null);
@@ -256,7 +256,7 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
     } else {
       log.dim(`Using existing hub snapshots folder ${hubPath}`);
     }
-    log.dim(`Skipping local unspa/ — MCP entries will set UNSPA_SNAPSHOTS=${hubPath}`);
+    log.dim(`Skipping local unspa/ - MCP entries will set UNSPA_SNAPSHOTS=${hubPath}`);
   } else {
     // Per-repo mode: ensure unspa/ folder exists. mkdirSync recursive is idempotent.
     const unspaDir = join(cwd, 'unspa');
@@ -317,11 +317,11 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
   }
 
   // 4. Insert managed Unspaghettit block into CLAUDE.md AND AGENTS.md. Both,
-  //    unconditionally — AGENTS.md is the cross-tool standard (Cursor / Gemini
+  //    unconditionally - AGENTS.md is the cross-tool standard (Cursor / Gemini
   //    / Kiro / Windsurf / Codex, and even Claude as a fallback) and CLAUDE.md
   //    is Claude-specific, so writing both means switching AI clients later
   //    needs zero re-init. HTML-comment markers scope the managed region so
-  //    re-runs only refresh that block — handwritten content in the rest of
+  //    re-runs only refresh that block - handwritten content in the rest of
   //    each file is preserved, and a missing file is created.
   if (!options.skipContext) {
     const apply = yes
@@ -381,6 +381,7 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
     log.dim(`Restart your AI clients to pick up the new MCP entry.`);
   } else {
     log.dim('Next: `unspa dashboard` to open the UI, or start talking to your LLM with the MCP attached.');
+    log.dim('New to MCP? Ask Claude Code: "Verify the unspa MCP tools are available in this repo." Restart the client if it does not see them yet.');
   }
   return 0;
 };

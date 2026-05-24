@@ -1,4 +1,4 @@
-import type { IncomingMessage, Server as HttpServer } from 'node:http';
+﻿import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import * as Y from 'yjs';
 import { parseRoomId, type RoomId } from '../../sync/roomId';
@@ -236,7 +236,7 @@ export const attachSyncWebSocket = (
   return wss;
 };
 
-// ── Per-room history pub/sub ────────────────────────────────────────────────
+// â”€â”€ Per-room history pub/sub â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // The HistoryStore is a passive container; this small registry lets the
 // wsServer fan history changes out to all peers in a room.
 

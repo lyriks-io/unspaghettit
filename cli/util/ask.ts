@@ -1,4 +1,4 @@
-import prompts, { type Answers, type PromptObject } from 'prompts';
+﻿import prompts, { type Answers, type PromptObject } from 'prompts';
 import { log } from './log';
 
 // Single entry point for interactive CLI prompts. `prompts` resolves a

@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
@@ -65,7 +65,7 @@
   // Full breadcrumb: project name (when known) → entity name → deep path
   // from the diff. Duplicate segments (e.g. when the path's first item
   // IS the entity name) are collapsed so we don't render
-  // "Recipe Box › Inbox › Inbox › Inbox List".
+  // "Recipe Box â€º Inbox â€º Inbox â€º Inbox List".
   function breadcrumb(toast: SyncToast): string[] {
     const parts: string[] = [];
     if (toast.projectName) parts.push(toast.projectName);
@@ -121,7 +121,7 @@
           <div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1 text-sm text-slate-900">
             {#each crumbs as segment, i}
               {#if i > 0}
-                <span class="shrink-0 text-slate-400" aria-hidden="true">›</span>
+                <span class="shrink-0 text-slate-400" aria-hidden="true">â€º</span>
               {/if}
               <span
                 class="truncate {i === crumbs.length - 1 ? 'font-semibold' : 'text-slate-600'}"
@@ -152,7 +152,7 @@
             onclick={() => syncToastStore.dismiss(toast.id)}
             aria-label="Dismiss"
           >
-            ✕
+            âœ•
           </button>
         </div>
       </div>

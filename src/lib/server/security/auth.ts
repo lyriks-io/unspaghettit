@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Optional shared-token auth for the dashboard's REST + WebSocket
  * surface, plus an Origin allowlist that complements it.
  *

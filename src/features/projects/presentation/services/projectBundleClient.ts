@@ -1,4 +1,4 @@
-import type { ProjectId } from '$features/projects/domain/value-objects/ids';
+﻿import type { ProjectId } from '$features/projects/domain/value-objects/ids';
 import type {
   EncryptedBundleEnvelope,
   ProjectBundleV1

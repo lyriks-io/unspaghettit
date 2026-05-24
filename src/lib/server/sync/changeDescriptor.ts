@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Structured "what changed in this write" descriptor produced by diffing
  * two snapshots. Drives both the activity toast (path-based breadcrumb +
  * op chip) and the per-feature history label, so the two channels stay
@@ -415,14 +415,14 @@ export const computeChangeDescriptor = (
 /**
  * Compact string formatter for legacy consumers that only carry a
  * `label?: string` field (like the existing HistoryEntry). Renders:
- *   added  ›  Inbox v2 › Inbox List › Archive Item
- *   renamed ›  Inbox v2 (was "Inbox")
- *   saved   ›  Inbox v2
+ *   added  â€º  Inbox v2 â€º Inbox List â€º Archive Item
+ *   renamed â€º  Inbox v2 (was "Inbox")
+ *   saved   â€º  Inbox v2
  *
  * Toast UI ignores this and renders structure-aware breadcrumbs.
  */
 export const formatChangeLabel = (d: ChangeDescriptor): string => {
-  const path = d.path.join(' › ');
+  const path = d.path.join(' â€º ');
   if (d.op === 'renamed' && d.previousName) {
     return `Renamed to "${d.path[d.path.length - 1]}" (was "${d.previousName}")`;
   }
