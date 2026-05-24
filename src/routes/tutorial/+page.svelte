@@ -11,7 +11,7 @@
   import { formatSampleSummary } from "$features/behavior-model/presentation/loadSamplesMessage";
 
   const sections = [
-    { id: "why", title: "1. Why behavior" },
+    { id: "why", title: "1. Why executable specs" },
     { id: "model", title: "2. The core model" },
     { id: "concepts", title: "3. Concept by concept" },
     { id: "walkthrough", title: "4. Walkthrough: eShop project" },
@@ -153,7 +153,11 @@
         </p>
         <p class="mt-2 text-xs text-slate-500">
           An open-source project by
-          <a href="https://lyriks.io" class="text-brand-700 hover:underline" rel="noopener">Lyriks.io</a>.
+          <a
+            href="https://lyriks.io"
+            class="text-brand-700 hover:underline"
+            rel="noopener">Lyriks.io</a
+          >.
         </p>
       </div>
       <div class="mt-6">
@@ -164,7 +168,7 @@
       </div>
     </header>
 
-    <TutorialSection id="why" title="1. Why behavior">
+    <TutorialSection id="why" title="1. Why executable specs">
       {#snippet children()}
         <p>
           AI coding workflows go sideways fast. Specs drift. Prompts pile up.
@@ -175,21 +179,26 @@
           it, nothing validates it, nothing breaks loudly when it goes stale.
         </p>
         <p>
-          Unspaghettit takes a different stance: <strong
-            >software is observable behavior</strong
-          >. Anything a user, system, or AI can do is an <em>action</em>.
-          Anything that is true right now is <em>state</em>. Anything that gates
-          an action is a <em>rule</em>. Anything that follows from running an
-          action is an <em>effect</em> or an
-          <em>event</em>.
+          Unspaghettit turns that prose into an <strong
+            >executable specification</strong
+          >. The specification describes observable behavior: anything a user,
+          system, or AI can do is an
+          <em>action</em>; anything true right now is <em>state</em>; anything
+          that gates an action is a <em>rule</em>; anything that follows from
+          running an action is an <em>effect</em> or an <em>event</em>.
         </p>
         <p>
-          That vocabulary is small enough to hold in head and rigid enough to
+          A few names appear throughout the app:
+          <strong>Unspaghettit</strong> is the product,
+          <strong>behavior</strong> is what you model,
+          <strong>spec</strong> is the executable contract,
+          <strong>MCP</strong> is how your AI agent reads and edits it.
+        </p>
+        <p>
+          The vocabulary is small enough to hold in head and rigid enough to
           execute. Specs stop being documentation you re-explain in every
-          prompt; they become an executable runtime contract you can simulate,
-          score, and break loudly. The same model works for a web app, a CLI, an
-          API, an agent, or a workflow engine, behavior is the same kind of
-          thing across all of them.
+          prompt; they become a contract you can simulate, score, and break
+          loudly.
         </p>
       {/snippet}
     </TutorialSection>
@@ -258,7 +267,11 @@
           state paths or resources. These are editable from the top-level <strong
             >Resources</strong
           >
-          and <strong>Entities</strong> tabs.
+          and <strong>Entities</strong> tabs. Example: the eShop sample has a
+          <span class="mono">Cart store</span>
+          resource and a <span class="mono">Cart</span> entity with
+          <span class="mono">lineItems</span> and
+          <span class="mono">subtotal</span> fields.
         </p>
 
         <h3 class="font-semibold text-neutral-900">Surface</h3>
@@ -267,6 +280,10 @@
           screen, a canvas, a terminal, a board, a workflow, a command palette,
           a map, a dialog area, an API playground, or anything else. Surfaces
           hold state and actions and link to other surfaces via transitions.
+          Example: <span class="mono">Cart &amp; checkout</span> contains the
+          <span class="mono">Cart</span>,
+          <span class="mono">Address book</span>, and
+          <span class="mono">Checkout</span> surfaces.
         </p>
 
         <h3 class="font-semibold text-neutral-900">Action</h3>
@@ -276,7 +293,10 @@
           <span class="mono">Search products</span>,
           <span class="mono">Cancel order</span>. An action has parameters,
           rules, default effects, on-block effects, invariants, required state,
-          emitted events, and scenarios.
+          emitted events, and scenarios. Example:
+          <span class="mono">Checkout -> Place order</span> blocks until
+          <span class="mono">checkout.step</span> is
+          <span class="mono">review</span>.
         </p>
 
         <h3 class="font-semibold text-neutral-900">State</h3>
@@ -287,18 +307,22 @@
           <span class="mono">product.stock</span>. Allowed types: string,
           number, boolean, enum, object, array. State definitions can include
           descriptions, enum values, typed defaults, and
-          <span class="mono">sharedWith</span> links so another surface can see the
-          same path.
+          <span class="mono">sharedWith</span> links so another surface can see
+          the same path. Example:
+          <span class="mono">cart.lineItems</span> is an array of cart rows, and
+          <span class="mono">cart.subtotal</span> is stored in cents.
         </p>
 
         <h3 class="font-semibold text-neutral-900">Rule</h3>
         <p>
-          A deterministic <em>IF condition THEN effect</em> pair. Each rule belongs
-          to a category (business, security, permissions, validation, ux_feedback,
-          async, billing_quota, …) which makes the model auditable. Rules at surface
-          level apply to every action on that surface; rules at action level apply
-          only there. The right side of a condition can be a literal, another state
-          path, or an expression JSON AST for param/state arithmetic.
+          A deterministic <em>IF condition THEN effect</em> pair. Each rule
+          belongs to a category (business, security, permissions, validation,
+          ux_feedback, async, billing_quota, …) which makes the model auditable.
+          Rules at surface level apply to every action on that surface; rules at
+          action level apply only there. The right side of a condition can be a
+          literal, another state path, or an expression JSON AST for param/state
+          arithmetic. Example: <span class="mono">Place order</span> has a rule
+          that blocks when <span class="mono">checkout.step != "review"</span>.
         </p>
         <CodeBlock
           language="text"
@@ -355,7 +379,9 @@ THEN show_message "You qualify for free shipping."`}
           <span class="mono">cart.itemCount &gt;= 0</span>,
           <span class="mono">order.amount &gt; 0</span>. Violations turn a
           successful run into a blocked one. The simulator surfaces them so you
-          spot inconsistent rules.
+          spot inconsistent rules. Example: the cart subtotal must not become
+          negative unless a specific admin action explicitly bypasses that
+          invariant.
         </p>
 
         <h3 class="font-semibold text-neutral-900">Scenario</h3>
@@ -363,7 +389,10 @@ THEN show_message "You qualify for free shipping."`}
           A saved simulator case for one action. A scenario can pre-fill state
           and parameter values, declare whether the run should succeed or block,
           and assert expected post-run state. Use scenarios to turn examples
-          into regression checks.
+          into regression checks. Example: a saved
+          <span class="mono">Place order</span> scenario asserts that
+          <span class="mono">order.amount</span> becomes
+          <span class="mono">cart.subtotal + cart.shipping</span>.
         </p>
       {/snippet}
     </TutorialSection>
@@ -415,36 +444,39 @@ THEN show_message "You qualify for free shipping."`}
         <h3 class="font-semibold text-neutral-900">Loading the sample</h3>
         <p>
           Click <span class="mono">Load sample project</span> on the left. The
-          four features and the project are created, ready to open.
-          They're plain JSON copied from <span class="mono">samples/</span> into
+          four features and the project are created, ready to open. They're
+          plain JSON copied from <span class="mono">samples/</span> into
           <span class="mono">unspa/</span>, so your edits stay yours.
         </p>
 
-        <h3 class="font-semibold text-neutral-900">
-          Three things to try in the simulator
-        </h3>
+        <h3 class="font-semibold text-neutral-900">Three simulator checks</h3>
         <p>
-          Open any feature, pick an action, and click <span class="mono"
-            >Run action</span
-          >. Three good places to start:
+          Open the named feature, select the named surface, pick the action, set
+          the listed values, and click <span class="mono">Run action</span>.
+          These are quick checks, not hidden UI interactions.
         </p>
         <ol class="ml-5 list-decimal space-y-3">
           <li>
-            On <strong>Catalog &amp; reviews</strong>, open
-            <span class="mono">Submit review</span>. Submit a 5-star review and
-            the simulator records a positive badge. Submit a 1-star and it
-            records a critical badge. The decision lives in the model, not in
-            code.
+            Open <strong>Catalog &amp; reviews</strong> ->
+            <strong>Product details</strong> ->
+            <span class="mono">Submit review</span>. In the parameter panel, set
+            <span class="mono">rating = 5</span>
+            and run: the simulator records a positive badge. Set
+            <span class="mono">rating = 1</span> and run again: it records a critical
+            badge. The decision lives in the model, not in code.
           </li>
           <li>
-            On <strong>Cart &amp; checkout</strong>, open
-            <span class="mono">Recalculate subtotal</span>. The subtotal updates
-            from the cart line items in one step. Edit the line items in the
-            state panel and rerun: the total tracks them, with no glue code in
-            between.
+            Open <strong>Cart &amp; checkout</strong> ->
+            <strong>Cart</strong> ->
+            <span class="mono">Recalculate subtotal</span>. Run once and watch
+            <span class="mono">cart.subtotal</span> match the sum of
+            <span class="mono">cart.lineItems[*].amount</span>. Then edit a line
+            item amount in the state panel and rerun: the total follows the line
+            items, with no glue code in between.
           </li>
           <li>
-            On <strong>Cart &amp; checkout</strong>, open
+            Open <strong>Cart &amp; checkout</strong> ->
+            <strong>Checkout</strong> ->
             <span class="mono">Override subtotal (admin)</span>. A regular
             customer cannot make the subtotal negative; an admin can. The
             simulator shows exactly which rule lets the admin through, and which
@@ -498,8 +530,10 @@ THEN show_message "You qualify for free shipping."`}
           </li>
           <li>
             Change <span class="mono">checkout.step</span> to
-            <span class="mono">review</span>, then run again. The action
-            succeeds, emits
+            <span class="mono">review</span> and set
+            <span class="mono">payment.method</span> to
+            <span class="mono">card</span>, then run again. The action succeeds,
+            emits
             <span class="mono">order.placed</span>, and proposes a transition to
             the
             <strong>Order tracking</strong> surface.
@@ -614,14 +648,22 @@ THEN show_message "You qualify for free shipping."`}
           <span class="mono">recommended</span> (worth fixing but not blocking).
           Use it as a design checklist, not as a grade.
         </p>
+        <Callout tone="info" title="Want to see a non-100% score?">
+          The bundled eShop project is intentionally complete, so it starts as a
+          clean reference model. To see the maturity checker complain, create a
+          tiny test feature with one empty surface and one action without
+          effects, rules, or scenarios. The score will drop and the panel will
+          list exactly what is missing.
+        </Callout>
       {/snippet}
     </TutorialSection>
 
     <TutorialSection id="editor" title="7. Editing in the app">
       {#snippet children()}
         <p>
-          The feature editor is split into top-level tabs and surface-level tabs.
-          Anything the MCP can add or update should have a visible manual editor here too.
+          The feature editor is split into top-level tabs and surface-level
+          tabs. Anything the MCP can add or update should have a visible manual
+          editor here too.
         </p>
 
         <h3 class="font-semibold text-neutral-900">Top-level tabs</h3>
@@ -670,11 +712,15 @@ THEN show_message "You qualify for free shipping."`}
 }`}
         />
 
-        <h3 class="font-semibold text-neutral-900">Tagging projects and features</h3>
+        <h3 class="font-semibold text-neutral-900">
+          Tagging projects and features
+        </h3>
         <p>
-          Every project card and feature card has a <span class="mono">+ Tag</span>
+          Every project card and feature card has a <span class="mono"
+            >+ Tag</span
+          >
           chip that appears on hover. A tag is a
-          <span class="mono">{`{type, value}`}</span> pair —
+          <span class="mono">{`{type, value}`}</span> pair:
           <span class="mono">Team: Growth</span>,
           <span class="mono">Domain: Commerce</span>,
           <span class="mono">Status: WIP</span>. Tags don't change behavior;
@@ -688,14 +734,14 @@ THEN show_message "You qualify for free shipping."`}
           re-adding the same tag is a safe no-op.
         </p>
         <Callout tone="info" title="Dashboard-MCP parity">
-          Anything the dashboard can do, the MCP can do too — with the same
+          Anything the dashboard can do, the MCP can do too, with the same
           atomicity. Adding a tag from a card calls the same path as
           <span class="mono">add_project_tag</span> /
-          <span class="mono">add_feature_tag</span>. If you load a spec made
-          by an agent, you should be able to find every entity in the app:
+          <span class="mono">add_feature_tag</span>. If you load a spec made by
+          an agent, you should be able to find every entity in the app:
           resources, entities, events, payloads, shared state, scenarios,
-          transitions, rules, effects, invariants, parameters, required
-          states, emitted events, and tags.
+          transitions, rules, effects, invariants, parameters, required states,
+          emitted events, and tags.
         </Callout>
       {/snippet}
     </TutorialSection>
@@ -780,37 +826,48 @@ THEN show_message "You qualify for free shipping."`}
     <TutorialSection id="queue" title="9. Implementation queue">
       {#snippet children()}
         <p>
-          Every project has an <strong>Implementation Queue</strong> tab — an
-          ordered "implement next" list of Features, Surfaces, or Actions you
-          (or the LLM) plan to build. The point: a dev can say "implement the
-          next thing in the queue" and the LLM picks it up via the MCP
-          without you naming the entity.
+          Every project has an <strong>Implementation Queue</strong> tab: an ordered
+          "implement next" list of Features, Surfaces, or Actions you (or the LLM)
+          plan to build. The point: a dev can say "implement the next thing in the
+          queue" and the LLM picks it up via the MCP without you naming the entity.
         </p>
         <ul class="list-disc space-y-1 pl-5">
           <li>
-            <strong>Add to queue</strong> hover affordance appears on every
-            Feature card, every Surface header, and every Action row when the
-            cursor is over them — minimal-information-first design.
+            <strong>Add to queue</strong> hover affordance appears on every Feature
+            card, every Surface header, and every Action row when the cursor is over
+            them. This keeps the design minimal first.
           </li>
           <li>
-            <strong>Drag to reorder</strong> on the Queue tab. Order persists
-            to disk via the project file.
+            <strong>Drag to reorder</strong> on the Queue tab. Order persists to
+            disk via the project file.
           </li>
           <li>
-            <strong>Auto-prune</strong>: items disappear from the live list
-            as <span class="mono">.unspa.json</span> flips their behavioral-index
-            entry to <span class="mono">implemented</span>. The raw queue stays
-            on disk; only the live view filters.
+            <strong>Auto-prune</strong>: items disappear from the live list as
+            <span class="mono">.unspa.json</span>
+            flips their behavioral-index entry to
+            <span class="mono">implemented</span>. The raw queue stays on disk;
+            only the live view filters.
           </li>
         </ul>
         <Callout tone="info" title="MCP tools">
           {#snippet children()}
             <ul class="list-disc space-y-1 pl-5">
-              <li><span class="mono">enqueue</span> — add a feature/surface/action.</li>
-              <li><span class="mono">dequeue</span> — remove by queue item id.</li>
-              <li><span class="mono">reorder_queue</span> — drag-and-drop equivalent.</li>
-              <li><span class="mono">list_queue</span> — full live list with done-state.</li>
-              <li><span class="mono">get_next_queued</span> — peek the next live item (drives "implement next").</li>
+              <li>
+                <span class="mono">enqueue</span>: add a feature/surface/action.
+              </li>
+              <li>
+                <span class="mono">dequeue</span>: remove by queue item id.
+              </li>
+              <li>
+                <span class="mono">reorder_queue</span>: drag-and-drop equivalent.
+              </li>
+              <li>
+                <span class="mono">list_queue</span>: full live list with done-state.
+              </li>
+              <li>
+                <span class="mono">get_next_queued</span>: peek the next live item
+                (drives "implement next").
+              </li>
             </ul>
           {/snippet}
         </Callout>
@@ -820,37 +877,38 @@ THEN show_message "You qualify for free shipping."`}
     <TutorialSection id="backup" title="10. Backup & share with .unspa">
       {#snippet children()}
         <p>
-          The project page header has an <strong>Export .unspa</strong> button.
-          It bundles the project + every attached feature + every
-          implementation-status sidecar into a single encrypted file:
+          The project page header has an <strong>Export .unspa</strong> button. It
+          bundles the project + every attached feature + every implementation-status
+          sidecar into a single encrypted file:
         </p>
         <ul class="list-disc space-y-1 pl-5">
           <li>
-            <strong>AES-GCM-256</strong> with a key derived from a passphrase via
+            <strong>AES-GCM-256</strong> with a key derived from a passphrase
+            via
             <strong>PBKDF2-SHA256, 600 000 iterations</strong> (OWASP 2023 minimum).
           </li>
           <li>The passphrase <strong>never leaves the browser</strong>.</li>
           <li>
-            The envelope carries <strong>no identifier of contents</strong> — no
-            project name, no metadata. A third party holding the file learns
-            only that it's an Unspaghettit bundle.
+            The envelope carries <strong>no identifier of contents</strong>: no
+            project name, no metadata. A third party holding the file learns only
+            that it's an Unspaghettit bundle.
           </li>
           <li>
             Wrong passphrase + tampered ciphertext both fail at AES-GCM's
-            auth-tag check — never decrypt to garbage.
+            auth-tag check and never decrypt to garbage.
           </li>
         </ul>
         <p>
-          Restore via the <strong>Import .unspa</strong> button on the projects
-          index. Useful for transferring a project between machines, archiving
-          a milestone, or sharing with a teammate over an insecure channel.
+          Restore via the <strong>Import .unspa</strong> button on the projects index.
+          Useful for transferring a project between machines, archiving a milestone,
+          or sharing with a teammate over an insecure channel.
         </p>
         <Callout tone="warning" title="Passphrase strength is on you">
           {#snippet children()}
             <p>
-              A 12-character random passphrase is well outside brute-force
-              range at 600k iterations. A 6-character dictionary word is not.
-              Pick accordingly.
+              A 12-character random passphrase is well outside brute-force range
+              at 600k iterations. A 6-character dictionary word is not. Pick
+              accordingly.
             </p>
           {/snippet}
         </Callout>
@@ -1108,6 +1166,18 @@ tool_timeout_sec = 120`}
           code={`claude mcp add-json unspa '{ "type": "stdio", "command": "cmd", "args": ["/c", "npm.cmd", "run", "mcp"], "cwd": "<your-unspaghettit-clone>" }'
 claude mcp list`}
         />
+        <Callout tone="info" title="Fast path with Claude Code">
+          {#snippet children()}
+            If Claude Code is already running in your repo, you can ask it to do
+            the setup for you:
+            <CodeBlock
+              language="text"
+              code={`Install Unspaghettit in this repo. Run unspa init, register the MCP server for Claude Code, keep the generated CLAUDE.md/AGENTS.md guidance, then verify the unspa MCP tools are available.`}
+            />
+            After it finishes, restart Claude Code if the MCP server list does not
+            refresh automatically.
+          {/snippet}
+        </Callout>
 
         <h3 class="font-semibold text-neutral-900">Generic MCP clients</h3>
         <p>
@@ -1138,32 +1208,34 @@ claude mcp list`}
       {#snippet children()}
         <p>
           Multiple humans + AI agents can edit the same runtime live. The
-          dashboard's Yjs WebSocket layer makes every change land in every
-          open tab without a refresh, and an activity toast carries the
-          breadcrumb (<span class="mono">Project › Feature › Surface › Action</span>)
-          + a <strong>View</strong> button to jump there.
+          dashboard's Yjs WebSocket layer makes every change land in every open
+          tab without a refresh, and an activity toast carries the breadcrumb (<span
+            class="mono">Project › Feature › Surface › Action</span
+          >) + a <strong>View</strong> button to jump there.
         </p>
         <p>
-          Click the round avatar in the header to set your <strong>display
-          name</strong>. Every history entry you create is tagged with it —
-          stored only in this browser's localStorage, never sent off-machine.
-          First visit prompts once; the avatar dropdown is the explicit way
-          to change or reset later.
+          Click the round avatar in the header to set your <strong
+            >display name</strong
+          >. Every history entry you create is tagged with it and stored only in
+          this browser's localStorage, never sent off-machine. First visit
+          prompts once; the avatar dropdown is the explicit way to change or
+          reset later.
         </p>
         <p>
-          MCP-driven changes carry an <strong>AI · for &lt;your-name&gt;</strong>
-          label: the AI badge stays purple (clear AI/human distinction), and
-          the human name is the supporting attribution. The dashboard
-          server resolves "who's currently here" from the connected
-          WebSocket clients and tags entries accordingly.
+          MCP-driven changes carry an <strong>AI · for &lt;your-name&gt;</strong
+          >
+          label: the AI badge stays purple (clear AI/human distinction), and the
+          human name is the supporting attribution. The dashboard server resolves
+          "who's currently here" from the connected WebSocket clients and tags entries
+          accordingly.
         </p>
         <Callout tone="info" title="Reset local data">
           {#snippet children()}
-            The avatar dropdown also exposes a <strong>Reset local
-            data</strong> option (red, with a danger confirm). It wipes
+            The avatar dropdown also exposes a <strong>Reset local data</strong>
+            option (red, with a danger confirm). It wipes
             <span class="mono">localStorage</span> +
-            <span class="mono">sessionStorage</span> and reloads — server-side
-            project data is untouched.
+            <span class="mono">sessionStorage</span> and reloads. Server-side project
+            data is untouched.
           {/snippet}
         </Callout>
       {/snippet}
@@ -1172,14 +1244,14 @@ claude mcp list`}
     <TutorialSection id="security" title="13. Hosting on a network">
       {#snippet children()}
         <p>
-          Default install is <strong>loopback-only</strong> with no auth — the
+          Default install is <strong>loopback-only</strong> with no auth. The
           dashboard binds <span class="mono">127.0.0.1:3000</span> and only your
-          machine can reach it. That's the right stance for solo dev on a
-          trusted workstation; the user is the trust boundary.
+          machine can reach it. That's the right stance for solo dev on a trusted
+          workstation; the user is the trust boundary.
         </p>
         <p>
-          To <strong>share with teammates on a trusted network</strong> (home
-          wifi, office VLAN, Tailscale subnet), opt into the LAN-share tier:
+          To <strong>share with teammates on a trusted network</strong> (home wifi,
+          office VLAN, Tailscale subnet), opt into the LAN-share tier:
         </p>
         <CodeBlock
           language="bash"
@@ -1196,16 +1268,19 @@ unspa dashboard --host 0.0.0.0`}
         <p>
           What it covers: anyone who knows the token can read/write every
           feature; anyone who doesn't gets <span class="mono">401</span>. A
-          malicious page in another browser tab can't drive writes against
-          the dashboard (origin check).
+          malicious page in another browser tab can't drive writes against the
+          dashboard (origin check).
         </p>
         <p>
-          What it does <strong>not</strong> cover: SSO, RBAC, per-user
-          permissions, HTTPS termination, audit-trail hardening, encryption at
-          rest. Front the dashboard with a reverse proxy (Caddy, Tailscale
-          Serve, cloudflared with Access) for HTTPS + extra auth layers.
+          What it does <strong>not</strong> cover: SSO, RBAC, per-user permissions,
+          HTTPS termination, audit-trail hardening, encryption at rest. Front the
+          dashboard with a reverse proxy (Caddy, Tailscale Serve, cloudflared with
+          Access) for HTTPS + extra auth layers.
         </p>
-        <Callout tone="warning" title="Do not expose 0.0.0.0:3000 to the public internet">
+        <Callout
+          tone="warning"
+          title="Do not expose 0.0.0.0:3000 to the public internet"
+        >
           {#snippet children()}
             The OSS install is built for trusted networks. Public exposure
             requires the enterprise tier (SSO + RBAC + audit, separately
@@ -1214,7 +1289,10 @@ unspa dashboard --host 0.0.0.0`}
         </Callout>
         <p class="text-sm text-slate-600">
           Full threat model + mitigations in
-          <a href="https://github.com/lyriks-io/unspaghettit/blob/main/SECURITY.md" class="text-brand-700 hover:underline">SECURITY.md</a>.
+          <a
+            href="https://github.com/lyriks-io/unspaghettit/blob/main/SECURITY.md"
+            class="text-brand-700 hover:underline">SECURITY.md</a
+          >.
         </p>
       {/snippet}
     </TutorialSection>

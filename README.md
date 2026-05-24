@@ -5,7 +5,7 @@
 <h1 align="center">Unspaghettit</h1>
 
 <p align="center">
-  <em>Behavior-driven AI development without prompt spaghetti.</em>
+  <em>Executable specifications for AI-assisted software development.</em>
 </p>
 
 <p align="center">
@@ -36,9 +36,19 @@ AI coding workflows go sideways fast. Specs drift. Prompts pile up. Generated sy
 
 ## What it does
 
-Unspaghettit gives humans and LLMs a shared, **executable behavioral runtime** for the systems they build together.
+Unspaghettit gives humans and LLMs a shared, **executable specification** for the systems they build together. If you think in terms of SDD, treat it as a local, machine-checkable software design document that agents can read and update through MCP.
 
-You describe behavior, surfaces, states, transitions, actions, events, rules, invariants, scenarios. An MCP server exposes the runtime as a structured tool surface your LLM uses instead of free-form prose. The runtime becomes the source of truth; prompts become disposable again.
+Instead of keeping product intent in long prompts or markdown that slowly goes stale, you model the behavior as structured pieces: features, surfaces, actions, state, rules, effects, events, invariants, and scenarios. The MCP server exposes that specification to your AI coding tool, so the LLM can inspect, simulate, edit, and audit the model through typed tool calls instead of guessing from prose.
+
+The specification becomes the source of truth; prompts become disposable again.
+
+## Benefits
+
+- **Less drift between intent and code**: scenarios, generated types, and implementation coverage all point back to the same spec.
+- **AI agents get structured context**: the LLM reads focused entities and actions instead of a giant prompt blob.
+- **Specs become testable**: every scenario can run through the simulator before implementation exists.
+- **Implementation stays auditable**: `.unspa.json` records where each spec entity is implemented and reports gaps.
+- **Teams keep local ownership**: snapshots are plain JSON in your repo or local hub, with no hosted service required.
 
 ## Scenarios as CI-grade spec tests
 
@@ -50,11 +60,11 @@ Specs stop being documentation. They become a runtime contract you can break lou
 
 ## Core capabilities
 
-- **Structured behavioral runtime**, features, surfaces, actions, states, rules, invariants, transitions, scenarios, personas, resources, entities, events.
-- **MCP-native**, every entity is created, read, edited, validated through MCP tool calls. Works with any MCP-compatible IDE (Claude Code, Claude Desktop, Cursor, Gemini, Windsurf, Kiro, Codex).
-- **Deterministic simulator**, `dry_run_simulate` runs an action against a snapshot. `run_all_scenarios` executes every scenario as a CI-grade spec test, with pass/fail per assertion.
+- **Structured behavior specification**, features, surfaces, actions, states, rules, invariants, transitions, scenarios, personas, resources, entities, events.
+- **MCP-native**, every entity is created, read, edited, and validated through MCP tool calls. Works with any MCP-compatible IDE (Claude Code, Claude Desktop, Cursor, Gemini, Windsurf, Kiro, Codex).
+- **Deterministic simulator**, `dry_run_simulate` runs an action against a state snapshot. `run_all_scenarios` executes every scenario as a CI-grade spec test, with pass/fail per assertion.
 - **Maturity scoring**, `score_feature` returns a per-area score with critical/recommended issues; surfaces the worst surfaces and biggest gaps.
-- **Typed scaffolding**, `generate_types` emits TypeScript types (state shapes, event names, action parameter types) that your implementation imports. TS catches drift the moment the spec changes.
+- **Generated TypeScript contracts**, `generate_types` writes types for state shapes, event names, and action parameters. Your implementation imports them, so TypeScript catches drift when the spec changes.
 - **Implementation audit**, record each implementation in a `.unspa.json` behavioral index (`{ file, line, signature }` per entity); the MCP reconciles it against the spec and reports coverage + gaps.
 - **Implementation queue**, per-project "implement next" list (Feature / Surface / Action items). Drag-and-drop reorder in the dashboard, `mcp__unspa__get_next_queued` so a dev says "implement the next thing" without naming it. Auto-prunes items the behavioral index marks done.
 - **Local-first**, everything lives in your repo. No telemetry, no hosted servers, no cloud dependency. Snapshots are plain JSON.
@@ -68,8 +78,8 @@ Specs stop being documentation. They become a runtime contract you can break lou
 1. Describe what you want to your LLM.
 2. The LLM builds the runtime via the MCP, `create_feature`, `apply_batch`, `add_action`, etc. Validation errors come back inline so the runtime converges.
 3. Author scenarios. `run_all_scenarios` makes them executable spec tests.
-4. `generate_types` mints typed scaffolding.
-5. The LLM writes implementation against the types and scenarios. The `.unspa.json` index pins each entity to a `{ file, line, signature }` so the dashboard can resolve coverage.
+4. `generate_types` writes TypeScript contracts from the spec.
+5. The LLM implements the feature using those types and the scenario results as checks. The `.unspa.json` index maps each spec entity to a `{ file, line, signature }` so the dashboard can resolve coverage.
 6. `score_feature` and `get_spec_gaps` catch shallow modelling before it ships.
 
 ### Code → spec
@@ -84,15 +94,15 @@ The LLM does the reading/writing in both directions. Unspaghettit gives it a str
 
 ## What makes it different
 
-It is not:
+Unspaghettit is a local, executable specification layer for AI-assisted development. It gives the LLM durable project memory that can be validated, simulated, scored, and mapped back to source code.
 
-- another markdown prompt workflow,
-- an autonomous agent framework,
-- a hosted AI wrapper,
-- a no-code platform,
-- a code generator (the LLM writes the code; `generate_types` only provides typed scaffolding).
+That makes it different from:
 
-The runtime itself becomes the operational memory of the project. LLMs stop working from fragile prompts and start working from explicit, executable behavior.
+- markdown prompt workflows, which are easy to write but cannot execute or report drift,
+- autonomous agent frameworks, which decide how work gets done but usually do not model product behavior as a contract,
+- hosted AI wrappers, which add a service boundary instead of keeping the source of truth in your repo,
+- no-code platforms, which own the implementation path,
+- code generators, because Unspaghettit generates contracts and audit data while your LLM or team writes the actual code.
 
 ## Philosophy
 
@@ -126,10 +136,10 @@ unspa dashboard      # opens http://localhost:3000
 | Client                   | Project config                  | Global config                          |
 | ------------------------ | ------------------------------- | -------------------------------------- |
 | Claude Code (CLI + VSC)  | `.mcp.json`                     | `~/.claude.json`                       |
-| Claude Desktop           | — (no project scope)            | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/...` (macOS) |
+| Claude Desktop           | n/a (no project scope)          | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/...` (macOS) |
 | Cursor                   | `.cursor/mcp.json`              | `~/.cursor/mcp.json`                   |
 | Gemini Code Assist / CLI | `.gemini/settings.json`         | `~/.gemini/settings.json`              |
-| Windsurf                 | —                               | `~/.codeium/windsurf/mcp_config.json`  |
+| Windsurf                 | n/a                             | `~/.codeium/windsurf/mcp_config.json`  |
 | Kiro                     | `.kiro/settings/mcp.json`       | `~/.kiro/settings/mcp.json`            |
 | Codex (VS Code)          | prints snippet to paste manually | same                                  |
 
@@ -141,7 +151,7 @@ Restart your IDE. Your LLM now has the runtime's full tool surface.
 
 ### Shared snapshot hub
 
-By default `unspa init` scaffolds a per-repo `unspa/` folder. For workflows where you want **one source of truth across many repos** — or where you want to attach **Claude Desktop** (which has no project scope and no useful launch cwd) — use a shared hub:
+By default `unspa init` scaffolds a per-repo `unspa/` folder. For workflows where you want **one source of truth across many repos**, or where you want to attach **Claude Desktop** (which has no project scope and no useful launch cwd), use a shared hub:
 
 ```bash
 unspa init --hub              # default hub at ~/.unspa-hub/unspa
@@ -154,20 +164,20 @@ In hub mode:
 - Every selected client's MCP entry carries `UNSPA_SNAPSHOTS=<absolute hub path>`, so the MCP always reads/writes the hub regardless of where the client launches it.
 - One `unspa dashboard` run from the hub root serves the same data every client sees.
 
-End state: Claude Desktop for cross-project querying, per-repo Claude Code instances pointed at the same hub via the env var (and bound to one project each via `unspa link`), and one live dashboard reflecting every change. All loopback / single-machine — the hub is not a network service.
+End state: Claude Desktop for cross-project querying, per-repo Claude Code instances pointed at the same hub via the env var (and bound to one project each via `unspa link`), and one live dashboard reflecting every change. All loopback / single-machine; the hub is not a network service.
 
 For the CLI details (commands, flags, troubleshooting), see [cli/README.md](cli/README.md).
 
 ## Example
 
-Boot `unspa dashboard` and click **Load samples** to install the bundled **eShop** project: 4 LLM-sized features (Account & auth, Catalog & reviews, Cart & checkout, Order fulfillment) that exercise the full capability surface, composite + Expression conditions, feature invariants, event cascade, `bypassInvariants`, action invariants, scenarios, persona overrides, entity/resource mapping. Every feature scores 100% maturity. It's the fastest way to see how a real Unspaghettit project is shaped before you start your own.
+Boot `unspa dashboard` and click **Load samples** to install the bundled **eShop** project: 4 LLM-sized features (Account & auth, Catalog & reviews, Cart & checkout, Order fulfillment) that exercise the full capability surface, composite + Expression conditions, feature invariants, event cascade, `bypassInvariants`, action invariants, scenarios, persona overrides, entity/resource mapping. Every feature scores 100% maturity so the sample works as a clean reference model. To see maturity gaps, create a tiny scratch feature with an empty surface or an action without effects/scenarios; the dashboard will show the missing pieces.
 
 ## Collaboration
 
 Multiple humans + AI agents can edit the same runtime live:
 
 - **Real-time sync**, every dashboard tab subscribes to a per-room Yjs WebSocket. Out-of-band changes (MCP writes, other tabs) flow in without a reload, with an activity toast for each change carrying a breadcrumb path (`Project › Feature › Surface › Action`) and a "View" button.
-- **Identity**, click the round avatar in the header to set your display name. Every history entry you create is tagged with it. Stored in browser localStorage — never sent off-machine. First visit prompts once; the avatar dropdown is the explicit way to change or reset later.
+- **Identity**, click the round avatar in the header to set your display name. Every history entry you create is tagged with it. Stored in browser localStorage, never sent off-machine. First visit prompts once; the avatar dropdown is the explicit way to change or reset later.
 - **Attribution**, MCP-driven changes carry an `AI · for John` label (the AI badge stays primary; the human name is the supporting attribution). Resolved server-side from whoever's currently at the dashboard.
 - **Implementation queue**, drag-and-drop "implement next" list per project. The LLM uses `mcp__unspa__get_next_queued` so you can say "implement the next thing" without naming it. Items auto-prune as `.unspa.json` flips them to `implemented`.
 - **Backup / share**, the project page's **Export .unspa** button produces an encrypted bundle (project + features + status). The matching **Import .unspa** on the projects index restores it. Passphrase is required on both ends; the file itself reveals nothing about its contents.
@@ -182,7 +192,7 @@ Unspaghettit is local-first by default. Three tiers, all opt-in beyond the defau
 | **LAN-share** | `UNSPA_AUTH_TOKEN=<secret>`, optionally `UNSPA_ALLOWED_ORIGIN=http://host:3000`, then `unspa dashboard --host 0.0.0.0` | Every REST + WebSocket request requires the token. Origin allowlist closes browser-side CSRF. Set the **same** `UNSPA_AUTH_TOKEN` on the MCP server's env so its notify calls authenticate. The dashboard prints the auth posture in its startup banner. |
 | **Backup / share** (orthogonal to live sharing) | Click **Export .unspa** on a project, enter a passphrase ≥ 8 chars | AES-GCM-256 + PBKDF2-SHA256 (600k iterations). Passphrase never leaves the browser. Envelope carries no project name or metadata. |
 
-Full threat model + mitigations in [SECURITY.md](SECURITY.md). For SSO / RBAC / audit trails / encryption at rest, the OSS install stops at the LAN-share tier — those are a separate enterprise build (`hello@lyriks.io`).
+Full threat model + mitigations in [SECURITY.md](SECURITY.md). For SSO / RBAC / audit trails / encryption at rest, the OSS install stops at the LAN-share tier. Those are a separate enterprise build (`hello@lyriks.io`).
 
 ## Architecture
 

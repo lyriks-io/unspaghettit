@@ -2,7 +2,7 @@
   "name": "unspaghettit",
   "version": "0.1.5",
   "type": "module",
-  "description": "Behavior-driven AI development without prompt spaghetti. A local-first, MCP-native executable behavior runtime for the systems humans and LLMs build together.",
+  "description": "Executable specifications for AI-assisted software development. Local-first and MCP-native.",
   "author": {
     "name": "Lyriks.io",
     "url": "https://lyriks.io"

@@ -26,7 +26,7 @@ extensionless POSIX form (e.g. `unspa`) plus `.cmd` and `.ps1` siblings.
 PowerShell and CMD resolve all three; `unspa init` automatically wraps
 the MCP entry with `cmd /c` so AI clients that `spawn()` without a shell
 (Claude Code, Cursor, ...) can find the `.cmd` shim. No extra setup
-needed — just install and `unspa init`.
+needed: just install and `unspa init`.
 
 ### Developing on the CLI itself
 
@@ -72,7 +72,7 @@ unspa --help                 # should error: command not found
 npm ls -g --depth=0          # should not list unspaghettit
 ```
 
-If `unspa` still resolves after `npm uninstall -g unspaghettit`, you hit the orphan-shim case — npm left bin shims behind in its prefix. Either re-run `unspa uninstall --global-uninstall` (which runs the sweep) or manually delete the `unspa*` files at `$(npm prefix -g)/unspa*`.
+If `unspa` still resolves after `npm uninstall -g unspaghettit`, you hit the orphan-shim case. npm left bin shims behind in its prefix. Either re-run `unspa uninstall --global-uninstall` (which runs the sweep) or manually delete the `unspa*` files at `$(npm prefix -g)/unspa*`.
 
 ### Multiple projects
 
@@ -104,6 +104,16 @@ That's it. Your AI client (Claude Code, Cursor, Codex, Gemini, …) spawns
 the Unspaghettit instructions from `CLAUDE.md` / `AGENTS.md`, and can invoke
 the bundled `/unspa-edit`, `/unspa-implement`, `/unspa-audit` skills.
 
+If you are new to MCP and already have Claude Code open in the repo, you can
+also ask the agent to perform the setup:
+
+```text
+Install Unspaghettit in this repo. Run unspa init, register the MCP server for Claude Code, keep the generated CLAUDE.md/AGENTS.md guidance, then verify the unspa MCP tools are available.
+```
+
+After setup, restart the AI client if its MCP server list does not refresh
+automatically.
+
 ## Commands
 
 ### `unspa init`
@@ -123,7 +133,7 @@ unspa init --no-gitignore --no-context --no-skills  # opt out of optional steps
 
 What it does:
 
-1. **Creates `unspa/`** at the repo root if missing. **Skipped when `--hub` is set** — the MCP entries are pinned to the hub instead.
+1. **Creates `unspa/`** at the repo root if missing. **Skipped when `--hub` is set** because the MCP entries are pinned to the hub instead.
 2. **Registers the MCP server** with the AI clients you pick, scoped to the
    current project (`.mcp.json`, `.cursor/mcp.json`, …). Pass `--scope global`
    if you'd rather write to `~/.claude.json` / `~/.cursor/mcp.json` and have
@@ -132,7 +142,7 @@ What it does:
    `unspa serve`):
    - macOS / Linux: `{ "type": "stdio", "command": "unspa-mcp", "args": [] }`
    - Windows: `{ "type": "stdio", "command": "cmd", "args": ["/c", "unspa-mcp"] }`
-     — AI clients spawn without a shell, and Node refuses to execute
+     because AI clients spawn without a shell, and Node refuses to execute
      `.cmd` / `.ps1` shims directly, so we wrap with `cmd /c`.
 
    When `--hub` is set, the entry also carries `env.UNSPA_SNAPSHOTS=<absolute hub path>` so the MCP picks the hub regardless of where the client launches it.
@@ -148,7 +158,7 @@ What it does:
 
 #### Shared snapshot hub (`--hub`)
 
-`--hub` swaps the default per-repo layout for a single shared snapshot directory used by every client and every repo. Use it when you want one source of truth across multiple repos, or when you're registering **Claude Desktop** (which has no per-project MCP config and no useful cwd at launch — its entry needs an absolute `UNSPA_SNAPSHOTS` to find anything).
+`--hub` swaps the default per-repo layout for a single shared snapshot directory used by every client and every repo. Use it when you want one source of truth across multiple repos, or when you're registering **Claude Desktop**. Claude Desktop has no per-project MCP config and no useful cwd at launch, so its entry needs an absolute `UNSPA_SNAPSHOTS` to find anything.
 
 ```bash
 unspa init --hub                     # default: ~/.unspa-hub/unspa
@@ -168,7 +178,7 @@ The hub is loopback / single-machine. For cross-machine sharing use the LAN-shar
 ### `unspa serve`
 
 Runs the bundled MCP server on stdio by spawning the `unspa-mcp` bin
-through `tsx`. Kept for manual debugging — the entry that `unspa init`
+through `tsx`. Kept for manual debugging. The entry that `unspa init`
 writes targets `unspa-mcp` directly (faster startup, no subprocess hop).
 **You normally don't run this manually.**
 
@@ -190,7 +200,7 @@ unspa dashboard --host 127.0.0.1
 Requires `npm run build` to have been run once in the Unspaghettit repo (this
 generates the `build/` folder the CLI ships).
 
-**Default**: binds `127.0.0.1` (loopback only) with no auth — single-machine
+**Default**: binds `127.0.0.1` (loopback only) with no auth. Single-machine
 trust boundary. Appropriate for solo dev.
 
 **LAN-share tier**: to make the dashboard reachable on a trusted network,
@@ -200,7 +210,7 @@ set the auth env vars before launching:
 # Generate a strong shared token (any random string works):
 export UNSPA_AUTH_TOKEN=$(node -e "console.log(crypto.randomBytes(24).toString('base64url'))")
 
-# Optional but recommended — close cross-site browser CSRF:
+# Optional but recommended: close cross-site browser CSRF:
 export UNSPA_ALLOWED_ORIGIN=http://<your-host>:3000
 
 # Then bind on the LAN interface:
@@ -215,7 +225,7 @@ the MCP authenticate too.
 
 Don't expose `0.0.0.0:3000` to the public internet. The OSS install is
 built for trusted networks; for SSO / RBAC / audit trails / encryption at
-rest you've outgrown the OSS tier — see `SECURITY.md` for the threat model
+rest you've outgrown the OSS tier. See `SECURITY.md` for the threat model
 and the enterprise pointer.
 
 ## Skills
@@ -306,21 +316,21 @@ PATH. Three things to check, in order:
 
 1. Did `npm link` create the shim? From the cloned Unspaghettit repo:
    `npm ls -g --depth=0` should list `unspaghettit -> <your clone path>`.
-   If not, re-run `npm link` from the repo root (no arguments — `npm link <pkg>`
+   If not, re-run `npm link` from the repo root (no arguments; `npm link <pkg>`
    does the opposite, it consumes the link inside another project).
 2. Is npm's global bin on your user PATH? Run `npm prefix -g` to find it
    (e.g. `C:\Users\<you>\AppData\Roaming\npm` on Windows, `/usr/local/bin`
    or `~/.npm-global/bin` elsewhere). That directory must be on your
    persistent user PATH.
 3. Is the shell session inheriting the current PATH? On Windows, VS Code
-   captures its env at launch — a window opened before the PATH change
+   captures its env at launch, so a window opened before the PATH change
    keeps the old env. **Fully quit** VS Code (File → Exit; kill stragglers
    in Task Manager if needed) and reopen. New shells will see the
    updated PATH.
 
 **`unspa` resolves but every invocation errors out** (development install
 only). The global symlink npm created points at a path that no longer
-exists — usually because the cloned Unspaghettit folder was renamed or
+exists. This usually happens because the cloned Unspaghettit folder was renamed or
 moved after `npm link`. Re-running `npm link` from the new location does
 **not** overwrite the existing global entry. Clear it first, then re-link:
 
@@ -342,7 +352,7 @@ once. The CLI re-uses the resulting `build/` folder.
 Affects users on **0.1.0 and 0.1.1** who installed via `npm install -g`.
 The MCP entry written by those versions of `unspa init` spawns
 `unspa serve`, which pointed tsx at a tsconfig that extends a SvelteKit-
-generated file not in the npm tarball — the child crashes during boot
+generated file not in the npm tarball, so the child crashes during boot
 before MCP can speak a byte and the AI client silently drops it.
 
 Two fixes, in order of preference:
@@ -363,7 +373,7 @@ Two fixes, in order of preference:
 
 If the MCP fails on **0.1.2+**, the most likely cause is a missing module
 under `$features/*` or `$shared/*`. Path aliases are resolved by
-`cli/_aliases.cjs` (loaded by both bin shims) — make sure the shim chain
+`cli/_aliases.cjs` (loaded by both bin shims). Make sure the shim chain
 isn't being bypassed by a custom `unspa-mcp` invocation.
 
 **"Project not found" / "Feature not found" right after creating it.**

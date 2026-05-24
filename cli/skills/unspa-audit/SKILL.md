@@ -1,4 +1,4 @@
----
+﻿---
 name: unspa-audit
 description: Use when the user asks "what's implemented", "what's missing", or wants to verify code coverage of an Unspaghettit feature. Reconciles the model in `unspa/*.feature.json` with the implementation map in `.unspa.json`, then queries the Unspaghettit MCP for gap reports. Triggers on "audit", "coverage", "missing", "implemented", "what's left", or whenever spec-vs-code drift is in question.
 ---
