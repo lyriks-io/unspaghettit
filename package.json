@@ -1,6 +1,6 @@
 {
   "name": "unspaghettit",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Behavior-driven AI development without prompt spaghetti. A local-first, MCP-native executable behavior runtime for the systems humans and LLMs build together.",
   "author": {

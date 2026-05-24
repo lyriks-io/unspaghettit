@@ -255,6 +255,75 @@ export type HealedEntry = {
   readonly line: number;
 };
 
+export type OrphanKeyReport = {
+  readonly key: string;
+  readonly hint: string;
+};
+
+/**
+ * Types whose id portion of the index key must be the entity's spec id
+ * (8-char hex; or a 36-char legacy UUID for snapshots minted pre-0.1.x).
+ * Slugs / kebab-case names are NOT accepted — the spec never mints them.
+ * Used by `findOrphanKeys` to detect "looks like a slug" mistakes and
+ * surface a targeted hint instead of a generic "not found".
+ */
+const ID_KEYED_TYPES = new Set([
+  'action',
+  'surface',
+  'rule',
+  'invariant',
+  'transition',
+  'surface_rule',
+  'surface_invariant',
+  'entity'
+]);
+const HEX_ID_RE = /^[a-f0-9]{8}$|^[a-f0-9-]{36}$/i;
+
+/**
+ * Compare the user's `.unspa.json` keys against every key the spec actually
+ * expects, and return entries that point at nothing. Without this report
+ * a typo'd or wrong-format key (e.g. `action:add-to-cart` when the spec
+ * mints hex ids like `action:a1b2c3d4`) silently does nothing — the entry
+ * sits in the file, sync skips it, and the dashboard shows zero coverage
+ * with no diagnostic.
+ */
+export const findOrphanKeys = (
+  index: BehavioralIndex,
+  expectedKeys: ReadonlySet<string>
+): OrphanKeyReport[] => {
+  const out: OrphanKeyReport[] = [];
+  for (const key of Object.keys(index)) {
+    if (expectedKeys.has(key)) continue;
+    const colon = key.indexOf(':');
+    if (colon < 0) {
+      out.push({
+        key,
+        hint: 'Key must be `<entityType>:<id-or-name-or-path>`. Got no `:` separator.'
+      });
+      continue;
+    }
+    const type = key.slice(0, colon);
+    const idPart = key.slice(colon + 1);
+    if (ID_KEYED_TYPES.has(type) && !HEX_ID_RE.test(idPart)) {
+      out.push({
+        key,
+        hint:
+          `\`${type}\` keys must use the spec entity's id (8-char hex). ` +
+          `Got \`${idPart}\` — looks like a slug or name. ` +
+          'Call `get_behavioral_index` or `get_feature(verbose:true)` to find the right id.'
+      });
+      continue;
+    }
+    out.push({
+      key,
+      hint:
+        'Key not found in any feature spec. Possible causes: spec entity removed, ' +
+        'typo in id/name/path, or wrong key format.'
+    });
+  }
+  return out;
+};
+
 /**
  * Walk the index and rewrite every entry whose audited signature still
  * exists in the file but at a different line. Saves the caller from having
@@ -532,7 +601,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'sync_from_index',
     {
       description:
-        'Read .unspa.json and push a full implementation-status report for every action and surface in one call. No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block then only contains entries whose signature could not be located at all, those need a manual re-audit. Call this after writing or updating .unspa.json to sync the dashboard.',
+        'Read .unspa.json and push a full implementation-status report for every action and surface in one call. No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) — slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) — each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
       inputSchema: {}
     },
     async () => {
@@ -601,6 +670,26 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
         }
       };
       const acks: unknown[] = [];
+
+      // Build the universe of keys the spec expects to find in the index.
+      // Used after the loop to detect orphan entries in `.unspa.json` —
+      // keys the user wrote that don't correspond to any spec entity.
+      const expectedKeys = new Set<string>();
+      for (const exp of features) {
+        for (const surface of exp.surfaces) {
+          expectedKeys.add(`surface:${String(surface.id)}`);
+          for (const sd of surface.stateDefinitions) expectedKeys.add(`state:${String(sd.path)}`);
+          for (const r of surface.rules) expectedKeys.add(`surface_rule:${String(r.id)}`);
+          for (const inv of surface.invariants) expectedKeys.add(`surface_invariant:${String(inv.id)}`);
+          for (const action of surface.actions) {
+            expectedKeys.add(`action:${String(action.id)}`);
+            for (const ev of action.emittedEvents) expectedKeys.add(`event:${String(ev)}`);
+            for (const r of action.rules) expectedKeys.add(`rule:${String(r.id)}`);
+            for (const inv of action.invariants) expectedKeys.add(`invariant:${String(inv.id)}`);
+            for (const t of action.transitions) expectedKeys.add(`transition:${String(t.id)}`);
+          }
+        }
+      }
 
       for (const exp of features) {
         const featureId = exp.id;
@@ -742,9 +831,14 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       const healable = staleEntries.filter((s) => s.suggestedLine !== undefined);
       const unhealable = staleEntries.filter((s) => s.suggestedLine === undefined);
 
+      // Surface any keys in `.unspa.json` that don't correspond to a spec
+      // entity. Pre-0.1.5 these were silently ignored, masking wrong-format
+      // keys (e.g. `action:add-to-cart` when the spec uses 8-char hex ids).
+      const orphans = findOrphanKeys(index, expectedKeys);
+
       return text(
         trackTokens('sync_from_index', {
-          ok: successes === acks.length,
+          ok: successes === acks.length && orphans.length === 0,
           projectId: String(project.id),
           featureIds: features.map((f) => String(f.id)),
           synced: acks.length,
@@ -760,6 +854,10 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
             healable: healable.length,
             unhealable: unhealable.length,
             entries: staleEntries
+          },
+          orphans: {
+            total: orphans.length,
+            entries: orphans
           },
           acks
         })

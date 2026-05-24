@@ -47,16 +47,22 @@ and produce smaller diffs. Workflow:
 When you implement an entity in code, add or update its entry in the
 \`.unspa.json\` behavioral index — **do not** annotate source code. The index
 is the only mapping between code and spec. Keys follow
-\`<entityType>:<id-or-slug-or-path>\`:
+\`<entityType>:<id-name-or-path>\`:
 
-- \`action:<slug>\`
+- \`action:<id>\` (id = 8-char hex minted by the spec)
+- \`surface:<id>\`
 - \`rule:<id>\`
-- \`invariant:<slug>\`
+- \`invariant:<id>\`
 - \`transition:<id>\`
-- \`state:<state.path>\`
-- \`surface_rule:<id>\` / \`surface_invariant:<slug>\`
-- \`event:<event-name>\`
+- \`surface_rule:<id>\` / \`surface_invariant:<id>\`
 - \`entity:<id>\`
+- \`event:<event-name>\` (the event's string identifier, not an id)
+- \`state:<state.path>\` (e.g. \`cart.itemCount\`)
+
+**Never synthesize ids from slugs.** Read the real id with
+\`get_behavioral_index\` or \`get_feature(verbose:true)\`. Slug-shaped keys
+(e.g. \`action:add-to-cart\`) are rejected by \`sync_from_index\` and surfaced
+in its \`orphans\` block with a fix hint.
 
 Each entry stores \`{ file, line, signature, ... }\`. After editing the index,
 call \`sync_from_index\` so the MCP refreshes the coverage report.

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [SemVer](https://semver.org).
 
+## [0.1.5] — 2026-05-24
+
+Fixes the two top sync-side UX gripes reported against 0.1.4. Both are additive — no schema change, no breaking changes, safe to upgrade in place.
+
+### Fixed
+
+- **`sync_from_index` now surfaces orphan keys instead of silently skipping them.** The response carries a new `orphans: { total, entries: [{ key, hint }] }` block listing every `.unspa.json` key that does not correspond to a spec entity. Each entry includes a targeted hint — slug-shaped ids on id-keyed types (e.g. `action:add-to-cart`) get "use 8-char hex from `get_behavioral_index`", malformed keys get the parse error, etc. `ok` is now `false` when orphans are present so the caller cannot miss the problem.
+- **Documented behavioral-index key format matches the implementation.** The `CLAUDE.md` / `AGENTS.md` template (`cli/util/context-files.ts`) and both bundled skills (`unspa-implement`, `unspa-audit`) previously documented `action:<slug>` and `invariant:<slug>` — formats the spec never actually mints. They now correctly show `action:<id>` etc. with the 8-char hex contract spelled out and `get_behavioral_index` flagged as the way to look ids up. Existing 0.1.4 users will see the corrected docs the next time they run `unspa init`.
+
+### Migration
+
+- None. 0.1.4 `.unspa.json` files with correct (hex) keys keep working unchanged. Files written against the old (incorrect) doc with slug-shaped keys will now show up in the `orphans` block on the next `sync_from_index` with hints for fixing them.
+
 ## [0.1.0] — 2026-05-20
 
 Initial public release. Early but functional.
