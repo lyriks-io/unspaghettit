@@ -1,13 +1,22 @@
 import { scoreFeature } from '$features/maturity/domain/MaturityScorer';
+import { computeImplementationBreakdown } from '$features/implementation-status/domain/ImplementationBreakdown';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import type { FeatureRepository } from '../ports/FeatureRepository';
+import type { ImplementationStatusRepository } from '$features/implementation-status/application/ports/ImplementationStatusRepository';
 import type { FeatureCardModel } from './ListFeaturesWithMaturity';
 
-export const getFeatureCardUseCase = (deps: { repository: FeatureRepository }) => {
+export const getFeatureCardUseCase = (deps: {
+  repository: FeatureRepository;
+  statusRepository: ImplementationStatusRepository;
+}) => {
   return async (id: FeatureId): Promise<FeatureCardModel | null> => {
-    const feature = await deps.repository.get(id);
+    const [feature, status] = await Promise.all([
+      deps.repository.get(id),
+      deps.statusRepository.get(id)
+    ]);
     if (!feature) return null;
     const report = scoreFeature(feature);
+    const impl = computeImplementationBreakdown(feature, status);
     return {
       id: feature.id,
       name: feature.name,
@@ -19,7 +28,12 @@ export const getFeatureCardUseCase = (deps: { repository: FeatureRepository }) =
       updatedAt: feature.updatedAt,
       maturityPercentage: report.percentage,
       criticalIssueCount: report.criticalIssues.length,
-      recommendedIssueCount: report.recommendedIssues.length
+      recommendedIssueCount: report.recommendedIssues.length,
+      implementationPercentage:
+        impl.expectedCount === 0 ? null : impl.percentage,
+      implementationFoundCount: impl.foundCount,
+      implementationExpectedCount: impl.expectedCount,
+      implementationHasReport: impl.hasReport
     };
   };
 };

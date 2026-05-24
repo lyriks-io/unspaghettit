@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import type { FeatureCardModel } from '$features/behavior-model/application/use-cases/ListFeaturesWithMaturity';
   import TagList from '$shared/presentation/components/TagList.svelte';
   import ProgressBar from '$shared/presentation/components/ProgressBar.svelte';
@@ -35,12 +35,37 @@
     queued = false
   }: Props = $props();
 
-  const badgeColor = $derived(
-    summary.maturityPercentage >= 80
+  const scoreColor = (percentage: number): string =>
+    percentage >= 80
       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-      : summary.maturityPercentage >= 50
+      : percentage >= 50
         ? 'bg-amber-50 text-amber-800 border-amber-200'
-        : 'bg-red-50 text-red-700 border-red-200'
+        : 'bg-red-50 text-red-700 border-red-200';
+
+  const maturityBadgeColor = $derived(scoreColor(summary.maturityPercentage));
+
+  // Impl chip is muted (grey) when there's nothing taggable or no report yet,
+  // so users don't mistake "no data" for "0% covered".
+  const implTone = $derived(
+    summary.implementationPercentage === null || !summary.implementationHasReport
+      ? 'bg-slate-50 text-slate-500 border-slate-200'
+      : scoreColor(summary.implementationPercentage)
+  );
+
+  const implLabel = $derived(
+    summary.implementationPercentage === null
+      ? '-'
+      : !summary.implementationHasReport
+        ? '-'
+        : `${summary.implementationPercentage}%`
+  );
+
+  const implTitle = $derived(
+    summary.implementationPercentage === null
+      ? 'No taggable entities yet (actions, events, rules...)'
+      : !summary.implementationHasReport
+        ? 'No .unspa.json report yet. Run report_implementation_status_batch to populate.'
+        : `Implementation coverage: ${summary.implementationFoundCount} of ${summary.implementationExpectedCount} expected tags found in code`
   );
 
   const cardAccent = $derived(
@@ -63,12 +88,22 @@
           {summary.name}
         </h3>
       </a>
-      <span
-        class="shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium {badgeColor}"
-        title="Maturity score"
-      >
-        {summary.maturityPercentage}%
-      </span>
+      <div class="flex shrink-0 flex-col items-end gap-1">
+        <span
+          class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium {maturityBadgeColor}"
+          title="Maturity score: how complete this feature's behavior model is ({summary.maturityPercentage}% of spec quality checks pass)"
+        >
+          <span class="text-[9px] font-semibold uppercase tracking-wide opacity-70">Mat</span>
+          <span class="tabular-nums">{summary.maturityPercentage}%</span>
+        </span>
+        <span
+          class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium {implTone}"
+          title={implTitle}
+        >
+          <span class="text-[9px] font-semibold uppercase tracking-wide opacity-70">Impl</span>
+          <span class="tabular-nums">{implLabel}</span>
+        </span>
+      </div>
     </div>
 
     {#if summary.description}
@@ -107,7 +142,7 @@
   <div class="mt-5 flex items-center justify-between gap-3 border-t border-hairline pt-3 text-xs text-slate-500">
     <span class="min-w-0 flex-1 truncate">
       {summary.surfaceCount} surface{summary.surfaceCount === 1 ? '' : 's'} / {summary.actionCount}
-      capabilit{summary.actionCount === 1 ? 'y' : 'ies'} / Updated {new Date(summary.updatedAt).toLocaleDateString()}
+      action{summary.actionCount === 1 ? '' : 's'} / Updated {new Date(summary.updatedAt).toLocaleDateString()}
     </span>
     <div class="flex shrink-0 items-center gap-1">
       {#if onAddToQueue || onRemoveFromQueue}

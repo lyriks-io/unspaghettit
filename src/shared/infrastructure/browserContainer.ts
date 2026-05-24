@@ -10,6 +10,8 @@ import { HttpProjectRepository } from '$features/projects/infrastructure/persist
 import { InMemoryProjectRepository } from '$features/projects/infrastructure/persistence/InMemoryProjectRepository';
 import { HttpDomainRepository } from '$features/domains/infrastructure/persistence/HttpDomainRepository';
 import { InMemoryDomainRepository } from '$features/domains/infrastructure/persistence/InMemoryDomainRepository';
+import { HttpImplementationStatusRepository } from '$features/implementation-status/infrastructure/persistence/HttpImplementationStatusRepository';
+import { InMemoryImplementationStatusRepository } from '$features/implementation-status/infrastructure/persistence/InMemoryImplementationStatusRepository';
 import { createContainer, type Container } from './container';
 
 let cached: Container | null = null;
@@ -25,10 +27,14 @@ export const getBrowserContainer = async (): Promise<Container> => {
   const domainRepository = browser
     ? new HttpDomainRepository()
     : new InMemoryDomainRepository();
+  const statusRepository = browser
+    ? new HttpImplementationStatusRepository()
+    : new InMemoryImplementationStatusRepository();
   const container = createContainer({
     repository,
     projectRepository,
     domainRepository,
+    statusRepository,
     samples: [...seedFeatures, ...sampleFeatureSnapshots],
     projectSamples: sampleProjectSnapshots
   });

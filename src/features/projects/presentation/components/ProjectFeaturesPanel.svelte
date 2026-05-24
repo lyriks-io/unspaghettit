@@ -1,10 +1,12 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { tick } from "svelte";
   import FeatureCard from "$features/behavior-model/presentation/components/FeatureCard.svelte";
   import type { Feature } from "$features/behavior-model/domain/entities/Feature";
   import type { FeatureId } from "$features/behavior-model/domain/value-objects/ids";
   import type { FeatureCardModel } from "$features/behavior-model/application/use-cases/ListFeaturesWithMaturity";
   import { scoreFeature } from "$features/maturity/domain/MaturityScorer";
+  import { computeImplementationBreakdown } from "$features/implementation-status/domain/ImplementationBreakdown";
+  import type { ImplementationStatus } from "$features/implementation-status/domain/ImplementationStatus";
   import type { Tag } from "$shared/domain/Tags";
   import { projectStore } from "$features/projects/presentation/stores/projectStore.svelte";
   import { queueItemKey } from "$features/implementation-queue/domain/entities/QueueItem";
@@ -42,6 +44,35 @@
   let newDescription = $state("");
   let creating = $state(false);
 
+  // Impl statuses fetched per feature on demand. Cards show "-" until the
+  // fetch lands so layout doesn't shift, then update reactively in place.
+  let implByFeatureId = $state<Map<string, ImplementationStatus | null>>(
+    new Map(),
+  );
+
+  $effect(() => {
+    const ids = features.map((f) => String(f.id));
+    let cancelled = false;
+    void (async () => {
+      const container = await getBrowserContainer();
+      const missing = ids.filter((id) => !implByFeatureId.has(id));
+      if (missing.length === 0) return;
+      const entries = await Promise.all(
+        missing.map(
+          async (id) =>
+            [id, await container.statusRepository.get(id as FeatureId)] as const,
+        ),
+      );
+      if (cancelled) return;
+      const next = new Map(implByFeatureId);
+      for (const [id, status] of entries) next.set(id, status);
+      implByFeatureId = next;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  });
+
   $effect(() => {
     if (!addOpen) return;
     void tick().then(() => newNameInput?.focus());
@@ -76,6 +107,10 @@
 
   function toFeatureCard(feature: Feature): FeatureCardModel {
     const report = scoreFeature(feature);
+    const impl = computeImplementationBreakdown(
+      feature,
+      implByFeatureId.get(String(feature.id)) ?? null,
+    );
     return {
       id: feature.id,
       name: feature.name,
@@ -91,6 +126,11 @@
       maturityPercentage: report.percentage,
       criticalIssueCount: report.criticalIssues.length,
       recommendedIssueCount: report.recommendedIssues.length,
+      implementationPercentage:
+        impl.expectedCount === 0 ? null : impl.percentage,
+      implementationFoundCount: impl.foundCount,
+      implementationExpectedCount: impl.expectedCount,
+      implementationHasReport: impl.hasReport,
     };
   }
 
@@ -327,7 +367,7 @@
               disabled={creating || newName.trim().length === 0 || newDescription.trim().length === 0}
               class="h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-50"
             >
-              {creating ? 'Creating…' : 'Create feature'}
+              {creating ? 'Creating...' : 'Create feature'}
             </button>
           </div>
       </form>

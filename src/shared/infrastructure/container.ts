@@ -36,11 +36,13 @@ import { listDomainsUseCase } from '$features/domains/application/use-cases/List
 import { saveDomainUseCase } from '$features/domains/application/use-cases/SaveDomain';
 import { addProjectToDomainUseCase } from '$features/domains/application/use-cases/AddProjectToDomain';
 import { removeProjectFromDomainUseCase } from '$features/domains/application/use-cases/RemoveProjectFromDomain';
+import type { ImplementationStatusRepository } from '$features/implementation-status/application/ports/ImplementationStatusRepository';
 
 export type Container = {
   readonly repository: FeatureRepository;
   readonly projectRepository: ProjectRepository;
   readonly domainRepository: DomainRepository;
+  readonly statusRepository: ImplementationStatusRepository;
   readonly clock: Clock;
   readonly ids: IdGenerator;
   readonly useCases: {
@@ -84,6 +86,7 @@ export const createContainer = (deps: {
   repository: FeatureRepository;
   projectRepository: ProjectRepository;
   domainRepository: DomainRepository;
+  statusRepository: ImplementationStatusRepository;
   samples: readonly Feature[];
   projectSamples: readonly Project[];
   clock?: Clock;
@@ -94,10 +97,12 @@ export const createContainer = (deps: {
   const repository = deps.repository;
   const projectRepository = deps.projectRepository;
   const domainRepository = deps.domainRepository;
+  const statusRepository = deps.statusRepository;
   return {
     repository,
     projectRepository,
     domainRepository,
+    statusRepository,
     clock,
     ids,
     useCases: {
@@ -105,9 +110,9 @@ export const createContainer = (deps: {
       saveFeature: saveFeatureUseCase({ repository, clock }),
       deleteFeature: deleteFeatureUseCase({ repository }),
       listFeatures: listFeaturesUseCase({ repository }),
-      listFeaturesWithMaturity: listFeaturesWithMaturityUseCase({ repository }),
+      listFeaturesWithMaturity: listFeaturesWithMaturityUseCase({ repository, statusRepository }),
       getFeature: getFeatureUseCase({ repository }),
-      getFeatureCard: getFeatureCardUseCase({ repository }),
+      getFeatureCard: getFeatureCardUseCase({ repository, statusRepository }),
       loadSamples: loadSamplesUseCase({
         repository,
         projectRepository,
