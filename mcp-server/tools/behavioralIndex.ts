@@ -101,7 +101,7 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
     'get_implementation_gaps',
     {
       description:
-        'Cross-references the behavioral index (.unspa.json) against the feature spec to show which entities are missing from the index, which are partial, and which are fully implemented. Use after get_behavioral_index to know exactly what still needs to be located in the codebase.',
+        'Cross-references the behavioral index (.unspa.json) against the feature spec to show which entities are missing from the index, which are partial, and which are fully implemented. Use after get_behavioral_index to know exactly what still needs to be located in the codebase. Each entry carries both the `key` used in .unspa.json (e.g. `state:cart.itemCount`) and the canonical `entityId` accepted by report_implementation_status — for states that\'s the 8-char hex id, distinct from the path. The response includes a `hints[]` block pointing at follow-up tools relevant to what was returned.',
       inputSchema: { featureId: z.string() }
     },
     async ({ featureId }) => {
@@ -119,31 +119,74 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
       const link = readCurrentLink(repoContext.linkPath);
       const index: BehavioralIndex = link.index ?? {};
 
-      type EntityRef = { key: string; type: string; name: string };
+      type EntityRef = {
+        key: string;
+        type: string;
+        name: string;
+        /**
+         * Canonical id for the report_implementation_status entityId field.
+         * For most types this is the same as the suffix of `key`; for states
+         * it's the hex id (distinct from the path-shaped key).
+         */
+        entityId: string;
+      };
       const all: EntityRef[] = [];
 
       for (const surface of exp.surfaces) {
-        all.push({ key: `surface:${surface.id}`, type: 'surface', name: surface.name });
+        all.push({
+          key: `surface:${surface.id}`,
+          type: 'surface',
+          name: surface.name,
+          entityId: String(surface.id)
+        });
         for (const cap of surface.actions) {
-          all.push({ key: `action:${cap.id}`, type: 'action', name: cap.name });
+          all.push({
+            key: `action:${cap.id}`,
+            type: 'action',
+            name: cap.name,
+            entityId: String(cap.id)
+          });
         }
         for (const state of surface.stateDefinitions) {
-          all.push({ key: `state:${state.path}`, type: 'state', name: String(state.path) });
+          all.push({
+            key: `state:${state.path}`,
+            type: 'state',
+            name: String(state.path),
+            entityId: String(state.id)
+          });
         }
       }
       for (const event of exp.events ?? []) {
-        all.push({ key: `event:${event.name}`, type: 'event', name: String(event.name) });
+        all.push({
+          key: `event:${event.name}`,
+          type: 'event',
+          name: String(event.name),
+          entityId: String(event.name)
+        });
       }
 
       const missing = all.filter((e) => !(e.key in index));
       const partial = all.filter((e) => index[e.key]?.status === 'partial');
       const implemented = all.filter((e) => index[e.key]?.status === 'implemented');
 
+      const hints: string[] = [];
+      if (missing.length > 0 || partial.length > 0) {
+        hints.push(
+          'Use `get_neighborhood({ featureId, entityKey })` to see the rules / invariants / events / transitions related to a missing entity — useful for batching co-located implementation work.'
+        );
+      }
+      if (missing.some((e) => e.type === 'state')) {
+        hints.push(
+          'For state entities, `report_implementation_status` accepts EITHER the path (e.g. `cart.itemCount`) or the hex id in the `entityId` field. Both work.'
+        );
+      }
+
       return text({
         stats: { total: all.length, implemented: implemented.length, partial: partial.length, missing: missing.length },
         missing,
         partial,
-        implemented
+        implemented,
+        hints
       });
     }
   );

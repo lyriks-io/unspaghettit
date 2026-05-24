@@ -116,6 +116,19 @@ export type ExtraTag = {
 };
 
 /**
+ * A reported entity that didn't match anything in the spec. Surfaced in the
+ * report ack so the caller can see when their `foundEntities[]` payload was
+ * silently dropped — typical causes are wrong id format (e.g. passing a name
+ * where an 8-char hex id is expected) or a stale id (entity removed from the
+ * spec). Not persisted; only carried on the synchronous response.
+ */
+export type RejectedEntity = {
+  readonly entityType: EntityType;
+  readonly entityId: string;
+  readonly reason: string;
+};
+
+/**
  * Audit-time metadata read from the behavioral index (.unspa.json). Stored
  * alongside each action/surface report so the dashboard can show staleness
  * signals and navigation hints without re-reading the index file.

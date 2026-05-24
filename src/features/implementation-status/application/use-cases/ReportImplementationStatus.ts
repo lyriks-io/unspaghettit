@@ -22,6 +22,7 @@ import {
   type FoundEntity,
   type ImplementationStatus,
   type MissingEntity,
+  type RejectedEntity,
   type SurfaceImplementationStatus,
   type TagLocation
 } from '$features/implementation-status/domain/ImplementationStatus';
@@ -70,6 +71,13 @@ export type ReportImplementationStatusOutput = {
   readonly slug: string;
   readonly missingEntities: readonly MissingEntity[];
   readonly foundEntities: readonly FoundEntity[];
+  /**
+   * Reported entities the spec didn't recognize (wrong id format, removed
+   * entity, typo, etc.). Pre-0.1.5 these were silently bucketed into
+   * `extraTags`, making the silent-drop invisible. Now surfaced separately
+   * with a reason. Empty list when every reported entity matched.
+   */
+  readonly rejectedEntities: readonly RejectedEntity[];
 };
 
 const findCapability = (exp: Feature, actionId: ActionId) => {
@@ -211,15 +219,66 @@ const buildExpectedSurfaceEntities = (surface: Surface): ExpectedEntity[] => {
 const keyOf = (entityType: EntityType, entityId: string): string =>
   `${entityType}:${entityId}`;
 
+/**
+ * Normalize a reported entityId into the form the spec keys on. The only
+ * non-trivial case today is `state`: the spec keys states by hex id, but
+ * `get_implementation_gaps` and the `.unspa.json` index both expose them
+ * by path (e.g. `state:twin.body.weightKg`). Without this normalization
+ * an LLM that naturally reads paths back into the report tool gets a
+ * silent `foundCount:0`. The map is built once per reconcile pass.
+ */
+const buildStateIdByPath = (expected: readonly ExpectedEntity[]): Map<string, string> => {
+  const out = new Map<string, string>();
+  for (const e of expected) {
+    if (e.entityType === 'state' && e.entityName) {
+      out.set(e.entityName, e.entityId);
+    }
+  }
+  return out;
+};
+
+const normalizeReportedId = (
+  r: ReportEntityInput,
+  stateIdByPath: Map<string, string>
+): string => {
+  if (r.entityType === 'state') {
+    const id = stateIdByPath.get(r.entityId);
+    if (id !== undefined) return id;
+  }
+  return r.entityId;
+};
+
 const reconcile = (
   expected: readonly ExpectedEntity[],
   reportedFound: readonly ReportEntityInput[],
   extraTagsInput: readonly ExtraTag[],
-  now: string
+  now: string,
+  scope: 'action' | 'surface'
 ) => {
   const expectedByKey = new Map(expected.map((e) => [keyOf(e.entityType, e.entityId), e]));
+  const stateIdByPath = buildStateIdByPath(expected);
+
+  // Walk reported entries once, deciding match-by-key or rejection. Track
+  // the rejected ones with a reason so the caller gets a clear diagnostic
+  // instead of a mysterious `foundCount:0`.
   const reportedByKey = new Map<string, ReportEntityInput>();
-  for (const r of reportedFound) reportedByKey.set(keyOf(r.entityType, r.entityId), r);
+  const rejectedEntities: RejectedEntity[] = [];
+  for (const r of reportedFound) {
+    const normalizedId = normalizeReportedId(r, stateIdByPath);
+    const key = keyOf(r.entityType, normalizedId);
+    if (expectedByKey.has(key)) {
+      reportedByKey.set(key, r);
+      continue;
+    }
+    const reason =
+      `No ${r.entityType} matching id "${r.entityId}" in this ${scope}'s spec. ` +
+      (r.entityType === 'state'
+        ? 'For states, pass either the path (e.g. "cart.itemCount") or the 8-char hex id.'
+        : r.entityType === 'event'
+          ? "For events, pass the event's literal name string."
+          : 'Pass the 8-char hex id from `get_implementation_gaps` or `get_feature(verbose:true)`.');
+    rejectedEntities.push({ entityType: r.entityType, entityId: r.entityId, reason });
+  }
 
   const foundEntities: FoundEntity[] = [];
   for (const e of expected) {
@@ -249,15 +308,12 @@ const reconcile = (
       tag: e.tag
     }));
 
-  const reportedExtras: ExtraTag[] = [];
-  for (const [k, reported] of reportedByKey) {
-    if (expectedByKey.has(k)) continue;
-    const tag = `@unspa:${reported.entityType}:${reported.entityId}`;
-    reportedExtras.push({ tag, locations: reported.locations });
-  }
-  const extraTags: ExtraTag[] = [...extraTagsInput, ...reportedExtras];
+  // extraTags now only carries caller-supplied tags. Rejected reported
+  // entities go to `rejectedEntities` instead of being silently bucketed
+  // here, which was the pre-0.1.5 source of the silent-drop confusion.
+  const extraTags: ExtraTag[] = [...extraTagsInput];
 
-  return { foundEntities, missingEntities, extraTags };
+  return { foundEntities, missingEntities, extraTags, rejectedEntities };
 };
 
 export const reportImplementationStatusUseCase =
@@ -284,11 +340,12 @@ export const reportImplementationStatusUseCase =
       const { surface, action } = located;
       const slug = toSlug(action.name) || String(action.id);
       const expectedEntities = buildExpectedCapabilityEntities(action, slug);
-      const { foundEntities, missingEntities, extraTags } = reconcile(
+      const { foundEntities, missingEntities, extraTags, rejectedEntities } = reconcile(
         expectedEntities,
         input.foundEntities,
         input.extraTags ?? [],
-        now
+        now,
+        'action'
       );
 
       const actionStatus: ActionImplementationStatus = {
@@ -313,7 +370,8 @@ export const reportImplementationStatusUseCase =
         scope: 'action',
         slug,
         missingEntities,
-        foundEntities
+        foundEntities,
+        rejectedEntities
       };
     }
 
@@ -323,11 +381,12 @@ export const reportImplementationStatusUseCase =
         throw new SurfaceNotFoundForReportError(input.surfaceId, input.featureId);
       const slug = toSlug(surface.name) || String(surface.id);
       const expectedEntities = buildExpectedSurfaceEntities(surface);
-      const { foundEntities, missingEntities, extraTags } = reconcile(
+      const { foundEntities, missingEntities, extraTags, rejectedEntities } = reconcile(
         expectedEntities,
         input.foundEntities,
         input.extraTags ?? [],
-        now
+        now,
+        'surface'
       );
 
       const surfaceStatus: SurfaceImplementationStatus = {
@@ -351,7 +410,8 @@ export const reportImplementationStatusUseCase =
         scope: 'surface',
         slug,
         missingEntities,
-        foundEntities
+        foundEntities,
+        rejectedEntities
       };
     }
 

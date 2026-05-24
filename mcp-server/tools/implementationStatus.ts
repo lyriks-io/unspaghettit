@@ -391,7 +391,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'report_implementation_status',
     {
       description:
-        'Sync one action or surface worth of implementation data from the behavioral index into the dashboard. Pass `actionId` for action-scoped reports (action + events + rules + invariants + transitions) OR `surfaceId` for surface-scoped reports (states + data + surface_rules + surface_invariants). `foundEntities[]` is the entities you resolved. Each with file + line + snippet AND optional `capturedFields` (real values from the implementation for spec-vs-code diff). Missing entities are inferred (expected − found). Returns a slim ack.',
+        'Sync one action or surface worth of implementation data from the behavioral index into the dashboard. Pass `actionId` for action-scoped reports (action + events + rules + invariants + transitions) OR `surfaceId` for surface-scoped reports (states + data + surface_rules + surface_invariants). `foundEntities[]` is the entities you resolved. Each with file + line + snippet AND optional `capturedFields` (real values from the implementation for spec-vs-code diff). `entityId` is the 8-char hex id from `get_implementation_gaps` / `get_feature(verbose:true)`, except: `state` entities accept either the dotted path (e.g. `cart.itemCount`) or the hex id, and `event` entities use the event\'s literal name string. Missing entities are inferred (expected − found). Any reported entity whose id doesn\'t match the spec lands in `rejectedEntities` with a reason — `ok:false` when any are present so wrong-format ids cannot pass silently.',
       inputSchema: {
         featureId: z.string(),
         actionId: z.string().optional(),
@@ -435,14 +435,17 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
         });
         return text(
           trackTokens('report_implementation_status', {
-            ok: true,
+            // ok is false when any reported entity was rejected — the caller
+            // should not silently pass over wrong-format ids.
+            ok: result.rejectedEntities.length === 0,
             featureId: result.featureId,
             revision: result.revision,
             updatedAt: result.updatedAt,
             scope: result.scope,
             slug: result.slug,
             missingEntities: result.missingEntities,
-            foundEntities: result.foundEntities
+            foundEntities: result.foundEntities,
+            rejectedEntities: result.rejectedEntities
           })
         );
       } catch (e) {
@@ -458,7 +461,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'report_implementation_status_batch',
     {
       description:
-        'Sync the full behavioral index into the dashboard in one call. Use after writing (or updating) .unspa.json with the behavioral index. Post one report per action and per surface. Preferred over the single-entity variant for whole-feature syncs. Each item in `reports` carries its own `actionId` xor `surfaceId`. Returns one slim ack per item; per-item failures are reported in-place without aborting the batch.',
+        'Sync the full behavioral index into the dashboard in one call. Use after writing (or updating) .unspa.json with the behavioral index. Post one report per action and per surface. Preferred over the single-entity variant for whole-feature syncs. Each item in `reports` carries its own `actionId` xor `surfaceId`. Returns one slim ack per item; per-item failures are reported in-place without aborting the batch. Each ack carries `rejectedCount` + `rejected[]` listing reported entities whose ids didn\'t match the spec (with a per-entry reason), and `ok:false` whenever rejections are present — wrong-format ids cannot pass silently. For state entities the report tool accepts either the path or the hex id; for event entities it accepts the literal event name.',
       inputSchema: {
         featureId: z.string(),
         reports: z
@@ -512,14 +515,18 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
             ...(batchAuditMeta !== undefined ? { auditMeta: batchAuditMeta } : {})
           });
           acks.push({
-            ok: true,
+            // ok is false when any reported entity was rejected. Caller can
+            // inspect `rejected[]` to see which ids were wrong format.
+            ok: result.rejectedEntities.length === 0,
             index: i,
             revision: result.revision,
             updatedAt: result.updatedAt,
             scope: result.scope,
             slug: result.slug,
             missingCount: result.missingEntities.length,
-            foundCount: result.foundEntities.length
+            foundCount: result.foundEntities.length,
+            rejectedCount: result.rejectedEntities.length,
+            rejected: result.rejectedEntities
           });
         } catch (e) {
           if (
@@ -836,9 +843,16 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       // keys (e.g. `action:add-to-cart` when the spec uses 8-char hex ids).
       const orphans = findOrphanKeys(index, expectedKeys);
 
+      // `ok` is false when ANY of these hold: a per-entity report failed,
+      // an index entry didn't match a spec entity, OR nothing landed at all
+      // (synced=0 is overwhelmingly a misconfiguration, not a no-op success).
+      const allFailedOrEmpty = acks.length === 0;
+      const ok =
+        successes === acks.length && orphans.length === 0 && !allFailedOrEmpty;
+
       return text(
         trackTokens('sync_from_index', {
-          ok: successes === acks.length && orphans.length === 0,
+          ok,
           projectId: String(project.id),
           featureIds: features.map((f) => String(f.id)),
           synced: acks.length,
