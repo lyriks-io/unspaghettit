@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
-  import { buildEventCatalog } from '$features/behavior-model/domain/services/EventCatalog';
+  import { groupEvents } from '$features/projects/presentation/services/crossFeatureGroups';
 
   type Props = {
     features: readonly Feature[];
@@ -9,37 +9,7 @@
 
   let { features, search }: Props = $props();
 
-  type Row = {
-    featureId: string;
-    featureName: string;
-    rowKey: string;
-    name: string;
-    description?: string;
-    payloadFieldCount: number;
-    emissions: number;
-  };
-
-  // Mirrors the per-feature EventsManager: union of registered events and
-  // events emitted by action / rule effects, so events that fire at runtime
-  // appear here even if no EventDefinition record exists.
-  const rows = $derived<Row[]>(
-    features.flatMap((e) => {
-      const registered = new Map((e.events ?? []).map((ev) => [String(ev.name), ev]));
-      return buildEventCatalog(e).map((entry) => {
-        const name = String(entry.name);
-        const declared = registered.get(name);
-        return {
-          featureId: e.id,
-          featureName: e.name,
-          rowKey: name,
-          name,
-          description: declared?.description,
-          payloadFieldCount: declared?.payloadSchema?.length ?? 0,
-          emissions: entry.emissions.length
-        };
-      });
-    })
-  );
+  const rows = $derived(groupEvents(features));
 
   const filtered = $derived(
     search.trim().length === 0
@@ -48,8 +18,8 @@
           const q = search.toLowerCase();
           return (
             r.name.toLowerCase().includes(q) ||
-            r.featureName.toLowerCase().includes(q) ||
-            (r.description ?? '').toLowerCase().includes(q)
+            (r.description ?? '').toLowerCase().includes(q) ||
+            r.sources.some((s) => s.featureName.toLowerCase().includes(q))
           );
         })
   );
@@ -60,7 +30,7 @@
     class="rounded-lg border border-dashed border-hairline bg-white p-6 text-center text-sm text-slate-500"
   >
     {rows.length === 0
-      ? 'No events registered across the project’s features.'
+      ? 'No events registered across the project features.'
       : 'No events match your search.'}
   </p>
 {:else}
@@ -71,11 +41,11 @@
           <th class="px-3 py-2">Event name</th>
           <th class="px-3 py-2">Emissions</th>
           <th class="px-3 py-2">Payload fields</th>
-          <th class="px-3 py-2">From feature</th>
+          <th class="px-3 py-2">From features</th>
         </tr>
       </thead>
       <tbody>
-        {#each filtered as row (row.featureId + ':' + row.rowKey)}
+        {#each filtered as row (row.key)}
           <tr class="border-t border-slate-100">
             <td class="px-3 py-2 font-mono text-slate-950">
               {row.name}
@@ -86,12 +56,16 @@
             <td class="px-3 py-2 text-slate-600">{row.emissions}</td>
             <td class="px-3 py-2 text-slate-600">{row.payloadFieldCount}</td>
             <td class="px-3 py-2 text-xs">
-              <a
-                href={`/features/${row.featureId}`}
-                class="text-brand-700 hover:underline"
-              >
-                {row.featureName}
-              </a>
+              <div class="flex flex-wrap gap-1">
+                {#each row.sources as src (src.featureId)}
+                  <a
+                    href={`/features/${src.featureId}`}
+                    class="rounded-full border border-cyan-100 bg-cyan-50/60 px-2 py-0.5 text-brand-700 hover:bg-cyan-50 hover:underline"
+                  >
+                    {src.featureName}
+                  </a>
+                {/each}
+              </div>
             </td>
           </tr>
         {/each}

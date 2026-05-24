@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
-  import { getEffectiveEntities } from '$features/behavior-model/domain/services/EffectiveEntities';
+  import { groupEntities } from '$features/projects/presentation/services/crossFeatureGroups';
 
   type Props = {
     features: readonly Feature[];
@@ -9,30 +9,7 @@
 
   let { features, search }: Props = $props();
 
-  type Row = {
-    featureId: string;
-    featureName: string;
-    rowKey: string;
-    namespace: string;
-    description?: string;
-    fieldCount: number;
-  };
-
-  // Mirrors the per-feature EntityManager: union of stored Entity records and
-  // namespaces deduced from state paths. Lets the project editor surface state-only
-  // entities (state defined on a surface, no Entity row authored yet) too.
-  const rows = $derived<Row[]>(
-    features.flatMap((e) =>
-      getEffectiveEntities(e).map((d) => ({
-        featureId: e.id,
-        featureName: e.name,
-        rowKey: d.id ?? d.namespace,
-        namespace: d.namespace,
-        description: d.description,
-        fieldCount: d.fields.length
-      }))
-    )
-  );
+  const rows = $derived(groupEntities(features));
 
   const filtered = $derived(
     search.trim().length === 0
@@ -41,8 +18,8 @@
           const q = search.toLowerCase();
           return (
             r.namespace.toLowerCase().includes(q) ||
-            r.featureName.toLowerCase().includes(q) ||
-            (r.description ?? '').toLowerCase().includes(q)
+            (r.description ?? '').toLowerCase().includes(q) ||
+            r.sources.some((s) => s.featureName.toLowerCase().includes(q))
           );
         })
   );
@@ -53,7 +30,7 @@
     class="rounded-lg border border-dashed border-hairline bg-white p-6 text-center text-sm text-slate-500"
   >
     {rows.length === 0
-      ? 'No data entities declared across the project’s features.'
+      ? 'No data entities declared across the project features.'
       : 'No data entities match your search.'}
   </p>
 {:else}
@@ -63,11 +40,11 @@
         <tr>
           <th class="px-3 py-2">Namespace</th>
           <th class="px-3 py-2">Fields</th>
-          <th class="px-3 py-2">From feature</th>
+          <th class="px-3 py-2">From features</th>
         </tr>
       </thead>
       <tbody>
-        {#each filtered as row (row.featureId + ':' + row.rowKey)}
+        {#each filtered as row (row.key)}
           <tr class="border-t border-slate-100">
             <td class="px-3 py-2 font-medium text-slate-950">
               {row.namespace}
@@ -77,12 +54,16 @@
             </td>
             <td class="px-3 py-2 text-slate-600">{row.fieldCount}</td>
             <td class="px-3 py-2 text-xs">
-              <a
-                href={`/features/${row.featureId}`}
-                class="text-brand-700 hover:underline"
-              >
-                {row.featureName}
-              </a>
+              <div class="flex flex-wrap gap-1">
+                {#each row.sources as src (src.featureId)}
+                  <a
+                    href={`/features/${src.featureId}`}
+                    class="rounded-full border border-cyan-100 bg-cyan-50/60 px-2 py-0.5 text-brand-700 hover:bg-cyan-50 hover:underline"
+                  >
+                    {src.featureName}
+                  </a>
+                {/each}
+              </div>
             </td>
           </tr>
         {/each}

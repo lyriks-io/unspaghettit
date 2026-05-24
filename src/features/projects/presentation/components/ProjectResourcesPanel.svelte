@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+  import { groupResources } from '$features/projects/presentation/services/crossFeatureGroups';
 
   type Props = {
     features: readonly Feature[];
@@ -8,35 +9,7 @@
 
   let { features, search }: Props = $props();
 
-  type Row = {
-    featureId: string;
-    featureName: string;
-    resourceId: string;
-    name: string;
-    kind: string;
-    provider: string;
-    scope: string;
-    sensitivity: string;
-    containsPii: boolean;
-    description?: string;
-  };
-
-  const rows = $derived<Row[]>(
-    features.flatMap((e) =>
-      e.resources.map((r) => ({
-        featureId: e.id,
-        featureName: e.name,
-        resourceId: r.id,
-        name: r.name,
-        kind: r.kind,
-        provider: r.provider,
-        scope: r.scope,
-        sensitivity: r.sensitivity,
-        containsPii: r.containsPii,
-        description: r.description
-      }))
-    )
-  );
+  const rows = $derived(groupResources(features));
 
   const filtered = $derived(
     search.trim().length === 0
@@ -47,7 +20,7 @@
             r.name.toLowerCase().includes(q) ||
             r.provider.toLowerCase().includes(q) ||
             r.kind.toLowerCase().includes(q) ||
-            r.featureName.toLowerCase().includes(q)
+            r.sources.some((s) => s.featureName.toLowerCase().includes(q))
           );
         })
   );
@@ -58,7 +31,7 @@
     class="rounded-lg border border-dashed border-hairline bg-white p-6 text-center text-sm text-slate-500"
   >
     {rows.length === 0
-      ? 'No resources declared across the project’s features.'
+      ? 'No resources declared across the project features.'
       : 'No resources match your search.'}
   </p>
 {:else}
@@ -72,11 +45,11 @@
           <th class="px-3 py-2">Scope</th>
           <th class="px-3 py-2">Sensitivity</th>
           <th class="px-3 py-2">PII</th>
-          <th class="px-3 py-2">From feature</th>
+          <th class="px-3 py-2">From features</th>
         </tr>
       </thead>
       <tbody>
-        {#each filtered as row (row.featureId + ':' + row.resourceId)}
+        {#each filtered as row (row.key)}
           <tr class="border-t border-slate-100">
             <td class="px-3 py-2 font-medium text-slate-950">
               {row.name}
@@ -90,12 +63,16 @@
             <td class="px-3 py-2 text-slate-600">{row.sensitivity}</td>
             <td class="px-3 py-2 text-slate-600">{row.containsPii ? 'Yes' : 'No'}</td>
             <td class="px-3 py-2 text-xs">
-              <a
-                href={`/features/${row.featureId}`}
-                class="text-brand-700 hover:underline"
-              >
-                {row.featureName}
-              </a>
+              <div class="flex flex-wrap gap-1">
+                {#each row.sources as src (src.featureId)}
+                  <a
+                    href={`/features/${src.featureId}`}
+                    class="rounded-full border border-cyan-100 bg-cyan-50/60 px-2 py-0.5 text-brand-700 hover:bg-cyan-50 hover:underline"
+                  >
+                    {src.featureName}
+                  </a>
+                {/each}
+              </div>
             </td>
           </tr>
         {/each}

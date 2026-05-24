@@ -21,9 +21,12 @@
   } from '$features/projects/presentation/services/projectBundleClient';
   import { fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { getEffectiveEntities } from '$features/behavior-model/domain/services/EffectiveEntities';
-  import { buildEventCatalog } from '$features/behavior-model/domain/services/EventCatalog';
-  import { buildTransitionCatalog } from '$features/behavior-model/domain/services/TransitionCatalog';
+  import {
+    groupResources,
+    groupEntities,
+    groupEvents,
+    groupTransitions
+  } from '$features/projects/presentation/services/crossFeatureGroups';
   import type { Tag } from '$shared/domain/Tags';
   import { tagLabel } from '$shared/domain/Tags';
 
@@ -47,10 +50,11 @@
     descriptionDraft = project.description ?? '';
   });
 
-  // Tab counters mirror what each panel actually renders. Entity / Events /
-  // Transitions panels use catalog services that include inferred entities
-  // (state-deduced data, action emit_event effects, action/rule
-  // transition_surface effects), so the counters must too.
+  // Tab counters mirror what each panel actually renders. Resources / Entity /
+  // Events / Transitions panels collapse duplicates that appear in multiple
+  // features (same `users` table referenced from two flows shows once, not
+  // twice), so the counters share that grouping logic instead of summing
+  // per-feature lengths.
   function panelCount(panel: ProjectPanel): number {
     const exps = projectFeaturesStore.features;
     switch (panel) {
@@ -62,13 +66,13 @@
         // queueStore only populates on mount).
         return projectStore.project?.implementationQueue?.length ?? 0;
       case 'resources':
-        return exps.reduce((acc, e) => acc + e.resources.length, 0);
+        return groupResources(exps).length;
       case 'data':
-        return exps.reduce((acc, e) => acc + getEffectiveEntities(e).length, 0);
+        return groupEntities(exps).length;
       case 'events':
-        return exps.reduce((acc, e) => acc + buildEventCatalog(e).length, 0);
+        return groupEvents(exps).length;
       case 'transitions':
-        return exps.reduce((acc, e) => acc + buildTransitionCatalog(e).length, 0);
+        return groupTransitions(exps).length;
     }
   }
 
