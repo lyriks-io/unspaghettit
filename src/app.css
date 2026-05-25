@@ -39,6 +39,37 @@ body {
   color: #0f172a;
 }
 
+/*
+ * Restore `cursor: pointer` on interactive elements.
+ *
+ * Tailwind v4 changed its Preflight base styles so <button>, <select>,
+ * and friends now render with `cursor: default` instead of `pointer`.
+ * That makes clickable controls visually indistinguishable from text -
+ * users hover and don't know they can click. We override Preflight
+ * here so every interactive element shows the hand cursor unless it's
+ * disabled. The :not(:disabled) guard preserves the not-allowed cursor
+ * components already opt into with `disabled:cursor-not-allowed`.
+ */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled),
+  [role='tab']:not(:disabled),
+  [role='menuitem']:not(:disabled),
+  [role='option']:not(:disabled),
+  summary,
+  select:not(:disabled),
+  label:has(input[type='checkbox']:not(:disabled)),
+  label:has(input[type='radio']:not(:disabled)),
+  input[type='checkbox']:not(:disabled),
+  input[type='radio']:not(:disabled),
+  input[type='file']:not(:disabled),
+  input[type='submit']:not(:disabled),
+  input[type='reset']:not(:disabled),
+  input[type='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 .mono {
   font-family: var(--font-mono);
 }

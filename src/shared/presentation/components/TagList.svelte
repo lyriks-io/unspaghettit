@@ -59,7 +59,7 @@
       {#each tags as tag}
         <span
           class="group/chip inline-flex h-5 max-w-full items-stretch overflow-hidden rounded-md text-[11px] font-medium ring-1 ring-inset ring-emerald-200/70"
-          title={`${tag.type} — ${tag.value}`}
+          title={`${tag.type}: ${tag.value}`}
         >
           <span class="flex items-center bg-emerald-100/80 px-1.5 text-[9px] uppercase leading-none tracking-wider text-emerald-700">
             {tag.type}
@@ -70,12 +70,22 @@
           {#if onRemoveTag}
             <button
               type="button"
-              class="flex w-0 items-center justify-center overflow-hidden bg-emerald-50 leading-none text-emerald-700 opacity-0 transition-all duration-150 group-hover/chip:w-4 group-hover/chip:pr-1 group-hover/chip:opacity-100 hover:bg-red-100! hover:text-red-700!"
+              class="flex w-0 shrink-0 items-center justify-center overflow-hidden bg-emerald-50 text-emerald-700 opacity-0 transition-all duration-150 group-hover/chip:w-5 group-hover/chip:opacity-100 hover:bg-red-100! hover:text-red-700!"
               onclick={() => onRemoveTag?.(tag.type, tag.value)}
               aria-label={`Remove tag ${tag.type}: ${tag.value}`}
               title="Remove tag"
             >
-              Ã-
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 16 16"
+                class="h-3 w-3"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              >
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
             </button>
           {/if}
         </span>
