@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 // Bin shim. Registers tsx so we can ship the MCP server as TypeScript without a
 // build step. Mirrors cli/unspa.cjs — same pattern, different entrypoint.
 // `npx unspa-mcp` and any globally-installed CLI find this file via the `bin`
