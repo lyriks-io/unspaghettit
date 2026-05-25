@@ -1,4 +1,4 @@
-﻿import type { Feature } from '../entities/Feature';
+import type { Feature } from '../entities/Feature';
 import { isEventName } from '../value-objects/EventName';
 import type { Expression } from '../value-objects/Expression';
 import { isExpression } from '../value-objects/Expression';

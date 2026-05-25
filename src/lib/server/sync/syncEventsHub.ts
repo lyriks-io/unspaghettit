@@ -1,4 +1,4 @@
-﻿import type { RoomKind } from '../../sync/roomId';
+import type { RoomKind } from '../../sync/roomId';
 
 /**
  * Out-of-band sync invalidation event. The shape is the wire contract

@@ -1,4 +1,4 @@
-﻿import type { FeatureSummary } from '$features/behavior-model/application/ports/FeatureRepository';
+import type { FeatureSummary } from '$features/behavior-model/application/ports/FeatureRepository';
 import type { FeatureRepository } from '../ports/FeatureRepository';
 import type { ImplementationStatusRepository } from '$features/implementation-status/application/ports/ImplementationStatusRepository';
 import { scoreFeature } from '$features/maturity/domain/MaturityScorer';

@@ -1,4 +1,4 @@
-﻿import { browser } from '$app/environment';
+import { browser } from '$app/environment';
 import type { RoomKind } from '../../sync/roomId';
 import { authStore } from '$shared/security/authStore.svelte';
 

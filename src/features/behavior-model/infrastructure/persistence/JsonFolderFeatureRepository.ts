@@ -1,4 +1,4 @@
-﻿import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import writeFileAtomic from 'write-file-atomic';
 import type {
   FeatureRepository,

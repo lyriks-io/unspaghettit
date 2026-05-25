@@ -1,4 +1,4 @@
-﻿import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path';
 import pc from 'picocolors';

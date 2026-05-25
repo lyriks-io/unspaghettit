@@ -1,4 +1,4 @@
-﻿import type { Action } from '$features/behavior-model/domain/entities/Action';
+import type { Action } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Persona } from '$features/behavior-model/domain/entities/Persona';
 import type {

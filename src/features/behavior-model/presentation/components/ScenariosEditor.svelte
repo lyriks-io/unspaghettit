@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import type { Action } from '$features/behavior-model/domain/entities/Action';
   import type {
     Scenario,

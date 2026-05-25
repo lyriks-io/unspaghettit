@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Structured "what changed in this write" descriptor produced by diffing
  * two snapshots. Drives both the activity toast (path-based breadcrumb +
  * op chip) and the per-feature history label, so the two channels stay

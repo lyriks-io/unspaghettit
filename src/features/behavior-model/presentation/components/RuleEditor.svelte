@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import type { Rule } from '$features/behavior-model/domain/entities/Rule';
   import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
   import {

@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import type { HistoryEntry } from '$lib/sync/protocol';
   import { confirmDialog } from '$shared/presentation/dialogs/dialogStore.svelte';

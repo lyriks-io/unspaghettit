@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 import { createFeatureUseCase } from '../../src/features/behavior-model/application/use-cases/CreateFeature';
 import { deleteFeatureUseCase } from '../../src/features/behavior-model/application/use-cases/DeleteFeature';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';

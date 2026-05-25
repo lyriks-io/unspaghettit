@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Shared "wire-shape → typed entity" builders. Single source of truth for
  * how an MCP input record maps to a Scenario / Rule / Invariant. Both the
  * granular tools (`mcp-server/tools/scenario.ts`, `rule.ts`, `invariant.ts`)

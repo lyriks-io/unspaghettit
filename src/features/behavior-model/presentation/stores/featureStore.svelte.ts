@@ -1,4 +1,4 @@
-﻿import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import { FeatureValidationError } from '$features/behavior-model/application/use-cases/MutateFeature';
 import { getBrowserContainer } from '$shared/infrastructure/browserContainer';

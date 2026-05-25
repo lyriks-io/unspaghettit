@@ -1,4 +1,4 @@
-﻿import type { Effect } from '../value-objects/Effect';
+import type { Effect } from '../value-objects/Effect';
 import type { EventName } from '../value-objects/EventName';
 import type { ActionId } from '../value-objects/ids';
 import type { StatePath } from '../value-objects/StatePath';

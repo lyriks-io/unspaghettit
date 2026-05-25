@@ -1,4 +1,4 @@
-﻿import type { Clock } from '$shared/domain/Clock';
+import type { Clock } from '$shared/domain/Clock';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import { normalizeFeatureEmittedEvents } from '$features/behavior-model/domain/services/FeatureEmittedEventsNormalizer';

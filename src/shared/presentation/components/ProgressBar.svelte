@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   /**
    * Reusable maturity / implementation progress bar.
    *

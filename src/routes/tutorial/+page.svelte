@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import TutorialSection from "$features/tutorial/presentation/components/TutorialSection.svelte";
   import CodeBlock from "$features/tutorial/presentation/components/CodeBlock.svelte";
   import Callout from "$features/tutorial/presentation/components/Callout.svelte";

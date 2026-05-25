@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 import type { ParameterValues } from '../../src/features/behavior-model/domain/services/ParameterValidator';
 import type { StateSnapshot } from '../../src/features/behavior-model/domain/value-objects/StatePath';
 import {

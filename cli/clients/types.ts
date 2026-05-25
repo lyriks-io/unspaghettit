@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MCP host integrations. Each client knows where its config file lives and
  * how to merge the unspa server entry without clobbering the user's other
  * server registrations.

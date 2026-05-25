@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { tick } from 'svelte';
   import { asSurfaceId, type SurfaceId } from '$features/behavior-model/domain/value-objects/ids';
   import {

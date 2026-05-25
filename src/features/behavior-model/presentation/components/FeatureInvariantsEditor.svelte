@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
   import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';

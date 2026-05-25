@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 import type { Action } from '../../src/features/behavior-model/domain/entities/Action';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import type { Surface } from '../../src/features/behavior-model/domain/entities/Surface';

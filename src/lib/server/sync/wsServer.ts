@@ -1,4 +1,4 @@
-﻿import type { IncomingMessage, Server as HttpServer } from 'node:http';
+import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import * as Y from 'yjs';
 import { parseRoomId, type RoomId } from '../../sync/roomId';

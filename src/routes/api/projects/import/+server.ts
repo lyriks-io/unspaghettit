@@ -1,4 +1,4 @@
-﻿import { error, json } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { ImplementationStatus } from '$features/implementation-status/domain/ImplementationStatus';

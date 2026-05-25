@@ -1,4 +1,4 @@
-﻿export type IdGenerator = () => string;
+export type IdGenerator = () => string;
 
 /**
  * 8-char hex IDs. Short enough that tool payloads stay cheap, long enough

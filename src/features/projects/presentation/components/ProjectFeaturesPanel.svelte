@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { tick } from "svelte";
   import FeatureCard from "$features/behavior-model/presentation/components/FeatureCard.svelte";
   import type { Feature } from "$features/behavior-model/domain/entities/Feature";

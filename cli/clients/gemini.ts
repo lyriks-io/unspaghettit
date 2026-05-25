@@ -1,4 +1,4 @@
-﻿import { existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { mergeMcpServerEntry } from '../util/json';
 import { SERVER_NAME } from './constants';

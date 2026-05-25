@@ -1,4 +1,4 @@
-﻿import type { Feature } from '../entities/Feature';
+import type { Feature } from '../entities/Feature';
 import type { StateDefinition } from '../entities/StateDefinition';
 import type { Surface } from '../entities/Surface';
 import type { Effect } from '../value-objects/Effect';

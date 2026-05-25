@@ -38,7 +38,8 @@ export default defineConfig({
     include: [
       'src/**/*.{test,spec}.ts',
       'mcp-server/**/*.{test,spec}.ts',
-      'cli/**/*.{test,spec}.ts'
+      'cli/**/*.{test,spec}.ts',
+      'scripts/**/*.{test,spec}.ts'
     ],
     environment: 'node',
     globals: false

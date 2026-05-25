@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import type { Persona } from '$features/behavior-model/domain/entities/Persona';
   import type { Surface } from '$features/behavior-model/domain/entities/Surface';
   import { humanizeStatePath } from '$features/behavior-model/domain/value-objects/humanize';

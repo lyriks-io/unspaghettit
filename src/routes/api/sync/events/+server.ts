@@ -1,4 +1,4 @@
-﻿import type { RequestHandler } from './$types';
+import type { RequestHandler } from './$types';
 import { getSyncEventsHub } from '$lib/server/sync/syncEventsHub';
 
 export const prerender = false;

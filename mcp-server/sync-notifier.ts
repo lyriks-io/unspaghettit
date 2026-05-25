@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Out-of-band sync hook. The MCP server is a stdio child process that talks
  * directly to the JSON snapshot files on disk; if a SvelteKit server is
  * also running on `UNSPA_SYNC_URL` it holds Y.Doc snapshots in memory and

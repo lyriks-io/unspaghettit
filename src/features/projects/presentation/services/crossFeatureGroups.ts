@@ -1,4 +1,4 @@
-﻿import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Resource } from '$features/behavior-model/domain/entities/Resource';
 import { getEffectiveEntities } from '$features/behavior-model/domain/services/EffectiveEntities';
 import { buildEventCatalog } from '$features/behavior-model/domain/services/EventCatalog';

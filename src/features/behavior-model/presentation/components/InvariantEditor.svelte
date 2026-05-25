@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
   import {
     ALL_OPERATORS,

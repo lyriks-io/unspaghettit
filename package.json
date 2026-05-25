@@ -47,7 +47,9 @@
     "unspa": "node cli/unspa.cjs",
     "skills:sync": "node scripts/sync-skills.cjs",
     "skills:check": "node scripts/sync-skills.cjs --check",
-    "prepublishOnly": "npm run skills:check && npm run build && npm test"
+    "bom:strip": "node scripts/strip-bom.cjs",
+    "bom:check": "node scripts/strip-bom.cjs --check",
+    "prepublishOnly": "npm run skills:check && npm run bom:check && npm run build && npm test"
   },
   "bin": {
     "unspa": "./cli/unspa.cjs",

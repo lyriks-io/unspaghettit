@@ -1,4 +1,4 @@
-﻿import { error, json } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSyncManager } from '$lib/server/sync';
 import { getSyncEventsHub, type SyncEvent } from '$lib/server/sync/syncEventsHub';

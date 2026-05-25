@@ -1,4 +1,4 @@
-﻿import type { Expression } from './Expression';
+import type { Expression } from './Expression';
 import type { Operator } from './Operator';
 import type { StatePath } from './StatePath';
 import type { StateValue } from './StateValue';

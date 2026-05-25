@@ -1,4 +1,4 @@
-﻿import type { Action } from '../entities/Action';
+import type { Action } from '../entities/Action';
 import type { Entity, EntityField } from '../entities/Entity';
 import type { EventDefinition } from '../entities/EventDefinition';
 import type { Feature } from '../entities/Feature';

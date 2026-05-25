@@ -1,4 +1,4 @@
-﻿import type { Action } from '../entities/Action';
+import type { Action } from '../entities/Action';
 import type { Feature } from '../entities/Feature';
 import type { Effect } from '../value-objects/Effect';
 import { asEventName, type EventName } from '../value-objects/EventName';

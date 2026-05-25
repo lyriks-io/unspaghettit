@@ -1,4 +1,4 @@
-﻿import { createRequire } from 'node:module';
+import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { runDashboardCommand } from './commands/dashboard';
 import { runInitCommand } from './commands/init';

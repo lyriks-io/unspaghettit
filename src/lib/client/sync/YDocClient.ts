@@ -1,4 +1,4 @@
-﻿import * as Y from 'yjs';
+import * as Y from 'yjs';
 import { decode, encode, type HistoryEntry, type HistoryView } from '../../sync/protocol';
 import { ROOM_DOC_FIELD, ROOM_DOC_MAP, type RoomId } from '../../sync/roomId';
 import { identityStore } from '$shared/identity/identityStore.svelte';

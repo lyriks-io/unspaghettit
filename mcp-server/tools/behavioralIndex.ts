@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 import { readFileSync } from 'node:fs';
 import { type BehavioralIndex } from '../repo-link';
 import { errorText, text, type ToolDeps } from './_shared';

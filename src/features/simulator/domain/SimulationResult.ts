@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   AppliedEffectRecord,
   EffectApplication
 } from '$features/behavior-model/domain/services/EffectApplier';

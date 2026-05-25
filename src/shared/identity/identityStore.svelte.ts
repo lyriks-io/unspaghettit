@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Per-browser identity. Drives the `author` field on history entries so
  * a shared room shows "Adrien made this change" instead of an opaque
  * `user-X9F2`. Stored in localStorage under a single key; no server-side

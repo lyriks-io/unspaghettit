@@ -1,4 +1,4 @@
-﻿import type { Action } from '../entities/Action';
+import type { Action } from '../entities/Action';
 import type { Feature } from '../entities/Feature';
 import type { Rule } from '../entities/Rule';
 import type { Surface } from '../entities/Surface';

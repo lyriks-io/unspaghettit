@@ -1,4 +1,4 @@
-﻿import type { Effect } from '../value-objects/Effect';
+import type { Effect } from '../value-objects/Effect';
 import type { RuleId } from '../value-objects/ids';
 import type { RuleCategory } from '../value-objects/RuleCategory';
 import type { RuleCondition } from '../value-objects/RuleCondition';

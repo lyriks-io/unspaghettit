@@ -1,4 +1,4 @@
-﻿<script lang="ts" module>
+<script lang="ts" module>
   // Module-scoped counter so each TagList instance gets a unique datalist id
   // without relying on crypto/SSR-fragile randomness.
   let nextDatalistSerial = 0;

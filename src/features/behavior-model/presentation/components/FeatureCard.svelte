@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import type { FeatureCardModel } from '$features/behavior-model/application/use-cases/ListFeaturesWithMaturity';
   import TagList from '$shared/presentation/components/TagList.svelte';
   import ProgressBar from '$shared/presentation/components/ProgressBar.svelte';

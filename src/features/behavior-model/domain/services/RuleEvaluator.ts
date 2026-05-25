@@ -1,4 +1,4 @@
-﻿import {
+import {
   evaluateConditionInternal,
   type EvaluationContext
 } from '../value-objects/Expression';

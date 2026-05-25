@@ -1,4 +1,4 @@
-﻿import type { StatePath, StateSnapshot } from './StatePath';
+import type { StatePath, StateSnapshot } from './StatePath';
 import { readPath } from './StatePath';
 import type { StateValue } from './StateValue';
 import {
