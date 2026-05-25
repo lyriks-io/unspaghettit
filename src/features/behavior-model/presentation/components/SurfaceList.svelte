@@ -78,7 +78,13 @@
   }
 
   function onSurfacesAdded(ids: readonly SurfaceId[]) {
-    for (const id of ids) emit('editor.surface.added', { surfaceId: String(id) });
+    for (const id of ids) {
+      const surface = feature.surfaces.find((s) => s.id === id);
+      emit('editor.surface.added', {
+        surfaceId: String(id),
+        name: surface?.name ?? ''
+      });
+    }
     const first = ids[0];
     if (first) onSelect(first);
   }
@@ -163,6 +169,7 @@
     <h2 class="text-sm font-semibold text-slate-950">Surfaces</h2>
     <button
       type="button"
+      data-tour="add-surface-button"
       class="inline-flex items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50"
       onclick={() => (dialogOpen = true)}
     >

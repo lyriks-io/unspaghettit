@@ -84,7 +84,7 @@ export const newRule = (
   effect: {
     id: asEffectId(ids()),
     type: 'block_action',
-    reason: 'Action blocked by rule'
+    reason: ''
   }
 });
 
@@ -98,7 +98,7 @@ export const newEffect = (ids: IdGenerator, type: Effect['type']): Effect => {
         value: ''
       };
     case 'show_message':
-      return { id: asEffectId(ids()), type: 'show_message', message: 'Message', tone: 'info' };
+      return { id: asEffectId(ids()), type: 'show_message', message: '', tone: 'info' };
     case 'emit_event':
       return {
         id: asEffectId(ids()),
@@ -106,7 +106,7 @@ export const newEffect = (ids: IdGenerator, type: Effect['type']): Effect => {
         event: 'event.name' as never
       };
     case 'block_action':
-      return { id: asEffectId(ids()), type: 'block_action', reason: 'Reason' };
+      return { id: asEffectId(ids()), type: 'block_action', reason: '' };
     case 'allow_action':
       return { id: asEffectId(ids()), type: 'allow_action' };
     case 'transition_surface':
@@ -128,5 +128,5 @@ export const newInvariant = (
     left: asStatePath(init.left),
     operator: 'exists'
   },
-  message: 'Invariant violated'
+  message: ''
 });

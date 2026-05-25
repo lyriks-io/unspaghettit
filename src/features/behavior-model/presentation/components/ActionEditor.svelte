@@ -467,7 +467,7 @@
         </div>
       </section>
 
-      <section>
+      <section data-tour="action-parameters-section">
         <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Parameters
         </h3>
@@ -481,7 +481,7 @@
         <ScenariosEditor {surface} {action} />
       </section>
 
-      <section>
+      <section data-tour="action-rules-section">
         <h3 class="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
           <span>Rules ({action.rules.length})</span>
           <button
@@ -502,6 +502,7 @@
               <RuleEditor
                 {rule}
                 {availablePaths}
+                availableParameters={action.parameters}
                 onChange={(next) => updateRule(next)}
                 onRemove={() => removeRule(rule.id)}
               />
@@ -510,7 +511,7 @@
         {/if}
       </section>
 
-      <section>
+      <section data-tour="action-effects-section">
         <h3 class="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
           <span>On success effects ({action.effects.length})</span>
           <button

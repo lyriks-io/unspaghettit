@@ -14,6 +14,7 @@
     resourceKindLabel,
     sensitivityLabel
   } from '$features/behavior-model/domain/value-objects/Resource';
+  import { tick } from 'svelte';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import {
     updateAction,
@@ -42,7 +43,7 @@
   async function add() {
     const parameter: Parameter = {
       id: asParameterId(cryptoIdGenerator()),
-      name: 'parameter',
+      name: '',
       type: 'string',
       required: true
     };
@@ -52,6 +53,13 @@
       })
     );
     expandedId = parameter.id;
+    // Focus the name input of the just-added row so the user can type
+    // straight away without clicking.
+    await tick();
+    const input = document.querySelector<HTMLInputElement>(
+      `[data-parameter-id="${parameter.id}"] input[type="text"]`
+    );
+    input?.focus();
   }
 
   async function update(id: ParameterId, patch: Partial<Parameter>) {
@@ -156,6 +164,7 @@
         {@const isExpanded = expandedId === parameter.id}
         {@const validationCount = parameter.validations?.length ?? 0}
         <li
+          data-parameter-id={parameter.id}
           class="rounded-md border bg-white {isExpanded
             ? 'border-brand-300 ring-1 ring-brand-200'
             : 'border-neutral-200'}"

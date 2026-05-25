@@ -9,6 +9,12 @@
     chooseDialog,
   } from "$shared/presentation/dialogs/dialogStore.svelte";
   import { formatSampleSummary } from "$features/behavior-model/presentation/loadSamplesMessage";
+  import { tourStore } from "$features/tutorial/presentation/stores/tourStore.svelte";
+  import { firstFeatureTour } from "$features/tutorial/infrastructure/tours/firstFeatureTour";
+
+  function startInteractiveTour(): void {
+    tourStore.start(firstFeatureTour);
+  }
 
   const sections = [
     { id: "why", title: "1. Why executable specs" },
@@ -125,6 +131,14 @@
           <span class="relative z-10">
             {busyLoadingSamples ? "Loading..." : "Load sample project"}
           </span>
+        </button>
+        <button
+          type="button"
+          class="w-full rounded-md border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition hover:bg-brand-100"
+          onclick={startInteractiveTour}
+          title="Side panel walks you through creating your first feature"
+        >
+          &rarr; Run interactive tutorial
         </button>
         <a
           href="/features"

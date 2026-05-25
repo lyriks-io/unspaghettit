@@ -27,6 +27,7 @@
 </script>
 
 <article
+  data-tour="project-card"
   class="group relative flex h-full min-h-52 flex-col justify-between overflow-hidden rounded-xl border border-cyan-100 bg-white p-5 shadow-sm shadow-cyan-950/5 transition duration-150 hover:-translate-y-0.5 hover:border-cyan-200 hover:bg-cyan-50/20 hover:shadow-md hover:shadow-cyan-950/10 focus-within:border-cyan-300"
 >
   <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-brand-mint to-violet-400"></div>

@@ -13,6 +13,8 @@
   import { cryptoIdGenerator } from '$shared/domain/IdGenerator';
   import { applyBlueprintsToFeature } from '$features/library/application/use-cases/ApplyBlueprintsToFeature';
   import { inMemoryBlueprintRepository } from '$features/library/infrastructure/InMemoryBlueprintRepository';
+  import { tourStore } from '$features/tutorial/presentation/stores/tourStore.svelte';
+  import { evaluateTourSubmitGuard } from '$features/tutorial/domain/services/SubmitGuard';
   import {
     ALL_BLUEPRINT_CATEGORIES,
     blueprintCategoryLabel,
@@ -84,6 +86,12 @@
 
   let blankName = $state('');
   let blankType = $state<SurfaceType>('screen');
+
+  // Tutor-mode guard: blocks blank-surface submit until name matches the
+  // tour's `requireExact.value`. Pure predicate from the domain layer.
+  const tourGuard = $derived(
+    evaluateTourSubmitGuard(tourStore.currentStep, 'blank-surface', blankName)
+  );
 
   $effect(() => {
     if (!dialogEl) return;
@@ -259,6 +267,7 @@
       <div class="grid flex-1 grid-cols-1 gap-4 p-6 sm:grid-cols-2">
         <button
           type="button"
+          data-tour="chooser-create-new"
           onclick={() => (step = 'blank')}
           class="group flex h-full flex-col items-start gap-3 rounded-2xl border-2 border-slate-200 bg-white p-6 text-left transition hover:-translate-y-0.5 hover:border-brand-500 hover:bg-cyan-50/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-400"
         >
@@ -302,6 +311,7 @@
     {:else if step === 'blank'}
       <form
         class="flex flex-1 flex-col gap-4 p-6"
+        data-tour="blank-surface-form"
         onsubmit={(event) => {
           event.preventDefault();
           void createBlank();
@@ -340,7 +350,10 @@
           </button>
           <button
             type="submit"
-            disabled={blankName.trim().length === 0}
+            disabled={blankName.trim().length === 0 || tourGuard.blocked}
+            title={tourGuard.blocked
+              ? `Tutorial: name must be exactly "${tourGuard.requiredValue}"`
+              : undefined}
             class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             Create surface

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { tourStore } from '$features/tutorial/presentation/stores/tourStore.svelte';
+  import { evaluateTourSubmitGuard } from '$features/tutorial/domain/services/SubmitGuard';
 
   type Props = {
     onSubmit: (name: string, description: string) => void | Promise<void>;
@@ -11,6 +13,14 @@
   let description = $state('');
   let busy = $state(false);
   let nameInput = $state<HTMLInputElement | null>(null);
+
+  // Tutor-mode submit guard. The verdict is a pure function of the
+  // tour's current step and the typed name; the form just feeds it into
+  // its disabled binding so the rest of the form code stays
+  // tour-agnostic.
+  const tourGuard = $derived(
+    evaluateTourSubmitGuard(tourStore.currentStep, 'new-project', name)
+  );
 
   $effect(() => {
     if (!nameInput) return;
@@ -35,6 +45,7 @@
 
 <form
   onsubmit={handleSubmit}
+  data-tour="new-project-form"
   class="grid gap-3 rounded-xl border border-cyan-100 bg-cyan-50/40 p-4 md:grid-cols-[1fr_1.6fr_auto] md:items-end"
 >
   <div>
@@ -57,6 +68,7 @@
     </label>
     <input
       id="proj-desc"
+      data-tour="new-project-description"
       type="text"
       bind:value={description}
       placeholder="What product or initiative does this group?"
@@ -67,7 +79,10 @@
   <button
     type="submit"
     class="h-10 rounded-md bg-brand-800 px-4 text-sm font-medium text-white hover:bg-brand-900 disabled:cursor-not-allowed disabled:opacity-50"
-    disabled={busy || name.trim().length === 0 || description.trim().length === 0}
+    title={tourGuard.blocked
+      ? `Tutorial: name must be exactly "${tourGuard.requiredValue}"`
+      : undefined}
+    disabled={busy || name.trim().length === 0 || description.trim().length === 0 || tourGuard.blocked}
   >
     {busy ? 'Creating...' : 'New project'}
   </button>

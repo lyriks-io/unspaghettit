@@ -63,7 +63,7 @@
   }
 </script>
 
-<div class="space-y-2 text-sm">
+<div class="space-y-2 text-sm" data-tour="simulator-panel">
   <!-- ─── Mode toggle: Simulated ↔ Real ─────────────────────────────── -->
   <div
     class="flex rounded-md border border-hairline bg-slate-50 p-0.5 text-[11px] font-medium"
@@ -182,6 +182,7 @@
   <div class="flex items-center gap-1.5">
     <button
       type="button"
+      data-tour="simulator-run"
       class="flex-1 rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-slate-300"
       onclick={run}
       disabled={!selectedCapability}
@@ -222,7 +223,9 @@
 
   <!-- ─── Result ───────────────────────────────────────────────────── -->
   {#if simulatorStore.lastResult}
-    <SimulationResultView {feature} result={simulatorStore.lastResult} {surface} />
+    <div data-tour="simulator-result">
+      <SimulationResultView {feature} result={simulatorStore.lastResult} {surface} />
+    </div>
   {/if}
 
   <!-- ─── History (collapsed by default) ───────────────────────────── -->

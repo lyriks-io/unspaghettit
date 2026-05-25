@@ -18,6 +18,8 @@
   import { cryptoIdGenerator } from '$shared/domain/IdGenerator';
   import ActionEditor from './ActionEditor.svelte';
   import { emit } from '$shared/events/eventBus';
+  import { tourStore } from '$features/tutorial/presentation/stores/tourStore.svelte';
+  import { evaluateTourSubmitGuard } from '$features/tutorial/domain/services/SubmitGuard';
 
   type AvailableSurface = { readonly id: Surface['id']; readonly name: string };
 
@@ -31,6 +33,12 @@
 
   let nameDraft = $state('');
   let groupBy = $state<'none' | 'category'>('none');
+
+  // Tutor-mode guard: blocks "Add action" submit until name matches the
+  // tour's `requireExact.value`. Pure predicate from the domain layer.
+  const tourGuard = $derived(
+    evaluateTourSubmitGuard(tourStore.currentStep, 'add-action', nameDraft)
+  );
 
   async function add() {
     const name = nameDraft.trim();
@@ -104,6 +112,7 @@
        (parameters, rules, effects) gets filled in by expanding the row. -->
   <form
     class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2"
+    data-tour="add-action-form"
     onsubmit={(e) => {
       e.preventDefault();
       add();
@@ -118,7 +127,10 @@
     <button
       type="submit"
       class="h-9 inline-flex items-center gap-1 rounded-md bg-slate-900 px-3 text-xs font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
-      disabled={nameDraft.trim().length === 0}
+      disabled={nameDraft.trim().length === 0 || tourGuard.blocked}
+      title={tourGuard.blocked
+        ? `Tutorial: name must be exactly "${tourGuard.requiredValue}"`
+        : undefined}
     >
       <span class="text-base leading-none">+</span> Add action
     </button>

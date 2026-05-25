@@ -30,6 +30,7 @@
   <!-- Maturity health -->
   <button
     type="button"
+    data-tour="maturity-toggle"
     class="group flex min-w-[10rem] flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm shadow-slate-950/5 transition hover:border-slate-300 hover:bg-slate-50"
     onclick={() => editorStore.openRail('maturity')}
     title="Open Maturity panel"
@@ -63,6 +64,7 @@
   <!-- Implementation health -->
   <button
     type="button"
+    data-tour="implementation-toggle"
     class="group flex min-w-[10rem] flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm shadow-slate-950/5 transition hover:border-slate-300 hover:bg-slate-50"
     onclick={() => editorStore.openRail('implementation')}
     title="Open Implementation panel"
@@ -91,6 +93,7 @@
   <!-- Simulator quick-open -->
   <button
     type="button"
+    data-tour="simulator-toggle"
     class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm shadow-slate-950/5 transition hover:border-slate-300 hover:bg-slate-50"
     onclick={() => editorStore.openRail('simulator')}
     title="Open Simulator panel"

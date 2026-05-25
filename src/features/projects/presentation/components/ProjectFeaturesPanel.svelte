@@ -11,6 +11,8 @@
   import { projectStore } from "$features/projects/presentation/stores/projectStore.svelte";
   import { queueItemKey } from "$features/implementation-queue/domain/entities/QueueItem";
   import { getBrowserContainer } from "$shared/infrastructure/browserContainer";
+  import { tourStore } from "$features/tutorial/presentation/stores/tourStore.svelte";
+  import { evaluateTourSubmitGuard } from "$features/tutorial/domain/services/SubmitGuard";
 
   type Props = {
     features: readonly Feature[];
@@ -43,6 +45,12 @@
   let newName = $state("");
   let newDescription = $state("");
   let creating = $state(false);
+
+  // Tutor-mode guard: blocks submit until name matches the tour's
+  // current `requireExact.value`. Pure predicate from the domain layer.
+  const tourGuard = $derived(
+    evaluateTourSubmitGuard(tourStore.currentStep, "new-feature", newName)
+  );
 
   // Impl statuses fetched per feature on demand. Cards show "-" until the
   // fetch lands so layout doesn't shift, then update reactively in place.
@@ -234,6 +242,7 @@
         </label>
         <button
           type="button"
+          data-tour="new-feature-button"
           class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-medium text-white"
           onclick={() => openAdd()}
           title="Create a new feature inside this project"
@@ -328,6 +337,7 @@
 
       <form
         class="space-y-3 p-5"
+        data-tour="new-feature-form"
         onsubmit={(event) => {
           event.preventDefault();
           void handleCreate();
@@ -348,6 +358,7 @@
             Description
             <input
               type="text"
+              data-tour="new-feature-description"
               bind:value={newDescription}
               placeholder="What is this feature about?"
               class="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-900"
@@ -364,7 +375,10 @@
             </button>
             <button
               type="submit"
-              disabled={creating || newName.trim().length === 0 || newDescription.trim().length === 0}
+              disabled={creating || newName.trim().length === 0 || newDescription.trim().length === 0 || tourGuard.blocked}
+              title={tourGuard.blocked
+                ? `Tutorial: name must be exactly "${tourGuard.requiredValue}"`
+                : undefined}
               class="h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-50"
             >
               {creating ? 'Creating...' : 'Create feature'}

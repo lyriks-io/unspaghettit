@@ -313,7 +313,7 @@
           disabled={importing}
           title="Restore a project from a .unspa file"
         >
-          <span aria-hidden="true">â¬†</span>
+          <span aria-hidden="true">&#x2B06;</span>
           {importing ? 'Importing...' : 'Import .unspa'}
         </button>
         <input
@@ -325,6 +325,7 @@
         />
         <button
           type="button"
+          data-tour="new-project-button"
           class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800"
           onclick={() => (createOpen = true)}
         >

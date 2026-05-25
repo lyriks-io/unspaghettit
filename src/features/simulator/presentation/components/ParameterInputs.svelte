@@ -14,6 +14,22 @@
   type Props = { surfaceId: SurfaceId; action: Action };
   let { surfaceId, action }: Props = $props();
 
+  // Boolean params render as a "Yes/No" select that visually shows "No"
+  // by default, but until the user opens the dropdown and picks an
+  // option the simulator-side `parameters` map has no entry for them.
+  // For a required boolean that means the very first Run hits
+  // "missing required parameter" and silently blocks. Seed false so
+  // the visual default matches the simulator state from frame zero.
+  // (Non-boolean types stay unset so required-but-empty still surfaces
+  // validation as expected.)
+  $effect(() => {
+    for (const parameter of action.parameters) {
+      if (parameter.type !== 'boolean') continue;
+      if (simulatorStore.parameters[parameter.name] !== undefined) continue;
+      simulatorStore.setParameter(parameter.name, false, parameter.bindToStatePath);
+    }
+  });
+
   function coerce(raw: string, type: ParameterType): StateValue {
     if (type === 'boolean') return raw === 'true';
     if (type === 'number') {
@@ -108,7 +124,7 @@
   {#each action.parameters as parameter, index (parameter.id)}
     {@const canMoveUp = index > 0}
     {@const canMoveDown = index < action.parameters.length - 1}
-    <li class="group">
+    <li class="group" data-tour-sim-param={parameter.name}>
       <div class="mb-0.5 flex items-baseline justify-between gap-2">
         <label
           class="flex items-baseline gap-1.5 text-[11px] font-medium text-neutral-700"

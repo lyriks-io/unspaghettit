@@ -4,7 +4,9 @@
   import { fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import AppDialog from "$shared/presentation/dialogs/AppDialog.svelte";
+  import FlyingSpaghettiEasterEgg from "$shared/presentation/easter-eggs/FlyingSpaghettiEasterEgg.svelte";
   import SyncToast from "$shared/presentation/toast/SyncToast.svelte";
+  import TourOverlay from "$features/tutorial/presentation/components/TourOverlay.svelte";
   import { projectsStore } from "$features/projects/presentation/stores/projectsStore.svelte";
   import { identityStore } from "$shared/identity/identityStore.svelte";
   import { authStore } from "$shared/security/authStore.svelte";
@@ -195,6 +197,7 @@
             {@const active = item.match(page.url.pathname)}
             <a
               href={item.href}
+              data-tour={`nav-${item.href.replace(/^\//, '')}`}
               class="rounded-md px-3 py-1.5 transition {active
                 ? 'bg-slate-900 text-white'
                 : 'hover:bg-slate-100 hover:text-slate-950'}"
@@ -347,4 +350,6 @@
 </div>
 
 <AppDialog />
+<FlyingSpaghettiEasterEgg />
 <SyncToast />
+<TourOverlay />

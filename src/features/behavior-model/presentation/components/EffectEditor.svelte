@@ -37,13 +37,13 @@
         onChange({ id, type: 'set_state', path: asStatePath('state.path'), value: '' });
         break;
       case 'show_message':
-        onChange({ id, type: 'show_message', message: 'Message' });
+        onChange({ id, type: 'show_message', message: '' });
         break;
       case 'emit_event':
         onChange({ id, type: 'emit_event', event: asEventName('event.name') });
         break;
       case 'block_action':
-        onChange({ id, type: 'block_action', reason: 'Blocked' });
+        onChange({ id, type: 'block_action', reason: '' });
         break;
       case 'allow_action':
         onChange({ id, type: 'allow_action' });
