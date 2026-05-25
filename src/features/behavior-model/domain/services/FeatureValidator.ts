@@ -6,6 +6,7 @@ import { parameterTypeToStateType } from '../value-objects/ParameterType';
 import { ALL_RULE_CATEGORIES } from '../value-objects/RuleCategory';
 import {
   flattenLeafConditions,
+  isParamLeft,
   type RuleCondition
 } from '../value-objects/RuleCondition';
 import { LEGACY_CATEGORY_MAP } from './FeatureRuleCategoryNormalizer';
@@ -458,7 +459,9 @@ const collectExpressionStatePaths = (expr: Expression, out: string[]): void => {
     case 'switch':
       for (const c of expr.cases) {
         for (const leaf of flattenLeafConditions(c.when)) {
-          out.push(leaf.left);
+          // Skip param-lefts: they reference an action parameter, not a
+          // state path on the surface.
+          if (!isParamLeft(leaf.left)) out.push(leaf.left as string);
           if (isExpression(leaf.right)) collectExpressionStatePaths(leaf.right, out);
         }
         collectExpressionStatePaths(c.then, out);
@@ -604,19 +607,33 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     condition: RuleCondition | undefined,
     paths: Set<string>,
     surfaceId: string,
-    label: string
+    label: string,
+    /**
+     * Parameter names available to the condition. ONLY action rules /
+     * action invariants pass this; surface rules and feature invariants
+     * have no parameter scope and therefore can't put a `{kind:"param"}`
+     * on the left. When undefined, param-left is rejected.
+     */
+    paramNames?: ReadonlySet<string>
   ): void => {
     if (!condition) return;
     // Composite (`all`/`any`/`not`) and unconditional rules fan out into
     // zero-or-more leaves. Each leaf gets the same left/right path-existence
     // check the flat shape used to get.
     for (const leaf of flattenLeafConditions(condition)) {
-      if (typeof leaf.left !== 'string') {
-        // Authoring slip: passing an Expression object on the left side
-        // (e.g. `{kind:"param", name:"x"}`). Only `condition.right`
-        // accepts Expressions; the left operand is always a state path.
+      if (isParamLeft(leaf.left)) {
+        if (!paramNames) {
+          errors.push(
+            `${label}: condition.left references parameter "${leaf.left.name}" but this scope has no parameters. Param-on-left only works for action rules / action invariants.`
+          );
+        } else if (!paramNames.has(leaf.left.name)) {
+          errors.push(
+            `${label}: condition.left references parameter "${leaf.left.name}" but the action has no parameter with that name.`
+          );
+        }
+      } else if (typeof leaf.left !== 'string') {
         errors.push(
-          `${label}: condition.left must be a state-path string, not an Expression object (got ${JSON.stringify(leaf.left)}). Parameter-side checks belong in the parameter's "validations" field, not in rule conditions.`
+          `${label}: condition.left must be a state-path string or a {kind:"param", name} object (got ${JSON.stringify(leaf.left)}).`
         );
       } else if (!paths.has(leaf.left)) {
         errors.push(
@@ -703,9 +720,10 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           }
         }
       }
+      const capParamNames = new Set(cap.parameters.map((p) => p.name));
       for (const rule of cap.rules) {
         const label = `Action ${cap.id} rule ${rule.id}`;
-        checkCondition(rule.condition, paths, surface.id, label);
+        checkCondition(rule.condition, paths, surface.id, label, capParamNames);
         checkEffect(
           rule.effect as { id: string; type: string } & Record<string, unknown>,
           surface.id,
@@ -718,7 +736,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           inv.condition,
           paths,
           surface.id,
-          `Action ${cap.id} invariant ${inv.id}`
+          `Action ${cap.id} invariant ${inv.id}`,
+          capParamNames
         );
       }
       for (const e of cap.effects) {
@@ -750,7 +769,14 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
   }
   for (const inv of feature.featureInvariants ?? []) {
     for (const leaf of flattenLeafConditions(inv.condition)) {
-      if (!anySurfacePaths.has(leaf.left)) {
+      // Feature invariants have no parameter scope; param-left is invalid here.
+      if (isParamLeft(leaf.left)) {
+        errors.push(
+          `Feature invariant ${inv.id}: condition.left references parameter "${leaf.left.name}" but feature invariants run outside any action scope and have no parameters available.`
+        );
+        continue;
+      }
+      if (!anySurfacePaths.has(leaf.left as string)) {
         errors.push(
           `Feature invariant ${inv.id}: condition.left "${leaf.left}" is not declared on any surface in the feature.`
         );

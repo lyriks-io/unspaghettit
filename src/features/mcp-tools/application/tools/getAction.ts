@@ -33,14 +33,18 @@ const collectTouchedPaths = (action: Action): ReadonlySet<StatePath> => {
     // Composite conditions (`all`/`any`/`not`) may name several state paths;
     // unconditional rules name zero. flattenLeafConditions yields each leaf
     // {left, operator, right} so we collect every path touched.
-    for (const leaf of flattenLeafConditions(rule.condition)) paths.add(leaf.left);
+    for (const leaf of flattenLeafConditions(rule.condition)) {
+      if (typeof leaf.left === 'string') paths.add(leaf.left);
+    }
     if (rule.effect.type === 'set_state') paths.add(rule.effect.path);
   }
   for (const effect of action.effects) {
     if (effect.type === 'set_state') paths.add(effect.path);
   }
   for (const invariant of action.invariants) {
-    for (const leaf of flattenLeafConditions(invariant.condition)) paths.add(leaf.left);
+    for (const leaf of flattenLeafConditions(invariant.condition)) {
+      if (typeof leaf.left === 'string') paths.add(leaf.left);
+    }
   }
   return paths;
 };
@@ -56,7 +60,9 @@ export const getActionTool = (
     const touched = collectTouchedPaths(action);
     const linkedStateDefinitions = surface.stateDefinitions.filter((d) => touched.has(d.path));
     const enclosingInvariants = surface.invariants.filter((inv) =>
-      flattenLeafConditions(inv.condition).some((leaf) => touched.has(leaf.left))
+      flattenLeafConditions(inv.condition).some(
+        (leaf) => typeof leaf.left === 'string' && touched.has(leaf.left)
+      )
     );
     const devContext = resolveDevContext(feature.devContext);
 
@@ -126,7 +132,9 @@ export const getActionsTool = (
       const touched = collectTouchedPaths(action);
       const myStateDefs = surface.stateDefinitions.filter((d) => touched.has(d.path));
       const myInvariants = surface.invariants.filter((inv) =>
-        flattenLeafConditions(inv.condition).some((leaf) => touched.has(leaf.left))
+        flattenLeafConditions(inv.condition).some(
+        (leaf) => typeof leaf.left === 'string' && touched.has(leaf.left)
+      )
       );
       for (const sd of myStateDefs) stateDefsById.set(String(sd.id), sd);
       for (const inv of myInvariants) invariantsById.set(String(inv.id), inv);

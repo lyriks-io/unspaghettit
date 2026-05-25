@@ -3,6 +3,7 @@ import { readPath } from './StatePath';
 import type { StateValue } from './StateValue';
 import {
   isCompositeCondition,
+  isParamLeft,
   type RuleCondition
 } from './RuleCondition';
 import type { Operator } from './Operator';
@@ -182,7 +183,9 @@ export const evaluateConditionInternal = (
     }
     return false;
   }
-  const leftValue = readPath(context.snapshot, condition.left);
+  const leftValue = isParamLeft(condition.left)
+    ? context.parameters[condition.left.name]
+    : readPath(context.snapshot, condition.left as StatePath);
   const rightValue = resolveValueOrExpression(condition.right, context);
   return compareLocal(leftValue, condition.operator, rightValue);
 };

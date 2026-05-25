@@ -5,6 +5,7 @@ import { isExpression, type Expression } from '$features/behavior-model/domain/v
 import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
 import {
   flattenLeafConditions,
+  isParamLeft,
   type RuleCondition
 } from '$features/behavior-model/domain/value-objects/RuleCondition';
 import type { StatePath } from '$features/behavior-model/domain/value-objects/StatePath';
@@ -119,7 +120,9 @@ const expressionStateReads = (expression: Expression): StatePath[] => {
       return [
         ...expression.cases.flatMap((c) => [
           ...flattenLeafConditions(c.when).flatMap((leaf) => [
-            leaf.left,
+            // Skip param-lefts: they reference action parameters, not
+            // surface state, so they don't count as a state-read here.
+            ...(isParamLeft(leaf.left) ? [] : [leaf.left as StatePath]),
             ...(isExpression(leaf.right) ? expressionStateReads(leaf.right) : [])
           ]),
           ...expressionStateReads(c.then)
@@ -140,7 +143,9 @@ const conditionStateReads = (
 ): StatePath[] => {
   const out: StatePath[] = [];
   for (const leaf of flattenLeafConditions(condition)) {
-    out.push(leaf.left);
+    // Param-left conditions reference action parameters, not surface
+    // state; they don't contribute a state-path read here.
+    if (!isParamLeft(leaf.left)) out.push(leaf.left as StatePath);
     if (isExpression(leaf.right)) out.push(...expressionStateReads(leaf.right));
   }
   return out;

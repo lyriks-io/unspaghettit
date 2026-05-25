@@ -14,6 +14,7 @@
   } from '$features/behavior-model/domain/value-objects/RuleCategory';
   import {
     isCompositeCondition,
+    isParamLeft,
     type LeafRuleCondition
   } from '$features/behavior-model/domain/value-objects/RuleCondition';
   import {
@@ -28,10 +29,23 @@
   type Props = {
     rule: Rule;
     availablePaths: readonly StatePath[];
+    /**
+     * Action parameter names this rule can reference on the LEFT side
+     * of its condition. Passed in by ActionEditor; surface-rule callers
+     * leave empty so the State/Param toggle hides and only state paths
+     * are offered.
+     */
+    availableParameters?: readonly { readonly name: string }[];
     onChange: (next: Rule) => void;
     onRemove: () => void;
   };
-  let { rule, availablePaths, onChange, onRemove }: Props = $props();
+  let {
+    rule,
+    availablePaths,
+    availableParameters = [],
+    onChange,
+    onRemove
+  }: Props = $props();
 
   // The form fields below speak the leaf {left, operator, right} shape.
   // Composite (`all`/`any`/`not`) and unconditional rules are visible but
@@ -57,6 +71,36 @@
     if (!isStatePath(value)) return;
     patchCondition({ left: asStatePath(value) });
   }
+
+  function updateParamName(name: string) {
+    patchCondition({ left: { kind: 'param', name } });
+  }
+
+  /**
+   * Switch the left side between a state-path read and an action
+   * parameter read. Picks a sensible default for the new side so the
+   * condition is immediately valid.
+   */
+  function switchLeftKind(next: 'state' | 'param') {
+    if (leaf === null) return;
+    if (next === 'state') {
+      const fallback = availablePaths[0] ?? asStatePath('state.path');
+      patchCondition({ left: fallback });
+    } else {
+      const first = availableParameters[0]?.name ?? '';
+      patchCondition({ left: { kind: 'param', name: first } });
+    }
+  }
+
+  const leftKind = $derived<'state' | 'param'>(
+    leaf && isParamLeft(leaf.left) ? 'param' : 'state'
+  );
+  const leftStateValue = $derived<string>(
+    leaf && !isParamLeft(leaf.left) ? (leaf.left as string) : ''
+  );
+  const leftParamName = $derived(
+    leaf && isParamLeft(leaf.left) ? leaf.left.name : ''
+  );
 
   function updateOperator(op: Operator) {
     if (leaf === null) return;
@@ -215,11 +259,48 @@
     {#if leaf}
       <div class="flex flex-wrap items-start gap-2 text-sm">
         <span class="mt-1.5 font-mono text-xs text-slate-500">IF</span>
-        <StatePathSelect
-          value={leaf.left}
-          {availablePaths}
-          onCommit={updatePath}
-        />
+        {#if availableParameters.length > 0}
+          <!-- State vs Parameter toggle. Hidden when no params are in
+               scope (surface rules / feature invariants) — there's
+               nothing to switch to. -->
+          <div class="mt-0.5 inline-flex rounded-md border border-slate-300 bg-white p-0.5 text-[10px] font-medium">
+            <button
+              type="button"
+              class="rounded px-2 py-0.5 transition {leftKind === 'state'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:text-slate-900'}"
+              onclick={() => switchLeftKind('state')}
+            >
+              State
+            </button>
+            <button
+              type="button"
+              class="rounded px-2 py-0.5 transition {leftKind === 'param'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:text-slate-900'}"
+              onclick={() => switchLeftKind('param')}
+            >
+              Param
+            </button>
+          </div>
+        {/if}
+        {#if leftKind === 'param'}
+          <select
+            class="mt-0.5 rounded-md border border-slate-300 px-2 py-1 text-xs font-mono"
+            value={leftParamName}
+            onchange={(e) => updateParamName((e.target as HTMLSelectElement).value)}
+          >
+            {#each availableParameters as p (p.name)}
+              <option value={p.name}>{p.name}</option>
+            {/each}
+          </select>
+        {:else}
+          <StatePathSelect
+            value={leftStateValue}
+            {availablePaths}
+            onCommit={updatePath}
+          />
+        {/if}
         <select
           class="mt-0.5 rounded-md border border-slate-300 px-2 py-1 text-xs"
           value={leaf.operator}

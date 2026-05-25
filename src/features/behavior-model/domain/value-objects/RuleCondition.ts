@@ -26,8 +26,35 @@ import type { StateValue } from './StateValue';
  *
  * Implication is expressible: `if A then B` ≡ `any: [not(A), B]`.
  */
+/**
+ * What the rule's left-hand operand reads from.
+ *   - `string`: a `StatePath` into the surface's state snapshot. The
+ *     legacy/default shape; every existing condition uses this.
+ *   - `{ kind: 'param', name }`: the value of one of the parent
+ *     action's parameters. Lets rules fork on caller input without
+ *     forcing the user to set up a `bindToStatePath` intermediate.
+ *     Only valid on **action** rules (surface rules have no parameters
+ *     in scope) — the validator rejects param-left on surface rules.
+ */
+export type LeftOperand =
+  | StatePath
+  | { readonly kind: 'param'; readonly name: string };
+
+/**
+ * Runtime guard: a `{ kind: 'param', name: string }` left operand.
+ * Anything else (string state path, malformed input) is treated as a
+ * state path by the evaluator.
+ */
+export const isParamLeft = (
+  l: unknown
+): l is { kind: 'param'; name: string } => {
+  if (!l || typeof l !== 'object') return false;
+  const o = l as { kind?: unknown; name?: unknown };
+  return o.kind === 'param' && typeof o.name === 'string';
+};
+
 export type LeafRuleCondition = {
-  readonly left: StatePath;
+  readonly left: LeftOperand;
   readonly operator: Operator;
   readonly right?: StateValue | Expression;
 };

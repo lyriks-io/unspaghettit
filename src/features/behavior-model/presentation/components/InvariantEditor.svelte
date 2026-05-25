@@ -155,7 +155,7 @@
       <div class="flex flex-wrap items-start gap-2 text-sm">
         <span class="mt-1.5 font-mono text-xs text-slate-500">MUST</span>
         <StatePathSelect
-          value={leaf.left}
+          value={typeof leaf.left === 'string' ? leaf.left : ''}
           {availablePaths}
           onCommit={updatePath}
         />
