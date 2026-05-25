@@ -1,4 +1,4 @@
-﻿import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 const OPERATIONS_REFERENCE = `# apply_batch operations reference
 
@@ -30,7 +30,7 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   add_action_rule      { ref?, surfaceRef|surfaceId, actionRef|actionId, rule: { category, condition?, effect:{type,..., description}, description } }
 . \`category\` enum: business | security | permissions | compliance | validation | data | ux_feedback | error_handling | async | collaboration | billing_quota | audit. Not "blocking" - pick the closest semantic.
 . \`effect.type\` enum: set_state | show_message | emit_event | block_action | allow_action | transition_surface. To block an action, use \`{type:"block_action", reason:"...", description:"..."}\` - NOT \`{type:"block",...}\`. Unknown effect types are rejected at validation; if you see "unknown effect.type" in the response, fix the spelling.
-. \`condition.left\` is a state-path string only - Expression objects (e.g. \`{kind:"param",...}\`) are NOT accepted here, only \`condition.right\` takes Expressions. For parameter-side constraints use the parameter's \`validations\` field.
+. \`condition.left\` is normally a state-path string. On ACTION rules and ACTION invariants only, it may also be \`{kind:"param", name:"paramName"}\` to branch on a caller parameter without an intermediate set_state. Surface rules, surface invariants, and feature invariants have no parameter scope and reject param-left at validation. Other Expression shapes (\`{kind:"state",...}\`, \`{kind:"add",...}\`, etc.) are NOT accepted on the left; only \`condition.right\` takes those.
   add_surface_rule         { ref?, surfaceRef|surfaceId, rule }
   add_effect               { ref?, surfaceRef|surfaceId, actionRef|actionId, effect }
 . Same effect.type enum as above. transition_surface accepts \`targetRef\` for surfaces minted earlier in the same batch.
