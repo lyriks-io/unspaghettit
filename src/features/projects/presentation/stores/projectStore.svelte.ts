@@ -5,8 +5,16 @@ import { getBrowserContainer } from '$shared/infrastructure/browserContainer';
 import { dropRoomClient, getRoomClient, type YDocClient } from '$lib/client/sync';
 import { reconcileInPlace } from '$lib/client/reconcile';
 import { emit } from '$shared/events/eventBus';
+import type { HistoryEntry } from '$lib/sync/protocol';
 
-export type ProjectPanel = 'features' | 'queue' | 'resources' | 'data' | 'events' | 'transitions';
+export type ProjectPanel =
+  | 'features'
+  | 'queue'
+  | 'resources'
+  | 'data'
+  | 'events'
+  | 'transitions'
+  | 'history';
 
 class ProjectStore {
   loading = $state(true);
@@ -30,9 +38,19 @@ class ProjectStore {
   activePanel = $state<ProjectPanel>('features');
   selectedFeatureId = $state<string>('');
   search = $state('');
+  /**
+   * Read-only shared history for the project room. Populated when the
+   * Y.Doc client emits its initial history snapshot and on every
+   * append. Surfaces in the History tab so users can see who changed
+   * what (and when) without taking the editing weight of the
+   * feature-level HistoryPanel.
+   */
+  historyEntries = $state<readonly HistoryEntry[]>([]);
+  historyCursor = $state<number>(-1);
   private currentId: ProjectId | null = null;
   private client: YDocClient<Project> | null = null;
   private clientUnsubscribe: (() => void) | null = null;
+  private historyUnsubscribe: (() => void) | null = null;
 
   async load(id: ProjectId): Promise<void> {
     try {
@@ -180,9 +198,15 @@ class ProjectStore {
       this.clientUnsubscribe();
       this.clientUnsubscribe = null;
     }
+    if (this.historyUnsubscribe) {
+      this.historyUnsubscribe();
+      this.historyUnsubscribe = null;
+    }
     this.client = null;
     this.currentId = null;
     this.project = null;
+    this.historyEntries = [];
+    this.historyCursor = -1;
     this.error = null;
     this.saveError = null;
     this.loading = true;
@@ -206,6 +230,10 @@ class ProjectStore {
       this.clientUnsubscribe();
       this.clientUnsubscribe = null;
     }
+    if (this.historyUnsubscribe) {
+      this.historyUnsubscribe();
+      this.historyUnsubscribe = null;
+    }
     const client = getRoomClient<Project>('project', id);
     this.client = client;
     this.clientUnsubscribe = client.observe((next, origin) => {
@@ -215,6 +243,18 @@ class ProjectStore {
       if (this.project) reconcileInPlace(this.project, next);
       else this.project = next;
       this.lastSavedAt = next.updatedAt;
+    });
+    // Same Y.Doc client that backs the live feature room also serves a
+    // history view per room — projects use the project room. We only
+    // READ it here; the History tab is intentionally non-mutating
+    // (no jump, no clear) so projects can't be time-travelled out from
+    // under their feature children.
+    this.historyEntries = client.history.entries;
+    this.historyCursor = client.history.cursor;
+    this.historyUnsubscribe = client.observeHistory((view) => {
+      if (this.currentId !== id) return;
+      this.historyEntries = view.entries;
+      this.historyCursor = view.cursor;
     });
   }
 }

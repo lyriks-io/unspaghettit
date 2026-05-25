@@ -8,6 +8,7 @@
   import ProjectEntitiesPanel from './ProjectEntitiesPanel.svelte';
   import ProjectEventsPanel from './ProjectEventsPanel.svelte';
   import ProjectTransitionsPanel from './ProjectTransitionsPanel.svelte';
+  import ProjectHistoryPanel from './ProjectHistoryPanel.svelte';
   import QueuePanel from '$features/implementation-queue/presentation/components/QueuePanel.svelte';
   import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
   import {
@@ -36,7 +37,8 @@
     { id: 'resources', label: 'Resources' },
     { id: 'data', label: 'Entity' },
     { id: 'events', label: 'Events' },
-    { id: 'transitions', label: 'Transitions' }
+    { id: 'transitions', label: 'Transitions' },
+    { id: 'history', label: 'History' }
   ];
 
   let editingProject = $state(false);
@@ -73,6 +75,8 @@
         return groupEvents(exps).length;
       case 'transitions':
         return groupTransitions(exps).length;
+      case 'history':
+        return projectStore.historyEntries.length;
     }
   }
 
@@ -268,7 +272,7 @@
       </nav>
     </div>
 
-    {#if projectStore.activePanel !== 'features' && projectStore.activePanel !== 'queue'}
+    {#if projectStore.activePanel !== 'features' && projectStore.activePanel !== 'queue' && projectStore.activePanel !== 'history'}
       <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <input
           type="search"
@@ -308,6 +312,8 @@
             <ProjectEventsPanel features={projectFeaturesStore.features} search={projectStore.search} />
           {:else if projectStore.activePanel === 'transitions'}
             <ProjectTransitionsPanel features={projectFeaturesStore.features} search={projectStore.search} />
+          {:else if projectStore.activePanel === 'history'}
+            <ProjectHistoryPanel />
           {/if}
         </div>
       {/key}
