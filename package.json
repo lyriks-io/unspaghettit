@@ -45,7 +45,9 @@
     "seed:snapshots": "tsx mcp-server/seed-snapshots.ts",
     "migrate:defaults": "tsx mcp-server/migrate-defaults.ts",
     "unspa": "node cli/unspa.cjs",
-    "prepublishOnly": "npm run build && npm test"
+    "skills:sync": "node scripts/sync-skills.cjs",
+    "skills:check": "node scripts/sync-skills.cjs --check",
+    "prepublishOnly": "npm run skills:check && npm run build && npm test"
   },
   "bin": {
     "unspa": "./cli/unspa.cjs",

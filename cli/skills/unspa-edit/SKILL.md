@@ -1,4 +1,4 @@
-﻿---
+---
 name: unspa-edit
 description: Use when editing an Unspaghettit behavior model - adding, changing, or removing features, surfaces, actions, states, rules, invariants, transitions, effects, parameters, scenarios, personas, resources, entities, events, or projects. Always goes through the Unspaghettit MCP server. Triggers on "unspaghettit", "feature", "surface", "action", "rule", "scenario", "behavior model", or any task touching `unspa/*.feature.json`.
 ---

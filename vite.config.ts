@@ -1,4 +1,4 @@
-﻿import { sveltekit } from '@sveltejs/kit/vite';
+import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { unspaSyncPlugin } from './src/lib/server/sync/vitePlugin';
@@ -35,7 +35,11 @@ export default defineConfig({
     }
   },
   test: {
-    include: ['src/**/*.{test,spec}.ts', 'mcp-server/**/*.{test,spec}.ts'],
+    include: [
+      'src/**/*.{test,spec}.ts',
+      'mcp-server/**/*.{test,spec}.ts',
+      'cli/**/*.{test,spec}.ts'
+    ],
     environment: 'node',
     globals: false
   }

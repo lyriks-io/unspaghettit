@@ -1,4 +1,4 @@
-﻿# Unspaghettit CLI
+# Unspaghettit CLI
 
 A single command (`unspa`, also installed as `unspaghettit`) that bootstraps an Unspaghettit project in any repo,
 runs the bundled MCP server, and boots the dashboard.

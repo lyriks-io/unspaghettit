@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { FeatureRepository } from '../src/features/behavior-model/application/ports/FeatureRepository';
 import { mutateFeatureUseCase } from '../src/features/behavior-model/application/use-cases/MutateFeature';
@@ -39,6 +42,24 @@ import { registerTransitionTools } from './tools/transition';
 import { json, type ToolDeps } from './tools/_shared';
 import { metrics } from './metrics';
 import type { RepoLink } from './repo-link';
+
+/**
+ * Read the package.json next to this file so the MCP server reports the
+ * same version the CLI ships. Hardcoding it has bitten us before — the
+ * literal stayed at 0.1.2 long after the package shipped 0.1.5, and MCP
+ * clients see that in capability negotiation.
+ */
+const PACKAGE_VERSION: string = (() => {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as {
+      version?: string;
+    };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
 
 /**
  * Information the CLI passes about the repo this MCP server was started in.
@@ -114,7 +135,7 @@ export const buildServer = (
   const getImplementationStatus = getImplementationStatusUseCase({ statuses: statusRepo });
 
   const server = new McpServer(
-    { name: 'unspa', version: '0.1.2' },
+    { name: 'unspa', version: PACKAGE_VERSION },
     { instructions: SERVER_INSTRUCTIONS }
   );
 

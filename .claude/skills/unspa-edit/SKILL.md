@@ -1,6 +1,6 @@
-﻿---
+---
 name: unspa-edit
-description: Use when editing an Unspaghettit behavior model — adding, changing, or removing features, surfaces, actions, states, rules, invariants, transitions, effects, parameters, scenarios, personas, resources, entities, events, or projects. Always goes through the Unspaghettit MCP server. Triggers on "unspaghettit", "feature", "surface", "action", "rule", "scenario", "behavior model", or any task touching `unspa/*.feature.json`.
+description: Use when editing an Unspaghettit behavior model - adding, changing, or removing features, surfaces, actions, states, rules, invariants, transitions, effects, parameters, scenarios, personas, resources, entities, events, or projects. Always goes through the Unspaghettit MCP server. Triggers on "unspaghettit", "feature", "surface", "action", "rule", "scenario", "behavior model", or any task touching `unspa/*.feature.json`.
 ---
 
 # Unspaghettit: editing the model via the MCP
@@ -58,7 +58,9 @@ transition_surface{target}`. `set_state.value` also accepts an Expression.
 
 **Scenarios** sit under an action: named state + parameter overrides
 that exercise one rule branch. Optional `expectedStatus` and
-`expectedAssertions[]` turn a scenario into an executable spec.
+`expectedAssertions[]` turn a scenario into an executable spec. A scenario can
+set `personaId` so `run_all_scenarios` applies that persona baseline before the
+scenario's action-specific overrides.
 
 ## Expressions
 
@@ -98,7 +100,7 @@ Atomic state-from-state-and-param write:
 |---|---|
 | `apply_batch` | **Preferred for any multi-op edit.** N ops in one atomic load + validate + save. Add ops may capture their new id under `op.ref`; later ops in the same batch reference it via `surfaceRef`, `actionRef`, `targetRef`, etc., instead of UUIDs. `add_state_definition.sharedWith` also accepts those refs. Pass `dryRun:true` to validate + score without saving. |
 | `dry_run_simulate` | Pure simulation: pick an action, supply parameters + snapshot, get the resulting status / state diff / effects. No persistence. |
-| `run_all_scenarios` | Executes every scenario through the simulator and checks `expectedStatus` + `expectedAssertions[]`. Run after a structural edit to confirm nothing drifted. |
+| `run_all_scenarios` | Executes every scenario through the simulator, applying `personaId` first when present, and checks `expectedStatus` + `expectedAssertions[]`. Run after a structural edit to confirm nothing drifted. |
 | `score_feature` | Maturity report. Read it before declaring a build "done". |
 | `save_feature` | Escape hatch. Replaces the whole Feature JSON. Validated before save. Prefer `apply_batch`. |
 

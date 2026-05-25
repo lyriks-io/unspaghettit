@@ -1,4 +1,4 @@
-﻿---
+---
 name: unspa-implement
 description: Use when writing application code that implements an item from an Unspaghettit model (action, rule, invariant, transition, state, event, surface_rule, surface_invariant, entity). Records the implementation location in the `.unspa.json` behavioral index and syncs coverage to the MCP. Triggers when implementing a Feature the user described in Unspaghettit terms.
 ---
@@ -95,9 +95,9 @@ own key will be reported as missing even when the parent is `implemented`.
 
 2. **Write the code.** Implement the behavior. **Do not** add any
    `@unspa:`, `@lyriks:`, or other Unspaghettit annotations in source.
-   The index is the only place where codeâ†”spec mapping lives.
+   The index is the only place where code↔spec mapping lives.
 
-   Quality bar — read the MCP guide section `unspa://guide Â§ Implementation quality`
+   Quality bar — read the MCP guide section `unspa://guide § Implementation quality`
    before writing the first file. The short version:
 
    - **Produce code indistinguishable in quality and style from what

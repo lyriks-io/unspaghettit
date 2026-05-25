@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="https://cdn.jsdelivr.net/npm/unspaghettit/static/unspaghettit_logo.png" alt="Unspaghettit" width="120" />
 </p>
 
@@ -92,6 +92,113 @@ Specs stop being documentation. They become a runtime contract you can break lou
 
 The LLM does the reading/writing in both directions. Unspaghettit gives it a structured target and a maturity gate.
 
+## Working with the MCP in chat
+
+Once `unspa init` has registered the MCP server and your AI client has restarted, you do not need to speak in Unspaghettit internals. Start with the product you want. Mention the Unspaghettit or Unspa MCP, the scope, and the level of completeness you want. For a first prompt, asking for 100% maturity usually gives a much better result because it pushes the agent to create complete scenarios, rules, and checks instead of a shallow outline.
+
+### Start with a product prompt
+
+This is usually enough:
+
+```text
+Using the Unspaghettit MCP, create a new project.
+It is a mobile app that lets a user get one coupon each day for a shop near them.
+Make each feature reach 100% maturity.
+```
+
+If you want a smaller first pass:
+
+```text
+Using the Unspa MCP, create a new project for a B2B invoicing app.
+Start with three features only: customers, invoices, and payment follow-up.
+Make it a solid first draft, not necessarily 100% maturity yet.
+Ask me if a business rule is unclear.
+```
+
+For one feature:
+
+```text
+Using the Unspaghettit MCP, add a feature for approving refunds.
+Keep it focused on the support agent workflow.
+Make it implementation-ready and bring it to 100% maturity.
+```
+
+### Choose the maturity level
+
+100% maturity is the recommended default for a first serious prompt. It helps the agent produce a richer spec on the first pass. Lower the target only when you explicitly want brainstorming, discovery, or a partial draft.
+
+```text
+Make this a rough product draft. Do not force 100% maturity yet.
+I want enough structure to discuss the flow and discover missing business rules.
+```
+
+```text
+Make this implementation-ready. Aim for 100% maturity.
+If anything prevents 100%, explain the missing product decision instead of inventing it.
+```
+
+```text
+Do not chase the score blindly. Prefer a clear product spec.
+If a maturity check feels artificial for this feature, tell me why.
+```
+
+### Ask questions about the spec
+
+The MCP is also useful as a query layer. Ask the agent to inspect the current model instead of relying on memory or screenshots.
+
+```text
+Using the Unspaghettit MCP, explain the Cart & checkout feature.
+Explain what the user can do, what can block them, and what happens after each important action.
+```
+
+```text
+What can block Place order?
+Explain each blocker in product language and tell me which cases are already covered by scenarios.
+```
+
+```text
+Where is email verification used in this project?
+Tell me what depends on it and what would change if we removed that requirement.
+```
+
+```text
+Using the Unspaghettit MCP, make a report of the current implementation of the specs in this codebase.
+Tell me what is implemented, what is missing, and what looks stale.
+```
+
+### Change or extend the spec
+
+You can ask for changes in normal product language. Add constraints when they matter.
+
+```text
+Using the Unspaghettit MCP, add a "Cancel subscription" flow.
+Reuse the existing billing concepts when possible.
+After the edit, tell me whether the maturity score changed and why.
+```
+
+```text
+Before changing the spec, propose the change in plain English.
+Once I approve, update the Unspaghettit project and run the relevant scenarios.
+```
+
+### Move from spec to implementation
+
+If you want code, say so in the same prompt. Include design, stack, and implementation constraints if they matter.
+
+```text
+Using the Unspaghettit MCP, implement the next queued feature.
+Use the existing SvelteKit style and keep the UI quiet and mobile-friendly.
+After implementation, update the implementation report for the spec.
+```
+
+```text
+Using the Unspa MCP, implement the coupon discovery feature.
+Use the current app stack. If the spec is missing something needed for implementation,
+update the spec first, then write the code.
+```
+
+Good first prompt pattern: mention the Unspaghettit MCP, describe the product, set the maturity level, and say whether you want spec only or spec plus implementation.
+
 ## What makes it different
 
 Unspaghettit is a local, executable specification layer for AI-assisted development. It gives the LLM durable project memory that can be validated, simulated, scored, and mapped back to source code.
@@ -172,6 +279,8 @@ For the CLI details (commands, flags, troubleshooting), see [cli/README.md](cli/
 
 Boot `unspa dashboard` and click **Load samples** to install the bundled **eShop** project: 4 LLM-sized features (Account & auth, Catalog & reviews, Cart & checkout, Order fulfillment) that exercise the full capability surface, composite + Expression conditions, feature invariants, event cascade, `bypassInvariants`, action invariants, scenarios, persona overrides, entity/resource mapping. Every feature scores 100% maturity so the sample works as a clean reference model. To see maturity gaps, create a tiny scratch feature with an empty surface or an action without effects/scenarios; the dashboard will show the missing pieces.
 
+The dashboard also ships a **Tutorial** page (`/tutorial`) with a 14-section walkthrough and a **Run interactive tutorial** button that drives a guided spotlight tour from project → feature → surface → action → parameter → rule → simulator, prefilling fields and gating each step on the right thing being typed/clicked.
+
 ## Collaboration
 
 Multiple humans + AI agents can edit the same runtime live:
@@ -179,6 +288,7 @@ Multiple humans + AI agents can edit the same runtime live:
 - **Real-time sync**, every dashboard tab subscribes to a per-room Yjs WebSocket. Out-of-band changes (MCP writes, other tabs) flow in without a reload, with an activity toast for each change carrying a breadcrumb path (`Project › Feature › Surface › Action`) and a "View" button.
 - **Identity**, click the round avatar in the header to set your display name. Every history entry you create is tagged with it. Stored in browser localStorage, never sent off-machine. First visit prompts once; the avatar dropdown is the explicit way to change or reset later.
 - **Attribution**, MCP-driven changes carry an `AI · for John` label (the AI badge stays primary; the human name is the supporting attribution). Resolved server-side from whoever's currently at the dashboard.
+- **Project history**, read-only timeline tab on the project page lists every change (rename, feature add/remove, queue mutation, …) with author + timestamp. The shared Y.Doc room feeds it, so MCP edits and human edits land in the same audit log.
 - **Implementation queue**, drag-and-drop "implement next" list per project. The LLM uses `mcp__unspa__get_next_queued` so you can say "implement the next thing" without naming it. Items auto-prune as `.unspa.json` flips them to `implemented`.
 - **Backup / share**, the project page's **Export .unspa** button produces an encrypted bundle (project + features + status). The matching **Import .unspa** on the projects index restores it. Passphrase is required on both ends; the file itself reveals nothing about its contents.
 
