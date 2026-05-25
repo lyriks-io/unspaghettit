@@ -415,14 +415,19 @@ export const computeChangeDescriptor = (
 /**
  * Compact string formatter for legacy consumers that only carry a
  * `label?: string` field (like the existing HistoryEntry). Renders:
- *   added  â€º  Inbox v2 â€º Inbox List â€º Archive Item
- *   renamed â€º  Inbox v2 (was "Inbox")
- *   saved   â€º  Inbox v2
+ *   added   ›  Inbox v2 › Inbox List › Archive Item
+ *   renamed ›  Inbox v2 (was "Inbox")
+ *   saved   ›  Inbox v2
  *
  * Toast UI ignores this and renders structure-aware breadcrumbs.
+ *
+ * Separator is written as the Unicode escape › so the file stays
+ * ASCII-safe — past editor round-trips have repeatedly mangled the
+ * literal `›` character into `â€º` mojibake which gets baked into every
+ * persisted history label.
  */
 export const formatChangeLabel = (d: ChangeDescriptor): string => {
-  const path = d.path.join(' â€º ');
+  const path = d.path.join(' \u203A ');
   if (d.op === 'renamed' && d.previousName) {
     return `Renamed to "${d.path[d.path.length - 1]}" (was "${d.previousName}")`;
   }
