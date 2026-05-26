@@ -4,6 +4,7 @@ import { runDashboardCommand } from './commands/dashboard';
 import { runInitCommand } from './commands/init';
 import { runLinkCommand } from './commands/link';
 import { runListCommand } from './commands/list';
+import { runScenariosExportCommand } from './commands/scenarios-export';
 import { runServeCommand } from './commands/serve';
 import { runUninstallCommand } from './commands/uninstall';
 import { log } from './util/log';
@@ -143,6 +144,40 @@ program
       purge: opts.purge === true,
       uninstallGlobal: opts.globalUninstall === true,
       yes: opts.yes === true
+    });
+    process.exit(code);
+  });
+
+// `scenarios export <featureId>` — generates a Vitest spec from the feature's
+// scenarios, using the deterministic simulator as the assertion oracle. The
+// user writes a thin adapter that calls their real implementation; the
+// generated tests close the loop between spec and code so drift fails CI.
+//
+// EXPERIMENTAL: the adapter contract is still firming up. The command runs,
+// the loop closes, but the public surface (UnspaAdapter + AdapterInvocation +
+// AdapterResult) may shift between minor versions. Labeled as preview in
+// `--help` and stamped into every generated file's header so CI doesn't
+// pretend stability we haven't earned yet.
+const scenarios = program
+  .command('scenarios')
+  .description('Tools that work with the scenarios authored on a feature.');
+
+scenarios
+  .command('export <featureId>')
+  .description('[experimental] Generate a Vitest spec from a feature\'s scenarios. The simulator predicts each scenario\'s outcome and embeds it as the assertion oracle the user-written adapter is checked against. Adapter contract is preview and may change.')
+  .option('-o, --out <path>', 'Output file path (absolute, or relative to cwd). Defaults to ./<feature-slug>.scenarios.spec.ts.')
+  .option('-a, --adapter <importPath>', 'Module specifier the generated test imports the adapter from.', './unspa.adapter')
+  .option('--adapter-export <name>', 'Named export inside the adapter module.', 'adapter')
+  .option('--dry-run', 'Print the generated spec to stdout instead of writing it.')
+  .option('-f, --force', 'Overwrite the output file if it already exists. Default refuses to clobber so hand-edited specs survive a re-run.')
+  .action(async (featureId, opts) => {
+    const code = await runScenariosExportCommand({
+      featureId,
+      out: opts.out,
+      adapter: opts.adapter,
+      adapterExport: opts.adapterExport,
+      dryRun: opts.dryRun === true,
+      force: opts.force === true
     });
     process.exit(code);
   });

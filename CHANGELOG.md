@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [SemVer](https://semver.org).
 
+## [Unreleased]
+
+### Added
+
+- **`unspa scenarios export <featureId>` (experimental).** Generates a Vitest spec from a feature's authored scenarios. The deterministic simulator runs each scenario at codegen time and embeds its predicted outcome (status + expected assertions) as the test oracle. The user writes a thin adapter — `UnspaAdapter` from `unspaghettit/cli/scenarios` — that calls their real implementation; the generated test drives every scenario through that adapter and asserts state path-by-path. Drift between authored `expectedStatus` and simulator prediction is reported per scenario but not gated (the generator emits tests as authored; the human picks which oracle wins). Default output is `./<feature-slug>.scenarios.spec.ts`; flags: `--out`, `--adapter`, `--adapter-export`, `--dry-run`, `--force`. Refuses to clobber an existing file without `--force`. Adapter contract (`UnspaAdapter`, `AdapterInvocation`, `AdapterResult`) is preview and may change between minor versions until the wedge graduates; every emitted file carries that banner in its header.
+
 ## [0.1.5] — 2026-05-25
 
 Closes every silent-failure path on the report/sync side that 0.1.4 users hit, plus an interactive guided tutorial, project-level history, broader rule expressivity, and a UI / encoding pass. All changes additive — no schema migration, safe to upgrade in place.

@@ -80,16 +80,17 @@ If `unspa` still resolves after `npm uninstall -g unspaghettit`, you hit the orp
 
 ## v0.1 surface
 
-Six commands ship in v0.1.
+Six commands ship in v0.1, plus one experimental preview.
 
-| Command            | What it does                                                                              |
-| ------------------ | ----------------------------------------------------------------------------------------- |
-| `unspa init`       | Scaffold `unspa/`, register the MCP with picked AI clients (entry targets `unspa-mcp`), seed `CLAUDE.md`/`AGENTS.md`, install skills. Idempotent. |
-| `unspa serve`      | Run the bundled MCP server on stdio (kept for manual debugging; init's entry uses `unspa-mcp` directly). |
-| `unspa dashboard`  | Boot the SvelteKit dashboard from the `unspa/` folder discovered by walking up from cwd. |
-| `unspa list`       | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload. |
-| `unspa link`       | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding. |
-| `unspa uninstall`  | Reverse `init`: strip the MCP entry from picked clients, remove the unspa blocks from `.gitignore` / `CLAUDE.md` / `AGENTS.md`, uninstall skills, optionally purge `unspa/` and unlink the CLI globally. |
+| Command                       | What it does                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------- |
+| `unspa init`                  | Scaffold `unspa/`, register the MCP with picked AI clients (entry targets `unspa-mcp`), seed `CLAUDE.md`/`AGENTS.md`, install skills. Idempotent. |
+| `unspa serve`                 | Run the bundled MCP server on stdio (kept for manual debugging; init's entry uses `unspa-mcp` directly). |
+| `unspa dashboard`             | Boot the SvelteKit dashboard from the `unspa/` folder discovered by walking up from cwd. |
+| `unspa list`                  | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload. |
+| `unspa link`                  | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding. |
+| `unspa scenarios export`      | **[experimental]** Generate a Vitest spec from a feature's authored scenarios, using the deterministic simulator as the oracle. |
+| `unspa uninstall`             | Reverse `init`: strip the MCP entry from picked clients, remove the unspa blocks from `.gitignore` / `CLAUDE.md` / `AGENTS.md`, uninstall skills, optionally purge `unspa/` and unlink the CLI globally. |
 
 ## Quick start (in any repo)
 
@@ -228,6 +229,53 @@ Don't expose `0.0.0.0:3000` to the public internet. The OSS install is
 built for trusted networks; for SSO / RBAC / audit trails / encryption at
 rest you've outgrown the OSS tier. See `SECURITY.md` for the threat model
 and the enterprise pointer.
+
+### `unspa scenarios export <featureId>` (experimental)
+
+Generates a Vitest spec from a feature's authored scenarios. The deterministic
+simulator runs each scenario at codegen time and embeds its predicted outcome
+(success/blocked + the scenario's `expectedAssertions`) as the test oracle.
+You then write a thin adapter that calls your real implementation; the
+generated test drives each scenario through that adapter and asserts state
+path-by-path.
+
+```bash
+unspa scenarios export <featureId>                     # ./<feature-slug>.scenarios.spec.ts
+unspa scenarios export <featureId> --out tests/foo.spec.ts
+unspa scenarios export <featureId> --adapter ../src/unspa.adapter
+unspa scenarios export <featureId> --dry-run           # print to stdout, don't write
+unspa scenarios export <featureId> --force             # overwrite existing file
+```
+
+Find feature ids via `unspa list` (then open a project) or the dashboard.
+
+**Write the adapter once per project** at the path the generator hints at
+(default `./unspa.adapter.ts`):
+
+```ts
+import type { UnspaAdapter } from 'unspaghettit/cli/scenarios';
+
+export const adapter: UnspaAdapter = {
+  invoke: async (input) => {
+    // input.actionId / input.parameters / input.initialState tell you which
+    // scenario is running. Call your real code, return:
+    return { status: 'success', finalState: { /* dotted-path state */ } };
+    // or { status: 'blocked', finalState: input.initialState } when a guard
+    // rejected the call. The generator emits exactly one shape per scenario.
+  }
+};
+```
+
+Then `npx vitest run` against the generated file.
+
+**Drift reporting**: if the simulator's prediction disagrees with a scenario's
+authored `expectedStatus`, the CLI prints the disagreement and the generated
+test embeds a comment showing both. Tests still emit as authored — the human
+picks which oracle is right.
+
+**Status: preview.** The adapter contract (`UnspaAdapter`, `AdapterInvocation`,
+`AdapterResult`) may change between minor versions until the wedge graduates.
+Pin the `unspaghettit` dependency if CI depends on these tests.
 
 ## Skills
 
