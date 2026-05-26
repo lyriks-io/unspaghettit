@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [SemVer](https://semver.org).
 
+## [0.1.7] — 2026-05-27
+
+Cosmetic re-release of 0.1.6. The npm tarball is functionally identical — **0.1.6 users do not need to upgrade.** The bump exists so the `v0.1.7` git tag points at a green CI run.
+
+### Fixed
+
+- **Repo tracks the `.claude/skills/` copies of the two opt-in narrative skills.** A stale `.git/info/exclude` on the maintainer's machine was hiding `.claude/skills/unspa-worldbuild/SKILL.md` and `.claude/skills/unspa-worldplay/SKILL.md` locally, so they were never committed. The vitest `cli/skills/skills-sync.test.ts` enforces byte-identity between `cli/skills/` (canonical, ships via npm) and `.claude/skills/` (used when working on this repo), and a fresh CI clone was failing on the missing files. The published 0.1.6 npm tarball was always fine — `.claude/` is not in `package.json` `files`, so the package never carried those copies.
+
 ## [0.1.6] — 2026-05-27
 
 Adds an experimental Vitest spec generator that closes the spec-vs-code loop — every authored scenario becomes a real unit test driven through a user-written adapter. Plus a small UX pass on tag filtering and the Projects index, and a README restructure for non-tech readability. All changes additive — no schema migration, safe to upgrade in place.
