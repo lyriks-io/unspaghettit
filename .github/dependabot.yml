@@ -25,6 +25,13 @@ updates:
         patterns:
           - vitest
           - "@vitest/*"
+    ignore:
+      # write-file-atomic v8 requires Node >=22.22.2; the package supports
+      # Node >=20.10 (see package.json engines + CI matrix). Re-enable
+      # this bump after Node 20 hits EOL (April 2026).
+      - dependency-name: write-file-atomic
+        versions:
+          - ">=8.0.0"
 
   - package-ecosystem: github-actions
     directory: /
