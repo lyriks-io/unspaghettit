@@ -129,6 +129,7 @@ unspa init --scope global               # write to ~/.claude.json etc. instead o
 unspa init --hub                        # shared snapshot hub at ~/.unspa-hub/unspa
 unspa init --hub /custom/path           # shared hub at a custom location
 unspa init --no-gitignore --no-context --no-skills  # opt out of optional steps
+unspa init --fun                        # pre-check the opt-in narrative skills (also: invoke as `unspaghettit init`)
 ```
 
 What it does:
@@ -154,7 +155,7 @@ What it does:
    - That an Unspaghettit MCP server is available
    - When to use it instead of regenerating JSON
    - How to record implementations in the `.unspa.json` behavioral index
-5. **Installs three skills under `.claude/skills/`** (see [Skills](#skills)).
+5. **Installs the three core skills under `.claude/skills/`** (see [Skills](#skills)). Two opt-in narrative skills (`unspa-worldbuild`, `unspa-worldplay`) also ship with the package and land when fun mode is on — invoke the CLI as `unspaghettit init`, pass `--fun`, or tick the box in the interactive prompt.
 
 #### Shared snapshot hub (`--hub`)
 
@@ -230,20 +231,27 @@ and the enterprise pointer.
 
 ## Skills
 
-`unspa init` installs three Claude-format skills under
-`<cwd>/.claude/skills/`. Each is a self-contained `SKILL.md` that an
-MCP-aware AI client invokes when its description matches the user's task.
+`unspa init` installs Claude-format skills under `<cwd>/.claude/skills/`.
+Each is a self-contained `SKILL.md` that an MCP-aware AI client invokes
+when its description matches the user's task. Three skills are core and
+install by default; two are opt-in and only land when fun mode is on
+(invoke as `unspaghettit init`, pass `--fun`, or tick the box).
 
-| Skill                | Triggers when                                              |
-| -------------------- | ---------------------------------------------------------- |
-| `unspa-edit`         | User wants to edit the model (add/change action, etc.)     |
-| `unspa-implement`    | User is writing code that backs an Unspaghettit entity     |
-| `unspa-audit`        | User asks "what's implemented" / "what's missing"          |
+| Skill                | Default | Triggers when                                              |
+| -------------------- | :-----: | ---------------------------------------------------------- |
+| `unspa-edit`         | ✓       | User wants to edit the model (add/change action, etc.)     |
+| `unspa-implement`    | ✓       | User is writing code that backs an Unspaghettit entity     |
+| `unspa-audit`        | ✓       | User asks "what's implemented" / "what's missing"          |
+| `unspa-worldbuild`   | opt-in  | Modeling a fictional/interactive world (text adventure, RPG quest, narrative environment) |
+| `unspa-worldplay`    | opt-in  | Walking a player through a world built with `unspa-worldbuild` |
 
-The skills tell the AI to: use the MCP tools instead of regenerating JSON,
-record implementations in the `.unspa.json` behavioral index rather than
-annotating source code, and call `sync_from_index` so the dashboard sees
-new coverage. They live in the project so they version with the codebase.
+The core skills tell the AI to: use the MCP tools instead of regenerating
+JSON, record implementations in the `.unspa.json` behavioral index rather
+than annotating source code, and call `sync_from_index` so the dashboard
+sees new coverage. The narrative pair maps locations to surfaces, world
+state to shared state, and "what the player can do here" to actions with
+preconditions — see the closing section of the project README for the
+full pitch. Skills live in the project so they version with the codebase.
 
 ## AI client support
 
@@ -296,7 +304,9 @@ your-app/
 │   └── skills/
 │       ├── unspa-edit/SKILL.md      ← installed by `unspa init`
 │       ├── unspa-implement/SKILL.md
-│       └── unspa-audit/SKILL.md
+│       ├── unspa-audit/SKILL.md
+│       ├── unspa-worldbuild/SKILL.md  ← opt-in (fun mode)
+│       └── unspa-worldplay/SKILL.md   ← opt-in (fun mode)
 ├── .mcp.json                        ← MCP registration (Claude Code)
 ├── .cursor/mcp.json                 ← MCP registration (Cursor) (optional)
 ├── .gemini/settings.json            ← MCP registration (Gemini) (optional)
