@@ -19,6 +19,17 @@ const SOURCE_DIR = resolve(__dirname, '..', 'skills');
  */
 const DEST_SUBDIR = join('.claude', 'skills');
 
+/**
+ * Skills that ship with the package but are opt-in only — they aren't relevant
+ * to the default software-engineering use case. Installed when the user runs
+ * `unspaghettit init` (invoking the CLI by its full name), passes `--fun`, or
+ * explicitly opts in at the interactive prompt. The CLI's full name is the
+ * unlock; see the README's closing section for the wink.
+ */
+export const NARRATIVE_SKILLS: readonly string[] = ['unspa-worldbuild', 'unspa-worldplay'];
+
+const isNarrativeSkill = (name: string): boolean => NARRATIVE_SKILLS.includes(name);
+
 const listSkillNames = (): readonly string[] => {
   if (!existsSync(SOURCE_DIR)) return [];
   return readdirSync(SOURCE_DIR).filter((name) => {
@@ -44,13 +55,34 @@ export type SkillInstallResult = {
   readonly installed: boolean;
 };
 
+export type InstallSkillsOptions = {
+  /**
+   * When true, install the opt-in narrative skills (`unspa-worldbuild`,
+   * `unspa-worldplay`) alongside the always-on set. Default: false. Driven by
+   * fun mode (CLI invoked as `unspaghettit`, `--fun` flag, or interactive
+   * opt-in).
+   */
+  readonly includeNarrative?: boolean;
+};
+
 /**
- * Copy every bundled skill into `<cwd>/.claude/skills/<name>/`. Always
- * overwrites. The skills ship with the CLI, so the latest version is
- * authoritative. Returns one entry per skill the CLI shipped.
+ * Copy bundled skills into `<cwd>/.claude/skills/<name>/`. Always overwrites.
+ * The skills ship with the CLI, so the latest version is authoritative.
+ *
+ * Narrative skills (NARRATIVE_SKILLS) are excluded unless
+ * `includeNarrative` is true. This keeps the default install lean and focused
+ * on the software-spec use case; the narrative pair only lands when the user
+ * has signalled they want it.
+ *
+ * Returns one entry per skill that was actually copied.
  */
-export const installUnspaSkills = (cwd: string): readonly SkillInstallResult[] => {
-  const names = listSkillNames();
+export const installUnspaSkills = (
+  cwd: string,
+  options: InstallSkillsOptions = {}
+): readonly SkillInstallResult[] => {
+  const names = listSkillNames().filter(
+    (name) => options.includeNarrative === true || !isNarrativeSkill(name)
+  );
   const root = join(cwd, DEST_SUBDIR);
   return names.map((name) => {
     const src = join(SOURCE_DIR, name);

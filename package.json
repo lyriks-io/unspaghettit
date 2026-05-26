@@ -53,7 +53,7 @@
   },
   "bin": {
     "unspa": "./cli/unspa.cjs",
-    "unspaghettit": "./cli/unspa.cjs",
+    "unspaghettit": "./cli/unspaghettit.cjs",
     "unspa-mcp": "./mcp-server/bin.cjs"
   },
   "files": [

@@ -102,6 +102,13 @@ export type InitOptions = {
    * its MCP would always discover whatever folder happens to be near it.
    */
   readonly hub?: boolean | string;
+  /**
+   * Pre-check the opt-in narrative skills (worldbuild + worldplay) at the
+   * skill installation prompt. Set when the user invoked the CLI as
+   * `unspaghettit` (the package's long-name bin alias) or passed `--fun`.
+   * With `--yes` this also bypasses the prompt and installs them directly.
+   */
+  readonly fun?: boolean;
 };
 
 const resolveClientsArg = async (
@@ -348,7 +355,13 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
   //    one selected client reads that layout (currently Claude). copyFileSync
   //    overwrites in place, so re-runs always land the current bundled version
   //    without accumulating duplicates.
+  //
+  //    Narrative skills (worldbuild + worldplay) are opt-in: gated behind fun
+  //    mode (CLI invoked as `unspaghettit`, --fun, or interactive opt-in).
+  //    Keeps the default install lean for software-spec users; lets narrative
+  //    users have them with zero friction once they notice the unlock.
   const wantsSkills = clients.some((c) => c.installsSkills === true);
+  const fun = options.fun === true;
   if (!options.skipSkills && wantsSkills) {
     const apply = yes
       ? true
@@ -361,7 +374,18 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
           })
         ).apply;
     if (apply) {
-      const results = installUnspaSkills(cwd);
+      const includeNarrative = yes
+        ? fun
+        : (
+            await ask({
+              type: 'confirm',
+              name: 'includeNarrative',
+              message: 'Also install the narrative skills (worldbuild + worldplay)?',
+              initial: fun,
+              hint: 'Opt-in. Lets the LLM model and play interactive worlds. See "Definitely Do Not Use This For Fun" in the README.'
+            })
+          ).includeNarrative;
+      const results = installUnspaSkills(cwd, { includeNarrative });
       if (results.length === 0) {
         log.warn('No bundled skills found in this CLI install.');
       } else {

@@ -8,6 +8,22 @@ import { runServeCommand } from './commands/serve';
 import { runUninstallCommand } from './commands/uninstall';
 import { log } from './util/log';
 
+/**
+ * The package publishes two bin aliases for the same CLI: `unspa` (short)
+ * and `unspaghettit` (long). Invoking by the long name flips on "fun
+ * mode" — the init flow pre-checks the opt-in narrative skills
+ * (worldbuild + worldplay). The unlock is hidden in plain sight in the
+ * README's closing section; users who don't notice still get the same
+ * skills via the interactive checkbox or the explicit `--fun` flag.
+ *
+ * Detection lives on `process.env.UNSPA_FUN_MODE`, set by the
+ * `cli/unspaghettit.cjs` wrapper. We can't use `process.argv[1]`
+ * because npm's Windows `.cmd` shim re-invokes node with our `.cjs`
+ * file as argv[1] regardless of which alias the user typed — the
+ * alias name is lost. An env var set in the wrapper survives.
+ */
+const FUN_MODE_BY_INVOCATION = process.env.UNSPA_FUN_MODE === '1';
+
 // Single source of truth for the CLI version: read package.json at runtime so
 // `unspa --version` cannot drift from the published package version.
 const pkg = createRequire(import.meta.url)('../package.json') as { version: string };
@@ -45,6 +61,7 @@ program
   .option('--no-gitignore', 'Skip the .gitignore additions.')
   .option('--no-context', 'Skip the CLAUDE.md / AGENTS.md context block additions.')
   .option('--no-skills', 'Skip installing the bundled unspa skills under .claude/skills/.')
+  .option('--fun', 'Pre-check the opt-in narrative skills (worldbuild + worldplay) in the skill picker. Also implicitly on when the CLI is invoked as `unspaghettit`.')
   .option('-y, --yes', 'Accept defaults. Non-interactive (CI / scripts).')
   .action(async (opts) => {
     if (opts.scope !== 'project' && opts.scope !== 'global') {
@@ -60,7 +77,8 @@ program
       skipSkills: opts.skills === false,
       // Commander resolves `--hub` (no value) to `true` and `--hub <path>` to a
       // string; `undefined` means the flag was omitted entirely.
-      hub: opts.hub
+      hub: opts.hub,
+      fun: opts.fun === true || FUN_MODE_BY_INVOCATION
     });
     process.exit(code);
   });

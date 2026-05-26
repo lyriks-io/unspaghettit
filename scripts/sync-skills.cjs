@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 /*
- * cli/skills/ is the canonical home for the three skills that ship with
- * the npm package (`unspa init` reads from there and copies them into
- * each user's repo). .claude/skills/ holds the same three skills so they
- * apply when working on THIS repo, plus a handful of repo-internal
- * specialty skills (quest-modeler, worldbuild, worldplay) that we
- * deliberately do NOT ship.
+ * cli/skills/ is the canonical home for the skills that ship with the
+ * npm package (`unspa init` reads from there and copies them into each
+ * user's repo). .claude/skills/ holds the same set so they apply when
+ * working on THIS repo, plus repo-internal specialty skills
+ * (currently: quest-modeler) that we deliberately do NOT ship.
  *
  * Run this script to push edits from cli/skills/ → .claude/skills/ for
- * the shared three. Run with --check to fail (exit 1) if they have
+ * the shared set. Run with --check to fail (exit 1) if they have
  * drifted — wired into `npm test` so a one-sided edit can't slip
  * through review.
+ *
+ * The narrative pair (worldbuild + worldplay) ships but is opt-in: the
+ * init flow only installs it when the user hits "fun mode" (running
+ * `unspaghettit init`, passing --fun, or ticking the box in the
+ * interactive prompt). See cli/util/skills.ts NARRATIVE_SKILLS.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -19,7 +23,13 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(ROOT, 'cli', 'skills');
 const DEST = path.join(ROOT, '.claude', 'skills');
 
-const SHARED = ['unspa-audit', 'unspa-edit', 'unspa-implement'];
+const SHARED = [
+  'unspa-audit',
+  'unspa-edit',
+  'unspa-implement',
+  'unspa-worldbuild',
+  'unspa-worldplay'
+];
 
 const check = process.argv.includes('--check');
 
