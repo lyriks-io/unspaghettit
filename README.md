@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://cdn.jsdelivr.net/npm/unspaghettit/static/unspaghettit_logo.png" alt="Unspaghettit" width="120" />
+  <img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/unspaghettit_logo.png" alt="Unspaghettit" width="120" />
 </p>
 
 <h1 align="center">Unspaghettit</h1>
@@ -30,46 +30,90 @@
 
 ---
 
-## The problem
+## Why Unspaghettit?
 
-AI coding workflows go sideways fast. Specs drift. Prompts pile up. Generated systems lose coherence. Most current tools rely on markdown specs, giant prompts, disposable chat history, and implicit assumptions nobody can audit.
+AI coding works best when the human and the LLM share a stable model of the product. Without one, specs drift, prompts pile up, generated systems lose coherence, and important assumptions live only in chat history.
+
+In one line: **a way to keep AI-assisted software aligned with what you actually meant.**
 
 ## What it does
 
-Unspaghettit gives humans and LLMs a shared, **executable specification** for the systems they build together. If you think in terms of SDD, treat it as a local, machine-checkable software design document that agents can read and update through MCP.
+Unspaghettit gives humans and LLMs a shared, **executable specification** for the systems they build together: a local, machine-checkable software design document that agents can read and update through MCP (the [Model Context Protocol](https://modelcontextprotocol.io) — how AI tools like Claude, Cursor, and Gemini talk to local programs).
 
 Instead of keeping product intent in long prompts or markdown that slowly goes stale, you model the behavior as structured pieces: features, surfaces, actions, state, rules, effects, events, invariants, and scenarios. The MCP server exposes that specification to your AI coding tool, so the LLM can inspect, simulate, edit, and audit the model through typed tool calls instead of guessing from prose.
 
+You can use it in both directions: start from an idea and drive **spec → code**, or point an LLM at an existing codebase and build a **code → spec** map that makes the current behavior explicit.
+
 The specification becomes the source of truth; prompts become disposable again.
+
+## Who it's for
+
+- **Solo developers** shipping with an AI assistant who want product intent to survive between chat sessions.
+- **Small teams** where multiple humans and agents touch the same codebase and need a shared, versioned model of "what the product does".
+- **Technical founders / product-minded engineers** who want a machine-readable spec they can hand to an LLM and get an honest report back.
+- **Anyone with an existing codebase** that's drifted from its docs and wants the LLM to rebuild the spec from the code itself.
 
 ## Benefits
 
 - **Less drift between intent and code**: scenarios, generated types, and implementation coverage all point back to the same spec.
+- **Existing code becomes legible**: ask an LLM to reverse-map a codebase into features, actions, scenarios, and implementation coverage.
 - **AI agents get structured context**: the LLM reads focused entities and actions instead of a giant prompt blob.
 - **Specs become testable**: every scenario can run through the simulator before implementation exists.
 - **Implementation stays auditable**: `.unspa.json` records where each spec entity is implemented and reports gaps.
 - **Teams keep local ownership**: snapshots are plain JSON in your repo or local hub, with no hosted service required.
 
-## Scenarios as CI-grade spec tests
+## Quickstart
+
+From nothing to a running Unspaghettit workspace:
+
+```bash
+npm install -g unspaghettit
+cd path/to/your-app
+unspa init
+unspa dashboard
+```
+
+`unspa init` wires the MCP server into the AI clients you choose. If your client supports skills or custom instructions, it can install the Unspaghettit guidance there too.
+
+Restart your IDE or AI client. When it comes back up, accept the MCP server and the guidance if your client asks. Then ask your LLM something like:
+
+```text
+Using the Unspaghettit MCP, create a new project.
+Model the first feature and make it implementation-ready.
+```
+
+The dashboard opens at `http://localhost:3000`, so you can watch the spec take shape while the LLM works.
+
+New to this? Hit `/tutorial` in the dashboard for a guided walkthrough (Project → Feature → Surface → Action → Parameter → Rule → Simulator, step by step).
+
+For the full list of supported AI clients, the `unspa init` flags, and the shared-hub layout for multi-repo setups, jump to [Installation](#installation-clients-flags-advanced-setup).
+
+## Scenarios as executable spec tests
 
 The strongest idea in here, surfaced up front:
 
-> Every scenario you author is an **executable assertion** about behavior. `run_all_scenarios` runs them through the deterministic simulator and reports pass/fail per assertion, like a unit test suite for your spec, before a line of implementation exists.
+> Every scenario you author is an **executable assertion** about behavior. `run_all_scenarios` runs them through the deterministic simulator and reports pass/fail per assertion — a unit test suite for the spec itself, before the implementation exists.
+
+Two complementary uses of the same scenarios:
+
+- **Spec self-test (always on).** `run_all_scenarios` checks that the spec is internally consistent: every scenario's expected outcome matches what the simulator computes from the rules. Catches contradictions in product logic before a line of code is written.
+- **Code-vs-spec test (preview).** `unspa scenarios export <featureId>` generates a Vitest file from those same scenarios, using the simulator's predictions as the oracle. You write one thin adapter (`UnspaAdapter` from `unspaghettit/cli/scenarios`) that calls your real implementation; the generated tests drive every scenario through it and assert state path-by-path. Experimental — adapter contract may shift between minor versions.
 
 Specs stop being documentation. They become a runtime contract you can break loudly.
 
 ## Core capabilities
 
 - **Structured behavior specification**, features, surfaces, actions, states, rules, invariants, transitions, scenarios, personas, resources, entities, events.
+- **Code → spec mapping**, an LLM can read an existing repo, model its behavior into an Unspaghettit runtime, and wire the spec back to source files through the behavioral index.
 - **MCP-native**, every entity is created, read, edited, and validated through MCP tool calls. Works with any MCP-compatible IDE (Claude Code, Claude Desktop, Cursor, Gemini, Windsurf, Kiro, Codex).
-- **Deterministic simulator**, `dry_run_simulate` runs an action against a state snapshot. `run_all_scenarios` executes every scenario as a CI-grade spec test, with pass/fail per assertion.
+- **Deterministic simulator**, `dry_run_simulate` runs an action against a state snapshot. `run_all_scenarios` runs every scenario as a deterministic spec test, with pass/fail per assertion.
 - **Maturity scoring**, `score_feature` returns a per-area score with critical/recommended issues; surfaces the worst surfaces and biggest gaps.
 - **Generated TypeScript contracts**, `generate_types` writes types for state shapes, event names, and action parameters. Your implementation imports them, so TypeScript catches drift when the spec changes.
 - **Implementation audit**, record each implementation in a `.unspa.json` behavioral index (`{ file, line, signature }` per entity); the MCP reconciles it against the spec and reports coverage + gaps.
 - **Implementation queue**, per-project "implement next" list (Feature / Surface / Action items). Drag-and-drop reorder in the dashboard, `mcp__unspa__get_next_queued` so a dev says "implement the next thing" without naming it. Auto-prunes items the behavioral index marks done.
 - **Local-first**, everything lives in your repo. No telemetry, no hosted servers, no cloud dependency. Snapshots are plain JSON.
-- **Multi-agent ready**, built-in Yjs WebSocket server lets multiple humans and/or LLMs edit the same runtime in real time. History entries carry `AI · John` attribution so MCP-driven changes are distinguishable from direct human edits.
-- **Encrypted backup / share**, the project page's **Export .unspa** button bundles project + features + status sidecars into a single AES-GCM-256 / PBKDF2-SHA256 file. Passphrase never leaves the browser; envelope carries no identifier of contents.
+- **Multi-agent ready**, built-in Yjs WebSocket server lets multiple humans and/or LLMs edit the same runtime in real time. History entries carry `AI · for John` attribution so MCP-driven changes are distinguishable from direct human edits.
+- **Encrypted backup / share**, the project page's **Export .unspa** button bundles project + features + status sidecars into a single passphrase-encrypted file. Passphrase never leaves the browser; envelope carries no identifier of contents. See [Security tiers](#security-tiers).
 
 ## Workflows
 
@@ -94,11 +138,13 @@ The LLM does the reading/writing in both directions. Unspaghettit gives it a str
 
 ## Working with the MCP in chat
 
+Ready-to-paste prompt patterns for the common tasks: starting a new project, choosing a maturity level, asking questions about an existing spec, editing it, and moving from spec to implementation. Skim the subheadings and jump to the one you need.
+
 Once `unspa init` has registered the MCP server and your AI client has restarted, you do not need to speak in Unspaghettit internals. Start with the product you want. Mention the Unspaghettit or Unspa MCP, the scope, and the level of completeness you want. For a first prompt, asking for 100% maturity usually gives a much better result because it pushes the agent to create complete scenarios, rules, and checks instead of a shallow outline.
 
-### Start with a product prompt
+### Start with a prompt
 
-This is usually enough:
+For a new product, this is usually enough:
 
 ```text
 Using the Unspaghettit MCP, create a new project.
@@ -121,6 +167,14 @@ For one feature:
 Using the Unspaghettit MCP, add a feature for approving refunds.
 Keep it focused on the support agent workflow.
 Make it implementation-ready and bring it to 100% maturity.
+```
+
+For an existing codebase:
+
+```text
+Using the Unspaghettit MCP, read this repository and create a spec that describes the behavior already implemented.
+Start with the most important user-facing flows.
+Map each spec entity back to the files that implement it, then report what is unclear or missing.
 ```
 
 ### Choose the maturity level
@@ -213,31 +267,18 @@ That makes it different from:
 
 ## Philosophy
 
-- Local-first.
-- Explicit behavior over prompt heuristics.
-- Simulation before implementation.
-- Humans and LLMs collaborate on structure, not on free-form prose.
-- Deterministic logic lives in the spec; humans and LLMs handle the parts that don't compress (judgment, taste, prose).
-- Runtime validation over prompt guessing.
-- No prompt spaghetti.
+- **Local-first.** Your repo holds the truth. No accounts, no telemetry, no hosted service.
+- **Simulation before implementation.** Prove the spec is internally consistent before writing the code that implements it.
+- **Explicit structure over prompt heuristics.** Humans and LLMs collaborate on the model, not on free-form prose.
+- **Deterministic logic in the spec; judgment in the humans.** The runtime owns the gates and consequences. Humans (and LLMs as humans' agents) own taste, scope, and the parts that don't compress.
 
-## Quickstart
+## Installation (clients, flags, advanced setup)
 
-Install the CLI globally:
-
-```bash
-npm install -g unspaghettit
-```
-
-Then in any project you want to wire up:
-
-```bash
-cd path/to/your-app
-unspa init           # interactive: scaffold unspa/ + register MCP + seed CLAUDE.md/AGENTS.md + install skills
-unspa dashboard      # opens http://localhost:3000
-```
-
+> The 30-second path is in [Quickstart](#quickstart) above. This section covers which AI clients are supported, the flags `unspa init` accepts, and the shared-hub layout for multi-repo setups.
+>
 > Developing on the CLI itself? Clone the repo, then `npm install && npm run build && npm link`. See [cli/README.md](cli/README.md) for the dev setup.
+
+### Supported AI clients
 
 `unspa init` registers the MCP server with the AI clients you pick. Supported out of the box:
 
@@ -249,13 +290,13 @@ unspa dashboard      # opens http://localhost:3000
 | Gemini Code Assist / CLI | `.gemini/settings.json`         | `~/.gemini/settings.json`              |
 | Windsurf                 | n/a                             | `~/.codeium/windsurf/mcp_config.json`  |
 | Kiro                     | `.kiro/settings/mcp.json`       | `~/.kiro/settings/mcp.json`            |
-| Codex (VS Code)          | prints snippet to paste manually | same                                  |
+| Codex (VS Code)          | prints snippet to paste manually | (manual paste)                        |
 
-For the manual entries, `unspa init` prints the MCP JSON snippet to copy into the client's MCP settings.
+For Codex (and any other client without an automated config write), `unspa init` prints the MCP JSON snippet to copy into the client's settings.
 
 Re-running `unspa init` is safe, every step is idempotent. Existing entries are preserved; managed blocks refresh in place.
 
-Restart your IDE. Your LLM now has the runtime's full tool surface.
+You normally don't run the MCP server manually — your AI client spawns `unspa-mcp` on demand. `unspa serve` exists as a debugging hatch if you ever need to test the stdio interface yourself.
 
 ### Shared snapshot hub
 
@@ -278,9 +319,11 @@ For the CLI details (commands, flags, troubleshooting), see [cli/README.md](cli/
 
 ## Example
 
-Boot `unspa dashboard` and click **Load samples** to install the bundled **eShop** project: 4 LLM-sized features (Account & auth, Catalog & reviews, Cart & checkout, Order fulfillment) that exercise the full capability surface, composite + Expression conditions, feature invariants, event cascade, `bypassInvariants`, action invariants, scenarios, persona overrides, entity/resource mapping. Every feature scores 100% maturity so the sample works as a clean reference model. To see maturity gaps, create a tiny scratch feature with an empty surface or an action without effects/scenarios; the dashboard will show the missing pieces.
+Boot `unspa dashboard` and click **Load samples** to install the bundled **eShop** project. It includes 4 features — Account & auth, Catalog & reviews, Cart & checkout, and Order fulfillment — each small enough for an agent to reason about end to end.
 
-The dashboard also ships a **Tutorial** page (`/tutorial`) with a 14-section walkthrough and a **Run interactive tutorial** button that drives a guided spotlight tour from project → feature → surface → action → parameter → rule → simulator, prefilling fields and gating each step on the right thing being typed/clicked.
+The sample is intentionally complete: scenarios, rules, invariants, events, personas, entities, resources, and implementation mapping are all represented. Every feature scores 100% maturity, so it works as a clean reference model. To see maturity gaps, create a tiny scratch feature with an empty surface or an action without effects/scenarios; the dashboard will show the missing pieces.
+
+If you'd rather follow a guided tour than poke at the sample, the dashboard's `/tutorial` page also has a 14-section written walkthrough and a **Run interactive tutorial** button that drives a spotlight tour through Project → Feature → Surface → Action → Parameter → Rule → Simulator, prefilling fields along the way.
 
 ## Collaboration
 
@@ -288,8 +331,8 @@ Multiple humans + AI agents can edit the same runtime live:
 
 - **Real-time sync**, every dashboard tab subscribes to a per-room Yjs WebSocket. Out-of-band changes (MCP writes, other tabs) flow in without a reload, with an activity toast for each change carrying a breadcrumb path (`Project › Feature › Surface › Action`) and a "View" button.
 - **Identity**, click the round avatar in the header to set your display name. Every history entry you create is tagged with it. Stored in browser localStorage, never sent off-machine. First visit prompts once; the avatar dropdown is the explicit way to change or reset later.
-- **Attribution**, MCP-driven changes carry an `AI · for John` label (the AI badge stays primary; the human name is the supporting attribution). Resolved server-side from whoever's currently at the dashboard.
-- **Project history**, read-only timeline tab on the project page lists every change (rename, feature add/remove, queue mutation, …) with author + timestamp. The shared Y.Doc room feeds it, so MCP edits and human edits land in the same audit log.
+- **Attribution**, MCP-driven changes carry an `AI · for John` label, so the history shows both the agent and the human it is working with.
+- **Project history**, read-only timeline tab on the project page lists every change (rename, feature add/remove, queue mutation, …) with author + timestamp. The shared per-project room feeds it, so MCP edits and human edits land in the same audit log.
 - **Implementation queue**, drag-and-drop "implement next" list per project. The LLM uses `mcp__unspa__get_next_queued` so you can say "implement the next thing" without naming it. Items auto-prune as `.unspa.json` flips them to `implemented`.
 - **Backup / share**, the project page's **Export .unspa** button produces an encrypted bundle (project + features + status). The matching **Import .unspa** on the projects index restores it. Passphrase is required on both ends; the file itself reveals nothing about its contents.
 
@@ -303,9 +346,36 @@ Unspaghettit is local-first by default. Three tiers, all opt-in beyond the defau
 | **LAN-share** | `UNSPA_AUTH_TOKEN=<secret>`, optionally `UNSPA_ALLOWED_ORIGIN=http://host:3000`, then `unspa dashboard --host 0.0.0.0` | Every REST + WebSocket request requires the token. Origin allowlist closes browser-side CSRF. Set the **same** `UNSPA_AUTH_TOKEN` on the MCP server's env so its notify calls authenticate. The dashboard prints the auth posture in its startup banner. |
 | **Backup / share** (orthogonal to live sharing) | Click **Export .unspa** on a project, enter a passphrase ≥ 8 chars | AES-GCM-256 + PBKDF2-SHA256 (600k iterations). Passphrase never leaves the browser. Envelope carries no project name or metadata. |
 
-Full threat model + mitigations in [SECURITY.md](SECURITY.md). For SSO / RBAC / audit trails / encryption at rest, the OSS install stops at the LAN-share tier. Those are a separate enterprise build (`hello@lyriks.io`).
+Full threat model + mitigations in [SECURITY.md](SECURITY.md).
 
 ## Architecture
+
+How the pieces fit at runtime:
+
+```
+                         ┌──────────────────────────┐
+  AI client              │  MCP server (stdio)      │
+  (Claude / Cursor / ───→│  - typed tool surface    │←─── your code
+  Gemini / ...)          │  - validation + simulator│     (via .unspa.json
+                         └────────────┬─────────────┘      behavioral
+                                      │                    index)
+                                      ▼
+                         ┌──────────────────────────┐
+                         │  unspa/  (or hub)        │
+                         │  feature JSON snapshots  │←──→ Yjs WebSocket
+                         │  = your runtime          │     (live multi-agent)
+                         └────────────┬─────────────┘
+                                      │
+                                      ▼
+                         ┌──────────────────────────┐
+                         │  SvelteKit dashboard     │
+                         │  (you, browsing the spec)│
+                         └──────────────────────────┘
+```
+
+The spec is just JSON on disk. The MCP server, the dashboard, your AI client, and your application code all read and write through it. Nothing is hosted; everything is in your repo (or in a local hub you control).
+
+Where the code lives:
 
 ```
 unspaghettit/
@@ -320,13 +390,11 @@ unspaghettit/
 └── build/                        ← SvelteKit production build (npm run build)
 ```
 
-## Status
+## Where this came from
+
+Built internally at Lyriks because existing AI workflows were becoming increasingly hard to reason about as systems grew. The runtime became useful enough that we released it as standalone OSS — AGPL-licensed and separate from other Lyriks research work.
 
 Early but functional. Used internally to model products, generate typed scaffolding, audit implementation against spec, run multi-agent editing sessions, and recursively refine the runtime itself.
-
-## Why open source?
-
-Built internally because existing AI workflows were becoming increasingly hard to reason about as systems grew. The runtime became useful enough that we released it as standalone OSS, separate from our formal coherence research and engine work.
 
 ## Definitely Do Not Use This For Fun
 
@@ -340,7 +408,7 @@ You might discover that executable specs are suspiciously good at checking wheth
 
 There are two halves. **Building** the world maps locations to surfaces, world state to shared state, NPC schedules to time-driven rules, and "what the player can do here" to actions with preconditions. **Playing** the world is the dangerous part: a chat reads a saved game file on every turn, maps the player's intent to a modeled action, asks the deterministic simulator to resolve it, applies the diff back to disk, and narrates the result. The save file is canonical — your inventory, time of day, and current location survive the LLM forgetting the conversation.
 
-It will probably not become the fastest game ever made, but it may become a strangely coherent one. Unspaghettit holds the deterministic logic — the rules, the gates, the consequences, the world state. The LLM gets all the room it needs to invent everything that should stay human-shaped: emotion, atmosphere, dialogue, visual design, awkward silences, suspicious taverns, bad decisions, and the exact kind of rain that falls before a betrayal.
+It will probably not become the fastest game ever made, but it may become a strangely coherent one. Unspaghettit holds the deterministic logic: the rules, the gates, the consequences, the world state. The LLM gets all the room it needs to invent everything that should stay human-shaped: emotion, atmosphere, dialogue, visual design, awkward silences, suspicious taverns, bad decisions, and the exact kind of rain that falls before a betrayal.
 
 Unspaghettit does not know how to be human. That is not its job. But for deterministic logic, it is a menace.
 
@@ -353,3 +421,5 @@ This would be extremely dangerous, because you may have fun.
 ## License
 
 AGPL-3.0. You're free to use, study, modify, and self-host. Improvements and derivative networked versions stay open under the same license. See [LICENSE](LICENSE).
+
+Enterprise-grade support and private commercial setups are available via `hello@lyriks.io`. Everything in this repo stays open under AGPL.
