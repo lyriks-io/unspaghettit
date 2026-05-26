@@ -4,11 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [SemVer](https://semver.org).
 
-## [Unreleased]
+## [0.1.6] — 2026-05-27
+
+Adds an experimental Vitest spec generator that closes the spec-vs-code loop — every authored scenario becomes a real unit test driven through a user-written adapter. Plus a small UX pass on tag filtering and the Projects index, and a README restructure for non-tech readability. All changes additive — no schema migration, safe to upgrade in place.
 
 ### Added
 
 - **`unspa scenarios export <featureId>` (experimental).** Generates a Vitest spec from a feature's authored scenarios. The deterministic simulator runs each scenario at codegen time and embeds its predicted outcome (status + expected assertions) as the test oracle. The user writes a thin adapter — `UnspaAdapter` from `unspaghettit/cli/scenarios` — that calls their real implementation; the generated test drives every scenario through that adapter and asserts state path-by-path. Drift between authored `expectedStatus` and simulator prediction is reported per scenario but not gated (the generator emits tests as authored; the human picks which oracle wins). Default output is `./<feature-slug>.scenarios.spec.ts`; flags: `--out`, `--adapter`, `--adapter-export`, `--dry-run`, `--force`. Refuses to clobber an existing file without `--force`. Adapter contract (`UnspaAdapter`, `AdapterInvocation`, `AdapterResult`) is preview and may change between minor versions until the wedge graduates; every emitted file carries that banner in its header.
+
+### Changed
+
+- **Tag filter shows per-type color inside the dropdown.** Each `<optgroup>` gets a background-color tint at 28% of the type's color (a clear colored band on the type header) and each `<option>` beneath gets a lighter 12% wash. Text stays at default; the color reminder reads as a row-background swimlane that doesn't recolor labels. Replaces the inline `TagPillBar` chip row that used to render above the Projects, Features-in-Project, and global Features list views — the selector now carries the color signal alone.
+- **Import .unspa button repositioned** to the top of the Projects index header, paired with the "Home" eyebrow. Mirrors the Export .unspa position on a project page and drops the heavier `h-10` styling for the same compact look used by Export.
+
+### Documentation
+
+- **README restructured for audience clarity.** Non-tech one-line hook ("a way to keep AI-assisted software aligned with what you actually meant"), MCP defined on first use with a link, "Who it's for" anchor, Quickstart vs Installation properly differentiated (no duplicate `npm install -g` block), Scenarios callout clarifies spec self-test (`run_all_scenarios`) vs code-vs-spec test (`unspa scenarios export`), Architecture section gains a runtime data-flow diagram before the folder tree, Status + Why-open-source merged into a single "Where this came from", Philosophy tightened from seven mixed-register lines to four consistent principles. Logo URL switched from the npm/jsDelivr CDN to `raw.githubusercontent` so it survives any future change to the npm `files` list.
+
+### Migration
+
+- None. The new CLI command is purely additive. The TagPillBar removal is internal — users who relied on the colored chip row above tag lists now see the same color information in the filter dropdown.
 
 ## [0.1.5] — 2026-05-25
 
