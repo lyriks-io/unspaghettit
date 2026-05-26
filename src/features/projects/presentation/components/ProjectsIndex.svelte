@@ -288,9 +288,28 @@
 
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
   <header class="mb-6 border-b border-slate-200 pb-6">
-    <div class="max-w-3xl">
+    <div class="flex items-center justify-between gap-3">
       <p class="text-xs font-semibold uppercase tracking-wide text-brand-700">Home</p>
-      <h1 class="mt-2 text-4xl font-semibold tracking-tight text-slate-950">Projects</h1>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800 disabled:opacity-50"
+        onclick={openImportPicker}
+        disabled={importing}
+        title="Restore a project from a .unspa file"
+      >
+        <span aria-hidden="true">&#x2B06;</span>
+        {importing ? 'Importing...' : 'Import .unspa'}
+      </button>
+      <input
+        bind:this={importFileInput}
+        type="file"
+        accept=".unspa,application/octet-stream,application/json"
+        class="hidden"
+        onchange={handleImportFileChosen}
+      />
+    </div>
+    <div class="mt-2 max-w-3xl">
+      <h1 class="text-4xl font-semibold tracking-tight text-slate-950">Projects</h1>
       <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
         Group related behavior models and inspect their resources, data, events, and transitions together.
       </p>
@@ -332,23 +351,6 @@
             <option value="count">Features</option>
           </select>
         </label>
-        <button
-          type="button"
-          class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800 disabled:opacity-50"
-          onclick={openImportPicker}
-          disabled={importing}
-          title="Restore a project from a .unspa file"
-        >
-          <span aria-hidden="true">&#x2B06;</span>
-          {importing ? 'Importing...' : 'Import .unspa'}
-        </button>
-        <input
-          bind:this={importFileInput}
-          type="file"
-          accept=".unspa,application/octet-stream,application/json"
-          class="hidden"
-          onchange={handleImportFileChosen}
-        />
         <button
           type="button"
           data-tour="new-project-button"

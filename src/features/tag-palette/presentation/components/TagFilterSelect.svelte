@@ -100,10 +100,21 @@
       Untagged{untaggedCount !== undefined ? ` (${untaggedCount})` : ''}
     </option>
     {#each groupedOptions as group (group.typeKey)}
-      <optgroup label={group.display}>
+      {@const groupColor = tagPaletteStore.colorFor(group.typeKey)}
+      <optgroup
+        label={group.display}
+        style={groupColor
+          ? `background-color: color-mix(in srgb, ${groupColor} 28%, white);`
+          : undefined}
+      >
         {#each group.tags as tag (tagKey(tag))}
           {@const c = countLabel?.({ type: tag.type, value: tag.value })}
-          <option value={tagKey(tag)}>
+          <option
+            value={tagKey(tag)}
+            style={groupColor
+              ? `background-color: color-mix(in srgb, ${groupColor} 12%, white);`
+              : undefined}
+          >
             {humanizeTagText(tag.value)}{c !== undefined ? ` (${c})` : ''}
           </option>
         {/each}

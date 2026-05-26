@@ -14,7 +14,6 @@
   import TagFilterSelect, {
     type TagFilterValue
   } from '$features/tag-palette/presentation/components/TagFilterSelect.svelte';
-  import TagPillBar from '$features/tag-palette/presentation/components/TagPillBar.svelte';
   import ManageTagsDialog from '$features/tag-palette/presentation/components/ManageTagsDialog.svelte';
 
   onMount(() => {
@@ -379,17 +378,6 @@
       </div>
       <p class="text-xs text-slate-500">{filtered.length} shown</p>
     </div>
-
-  {#if allTagsFlat.length > 0}
-    <div class="mb-4">
-      <TagPillBar
-        tags={allTagsFlat}
-        value={tagFilter}
-        onChange={(next) => (tagFilter = next)}
-        countLabel={tagFilterCount}
-      />
-    </div>
-  {/if}
 
   {#if featuresStore.loading}
     <div class="rounded-lg border border-dashed border-hairline bg-white p-8 text-center text-sm text-slate-500">

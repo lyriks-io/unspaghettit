@@ -11,7 +11,6 @@
   import TagFilterSelect, {
     type TagFilterValue
   } from "$features/tag-palette/presentation/components/TagFilterSelect.svelte";
-  import TagPillBar from "$features/tag-palette/presentation/components/TagPillBar.svelte";
   import { tagPaletteStore } from "$features/tag-palette/presentation/stores/tagPaletteStore.svelte";
   import { projectStore } from "$features/projects/presentation/stores/projectStore.svelte";
   import { queueItemKey } from "$features/implementation-queue/domain/entities/QueueItem";
@@ -298,15 +297,6 @@
       </div>
     </div>
   </div>
-
-  {#if allTagsFlat.length > 0}
-    <TagPillBar
-      tags={allTagsFlat}
-      value={tagFilter}
-      onChange={(next) => (tagFilter = next)}
-      countLabel={tagFilterCount}
-    />
-  {/if}
 
   {#if filteredCards.length === 0}
     <div
