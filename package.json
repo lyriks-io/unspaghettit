@@ -105,7 +105,7 @@
     "picocolors": "^1.1.1",
     "prompts": "^2.4.2",
     "tsx": "^4.21.0",
-    "write-file-atomic": "^7.0.1",
+    "write-file-atomic": "^8.0.0",
     "ws": "^8.20.1",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.30",
