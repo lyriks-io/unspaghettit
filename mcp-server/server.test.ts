@@ -349,9 +349,9 @@ describe('MCP server', () => {
       ok: true;
       tags: readonly { type: string; value: string }[];
     };
-    expect(addedAck.tags).toEqual([{ type: 'Team', value: 'Growth' }]);
+    expect(addedAck.tags).toEqual([{ type: 'team', value: 'growth' }]);
 
-    // Case-insensitive dedupe via tagKey.
+    // Case-insensitive dedupe via tagKey; normalized to lowercase on save.
     await client.callTool({
       name: 'add_project_tag',
       arguments: { projectId, type: 'team', value: 'GROWTH' }
@@ -361,7 +361,7 @@ describe('MCP server', () => {
       arguments: { projectId }
     });
     const project = parseTextContent(fetched) as { tags?: readonly unknown[] };
-    expect(project.tags).toEqual([{ type: 'Team', value: 'Growth' }]);
+    expect(project.tags).toEqual([{ type: 'team', value: 'growth' }]);
 
     const removed = await client.callTool({
       name: 'remove_project_tag',
@@ -385,15 +385,17 @@ describe('MCP server', () => {
       tags: readonly { type: string; value: string }[];
     };
     expect(addedAck.ok).toBe(true);
-    expect(addedAck.tags).toEqual([{ type: 'Domain', value: 'Commerce' }]);
+    expect(addedAck.tags).toEqual([{ type: 'domain', value: 'commerce' }]);
 
     // Idempotent: re-adding the same tag is a no-op (deduped by tagKey).
+    // Tags are normalized to lowercase so a re-add with different casing is
+    // structurally identical to the first add.
     await client.callTool({
       name: 'add_feature_tag',
       arguments: { featureId: storefrontFeature.id, type: 'domain', value: 'commerce' }
     });
     const afterDuplicate = await repo.get(storefrontFeature.id);
-    expect(afterDuplicate?.tags).toEqual([{ type: 'Domain', value: 'Commerce' }]);
+    expect(afterDuplicate?.tags).toEqual([{ type: 'domain', value: 'commerce' }]);
 
     const removed = await client.callTool({
       name: 'remove_feature_tag',

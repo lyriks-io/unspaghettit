@@ -3,6 +3,7 @@ import { discoverSnapshotDirectory } from '$features/behavior-model/infrastructu
 import { JsonFolderImplementationStatusRepository } from '$features/implementation-status/infrastructure/persistence/JsonFolderImplementationStatusRepository';
 import { JsonFolderProjectRepository } from '$features/projects/infrastructure/persistence/JsonFolderProjectRepository';
 import { JsonFolderDomainRepository } from '$features/domains/infrastructure/persistence/JsonFolderDomainRepository';
+import { JsonFileTagPaletteRepository } from '$features/tag-palette/infrastructure/persistence/JsonFileTagPaletteRepository';
 import { migrateFlatLayoutAndLog } from '$shared/infrastructure/persistence/snapshotLayout';
 
 let cached: {
@@ -10,6 +11,7 @@ let cached: {
   statusRepo: JsonFolderImplementationStatusRepository;
   projectRepo: JsonFolderProjectRepository;
   domainRepo: JsonFolderDomainRepository;
+  tagPaletteRepo: JsonFileTagPaletteRepository;
   directory: string;
 } | null = null;
 
@@ -18,6 +20,7 @@ export const getSnapshotRepository = (): {
   statusRepo: JsonFolderImplementationStatusRepository;
   projectRepo: JsonFolderProjectRepository;
   domainRepo: JsonFolderDomainRepository;
+  tagPaletteRepo: JsonFileTagPaletteRepository;
   directory: string;
 } => {
   if (cached) return cached;
@@ -28,6 +31,7 @@ export const getSnapshotRepository = (): {
   const statusRepo = new JsonFolderImplementationStatusRepository(directory);
   const projectRepo = new JsonFolderProjectRepository(directory);
   const domainRepo = new JsonFolderDomainRepository(directory);
-  cached = { repo, statusRepo, projectRepo, domainRepo, directory };
+  const tagPaletteRepo = new JsonFileTagPaletteRepository(directory);
+  cached = { repo, statusRepo, projectRepo, domainRepo, tagPaletteRepo, directory };
   return cached;
 };

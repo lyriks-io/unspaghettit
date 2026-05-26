@@ -37,12 +37,18 @@ import { saveDomainUseCase } from '$features/domains/application/use-cases/SaveD
 import { addProjectToDomainUseCase } from '$features/domains/application/use-cases/AddProjectToDomain';
 import { removeProjectFromDomainUseCase } from '$features/domains/application/use-cases/RemoveProjectFromDomain';
 import type { ImplementationStatusRepository } from '$features/implementation-status/application/ports/ImplementationStatusRepository';
+import type { TagPaletteRepository } from '$features/tag-palette/application/ports/TagPaletteRepository';
+import type { TagOperations } from '$features/tag-palette/application/ports/TagOperations';
+import { getTagPaletteUseCase } from '$features/tag-palette/application/use-cases/GetTagPalette';
+import { setTagTypeColorUseCase } from '$features/tag-palette/application/use-cases/SetTagTypeColor';
 
 export type Container = {
   readonly repository: FeatureRepository;
   readonly projectRepository: ProjectRepository;
   readonly domainRepository: DomainRepository;
   readonly statusRepository: ImplementationStatusRepository;
+  readonly tagPaletteRepository: TagPaletteRepository;
+  readonly tagOperations: TagOperations;
   readonly clock: Clock;
   readonly ids: IdGenerator;
   readonly useCases: {
@@ -79,6 +85,9 @@ export type Container = {
     readonly dequeueQueueItem: ReturnType<typeof dequeueQueueItemUseCase>;
     readonly moveQueueItem: ReturnType<typeof moveQueueItemUseCase>;
     readonly listQueue: ReturnType<typeof listQueueUseCase>;
+    readonly getTagPalette: ReturnType<typeof getTagPaletteUseCase>;
+    readonly setTagTypeColor: ReturnType<typeof setTagTypeColorUseCase>;
+    readonly renameTag: TagOperations['renameTag'];
   };
 };
 
@@ -87,6 +96,8 @@ export const createContainer = (deps: {
   projectRepository: ProjectRepository;
   domainRepository: DomainRepository;
   statusRepository: ImplementationStatusRepository;
+  tagPaletteRepository: TagPaletteRepository;
+  tagOperations: TagOperations;
   samples: readonly Feature[];
   projectSamples: readonly Project[];
   clock?: Clock;
@@ -98,11 +109,15 @@ export const createContainer = (deps: {
   const projectRepository = deps.projectRepository;
   const domainRepository = deps.domainRepository;
   const statusRepository = deps.statusRepository;
+  const tagPaletteRepository = deps.tagPaletteRepository;
+  const tagOperations = deps.tagOperations;
   return {
     repository,
     projectRepository,
     domainRepository,
     statusRepository,
+    tagPaletteRepository,
+    tagOperations,
     clock,
     ids,
     useCases: {
@@ -175,7 +190,10 @@ export const createContainer = (deps: {
       listQueue: listQueueUseCase({
         projects: projectRepository,
         features: repository
-      })
+      }),
+      getTagPalette: getTagPaletteUseCase({ repository: tagPaletteRepository }),
+      setTagTypeColor: setTagTypeColorUseCase({ repository: tagPaletteRepository }),
+      renameTag: (input) => tagOperations.renameTag(input)
     }
   };
 };

@@ -9,18 +9,18 @@
   import NewFeatureForm from '$features/behavior-model/presentation/components/NewFeatureForm.svelte';
   import { getBrowserContainer } from '$shared/infrastructure/browserContainer';
   import { asProjectId, type ProjectId } from '$features/projects/domain/value-objects/ids';
-  import { tagKey, tagLabel, type Tag } from '$shared/domain/Tags';
-
-  type TagOption = {
-    readonly type: string;
-    readonly value: string;
-    readonly key: string;
-    readonly label: string;
-  };
+  import { humanizeTagText, tagKey, type Tag } from '$shared/domain/Tags';
+  import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
+  import TagFilterSelect, {
+    type TagFilterValue
+  } from '$features/tag-palette/presentation/components/TagFilterSelect.svelte';
+  import TagPillBar from '$features/tag-palette/presentation/components/TagPillBar.svelte';
+  import ManageTagsDialog from '$features/tag-palette/presentation/components/ManageTagsDialog.svelte';
 
   onMount(() => {
     featuresStore.refresh();
     projectsStore.refresh();
+    tagPaletteStore.refresh();
   });
 
   async function handleCreate(name: string, description: string) {
@@ -49,7 +49,8 @@
   let sortBy = $state<'updated' | 'name' | 'maturity'>('updated');
   let moreMenu = $state<HTMLDivElement | null>(null);
   let projectFilter = $state<'all' | 'unassigned' | ProjectId>('all');
-  let tagFilter = $state<string>('all');
+  let tagFilter = $state<TagFilterValue>('all');
+  let manageTagsOpen = $state(false);
   let projectMembership = $state<Map<string, Set<string>>>(new Map());
 
   async function ensureProjectMembership(id: ProjectId): Promise<void> {
@@ -96,19 +97,24 @@
         )
   );
 
-  const tagOptions = $derived.by<readonly TagOption[]>(() => {
-    const byKey = new Map<string, TagOption>();
+  const allTagsFlat = $derived.by<readonly Tag[]>(() => {
+    const out: Tag[] = [];
     for (const summary of featuresStore.summaries) {
-      for (const tag of summary.tags ?? []) {
-        const key = tagKey(tag);
-        byKey.set(key, { ...(tag as Tag), key, label: tagLabel(tag as Tag) });
-      }
+      for (const tag of summary.tags ?? []) out.push(tag as Tag);
     }
-    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
+    return out;
+  });
+
+  // Keep the auto-color allocator aware of every type currently rendered so
+  // each type lands on a distinct preset.
+  $effect(() => {
+    tagPaletteStore.registerTypes(allTagsFlat.map((tag) => tag.type));
   });
 
   const tagTypeOptions = $derived(
-    [...new Set(tagOptions.map((option) => option.type))].sort((a, b) => a.localeCompare(b))
+    [...new Set(allTagsFlat.map((tag) => humanizeTagText(tag.type)))].sort((a, b) =>
+      a.localeCompare(b)
+    )
   );
 
   $effect(() => {
@@ -144,16 +150,9 @@
       return projectMembership.get(projectFilter)?.has(id) ?? false;
     };
 
-    const byTag = (summary: { tags?: readonly Tag[] }) => {
-      if (tagFilter === 'all') return true;
-      const tags = summary.tags ?? [];
-      if (tagFilter === 'untagged') return tags.length === 0;
-      return tags.some((t) => tagKey(t) === tagFilter);
-    };
-
     const matches = featuresStore.summaries.filter(
       (summary) =>
-        bySearch(summary) && byProject(String(summary.id)) && byTag(summary)
+        bySearch(summary) && byProject(String(summary.id)) && byTag(summary, tagFilter)
     );
     return matches.sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
@@ -161,6 +160,21 @@
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
   });
+
+  function byTag(
+    summary: { tags?: readonly Tag[] },
+    filter: TagFilterValue
+  ): boolean {
+    const tags = summary.tags ?? [];
+    if (filter === 'all') return true;
+    if (filter === 'untagged') return tags.length === 0;
+    const key = tagKey(filter);
+    return tags.some((t) => tagKey(t) === key);
+  }
+
+  function tagFilterCount(filter: TagFilterValue): number {
+    return featuresStore.summaries.filter((s) => byTag(s, filter)).length;
+  }
 
   async function handleLoadSamples() {
     if (loadingSamples) return;
@@ -301,6 +315,13 @@
           {/each}
         </select>
       </label>
+      <TagFilterSelect
+        tags={allTagsFlat}
+        value={tagFilter}
+        onChange={(next) => (tagFilter = next)}
+        onManage={() => (manageTagsOpen = true)}
+        countLabel={tagFilterCount}
+      />
       <label class="flex h-10 items-center gap-2 rounded-lg border border-hairline bg-white px-3 text-sm text-slate-600">
         <span class="text-xs font-medium">Sort</span>
         <select bind:value={sortBy} class="bg-transparent text-sm font-medium text-slate-800 outline-none">
@@ -359,32 +380,14 @@
       <p class="text-xs text-slate-500">{filtered.length} shown</p>
     </div>
 
-  {#if tagOptions.length > 0}
-    <div class="mb-4 flex flex-wrap gap-2">
-      <button
-        type="button"
-        class="rounded-full border px-3 py-1 text-xs font-medium {tagFilter === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}"
-        onclick={() => (tagFilter = 'all')}
-      >
-        All
-      </button>
-      <button
-        type="button"
-        class="rounded-full border px-3 py-1 text-xs font-medium {tagFilter === 'untagged' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}"
-        onclick={() => (tagFilter = 'untagged')}
-      >
-        Untagged
-      </button>
-      {#each tagOptions as tag (tag.key)}
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium {tagFilter === tag.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-emerald-100 bg-emerald-50 text-emerald-700 hover:border-emerald-200'}"
-          onclick={() => (tagFilter = tag.key)}
-        >
-          <span class="text-[10px] uppercase tracking-wider opacity-70">{tag.type}</span>
-          <span>{tag.value}</span>
-        </button>
-      {/each}
+  {#if allTagsFlat.length > 0}
+    <div class="mb-4">
+      <TagPillBar
+        tags={allTagsFlat}
+        value={tagFilter}
+        onChange={(next) => (tagFilter = next)}
+        countLabel={tagFilterCount}
+      />
     </div>
   {/if}
 
@@ -433,7 +436,13 @@
             onAddTag={(type, value) => featuresStore.addTag(String(summary.id), { type, value })}
             onRemoveTag={async (type, value) => {
               await featuresStore.removeTag(String(summary.id), { type, value });
-              if (tagFilter === tagKey({ type, value })) tagFilter = 'all';
+              if (
+                tagFilter !== 'all' &&
+                tagFilter !== 'untagged' &&
+                tagKey(tagFilter) === tagKey({ type, value })
+              ) {
+                tagFilter = 'all';
+              }
             }}
             onDelete={() => handleDelete(summary.id)}
           />
@@ -478,3 +487,10 @@
     </div>
   </div>
 {/if}
+
+<ManageTagsDialog
+  open={manageTagsOpen}
+  tags={allTagsFlat}
+  onClose={() => (manageTagsOpen = false)}
+  onRenamed={() => featuresStore.refreshSilent()}
+/>

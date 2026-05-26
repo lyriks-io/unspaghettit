@@ -7,7 +7,12 @@
   import { scoreFeature } from "$features/maturity/domain/MaturityScorer";
   import { computeImplementationBreakdown } from "$features/implementation-status/domain/ImplementationBreakdown";
   import type { ImplementationStatus } from "$features/implementation-status/domain/ImplementationStatus";
-  import type { Tag } from "$shared/domain/Tags";
+  import { humanizeTagText, tagKey, type Tag } from "$shared/domain/Tags";
+  import TagFilterSelect, {
+    type TagFilterValue
+  } from "$features/tag-palette/presentation/components/TagFilterSelect.svelte";
+  import TagPillBar from "$features/tag-palette/presentation/components/TagPillBar.svelte";
+  import { tagPaletteStore } from "$features/tag-palette/presentation/stores/tagPaletteStore.svelte";
   import { projectStore } from "$features/projects/presentation/stores/projectStore.svelte";
   import { queueItemKey } from "$features/implementation-queue/domain/entities/QueueItem";
   import { getBrowserContainer } from "$shared/infrastructure/browserContainer";
@@ -27,17 +32,51 @@
   let { features, search, onSearch, onCreate, onAddTag, onRemoveTag, onRemove }: Props =
     $props();
 
-  const filteredMembers = $derived(
-    search.trim().length === 0
-      ? features
-      : features.filter((e) => {
-          const q = search.toLowerCase();
-          return (
-            e.name.toLowerCase().includes(q) ||
-            (e.description ?? "").toLowerCase().includes(q)
-          );
-        }),
-  );
+  let tagFilter = $state<TagFilterValue>("all");
+
+  function matchesSearch(feature: Feature, query: string): boolean {
+    if (query.length === 0) return true;
+    return (
+      feature.name.toLowerCase().includes(query) ||
+      (feature.description ?? "").toLowerCase().includes(query)
+    );
+  }
+
+  function matchesTagFilter(feature: Feature, filter: TagFilterValue): boolean {
+    const featureTags = feature.tags ?? [];
+    if (filter === "all") return true;
+    if (filter === "untagged") return featureTags.length === 0;
+    const key = tagKey(filter);
+    return featureTags.some((tag) => tagKey(tag) === key);
+  }
+
+  const filteredMembers = $derived.by(() => {
+    const q = search.trim().toLowerCase();
+    return features.filter(
+      (feature) => matchesSearch(feature, q) && matchesTagFilter(feature, tagFilter)
+    );
+  });
+
+  const allTagsFlat = $derived.by<readonly Tag[]>(() => {
+    const out: Tag[] = [];
+    for (const feature of features) {
+      for (const tag of feature.tags ?? []) out.push(tag);
+    }
+    return out;
+  });
+
+  // Keep the auto-color allocator aware of every type rendered here so
+  // colors stay consistent with the global index pages.
+  $effect(() => {
+    tagPaletteStore.registerTypes(allTagsFlat.map((tag) => tag.type));
+  });
+
+  function tagFilterCount(filter: TagFilterValue): number {
+    const q = search.trim().toLowerCase();
+    return features.filter(
+      (feature) => matchesSearch(feature, q) && matchesTagFilter(feature, filter)
+    ).length;
+  }
 
   let addOpen = $state(false);
   let newNameInput = $state<HTMLInputElement | null>(null);
@@ -155,7 +194,7 @@
   const tagTypeOptions = $derived.by(() => {
     const types = new Set<string>();
     for (const feature of features) {
-      for (const tag of feature.tags ?? []) types.add(tag.type);
+      for (const tag of feature.tags ?? []) types.add(humanizeTagText(tag.type));
     }
     return [...types].sort((a, b) => a.localeCompare(b));
   });
@@ -227,6 +266,12 @@
         {/if}
       </div>
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <TagFilterSelect
+          tags={allTagsFlat}
+          value={tagFilter}
+          onChange={(next) => (tagFilter = next)}
+          countLabel={tagFilterCount}
+        />
         <label
           class="flex h-10 items-center gap-2 rounded-lg border border-hairline bg-white px-3 text-sm text-slate-600"
         >
@@ -253,6 +298,15 @@
       </div>
     </div>
   </div>
+
+  {#if allTagsFlat.length > 0}
+    <TagPillBar
+      tags={allTagsFlat}
+      value={tagFilter}
+      onChange={(next) => (tagFilter = next)}
+      countLabel={tagFilterCount}
+    />
+  {/if}
 
   {#if filteredCards.length === 0}
     <div
@@ -283,7 +337,6 @@
             {summary}
             {tagTypeOptions}
             deleteLabel="Remove"
-            openLabel="Open"
             onAddTag={(type, value) => onAddTag(summary.id, { type, value })}
             onRemoveTag={onRemoveTag ? (type, value) => onRemoveTag(summary.id, { type, value }) : undefined}
             onDelete={() => onRemove(summary.id)}

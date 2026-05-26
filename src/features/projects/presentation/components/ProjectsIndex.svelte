@@ -21,14 +21,12 @@
     MalformedEnvelopeError,
     WrongPassphraseError
   } from '$features/projects/presentation/services/projectBundleClient';
-  import { addTag, removeTag, tagKey, tagLabel, type Tag } from '$shared/domain/Tags';
-
-  type TagOption = {
-    readonly type: string;
-    readonly value: string;
-    readonly key: string;
-    readonly label: string;
-  };
+  import { addTag, humanizeTagText, removeTag, tagKey, type Tag } from '$shared/domain/Tags';
+  import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
+  import TagFilterSelect, {
+    type TagFilterValue
+  } from '$features/tag-palette/presentation/components/TagFilterSelect.svelte';
+  import ManageTagsDialog from '$features/tag-palette/presentation/components/ManageTagsDialog.svelte';
 
   type TaggedProject = {
     readonly tags?: readonly Tag[];
@@ -37,12 +35,14 @@
   };
 
   let unsubscribeSync: (() => void) | null = null;
-  let tagFilter = $state<string>('all');
+  let tagFilter = $state<TagFilterValue>('all');
   let createOpen = $state(false);
+  let manageTagsOpen = $state(false);
   let sortBy = $state<'updated' | 'name' | 'count'>('updated');
 
   onMount(() => {
     projectsStore.refresh();
+    tagPaletteStore.refresh();
     // Re-fetch the project list whenever a project is created/updated/deleted
     // out-of-band (notably by the MCP server writing to disk). Feature events
     // also touch the summary's featureCount, so listen for those too.
@@ -209,11 +209,7 @@
             (summary.description ?? '').toLowerCase().includes(q)
           );
         });
-    const tagged = matches.filter((summary) => {
-      if (tagFilter === 'all') return true;
-      if (tagFilter === 'untagged') return readTags(summary).length === 0;
-      return readTags(summary).some((tag) => tagKey(tag) === tagFilter);
-    });
+    const tagged = matches.filter((summary) => matchesTagFilter(summary, tagFilter));
     return tagged.sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
       if (sortBy === 'count') return b.featureCount - a.featureCount;
@@ -221,20 +217,37 @@
     });
   });
 
-  const tagOptions = $derived.by<readonly TagOption[]>(() => {
-    const byKey = new Map<string, TagOption>();
+  function matchesTagFilter(project: TaggedProject, filter: TagFilterValue): boolean {
+    const projectTags = readTags(project);
+    if (filter === 'all') return true;
+    if (filter === 'untagged') return projectTags.length === 0;
+    const key = tagKey(filter);
+    return projectTags.some((tag) => tagKey(tag) === key);
+  }
+
+  const allTagsFlat = $derived.by<readonly Tag[]>(() => {
+    const out: Tag[] = [];
     for (const summary of projectsStore.summaries) {
-      for (const tag of readTags(summary)) {
-        const key = tagKey(tag);
-        byKey.set(key, { ...tag, key, label: tagLabel(tag) });
-      }
+      for (const tag of readTags(summary)) out.push(tag);
     }
-    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
+    return out;
+  });
+
+  // Keep the auto-color allocator aware of every type currently rendered so
+  // each type lands on a distinct preset.
+  $effect(() => {
+    tagPaletteStore.registerTypes(allTagsFlat.map((tag) => tag.type));
   });
 
   const tagTypeOptions = $derived(
-    [...new Set(tagOptions.map((option) => option.type))].sort((a, b) => a.localeCompare(b))
+    [...new Set(allTagsFlat.map((tag) => humanizeTagText(tag.type)))].sort((a, b) =>
+      a.localeCompare(b)
+    )
   );
+
+  function tagFilterCount(filter: TagFilterValue): number {
+    return projectsStore.summaries.filter((s) => matchesTagFilter(s, filter)).length;
+  }
 
   async function appendTag(id: ProjectId, type: string, value: string) {
     const container = await getBrowserContainer();
@@ -260,7 +273,13 @@
     });
     // If the just-removed tag was the active filter, fall back to 'all'
     // so the user doesn't end up staring at an empty grid.
-    if (tagFilter === tagKey({ type, value })) tagFilter = 'all';
+    if (
+      tagFilter !== 'all' &&
+      tagFilter !== 'untagged' &&
+      tagKey(tagFilter) === tagKey({ type, value })
+    ) {
+      tagFilter = 'all';
+    }
     await projectsStore.refreshSilent();
   }
 </script>
@@ -298,6 +317,13 @@
         {/if}
       </div>
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <TagFilterSelect
+          tags={allTagsFlat}
+          value={tagFilter}
+          onChange={(next) => (tagFilter = next)}
+          onManage={() => (manageTagsOpen = true)}
+          countLabel={tagFilterCount}
+        />
         <label class="flex h-10 items-center gap-2 rounded-lg border border-hairline bg-white px-3 text-sm text-slate-600">
           <span class="text-xs font-medium">Sort</span>
           <select bind:value={sortBy} class="bg-transparent text-sm font-medium text-slate-800 outline-none">
@@ -344,35 +370,6 @@
       </div>
       <p class="text-xs text-slate-500">{filtered.length} shown</p>
     </div>
-
-    {#if tagOptions.length > 0}
-      <div class="mb-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="rounded-full border px-3 py-1 text-xs font-medium {tagFilter === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}"
-          onclick={() => (tagFilter = 'all')}
-        >
-          All
-        </button>
-        <button
-          type="button"
-          class="rounded-full border px-3 py-1 text-xs font-medium {tagFilter === 'untagged' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'}"
-          onclick={() => (tagFilter = 'untagged')}
-        >
-          Untagged
-        </button>
-        {#each tagOptions as tag (tag.key)}
-          <button
-            type="button"
-            class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium {tagFilter === tag.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-emerald-100 bg-emerald-50 text-emerald-700 hover:border-emerald-200'}"
-            onclick={() => (tagFilter = tag.key)}
-          >
-            <span class="text-[10px] uppercase tracking-wider opacity-70">{tag.type}</span>
-            <span>{tag.value}</span>
-          </button>
-        {/each}
-      </div>
-    {/if}
 
     {#if projectsStore.loading}
       <div class="rounded-lg border border-dashed border-hairline bg-white p-8 text-center text-sm text-slate-500">
@@ -451,3 +448,10 @@
     </div>
   </div>
 {/if}
+
+<ManageTagsDialog
+  open={manageTagsOpen}
+  tags={allTagsFlat}
+  onClose={() => (manageTagsOpen = false)}
+  onRenamed={() => projectsStore.refreshSilent()}
+/>

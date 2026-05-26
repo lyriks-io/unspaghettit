@@ -29,7 +29,8 @@
     groupTransitions
   } from '$features/projects/presentation/services/crossFeatureGroups';
   import type { Tag } from '$shared/domain/Tags';
-  import { tagLabel } from '$shared/domain/Tags';
+  import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
+  import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
 
   const PANELS: { id: ProjectPanel; label: string }[] = [
     { id: 'features', label: 'Features' },
@@ -50,6 +51,13 @@
     if (!project || editingProject) return;
     nameDraft = project.name;
     descriptionDraft = project.description ?? '';
+  });
+
+  // Register this project's tag types with the palette store so auto-color
+  // assignment lands on the same presets you'd see on the projects index.
+  $effect(() => {
+    const tags = projectStore.project?.tags ?? [];
+    if (tags.length > 0) tagPaletteStore.registerTypes(tags.map((t) => t.type));
   });
 
   // Tab counters mirror what each panel actually renders. Resources / Entity /
@@ -225,12 +233,8 @@
               </p>
             {/if}
             {#if project.tags && project.tags.length > 0}
-              <div class="mt-3 flex flex-wrap gap-1">
-                {#each project.tags as tag}
-                  <span class="inline-flex rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                    {tagLabel(tag)}
-                  </span>
-                {/each}
+              <div class="mt-3">
+                <TagDotStrip tags={project.tags} />
               </div>
             {/if}
             <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">

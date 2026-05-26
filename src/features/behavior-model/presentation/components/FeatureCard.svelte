@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { FeatureCardModel } from '$features/behavior-model/application/use-cases/ListFeaturesWithMaturity';
-  import TagList from '$shared/presentation/components/TagList.svelte';
+  import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
   import ProgressBar from '$shared/presentation/components/ProgressBar.svelte';
 
   type Props = {
@@ -10,7 +10,6 @@
     onRemoveTag?: (type: string, value: string) => void | Promise<void>;
     tagTypeOptions?: readonly string[];
     deleteLabel?: string;
-    openLabel?: string;
     /**
      * Optional queue toggle. Provided by the parent (ProjectFeaturesPanel) when
      * the card is rendered inside a project, where "implement next" is
@@ -29,7 +28,6 @@
     onRemoveTag,
     tagTypeOptions = [],
     deleteLabel = 'Delete',
-    openLabel = 'Open feature',
     onAddToQueue,
     onRemoveFromQueue,
     queued = false
@@ -116,7 +114,7 @@
       </p>
     {/if}
 
-    <TagList tags={summary.tags} {onAddTag} {onRemoveTag} typeOptions={tagTypeOptions} />
+    <TagDotStrip tags={summary.tags} {onAddTag} {onRemoveTag} typeOptions={tagTypeOptions} />
 
     <div class="space-y-2">
       <ProgressBar
@@ -157,9 +155,6 @@
           {queued ? '✓ queued' : '+ queue'}
         </button>
       {/if}
-      <a href={`/features/${summary.id}`} class="rounded px-2 py-1 font-medium text-brand-800 hover:bg-cyan-50 hover:text-brand-900">
-        {openLabel}
-      </a>
       <button
         type="button"
         class="rounded px-2 py-1 text-slate-400 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-red-50 hover:text-red-600"

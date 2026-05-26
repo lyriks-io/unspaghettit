@@ -2,6 +2,8 @@
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
+  import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
+  import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
 
   type Props = {
     feature: Feature;
@@ -27,6 +29,13 @@
       nameDraft = feature.name;
       descriptionDraft = feature.description ?? '';
     }
+  });
+
+  // Register this feature's tag types with the palette store so auto-color
+  // assignment stays consistent with the index pages.
+  $effect(() => {
+    const tags = feature?.tags ?? [];
+    if (tags.length > 0) tagPaletteStore.registerTypes(tags.map((t) => t.type));
   });
 
   async function saveMeta() {
@@ -88,6 +97,11 @@
       <h1 class="truncate text-3xl font-semibold tracking-tight text-slate-950">{feature.name}</h1>
       {#if feature.description}
         <p class="max-w-3xl text-sm leading-6 text-slate-600">{feature.description}</p>
+      {/if}
+      {#if feature.tags && feature.tags.length > 0}
+        <div class="pt-1">
+          <TagDotStrip tags={feature.tags} />
+        </div>
       {/if}
       <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500">
         <button class="font-medium text-brand-700 hover:underline" onclick={() => (editing = true)}>Edit metadata</button>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ProjectSummary } from '$features/projects/application/ports/ProjectRepository';
   import { projectsStore } from '$features/projects/presentation/stores/projectsStore.svelte';
-  import TagList from '$shared/presentation/components/TagList.svelte';
+  import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
 
   type Props = {
     summary: ProjectSummary;
@@ -57,15 +57,12 @@
 
   <div class="mt-5 flex items-end justify-between gap-3 border-t border-hairline pt-3 text-xs text-slate-500">
     <div class="min-w-0 flex-1 space-y-2">
-      <TagList tags={summary.tags} {onAddTag} {onRemoveTag} typeOptions={tagTypeOptions} />
+      <TagDotStrip tags={summary.tags} {onAddTag} {onRemoveTag} typeOptions={tagTypeOptions} />
       <span class="block truncate">
         Updated {new Date(summary.updatedAt).toLocaleDateString()}
       </span>
     </div>
     <div class="flex shrink-0 items-center gap-1">
-      <a href={`/projects/${summary.id}`} class="rounded px-2 py-1 font-medium text-brand-800 hover:bg-cyan-50 hover:text-brand-900" onclick={markOpened}>
-        Open project
-      </a>
       <button
         type="button"
         class="rounded px-2 py-1 text-slate-400 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-red-50 hover:text-red-600"

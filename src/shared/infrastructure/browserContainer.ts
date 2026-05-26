@@ -12,6 +12,11 @@ import { HttpDomainRepository } from '$features/domains/infrastructure/persisten
 import { InMemoryDomainRepository } from '$features/domains/infrastructure/persistence/InMemoryDomainRepository';
 import { HttpImplementationStatusRepository } from '$features/implementation-status/infrastructure/persistence/HttpImplementationStatusRepository';
 import { InMemoryImplementationStatusRepository } from '$features/implementation-status/infrastructure/persistence/InMemoryImplementationStatusRepository';
+import { HttpTagPaletteRepository } from '$features/tag-palette/infrastructure/persistence/HttpTagPaletteRepository';
+import { InMemoryTagPaletteRepository } from '$features/tag-palette/infrastructure/persistence/InMemoryTagPaletteRepository';
+import { HttpTagOperations } from '$features/tag-palette/infrastructure/adapters/HttpTagOperations';
+import { UseCaseTagOperations } from '$features/tag-palette/infrastructure/adapters/UseCaseTagOperations';
+import { systemClock } from '$shared/domain/Clock';
 import { createContainer, type Container } from './container';
 
 let cached: Container | null = null;
@@ -30,11 +35,24 @@ export const getBrowserContainer = async (): Promise<Container> => {
   const statusRepository = browser
     ? new HttpImplementationStatusRepository()
     : new InMemoryImplementationStatusRepository();
+  const tagPaletteRepository = browser
+    ? new HttpTagPaletteRepository()
+    : new InMemoryTagPaletteRepository();
+  const tagOperations = browser
+    ? new HttpTagOperations()
+    : new UseCaseTagOperations({
+        projects: projectRepository,
+        features: repository,
+        palette: tagPaletteRepository,
+        clock: systemClock
+      });
   const container = createContainer({
     repository,
     projectRepository,
     domainRepository,
     statusRepository,
+    tagPaletteRepository,
+    tagOperations,
     samples: [...seedFeatures, ...sampleFeatureSnapshots],
     projectSamples: sampleProjectSnapshots
   });

@@ -1,12 +1,13 @@
 <script lang="ts" module>
-  // Module-scoped counter so each TagList instance gets a unique datalist id
-  // without relying on crypto/SSR-fragile randomness.
   let nextDatalistSerial = 0;
 </script>
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import type { Tag } from '$shared/domain/Tags';
+  import { humanizeTagText, tagLabel, type Tag } from '$shared/domain/Tags';
+  import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
+  import { stylesFor } from '$features/tag-palette/presentation/services/tagColorStyles';
+  import TagSwatch from '$features/tag-palette/presentation/components/TagSwatch.svelte';
 
   type Props = {
     tags?: readonly Tag[];
@@ -16,14 +17,22 @@
     addLabel?: string;
   };
 
-  let { tags, onAddTag, onRemoveTag, typeOptions = [], addLabel = '+ Tag' }: Props = $props();
+  let {
+    tags,
+    onAddTag,
+    onRemoveTag,
+    typeOptions = [],
+    addLabel = '+'
+  }: Props = $props();
 
   let editing = $state(false);
   let typeDraft = $state('');
   let valueDraft = $state('');
   let typeInput = $state<HTMLInputElement | null>(null);
 
-  const datalistId = `taglist-types-${++nextDatalistSerial}`;
+  const datalistId = `tagdotstrip-types-${++nextDatalistSerial}`;
+
+  const hasTags = $derived(Boolean(tags && tags.length > 0));
 
   async function openEditor() {
     editing = true;
@@ -49,56 +58,45 @@
   function onKey(event: KeyboardEvent) {
     if (event.key === 'Escape') cancel();
   }
-
-  const hasTags = $derived(Boolean(tags && tags.length > 0));
 </script>
 
 {#if hasTags || onAddTag}
-  <div class="flex flex-wrap items-center gap-1">
+  <div class="flex flex-wrap items-center gap-1.5">
     {#if tags}
       {#each tags as tag}
+        {@const color = tagPaletteStore.colorForTag(tag)}
+        {@const style = stylesFor(color)}
         <span
-          class="group/chip inline-flex h-5 max-w-full items-stretch overflow-hidden rounded-md text-[11px] font-medium ring-1 ring-inset ring-emerald-200/70"
-          title={`${tag.type}: ${tag.value}`}
+          class="group/chip inline-flex max-w-full items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+          style="background-color: {style.pillBackground}; color: {style.pillText}; box-shadow: inset 0 0 0 1px {style.pillRing};"
+          title={tagLabel(tag)}
         >
-          <span class="flex items-center bg-emerald-100/80 px-1.5 text-[9px] uppercase leading-none tracking-wider text-emerald-700">
-            {tag.type}
-          </span>
-          <span class="flex items-center bg-emerald-50 px-1.5 leading-none text-emerald-800">
-            <span class="truncate">{tag.value}</span>
-          </span>
+          <TagSwatch {color} size={1.5} />
+          <span class="truncate">{humanizeTagText(tag.value)}</span>
           {#if onRemoveTag}
             <button
               type="button"
-              class="flex w-0 shrink-0 items-center justify-center overflow-hidden bg-emerald-50 text-emerald-700 opacity-0 transition-all duration-150 group-hover/chip:w-5 group-hover/chip:opacity-100 hover:bg-red-100! hover:text-red-700!"
+              class="ml-0.5 flex size-3 shrink-0 items-center justify-center rounded-full text-[9px] leading-none opacity-0 transition group-hover/chip:opacity-70 hover:opacity-100! hover:bg-white/60"
               onclick={() => onRemoveTag?.(tag.type, tag.value)}
-              aria-label={`Remove tag ${tag.type}: ${tag.value}`}
-              title="Remove tag"
+              aria-label={`Remove tag ${tagLabel(tag)}`}
+              title={`Remove ${tagLabel(tag)}`}
             >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 16 16"
-                class="h-3 w-3"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              >
-                <path d="M4 4l8 8M12 4l-8 8" />
-              </svg>
+              &times;
             </button>
           {/if}
         </span>
       {/each}
     {/if}
+
     {#if onAddTag}
       {#if !editing}
         <button
           type="button"
-          class="inline-flex h-5 items-center rounded-md border border-dashed border-slate-300 px-1.5 text-[11px] font-medium text-slate-500 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
+          class="inline-flex h-4 items-center rounded-sm px-1 text-[10px] font-medium text-slate-400 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-slate-100 hover:text-slate-700"
           class:opacity-100={!hasTags}
           onclick={openEditor}
           aria-label="Add tag"
+          title="Add tag"
         >
           {addLabel}
         </button>
