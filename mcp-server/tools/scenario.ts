@@ -45,6 +45,19 @@ const expectedAssertionSchema = z.object({
 
 const expectedStatusSchema = z.enum(['success', 'blocked'] as const);
 
+// A preceding action invocation in a multi-step scenario. Steps run in order
+// before the scenario's subject action, threading the resulting snapshot
+// forward. parameterOverrides are keyed to the STEP's action, not the
+// subject action. expectedStatus defaults to 'success'.
+const stepSchema = z.object({
+  actionId: z.string(),
+  surfaceId: z.string().optional(),
+  parameterOverrides: z.array(parameterOverrideSchema).default([]),
+  expectedStatus: expectedStatusSchema.optional(),
+  expectedAssertions: z.array(expectedAssertionSchema).optional(),
+  description: z.string().optional()
+});
+
 export const registerScenarioTools = (deps: ToolDeps): void => {
   const { server, ids } = deps;
 
@@ -52,7 +65,7 @@ export const registerScenarioTools = (deps: ToolDeps): void => {
     'add_scenario',
     {
       description:
-        'Add a state preset for one Action (exercises a rule branch). Optional personaId supplies the user baseline; scenario overrides layer after persona overrides. expectedStatus, expectedAssertions[], and expectedTransition make the scenario executable. `run_all_scenarios` will mark a fail when actual status / any post-simulation assertion / the transition target drifts. Assertion `value` accepts a literal or an Expression (see rule schema). `expectedTransition` should be the target surfaceId (or null to assert "no transition fires"). Use it to verify routing / wizard / state-machine actions.',
+        'Add a state preset for one Action (exercises a rule branch). Optional personaId supplies the user baseline; scenario overrides layer after persona overrides. expectedStatus, expectedAssertions[], and expectedTransition make the scenario executable. `run_all_scenarios` will mark a fail when actual status / any post-simulation assertion / the transition target drifts. Assertion `value` accepts a literal or an Expression (see rule schema). `expectedTransition` should be the target surfaceId (or null to assert "no transition fires"). Use it to verify routing / wizard / state-machine actions. Optional steps[] turn this into a multi-step flow: each step is a preceding action invocation (replayed before the subject action, threading state forward) so the scenario verifies a sequence (e.g. add to cart → apply coupon → checkout), not just one transition. Each step takes actionId (+ optional surfaceId, defaults to this surface), its own parameterOverrides, and optional expectedStatus (defaults "success") / expectedAssertions.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -64,7 +77,8 @@ export const registerScenarioTools = (deps: ToolDeps): void => {
         parameterOverrides: z.array(parameterOverrideSchema).default([]),
         expectedStatus: expectedStatusSchema.optional(),
         expectedAssertions: z.array(expectedAssertionSchema).optional(),
-        expectedTransition: z.string().nullable().optional()
+        expectedTransition: z.string().nullable().optional(),
+        steps: z.array(stepSchema).optional()
       }
     },
     async (input) => {
@@ -93,7 +107,7 @@ export const registerScenarioTools = (deps: ToolDeps): void => {
     'update_scenario',
     {
       description:
-        'Patch Scenario fields. personaId sets the persona baseline; personaId:null clears it. expectedAssertions:[] clears assertions; expectedStatus omitted means "keep current"; expectedTransition can be a surfaceId, null (asserts no transition), or omitted (keep current). Run run_all_scenarios after editing to confirm the spec still holds.',
+        'Patch Scenario fields. personaId sets the persona baseline; personaId:null clears it. expectedAssertions:[] clears assertions; expectedStatus omitted means "keep current"; expectedTransition can be a surfaceId, null (asserts no transition), or omitted (keep current). steps:[] clears the sequence (back to a single-action preset); a non-empty steps replaces the whole sequence; omitting steps keeps the current value. Run run_all_scenarios after editing to confirm the spec still holds.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -106,7 +120,8 @@ export const registerScenarioTools = (deps: ToolDeps): void => {
         parameterOverrides: z.array(parameterOverrideSchema).optional(),
         expectedStatus: expectedStatusSchema.optional(),
         expectedAssertions: z.array(expectedAssertionSchema).optional(),
-        expectedTransition: z.string().nullable().optional()
+        expectedTransition: z.string().nullable().optional(),
+        steps: z.array(stepSchema).optional()
       }
     },
     async (input) => {

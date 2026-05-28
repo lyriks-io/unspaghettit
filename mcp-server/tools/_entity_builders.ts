@@ -26,10 +26,12 @@ import type {
 import type { Rule } from '../../src/features/behavior-model/domain/entities/Rule';
 import type {
   Scenario,
-  ScenarioAssertion
+  ScenarioAssertion,
+  ScenarioStep
 } from '../../src/features/behavior-model/domain/entities/Scenario';
 import type { Effect } from '../../src/features/behavior-model/domain/value-objects/Effect';
 import {
+  asActionId,
   asEffectId,
   asInvariantId,
   asPersonaId,
@@ -92,6 +94,37 @@ const buildAssertion = (raw: unknown): ScenarioAssertion => {
   };
 };
 
+/**
+ * Build one scenario step (a preceding action invocation). Reuses
+ * `buildOverrides` so the step's parameterOverrides get the same
+ * "parameterName is required" guard as scenario-level overrides.
+ */
+const buildStep = (raw: unknown): ScenarioStep => {
+  const x = (raw as Raw) ?? {};
+  if (typeof x.actionId !== 'string' || x.actionId.length === 0) {
+    throw new Error(
+      `scenario step: actionId (string) is required. Got ${JSON.stringify(x)}.`
+    );
+  }
+  const { param } = buildOverrides(x);
+  const expectedAssertions = Array.isArray(x.expectedAssertions)
+    ? x.expectedAssertions.map(buildAssertion)
+    : undefined;
+  return {
+    actionId: asActionId(x.actionId),
+    ...(typeof x.surfaceId === 'string' ? { surfaceId: asSurfaceId(x.surfaceId) } : {}),
+    parameterOverrides: param,
+    ...(x.expectedStatus === 'success' || x.expectedStatus === 'blocked'
+      ? { expectedStatus: x.expectedStatus as 'success' | 'blocked' }
+      : {}),
+    ...(expectedAssertions && expectedAssertions.length > 0 ? { expectedAssertions } : {}),
+    ...(typeof x.description === 'string' ? { description: x.description } : {})
+  };
+};
+
+const buildSteps = (raw: unknown): readonly ScenarioStep[] | undefined =>
+  Array.isArray(raw) ? raw.map(buildStep) : undefined;
+
 // Common pattern: "only set the field if the caller actually sent one".
 // `null` is a meaningful value for some fields (e.g. expectedTransition:null
 // asserts "no transition fires"), so `!== undefined` is the right guard,
@@ -107,6 +140,7 @@ const spreadIfPresent = <K extends string, V>(key: K, value: V | undefined) =>
  */
 export const buildScenarioBody = (input: Raw): Omit<Scenario, 'id'> => {
   const ovs = buildOverrides(input);
+  const steps = buildSteps(input.steps);
   const expectedAssertions = Array.isArray(input.expectedAssertions)
     ? input.expectedAssertions.map(buildAssertion)
     : undefined;
@@ -133,7 +167,8 @@ export const buildScenarioBody = (input: Raw): Omit<Scenario, 'id'> => {
               ? null
               : asSurfaceId(input.expectedTransition as string)
         }
-      : {})
+      : {}),
+    ...(steps && steps.length > 0 ? { steps } : {})
   };
 };
 
@@ -178,6 +213,13 @@ export const buildScenarioPatch = (input: Raw): Partial<Scenario> => {
               ? null
               : asSurfaceId(input.expectedTransition as string)
         }
+      : {}),
+    // `steps: []` clears the sequence (back to a single-action preset);
+    // omitting steps keeps the current value.
+    ...(Array.isArray(input.steps)
+      ? input.steps.length === 0
+        ? { steps: undefined }
+        : { steps: buildSteps(input.steps) }
       : {})
   };
 };

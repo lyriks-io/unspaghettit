@@ -1,5 +1,5 @@
 import type { Expression } from '../value-objects/Expression';
-import type { PersonaId, ScenarioId, SurfaceId } from '../value-objects/ids';
+import type { ActionId, PersonaId, ScenarioId, SurfaceId } from '../value-objects/ids';
 import type { Operator } from '../value-objects/Operator';
 import type { StatePath } from '../value-objects/StatePath';
 import type { StateValue } from '../value-objects/StateValue';
@@ -34,6 +34,39 @@ export type ScenarioAssertion = {
   readonly path: StatePath;
   readonly operator: Operator;
   readonly value?: StateValue | Expression;
+  readonly description?: string;
+};
+
+/**
+ * One preceding action invocation in a multi-step scenario. Steps run in
+ * order BEFORE the scenario's subject action (the action the scenario is
+ * attached to), each simulated against the snapshot threaded forward from
+ * the previous step. This is the "arrange" phase done by replaying real
+ * actions instead of poking state: because every step is a genuine
+ * `simulate()` call, the cross-action wiring (emitted events, shared state,
+ * the event cascade) is exercised — that's what catches the inter-feature
+ * bugs a single-action preset never could.
+ */
+export type ScenarioStep = {
+  /** The action to invoke for this step, resolved within the feature. */
+  readonly actionId: ActionId;
+  /**
+   * Surface that owns the step's action. Omit to reuse the scenario's own
+   * surface (the common case: a flow within one screen).
+   */
+  readonly surfaceId?: SurfaceId;
+  /** Parameter values for THIS step's action (keyed to that action's params). */
+  readonly parameterOverrides: readonly ScenarioParameterOverride[];
+  /**
+   * Outcome expected for this step. Defaults to `'success'`: a setup step
+   * that blocks unexpectedly fails the whole scenario, because every later
+   * step (and the subject action) would then run against state that was
+   * never reached. Set `'blocked'` for a step that is meant to be rejected
+   * mid-flow.
+   */
+  readonly expectedStatus?: 'success' | 'blocked';
+  /** Assertions checked against the snapshot AFTER this step runs. */
+  readonly expectedAssertions?: readonly ScenarioAssertion[];
   readonly description?: string;
 };
 
@@ -75,4 +108,13 @@ export type Scenario = {
    * action metadata not reachable from a state path.
    */
   readonly expectedTransition?: SurfaceId | null;
+  /**
+   * Optional preceding action invocations. When present, the runner replays
+   * each step in order — threading the resulting snapshot forward — before
+   * simulating this scenario's subject action. This turns a scenario from a
+   * single state preset into an arrange→act→assert flow (e.g. start mining →
+   * advance time ×N → mine). Absent (the default) keeps the classic
+   * single-action preset behavior, so existing scenarios are unaffected.
+   */
+  readonly steps?: readonly ScenarioStep[];
 };

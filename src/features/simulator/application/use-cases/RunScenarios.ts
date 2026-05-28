@@ -6,6 +6,7 @@ import type {
   ScenarioAssertion
 } from '$features/behavior-model/domain/entities/Scenario';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
+import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
 import {
   fillDefaults,
   type ParameterError,
@@ -44,6 +45,28 @@ export type ScenarioAssertionResult = {
   readonly description?: string;
 };
 
+/**
+ * Outcome of one preceding step in a multi-step scenario. Each step replays a
+ * real action through the simulator; `pass` is false if its status didn't
+ * match `expectedStatus` (defaulting to "success") or any of its assertions
+ * failed. A failing step fails the whole scenario.
+ */
+export type ScenarioStepResult = {
+  readonly index: number;
+  readonly surfaceId: SurfaceId;
+  readonly actionId: ActionId;
+  readonly actionName: string;
+  readonly description: string | null;
+  readonly actualStatus: 'success' | 'blocked';
+  readonly expectedStatus: 'success' | 'blocked';
+  readonly statusMatches: boolean;
+  readonly assertions: readonly ScenarioAssertionResult[];
+  readonly parameterErrors: readonly ParameterError[];
+  readonly invariantViolations: readonly InvariantViolation[];
+  readonly pass: boolean;
+  readonly summary: string;
+};
+
 export type ScenarioRunResult = {
   readonly surfaceId: SurfaceId;
   readonly actionId: ActionId;
@@ -58,6 +81,12 @@ export type ScenarioRunResult = {
   readonly expectedStatus: 'success' | 'blocked' | null;
   readonly statusMatches: boolean;
   readonly assertions: readonly ScenarioAssertionResult[];
+  /**
+   * Results of the preceding steps for a multi-step scenario, in run order.
+   * Empty for classic single-action scenarios. The overall `pass` is false if
+   * any step failed.
+   */
+  readonly steps: readonly ScenarioStepResult[];
   /**
    * Result of the optional `expectedTransition` check. `null` means the
    * scenario did not specify an expected transition (most cases). Otherwise
@@ -105,6 +134,43 @@ export type RunScenariosOutput = {
   readonly results: readonly ScenarioRunResult[];
 };
 
+/**
+ * Evaluate a scenario's expectedAssertions against a post-simulation snapshot.
+ * Shared by the subject action and by each multi-step step. On a `blocked`
+ * status every assertion is reported `held: null, skipped: true`: comparing
+ * "state after success" to a snapshot where no success effects ran is
+ * meaningless, so the runner skips explicitly instead of silently evaluating
+ * against the untouched snapshot.
+ */
+const evaluateAssertions = (
+  assertions: readonly ScenarioAssertion[],
+  status: 'success' | 'blocked',
+  snapshot: StateSnapshot,
+  params: ParameterValues
+): ScenarioAssertionResult[] =>
+  assertions.map((a) => {
+    if (status === 'blocked') {
+      return {
+        path: String(a.path),
+        operator: a.operator,
+        held: null,
+        skipped: true,
+        ...(a.description ? { description: a.description } : {})
+      };
+    }
+    const held = evaluateCondition(
+      { left: a.path, operator: a.operator, right: a.value },
+      snapshot,
+      params
+    );
+    return {
+      path: String(a.path),
+      operator: a.operator,
+      held,
+      ...(a.description ? { description: a.description } : {})
+    };
+  });
+
 const runOne = (
   surface: Surface,
   action: Action,
@@ -130,13 +196,96 @@ const runOne = (
     ? applyPersonaToParameters(persona, action, {})
     : {};
   const baseSnapshot = applyScenarioToSnapshot(scenario, personaSnapshot);
+
+  // Replay any preceding steps, threading the resulting snapshot forward.
+  // Each step is a real simulate() call (not a fake state poke), so the
+  // cross-action wiring — emitted events, the event cascade, shared state —
+  // is exercised on the way to the subject action.
+  const stepResults: ScenarioStepResult[] = [];
+  let snapshot: StateSnapshot = baseSnapshot;
+  for (const [index, step] of (scenario.steps ?? []).entries()) {
+    const stepSurface =
+      step.surfaceId === undefined
+        ? surface
+        : feature.surfaces.find((s) => s.id === step.surfaceId);
+    const stepAction = stepSurface?.actions.find((a) => a.id === step.actionId);
+    if (!stepSurface || !stepAction) {
+      throw new Error(
+        `Scenario ${scenario.id} step ${index} references unknown ${
+          !stepSurface
+            ? `surfaceId "${String(step.surfaceId)}"`
+            : `actionId "${String(step.actionId)}"`
+        }`
+      );
+    }
+    const stepPersonaParams: ParameterValues = persona
+      ? applyPersonaToParameters(persona, stepAction, {})
+      : {};
+    const stepParamNames = new Set(stepAction.parameters.map((p) => p.name));
+    const stepOverrideParams: { [k: string]: ParameterValues[string] } = {};
+    for (const ov of step.parameterOverrides) {
+      if (stepParamNames.has(ov.parameterName)) {
+        stepOverrideParams[ov.parameterName] = ov.value;
+      }
+    }
+    const stepParams: ParameterValues = { ...stepPersonaParams, ...stepOverrideParams };
+    const stepResult = simulate({
+      surface: stepSurface,
+      action: stepAction,
+      snapshot,
+      parameters: stepParams,
+      featureInvariants: feature.featureInvariants,
+      feature,
+      ...(projectFeatures ? { projectFeatures } : {})
+    });
+    // Thread forward. On a blocked step no success effect landed, so
+    // nextState carries the last good state and later steps run against it —
+    // the step (and so the scenario) is already marked failed below.
+    snapshot = stepResult.nextState;
+    const stepStatus: 'success' | 'blocked' =
+      stepResult.status === 'blocked' ? 'blocked' : 'success';
+    const stepExpected = step.expectedStatus ?? 'success';
+    const stepStatusMatches = stepStatus === stepExpected;
+    const stepFilled = fillDefaults(stepAction.parameters, stepParams);
+    const stepAssertions = evaluateAssertions(
+      step.expectedAssertions ?? [],
+      stepStatus,
+      stepResult.nextState,
+      stepFilled
+    );
+    const stepAssertionsHold = stepAssertions.every((a) => a.skipped || a.held);
+    const stepPass = stepStatusMatches && stepAssertionsHold;
+    const stepFailedAssertions = stepAssertions.filter(
+      (a) => !a.skipped && !a.held
+    ).length;
+    stepResults.push({
+      index,
+      surfaceId: stepSurface.id,
+      actionId: stepAction.id,
+      actionName: stepAction.name,
+      description: step.description ?? null,
+      actualStatus: stepStatus,
+      expectedStatus: stepExpected,
+      statusMatches: stepStatusMatches,
+      assertions: stepAssertions,
+      parameterErrors: stepResult.parameterErrors,
+      invariantViolations: stepResult.invariantViolations,
+      pass: stepPass,
+      summary: stepPass
+        ? `pass. ${stepStatus}`
+        : !stepStatusMatches
+          ? `status was ${stepStatus} but expected ${stepExpected}`
+          : `${stepFailedAssertions} assertion${stepFailedAssertions === 1 ? '' : 's'} did not hold`
+    });
+  }
+
   const scenarioParams = applyScenarioToParameters(scenario, action, {});
   const baseParams: ParameterValues = { ...personaParams, ...scenarioParams };
 
   const result = simulate({
     surface,
     action,
-    snapshot: baseSnapshot,
+    snapshot,
     parameters: baseParams,
     featureInvariants: feature.featureInvariants,
     feature,
@@ -144,42 +293,19 @@ const runOne = (
   });
 
   // Assertions read the post-simulation snapshot. `nextState` reflects applied
-  // effects on success runs; on blocked runs no set_state landed, so an
-  // expectedAssertion authored as "this state should equal X after success"
-  // would silently evaluate against the untouched snapshot and produce a
-  // confusing pass/fail. Skip them in that case so the signal stays clean.
+  // effects on success runs; on blocked runs no set_state landed, so
+  // expectedAssertions are skipped (see evaluateAssertions) rather than
+  // evaluated against the untouched snapshot.
   const filledParams = fillDefaults(action.parameters, baseParams);
   const finalSnapshot = result.nextState;
   const actualStatus: 'success' | 'blocked' =
     result.status === 'blocked' ? 'blocked' : 'success';
 
-  const assertions: ScenarioAssertionResult[] = (scenario.expectedAssertions ?? []).map(
-    (a) => {
-      if (actualStatus === 'blocked') {
-        return {
-          path: String(a.path),
-          operator: a.operator,
-          held: null,
-          skipped: true,
-          ...(a.description ? { description: a.description } : {})
-        };
-      }
-      const held = evaluateCondition(
-        {
-          left: a.path,
-          operator: a.operator,
-          right: a.value
-        },
-        finalSnapshot,
-        filledParams
-      );
-      return {
-        path: String(a.path),
-        operator: a.operator,
-        held,
-        ...(a.description ? { description: a.description } : {})
-      };
-    }
+  const assertions = evaluateAssertions(
+    scenario.expectedAssertions ?? [],
+    actualStatus,
+    finalSnapshot,
+    filledParams
   );
 
   const expectedStatus = scenario.expectedStatus ?? null;
@@ -221,7 +347,13 @@ const runOne = (
             matches: scenario.expectedTransition === result.transition
           };
   const transitionOk = transitionCheck === null || transitionCheck.matches;
-  const pass = statusMatches && assertionsHold && transitionOk && !silentSkipFail;
+  // A multi-step scenario only passes if every preceding step passed: a step
+  // that blocks unexpectedly means the subject action ran against state that
+  // was never legitimately reached, so the whole flow is invalid.
+  const stepsPass = stepResults.every((s) => s.pass);
+  const firstFailedStep = stepResults.find((s) => !s.pass);
+  const pass =
+    stepsPass && statusMatches && assertionsHold && transitionOk && !silentSkipFail;
 
   const failedAssertionCount = assertions.filter((a) => !a.skipped && !a.held).length;
   const paramErrorBlurb =
@@ -246,16 +378,22 @@ const runOne = (
     transitionCheck && !transitionCheck.matches
       ? ` (transition went to ${String(transitionCheck.actual)} but expected ${String(transitionCheck.expected)})`
       : '';
+  const stepPrefix =
+    stepResults.length > 0
+      ? `${stepResults.length} step${stepResults.length === 1 ? '' : 's'} ok, `
+      : '';
   const summary = pass
-    ? `pass. ${actualStatus}${evaluatedAssertionCount > 0 ? `, ${evaluatedAssertionCount} assertion${evaluatedAssertionCount === 1 ? '' : 's'} held` : ''}${skippedBlurb}`
+    ? `pass. ${stepPrefix}${actualStatus}${evaluatedAssertionCount > 0 ? `, ${evaluatedAssertionCount} assertion${evaluatedAssertionCount === 1 ? '' : 's'} held` : ''}${skippedBlurb}`
     : `fail. ${
-        !statusMatches
-          ? `status was ${actualStatus} but expected ${expectedStatus}${paramErrorBlurb}${invariantBlurb}`
-          : !transitionOk
-            ? `transition mismatch${transitionBlurb}`
-            : silentSkipFail
-              ? `action was blocked so all ${assertions.length} assertion${assertions.length === 1 ? '' : 's'} skipped. Set expectedStatus:"blocked" if the block is intentional; otherwise fix the scenario so the action runs.${paramErrorBlurb}${invariantBlurb}`
-              : `${failedAssertionCount}/${evaluatedAssertionCount} assertion${evaluatedAssertionCount === 1 ? '' : 's'} did not hold${invariantBlurb}`
+        !stepsPass && firstFailedStep
+          ? `step ${firstFailedStep.index} (${firstFailedStep.actionName}): ${firstFailedStep.summary}`
+          : !statusMatches
+            ? `status was ${actualStatus} but expected ${expectedStatus}${paramErrorBlurb}${invariantBlurb}`
+            : !transitionOk
+              ? `transition mismatch${transitionBlurb}`
+              : silentSkipFail
+                ? `action was blocked so all ${assertions.length} assertion${assertions.length === 1 ? '' : 's'} skipped. Set expectedStatus:"blocked" if the block is intentional; otherwise fix the scenario so the action runs.${paramErrorBlurb}${invariantBlurb}`
+                : `${failedAssertionCount}/${evaluatedAssertionCount} assertion${evaluatedAssertionCount === 1 ? '' : 's'} did not hold${invariantBlurb}`
       }`;
 
   return {
@@ -271,6 +409,7 @@ const runOne = (
     expectedStatus,
     statusMatches,
     assertions,
+    steps: stepResults,
     transitionCheck,
     parameterErrors: result.parameterErrors,
     invariantViolations: result.invariantViolations,

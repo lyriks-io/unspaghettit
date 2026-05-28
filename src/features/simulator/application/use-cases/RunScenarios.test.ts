@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Action } from '$features/behavior-model/domain/entities/Action';
+import type { Scenario } from '$features/behavior-model/domain/entities/Scenario';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Persona } from '$features/behavior-model/domain/entities/Persona';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
@@ -453,5 +454,206 @@ describe('runScenariosUseCase', () => {
     const out = run({ feature: makeFeature(action) });
     expect(out.passed).toBe(1);
     expect(out.results[0]?.pass).toBe(true);
+  });
+});
+
+// ─── Multi-step scenarios ─────────────────────────────────────────────────
+
+const makeMultiFeature = (actions: readonly Action[]): Feature => ({
+  id: asFeatureId('e1'),
+  name: 'Test',
+  surfaces: [
+    {
+      id: asSurfaceId('s1'),
+      name: 'Screen',
+      type: 'screen',
+      stateDefinitions: [
+        {
+          id: asStateDefinitionId('sd1'),
+          path: asStatePath('count'),
+          type: 'number',
+          defaultValue: 0
+        }
+      ],
+      actions: [...actions],
+      rules: [],
+      invariants: [],
+      transitions: []
+    }
+  ],
+  personas: [],
+  resources: [],
+  entities: [],
+  createdAt: '2026-05-11T00:00:00.000Z',
+  updatedAt: '2026-05-11T00:00:00.000Z'
+});
+
+const incrAction = (id: string, scenarios?: Action['scenarios']): Action => ({
+  id: asActionId(id),
+  name: 'Increment',
+  intent: 'Add one to count',
+  parameters: [],
+  requiredStates: [],
+  rules: [],
+  invariants: [],
+  effects: [
+    {
+      id: asEffectId(`${id}-eff`),
+      type: 'set_state',
+      path: asStatePath('count'),
+      value: {
+        kind: 'add',
+        left: { kind: 'state', path: asStatePath('count') },
+        right: { kind: 'literal', value: 1 }
+      }
+    }
+  ],
+  emittedEvents: [],
+  transitions: [],
+  ...(scenarios ? { scenarios } : {})
+});
+
+// Increment that always blocks (a guard rule that's always true). Used to
+// prove a blocked setup step fails the flow, and that expectedStatus:"blocked"
+// on a step is honoured.
+const blockedIncrAction = (id: string): Action => ({
+  ...incrAction(id),
+  name: 'Blocked increment',
+  intent: 'Always refuses',
+  rules: [
+    {
+      id: asRuleId(`${id}-r`),
+      category: 'business',
+      condition: { left: asStatePath('count'), operator: 'greater_than', right: -1 },
+      effect: { id: asEffectId(`${id}-block`), type: 'block_action', reason: 'always' }
+    }
+  ]
+});
+
+const doubleAction = (id: string, scenarios: Action['scenarios']): Action => ({
+  id: asActionId(id),
+  name: 'Double',
+  intent: 'Double the count',
+  parameters: [],
+  requiredStates: [],
+  rules: [],
+  invariants: [],
+  effects: [
+    {
+      id: asEffectId(`${id}-eff`),
+      type: 'set_state',
+      path: asStatePath('count'),
+      value: {
+        kind: 'mul',
+        left: { kind: 'state', path: asStatePath('count') },
+        right: { kind: 'literal', value: 2 }
+      }
+    }
+  ],
+  emittedEvents: [],
+  transitions: [],
+  scenarios
+});
+
+describe('runScenariosUseCase — multi-step scenarios', () => {
+  it('passes a multi-step scenario that replays preceding actions', () => {
+    // count 0 → +1 → +1 → ×2 = 4. The two increments are real simulate()
+    // calls threaded into the subject (double).
+    const scenario: Scenario = {
+      id: asScenarioId('sc1'),
+      name: 'two increments then double',
+      description: 'count 0 incremented twice then doubled equals 4',
+      stateOverrides: [{ path: asStatePath('count'), value: 0 }],
+      parameterOverrides: [],
+      expectedStatus: 'success',
+      steps: [
+        { actionId: asActionId('c1'), parameterOverrides: [] },
+        { actionId: asActionId('c1'), parameterOverrides: [] }
+      ],
+      expectedAssertions: [{ path: asStatePath('count'), operator: 'equals', value: 4 }]
+    };
+    const feature = makeMultiFeature([incrAction('c1'), doubleAction('c2', [scenario])]);
+    const out = runScenariosUseCase()({ feature });
+    expect(out.total).toBe(1);
+    expect(out.passed).toBe(1);
+    const r = out.results[0];
+    expect(r?.steps).toHaveLength(2);
+    expect(r?.steps.every((s) => s.pass)).toBe(true);
+    expect(r?.assertions[0]?.held).toBe(true);
+    expect(r?.summary).toContain('2 steps ok');
+  });
+
+  it('fails the whole scenario when a setup step blocks unexpectedly', () => {
+    const scenario: Scenario = {
+      id: asScenarioId('sc1'),
+      name: 'blocked setup step',
+      description: 'the first step is refused, so the flow never reaches the subject',
+      stateOverrides: [{ path: asStatePath('count'), value: 0 }],
+      parameterOverrides: [],
+      expectedStatus: 'success',
+      steps: [{ actionId: asActionId('c1'), parameterOverrides: [] }],
+      expectedAssertions: [
+        { path: asStatePath('count'), operator: 'equals', value: 2, description: 'never reached' }
+      ]
+    };
+    const feature = makeMultiFeature([blockedIncrAction('c1'), doubleAction('c2', [scenario])]);
+    const out = runScenariosUseCase()({ feature });
+    expect(out.failed).toBe(1);
+    const r = out.results[0];
+    expect(r?.pass).toBe(false);
+    expect(r?.steps[0]?.pass).toBe(false);
+    expect(r?.steps[0]?.actualStatus).toBe('blocked');
+    expect(r?.summary).toContain('step 0');
+  });
+
+  it('checks per-step assertions against the threaded snapshot', () => {
+    const scenario: Scenario = {
+      id: asScenarioId('sc1'),
+      name: 'step asserts the intermediate state',
+      description: 'after the first increment count is 1, then double makes it 2',
+      stateOverrides: [{ path: asStatePath('count'), value: 0 }],
+      parameterOverrides: [],
+      expectedStatus: 'success',
+      steps: [
+        {
+          actionId: asActionId('c1'),
+          parameterOverrides: [],
+          expectedStatus: 'success',
+          expectedAssertions: [
+            {
+              path: asStatePath('count'),
+              operator: 'equals',
+              value: 1,
+              description: 'count is 1 after the first increment'
+            }
+          ]
+        }
+      ],
+      expectedAssertions: [{ path: asStatePath('count'), operator: 'equals', value: 2 }]
+    };
+    const feature = makeMultiFeature([incrAction('c1'), doubleAction('c2', [scenario])]);
+    const out = runScenariosUseCase()({ feature });
+    expect(out.passed).toBe(1);
+    const r = out.results[0];
+    expect(r?.steps[0]?.assertions[0]?.held).toBe(true);
+  });
+
+  it('passes a step that is expected to block', () => {
+    const scenario: Scenario = {
+      id: asScenarioId('sc1'),
+      name: 'guard step is expected to refuse',
+      description: 'the setup step is meant to block; count stays 0 so double keeps it 0',
+      stateOverrides: [{ path: asStatePath('count'), value: 0 }],
+      parameterOverrides: [],
+      expectedStatus: 'success',
+      steps: [{ actionId: asActionId('c1'), parameterOverrides: [], expectedStatus: 'blocked' }],
+      expectedAssertions: [{ path: asStatePath('count'), operator: 'equals', value: 0 }]
+    };
+    const feature = makeMultiFeature([blockedIncrAction('c1'), doubleAction('c2', [scenario])]);
+    const out = runScenariosUseCase()({ feature });
+    expect(out.passed).toBe(1);
+    const r = out.results[0];
+    expect(r?.steps[0]?.pass).toBe(true);
+    expect(r?.steps[0]?.statusMatches).toBe(true);
   });
 });
