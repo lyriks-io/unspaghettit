@@ -68,30 +68,13 @@ source code is not annotated.
 
 ## Reading the index correctly
 
-`.unspa.json` is keyed `"<entityType>:<id-name-or-path>"` where the
-id portion depends on the type:
-
-- `action:<id>`, `surface:<id>`, `rule:<id>`, `invariant:<id>`,
-  `transition:<id>`, `surface_rule:<id>`, `surface_invariant:<id>`,
-  `entity:<id>` → id is the 8-char hex minted by the spec. Get it via
-  `get_behavioral_index` or `get_feature(verbose:true)`. Slug-shaped
-  keys are not accepted.
-- `event:<event-name>` → the event's literal string identifier.
-- `state:<dotted.path>` → the state definition's path (e.g.
-  `cart.itemCount`).
-
-Every entity must have its OWN entry — an action entry does **not** also
-cover its child rules/events/invariants. The MCP's `sync_from_index`
-will report a child as missing if there is no dedicated key for it,
-even when the parent action is at `status:"implemented"`. There is no
-parent fallback by design — a child sharing the parent's snippet would
-mislead the dashboard.
-
-`sync_from_index` also returns an `orphans` block listing any keys in
-`.unspa.json` that do not match a spec entity (typo, wrong format,
-removed entity). `ok` is true only when there are no orphans, so the
-caller sees the problem immediately instead of finding zero coverage
-on the dashboard with no diagnostic.
+`.unspa.json` is keyed `"<entityType>:<id-or-slug-or-path>"`. Every entity
+must have its OWN entry — an action entry does **not** also cover its
+child rules/events/invariants. The MCP's `sync_from_index` will report a
+child as missing if there is no dedicated key for it, even when the
+parent action is at `status:"implemented"`. There is no parent fallback
+by design — a child sharing the parent's snippet would mislead the
+dashboard.
 
 ## Staleness signals
 

@@ -3,8 +3,13 @@
     "unspa": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "npm.cmd", "run", "mcp"],
-      "env": {}
+      "args": [
+        "/c",
+        "unspa-mcp"
+      ],
+      "env": {
+        "UNSPA_SNAPSHOTS": "C:\\Users\\Lazyee\\.unspa-hub\\unspa"
+      }
     }
   }
 }
