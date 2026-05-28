@@ -19,7 +19,7 @@ export class InMemoryDomainRepository implements DomainRepository {
 
   async list(): Promise<readonly DomainSummary[]> {
     return Array.from(this.store.values())
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       .map(toSummary);
   }
 

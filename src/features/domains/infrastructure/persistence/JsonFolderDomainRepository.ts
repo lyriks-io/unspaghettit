@@ -46,7 +46,7 @@ export class JsonFolderDomainRepository implements DomainRepository {
   async list(): Promise<readonly DomainSummary[]> {
     return this.readAll()
       .map((s) => s.domain)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       .map(toSummary);
   }
 

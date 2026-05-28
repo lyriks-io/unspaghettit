@@ -46,7 +46,7 @@ export class JsonFolderProjectRepository implements ProjectRepository {
   async list(): Promise<readonly ProjectSummary[]> {
     return this.readAll()
       .map((s) => s.project)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       .map(toSummary);
   }
 

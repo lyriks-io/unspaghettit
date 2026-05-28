@@ -21,7 +21,7 @@ export class InMemoryProjectRepository implements ProjectRepository {
 
   async list(): Promise<readonly ProjectSummary[]> {
     return Array.from(this.store.values())
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       .map(toSummary);
   }
 

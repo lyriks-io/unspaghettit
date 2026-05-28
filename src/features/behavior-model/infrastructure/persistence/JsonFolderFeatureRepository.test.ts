@@ -131,6 +131,37 @@ describe('JsonFolderFeatureRepository', () => {
     expect(summaries.map((s) => s.name)).toEqual(['Newer', 'Older']);
   });
 
+  it('list() does not crash when a shell on disk has no updatedAt field', async () => {
+    const dir = makeTempRoot();
+    const repo = new JsonFolderFeatureRepository(dir);
+    await repo.save(
+      buildFeature({
+        id: asFeatureId('dated-id'),
+        name: 'Dated',
+        updatedAt: '2026-05-09T00:00:00.000Z'
+      })
+    );
+    const shellDir = join(dir, UNASSIGNED_FOLDER);
+    mkdirSync(shellDir, { recursive: true });
+    writeFileSync(
+      join(shellDir, 'shell.feature.json'),
+      JSON.stringify({
+        format: 'unspaghettit',
+        version: 1,
+        feature: {
+          id: 'shell-id-12345678',
+          name: 'Shell',
+          surfaces: [],
+          createdAt: '2026-05-09T00:00:00.000Z'
+        }
+      }),
+      'utf8'
+    );
+
+    const summaries = await repo.list();
+    expect(summaries.map((s) => s.name)).toEqual(['Dated', 'Shell']);
+  });
+
   it('renames the file when the feature name changes', async () => {
     const dir = makeTempRoot();
     const repo = new JsonFolderFeatureRepository(dir);

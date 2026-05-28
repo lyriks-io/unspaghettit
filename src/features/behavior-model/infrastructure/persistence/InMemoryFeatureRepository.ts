@@ -22,7 +22,7 @@ export class InMemoryFeatureRepository implements FeatureRepository {
 
   async list(): Promise<readonly FeatureSummary[]> {
     return Array.from(this.store.values())
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       .map(toSummary);
   }
 

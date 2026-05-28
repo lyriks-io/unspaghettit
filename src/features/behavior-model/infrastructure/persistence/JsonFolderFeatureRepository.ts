@@ -56,7 +56,7 @@ export class JsonFolderFeatureRepository implements FeatureRepository {
   async list(): Promise<readonly FeatureSummary[]> {
     return this.readAll()
       .map((s) => s.feature)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       .map(toSummary);
   }
 
