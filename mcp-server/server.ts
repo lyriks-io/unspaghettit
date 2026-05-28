@@ -98,7 +98,9 @@ Effects are discriminated by type: set_state{path,value} | show_message{message,
 
 Events are first-class entities in feature.events[] with { name, description, payloadSchema? }. emit_event effects and action.emittedEvents reference them by name. Register the event once via add_event so the dashboard knows the payload shape. Invariants are post-conditions; violations block the run.
 
-Scenarios sit under actions and have optional personaId plus stateOverrides[] + parameterOverrides[]. run_all_scenarios applies the persona baseline first, then the scenario overrides. Adding expectedStatus + expectedAssertions[] makes them executable specs. Call run_all_scenarios after edits to confirm nothing drifted.
+Value sets are named, reusable enums in feature.valueSets[] { name, values }. A state or parameter of type enum can reference one via valueSetId instead of inlining enumValues (add_value_set), so the allowed values live in one place. Inline enumValues still work; the two are mutually exclusive per field.
+
+Scenarios sit under actions and have optional personaId plus stateOverrides[] + parameterOverrides[]. run_all_scenarios applies the persona baseline first, then the scenario overrides. Adding expectedStatus + expectedAssertions[] makes them executable specs. Optional steps[] replay preceding actions before the subject action (each a real simulate, threading state forward) so a scenario can verify a multi-action flow. Call run_all_scenarios after edits to confirm nothing drifted.
 
 Workflow:
 0. Call get_repo_context once at session start. If linked:true, the developer has bound this repo to one project via .unspa.json. The response includes linkedProjectId, linkedProjectName, and the project's features[{id,name}]. Scope all subsequent calls to that project: pick the right featureId from features[] for the task at hand (use file paths being edited, action name in the user prompt, and the surrounding context). When ambiguous, ask the user which feature they mean.

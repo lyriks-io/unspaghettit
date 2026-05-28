@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [SemVer](https://semver.org).
 
+## [Unreleased]
+
+### Added
+
+- **Multi-step scenarios (`Scenario.steps[]`).** A scenario can now carry an ordered `steps[]` of preceding action invocations, replayed through the simulator (each a real `simulate`, threading state forward) before the action under test. This turns a single-action preset into an arrange→act→assert flow, so `run_all_scenarios` verifies cross-action flows (add to cart → apply coupon → checkout), not just one transition. Each step takes its own `parameterOverrides` plus optional `expectedStatus` (defaults to `success`) and `expectedAssertions`; a step that blocks unexpectedly fails the whole scenario. Fully backward compatible — a scenario with no `steps` behaves exactly as before. Authorable via `add_scenario` / `update_scenario` and `apply_batch`.
+
+- **Named value sets (`feature.valueSets[]`).** A reusable, named enum declared once at the feature level. A StateDefinition or Parameter of type `enum` references it via `valueSetId` instead of inlining `enumValues`, so the allowed values live in one place and every reference stays in sync — removing the "edit the enum in two places" drift between a state path and the parameters that feed it. Additive: inline `enumValues` still work and there is no migration. New tools `add_value_set` / `update_value_set` / `remove_value_set` plus matching `apply_batch` ops; the effective values resolve at read time in the validator, the TypeScript codegen, and the simulator's parameter check.
+
 ## [0.1.7] — 2026-05-27
 
 Cosmetic re-release of 0.1.6. The npm tarball is functionally identical — **0.1.6 users do not need to upgrade.** The bump exists so the `v0.1.7` git tag points at a green CI run.

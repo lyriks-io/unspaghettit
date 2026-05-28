@@ -99,6 +99,8 @@ Two complementary uses of the same scenarios:
 - **Spec self-test (always on).** `run_all_scenarios` checks that the spec is internally consistent: every scenario's expected outcome matches what the simulator computes from the rules. Catches contradictions in product logic before a line of code is written.
 - **Code-vs-spec test (preview).** `unspa scenarios export <featureId>` generates a Vitest file from those same scenarios, using the simulator's predictions as the oracle. You write one thin adapter (`UnspaAdapter` from `unspaghettit/cli/scenarios`) that calls your real implementation; the generated tests drive every scenario through it and assert state path-by-path. Experimental — adapter contract may shift between minor versions.
 
+Scenarios can be **multi-step**: a scenario's `steps[]` replays preceding actions (each through the simulator, threading state forward) before the action under test, so `run_all_scenarios` verifies whole flows — add to cart → apply coupon → checkout — not just single transitions.
+
 Specs stop being documentation. They become a runtime contract you can break loudly.
 
 ## Core capabilities

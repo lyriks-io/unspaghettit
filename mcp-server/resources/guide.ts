@@ -39,17 +39,18 @@ Feature
   │   │   ├── invariants[]     Post-conditions; violations block the run
   │   │   ├── effects[]        Mutations: set_state|show_message|emit_event|block_action|allow_action|transition_surface
   │   │   ├── emittedEvents[]  Events this action can fire (by name)
-  │   │   └── scenarios[]      Executable specs with optional personaId + overrides
+  │   │   └── scenarios[]      Executable specs: personaId + overrides, optional steps[] (multi-step flows)
   │   ├── rules[]              Surface-level guards (apply to all actions)
   │   ├── invariants[]         Surface-level post-conditions
   │   └── transitions[]        Navigation edges to other surfaces
   ├── personas[]        Named user roles (used by scenarios)
   ├── resources[]       External dependencies (APIs, storage, …)
   ├── entities[]        Structured data namespaces with typed fields
-  └── events[]          First-class event registry { name, description, payloadSchema? }
+  ├── events[]          First-class event registry { name, description, payloadSchema? }
+  └── valueSets[]       Named reusable enums { name, values } referenced by valueSetId
 
 State paths use dot notation: "cart.itemCount", "user.profile.name".
-StateDefinition: { path, type (string|number|boolean|enum|object|array), defaultValue, sharedWith?: SurfaceId[] }
+StateDefinition: { path, type (string|number|boolean|enum|object|array), defaultValue, enumValues? | valueSetId?, sharedWith?: SurfaceId[] }
 
 Descriptions are mandatory for every authored element. That includes Feature,
 Project, Surface, StateDefinition, Parameter, Rule, Effect, Invariant,
@@ -569,7 +570,8 @@ so you know at session start whether the index is fresh or needs a pass.
 - All write ops return slim acks { ok, featureId, updatedAt, id? }.
   Re-read with get_action only when you need the new shape.
 
-- Enum state definitions require enumValues[]. The defaultValue must be one of them.
+- Enum state definitions need allowed values: either inline enumValues[] or a valueSetId
+  referencing feature.valueSets[] (not both). The defaultValue must be one of them.
 
 - sharedWith on a StateDefinition links the same state path across surfaces.
   All surfaces sharing a path must declare it with the same type.
