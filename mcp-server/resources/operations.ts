@@ -24,8 +24,9 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   add_action           { ref?, surfaceRef|surfaceId, name, intent, requiredStates?, emittedEvents?, bypassInvariants?, triggeredByEvent? }
 . \`requiredStates\` is \`string[]\` of state paths declared on (or shared into) the action's surface - NOT condition objects. Use rules / invariants for value-level constraints.
 . Subscribe an action to an event with \`triggeredByEvent:"event.name"\`. When ANY action in the feature emits that event, the simulator runs this action as a cascaded handler against the post-emit snapshot. Bounded by depth limit (8) and per-cascade cycle guard. Handlers must not have required parameters without defaults.
-  add_state_definition     { ref?, surfaceRef|surfaceId, path, type, defaultValue, enumValues?, description, sharedWith? }
-  add_parameter            { ref?, surfaceRef|surfaceId, actionRef|actionId, name, type, required, description, enumValues?, defaultValue?, bindToStatePath?, validations? }
+  add_state_definition     { ref?, surfaceRef|surfaceId, path, type, defaultValue, enumValues?, valueSetId?, description, sharedWith? }
+  add_parameter            { ref?, surfaceRef|surfaceId, actionRef|actionId, name, type, required, description, enumValues?, valueSetId?, defaultValue?, bindToStatePath?, validations? }
+. For \`type:"enum"\`, supply EITHER inline \`enumValues\` OR \`valueSetId\` (a feature-level value set from add_value_set) - not both. valueSetId lets several states/params share one editable list.
 . \`validations\` is an array of tagged checks that fire before any rules. Tags: { type:"non_empty"|"email"|"url"|"uuid"|"ipv4"|"ipv6"|"hex"|"base64"|"slug"|"phone_e164"|"color_hex"|"semver"|"json"|"iso_date"|"iso_datetime"|"iso_time"|"alphanumeric"|"alphabetic"|"lowercase"|"uppercase"|"no_whitespace"|"integer"|"positive"|"negative"|"non_negative"|"non_positive"|"finite"|"safe_integer" } for the no-arg checks, OR { type:"min_length"|"max_length"|"length"|"min"|"max"|"multiple_of", value:N } / { type:"pattern"|"starts_with"|"ends_with"|"contains", value:"..." }. All accept an optional \`message:"..."\` override.
   add_action_rule      { ref?, surfaceRef|surfaceId, actionRef|actionId, rule: { category, condition?, effect:{type,..., description}, description } }
 . \`category\` enum: business | security | permissions | compliance | validation | data | ux_feedback | error_handling | async | collaboration | billing_quota | audit. Not "blocking" - pick the closest semantic.
@@ -41,12 +42,15 @@ actionRef: a_new }\` works when only the action was minted in this batch.
 . Feature-level invariants are checked after every action in the feature regardless of surface. Use for cross-surface properties (Σ balances = 0). Eliminates the workaround of duplicating one invariant onto every surface.
   add_transition           { ref?, surfaceRef|surfaceId, target|targetRef, label?, description }
   add_persona              { ref?, name, description, stateOverrides?, parameterOverrides?, persistAcrossSurfaces? }
+  add_value_set            { ref?, name, description, values }
+. A named, reusable enum (\`values\` is a non-empty string[]). States/params of type "enum" reference it via \`valueSetId\` so the allowed values live in one place; edit them once via update_value_set.
   add_resource             { ref?, resource: { name, kind, provider, scope, sensitivity, containsPii, accessMode, ... } }
 . The resource's own \`kind\` collides with the op-kind discriminator. Nest under \`resource:{kind,...}\` (preferred) or pass \`resourceKind\` on the flat form.
   add_entity                 { ref?, namespace, fields, description, resourceRef?|resourceId? }
   add_entity_field           { ref?, dataRef|entityId, name, type, ... }
-  add_scenario             { ref?, surfaceRef|surfaceId, actionRef|actionId, name, description, personaId?|personaRef?, stateOverrides?, parameterOverrides?, expectedStatus?, expectedAssertions?, expectedTransition?|expectedTransitionRef? }
+  add_scenario             { ref?, surfaceRef|surfaceId, actionRef|actionId, name, description, personaId?|personaRef?, stateOverrides?, parameterOverrides?, expectedStatus?, expectedAssertions?, expectedTransition?|expectedTransitionRef?, steps? }
 . \`parameterOverrides\` items are \`{parameterName, value}\` - must match a declared parameter on the target action (NOT parameterId, NOT name). \`stateOverrides\` items are \`{path, value}\`. \`expectedStatus\` enum: \`"success"\` | \`"blocked"\` (NOT "ok"). \`expectedTransition\` is the target surfaceId, or null to assert "no transition fires", or omitted to skip the check. If you author expectedAssertions but the action gets blocked, the scenario FAILS - set expectedStatus:"blocked" if the block is intentional.
+. \`steps\` makes the scenario multi-step: an ordered array of \`{actionId, surfaceId?, parameterOverrides?, expectedStatus?, expectedAssertions?, description?}\` REPLAYED before the subject action (each a real simulate, threading state forward). The subject action's stateOverrides set the INITIAL snapshot. A step defaults to expectedStatus:"success"; a step that blocks unexpectedly fails the whole scenario. Use for flows: add to cart -> apply coupon -> checkout.
   add_event                { ref?, name, description, payloadSchema? }
 
 ## UPDATE ops
@@ -63,6 +67,8 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   update_feature_invariant    { invariantId, patch }
   update_transition           { surfaceRef|surfaceId, transitionId, target?, label?, description? }
   update_persona              { personaId, ...partial }
+  update_value_set            { valueSetId, name?, description?, values? }
+. \`values\` is a full replacement. On update_state_definition / update_parameter, \`valueSetId:null\` clears the reference (back to inline enumValues or no enum).
   update_resource             { resourceId, resource?:{ ...partial }, resourceKind?, ...partial }
 . Same kind-collision rule as add_resource.
   update_entity                 { entityId, ...partial }

@@ -29,6 +29,7 @@ import type {
 import type { StateDefinition } from '../../src/features/behavior-model/domain/entities/StateDefinition';
 import type { Surface } from '../../src/features/behavior-model/domain/entities/Surface';
 import type { Transition } from '../../src/features/behavior-model/domain/entities/Transition';
+import type { ValueSet } from '../../src/features/behavior-model/domain/entities/ValueSet';
 import type { Effect } from '../../src/features/behavior-model/domain/value-objects/Effect';
 import type { EventName } from '../../src/features/behavior-model/domain/value-objects/EventName';
 import {
@@ -46,7 +47,8 @@ import {
   asScenarioId,
   asStateDefinitionId,
   asSurfaceId,
-  asTransitionId
+  asTransitionId,
+  asValueSetId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
 import {
@@ -402,6 +404,9 @@ const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): 
             ...(Array.isArray(op.enumValues)
               ? { enumValues: op.enumValues as readonly string[] }
               : {}),
+            ...(typeof op.valueSetId === 'string'
+              ? { valueSetId: asValueSetId(op.valueSetId) }
+              : {}),
             ...(typeof op.description === 'string' ? { description: op.description } : {}),
             ...(sharedWith ? { sharedWith } : {})
           };
@@ -428,6 +433,12 @@ const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): 
                 : {}),
               ...(Array.isArray(op.enumValues)
                 ? { enumValues: op.enumValues as readonly string[] }
+                : {}),
+              ...('valueSetId' in op
+                ? {
+                    valueSetId:
+                      op.valueSetId == null ? undefined : asValueSetId(op.valueSetId as string)
+                  }
                 : {}),
               ...(typeof op.description === 'string' ? { description: op.description } : {}),
               ...(Array.isArray(op.sharedWith)
@@ -466,6 +477,9 @@ const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): 
             ...(Array.isArray(op.enumValues)
               ? { enumValues: op.enumValues as readonly string[] }
               : {}),
+            ...(typeof op.valueSetId === 'string'
+              ? { valueSetId: asValueSetId(op.valueSetId) }
+              : {}),
             ...(op.defaultValue !== undefined
               ? { defaultValue: op.defaultValue as Parameter['defaultValue'] }
               : {}),
@@ -498,6 +512,12 @@ const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): 
               ...(typeof op.description === 'string' ? { description: op.description } : {}),
               ...(Array.isArray(op.enumValues)
                 ? { enumValues: op.enumValues as readonly string[] }
+                : {}),
+              ...('valueSetId' in op
+                ? {
+                    valueSetId:
+                      op.valueSetId == null ? undefined : asValueSetId(op.valueSetId as string)
+                  }
                 : {}),
               ...(op.defaultValue !== undefined
                 ? { defaultValue: op.defaultValue as Parameter['defaultValue'] }
@@ -827,6 +847,35 @@ const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): 
         }
         case 'remove_persona':
           exp = T.removePersona(exp, asPersonaId(op.personaId as string));
+          break;
+
+        // ── Value sets ──────────────────────────────────────────────────
+        case 'add_value_set': {
+          const valueSet: ValueSet = {
+            id: asValueSetId(mintId()),
+            name: op.name as string,
+            ...(typeof op.description === 'string' ? { description: op.description } : {}),
+            values: Array.isArray(op.values) ? (op.values as readonly string[]) : []
+          };
+          exp = T.addValueSet(exp, valueSet);
+          remember(op.ref, valueSet.id);
+          break;
+        }
+        case 'update_value_set': {
+          const vsid = asValueSetId(op.valueSetId as string);
+          const existing = (exp.valueSets ?? []).find((vs) => vs.id === vsid);
+          if (!existing) break;
+          const merged: ValueSet = {
+            ...existing,
+            ...(typeof op.name === 'string' ? { name: op.name } : {}),
+            ...(typeof op.description === 'string' ? { description: op.description } : {}),
+            ...(Array.isArray(op.values) ? { values: op.values as readonly string[] } : {})
+          };
+          exp = T.updateValueSet(exp, merged);
+          break;
+        }
+        case 'remove_value_set':
+          exp = T.removeValueSet(exp, asValueSetId(op.valueSetId as string));
           break;
 
         // ── Resources ───────────────────────────────────────────────────

@@ -199,7 +199,11 @@ const simulateInternal = (
   const completeSnapshot = mergeSnapshotWithDefaults(normalizedSnapshot, allFeatureDefs);
 
   const filledParams = fillDefaults(action.parameters, parameters);
-  const parameterErrors = validateParameters(action.parameters, filledParams);
+  const parameterErrors = validateParameters(
+    action.parameters,
+    filledParams,
+    feature?.valueSets
+  );
   if (parameterErrors.length > 0) {
     // Parameter validation failures are treated as blocks: the action could
     // not proceed because the inputs were rejected. There are only two

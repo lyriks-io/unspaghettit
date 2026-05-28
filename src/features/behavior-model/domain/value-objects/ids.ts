@@ -15,6 +15,7 @@ export type EntityId = Brand<string, 'EntityId'>;
 export type EntityFieldId = Brand<string, 'EntityFieldId'>;
 export type ScenarioId = Brand<string, 'ScenarioId'>;
 export type EventDefinitionId = Brand<string, 'EventDefinitionId'>;
+export type ValueSetId = Brand<string, 'ValueSetId'>;
 
 export const asFeatureId = (v: string): FeatureId => v as FeatureId;
 export const asSurfaceId = (v: string): SurfaceId => v as SurfaceId;
@@ -31,3 +32,4 @@ export const asEntityId = (v: string): EntityId => v as EntityId;
 export const asEntityFieldId = (v: string): EntityFieldId => v as EntityFieldId;
 export const asScenarioId = (v: string): ScenarioId => v as ScenarioId;
 export const asEventDefinitionId = (v: string): EventDefinitionId => v as EventDefinitionId;
+export const asValueSetId = (v: string): ValueSetId => v as ValueSetId;

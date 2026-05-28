@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { storefrontFeature } from '$features/behavior-model/infrastructure/seed/seedStorefront';
+import { asValueSetId } from '$features/behavior-model/domain/value-objects/ids';
 import { generateTypesTool } from './generateTypes';
 
 describe('generateTypesTool', () => {
@@ -55,5 +56,39 @@ describe('generateTypesTool', () => {
     const { source, stats } = generateTypesTool(input);
     if (stats.events === 0) return;
     expect(source).toContain('export type EventName =');
+  });
+
+  it('resolves a valueSetId-backed enum state into a union type', () => {
+    const feature = {
+      ...storefrontFeature,
+      valueSets: [
+        {
+          id: asValueSetId('vs-prio'),
+          name: 'Priority',
+          description: 'Allowed priority levels.',
+          values: ['low', 'high']
+        }
+      ],
+      surfaces: storefrontFeature.surfaces.map((s, i) =>
+        i === 0
+          ? {
+              ...s,
+              stateDefinitions: [
+                ...s.stateDefinitions,
+                {
+                  id: 'prio-state' as never,
+                  path: 'ticket.priority' as never,
+                  type: 'enum' as const,
+                  valueSetId: asValueSetId('vs-prio'),
+                  defaultValue: 'low',
+                  description: 'Ticket priority.'
+                }
+              ]
+            }
+          : s
+      )
+    };
+    const { source } = generateTypesTool({ feature, header: 'fixture' });
+    expect(source).toContain("export type TicketPriority = 'low' | 'high';");
   });
 });

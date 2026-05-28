@@ -6,6 +6,7 @@ import type { Invariant } from './Invariant';
 import type { Persona } from './Persona';
 import type { Resource } from './Resource';
 import type { Surface } from './Surface';
+import type { ValueSet } from './ValueSet';
 import type { Tag } from '$shared/domain/Tags';
 
 export type Feature = {
@@ -17,6 +18,14 @@ export type Feature = {
   readonly personas: readonly Persona[];
   readonly resources: readonly Resource[];
   readonly entities: readonly Entity[];
+  /**
+   * Named, reusable enum value sets. A StateDefinition or Parameter of type
+   * `enum` can reference one by id (`valueSetId`) instead of inlining its own
+   * `enumValues`, so the allowed values live in one place. Optional and purely
+   * additive: fields may still inline `enumValues`; unset means "no shared
+   * value sets declared". Downstream code reads `feature.valueSets ?? []`.
+   */
+  readonly valueSets?: readonly ValueSet[];
   /**
    * Cross-surface invariants. Checked after EVERY action runs, regardless
    * of which surface the action lives on. Use for accounting equations

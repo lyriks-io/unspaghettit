@@ -1,8 +1,10 @@
 import type { Parameter } from '../entities/Parameter';
+import type { ValueSet } from '../entities/ValueSet';
 import { parameterTypeToStateType } from '../value-objects/ParameterType';
 import type { ParameterValidation } from '../value-objects/ParameterValidation';
 import type { StateValue } from '../value-objects/StateValue';
 import { isStateValueAssignableTo } from '../value-objects/StateValue';
+import { effectiveEnumValues } from './EnumValues';
 
 export type ParameterValues = { readonly [name: string]: StateValue };
 
@@ -264,7 +266,12 @@ const checkValidation = (value: StateValue, v: ParameterValidation): string | nu
 
 export const validateParameters = (
   parameters: readonly Parameter[],
-  values: ParameterValues
+  values: ParameterValues,
+  // Named value sets from the feature. Optional so existing callers compile
+  // unchanged: a parameter that inlines `enumValues` validates without it; a
+  // parameter that references a `valueSetId` is only enforced when the caller
+  // (the simulator) threads the feature's value sets through.
+  valueSets?: readonly ValueSet[]
 ): readonly ParameterError[] => {
   const errors: ParameterError[] = [];
   for (const parameter of parameters) {
@@ -283,15 +290,12 @@ export const validateParameters = (
       });
       continue;
     }
-    if (
-      parameter.type === 'enum' &&
-      parameter.enumValues &&
-      typeof value === 'string' &&
-      !parameter.enumValues.includes(value)
-    ) {
+    const allowedEnum =
+      parameter.type === 'enum' ? effectiveEnumValues(parameter, valueSets) : undefined;
+    if (allowedEnum && typeof value === 'string' && !allowedEnum.includes(value)) {
       errors.push({
         parameterName: parameter.name,
-        reason: `must be one of ${parameter.enumValues.join(', ')}`
+        reason: `must be one of ${allowedEnum.join(', ')}`
       });
       continue;
     }

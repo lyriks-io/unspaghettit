@@ -11,6 +11,7 @@ import type { Scenario } from '../entities/Scenario';
 import type { StateDefinition } from '../entities/StateDefinition';
 import type { Surface } from '../entities/Surface';
 import type { Transition } from '../entities/Transition';
+import type { ValueSet } from '../entities/ValueSet';
 import type { Effect } from '../value-objects/Effect';
 import { parameterTypeToStateType } from '../value-objects/ParameterType';
 import type {
@@ -27,7 +28,8 @@ import type {
   ScenarioId,
   StateDefinitionId,
   SurfaceId,
-  TransitionId
+  TransitionId,
+  ValueSetId
 } from '../value-objects/ids';
 
 /**
@@ -890,6 +892,23 @@ export const updatePersona = (feature: Feature, persona: Persona): Feature => ({
 export const removePersona = (feature: Feature, personaId: PersonaId): Feature => ({
   ...feature,
   personas: feature.personas.filter((p) => p.id !== personaId)
+});
+
+// ─── Value sets ────────────────────────────────────────────────────────────
+
+export const addValueSet = (feature: Feature, valueSet: ValueSet): Feature => ({
+  ...feature,
+  valueSets: [...(feature.valueSets ?? []), valueSet]
+});
+
+export const updateValueSet = (feature: Feature, valueSet: ValueSet): Feature => ({
+  ...feature,
+  valueSets: mustMap(feature.valueSets ?? [], String(valueSet.id), 'value set', () => valueSet)
+});
+
+export const removeValueSet = (feature: Feature, valueSetId: ValueSetId): Feature => ({
+  ...feature,
+  valueSets: (feature.valueSets ?? []).filter((vs) => vs.id !== valueSetId)
 });
 
 // ─── Resources ───────────────────────────────────────────────────────────────

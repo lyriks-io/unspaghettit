@@ -3,6 +3,7 @@ import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Parameter } from '$features/behavior-model/domain/entities/Parameter';
 import type { StateDefinition } from '$features/behavior-model/domain/entities/StateDefinition';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
+import { effectiveEnumValues } from '$features/behavior-model/domain/services/EnumValues';
 import type { StateType } from '$features/behavior-model/domain/value-objects/StateValue';
 import type { ParameterType } from '$features/behavior-model/domain/value-objects/ParameterType';
 
@@ -94,13 +95,16 @@ const collectEnumStates = (feature: Feature): readonly EnumStateLink[] => {
   const seen = new Map<string, EnumStateLink>();
   for (const surface of feature.surfaces) {
     for (const def of surface.stateDefinitions) {
-      if (def.type !== 'enum' || !def.enumValues || def.enumValues.length === 0) continue;
+      if (def.type !== 'enum') continue;
+      // Resolve inline enumValues OR a named valueSetId to the effective set.
+      const values = effectiveEnumValues(def, feature.valueSets);
+      if (!values || values.length === 0) continue;
       const key = String(def.path);
       if (seen.has(key)) continue;
       seen.set(key, {
         path: key,
         typeName: toPascalCase(key),
-        values: def.enumValues
+        values
       });
     }
   }

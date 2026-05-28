@@ -9,7 +9,8 @@ import type { StateType } from '../../src/features/behavior-model/domain/value-o
 import {
   asFeatureId,
   asStateDefinitionId,
-  asSurfaceId
+  asSurfaceId,
+  asValueSetId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import type { SurfaceId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
@@ -31,7 +32,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
     'add_state_definition',
     {
       description:
-        'Declare schema for a state path on a Surface (path, type, default). enumValues required when type=enum. sharedWith[] lists other surfaces that also read/write this path. Declarative only (the runtime snapshot is global), but it lets the dashboard render cross-surface state sharing honestly.',
+        'Declare schema for a state path on a Surface (path, type, default). When type=enum, supply EITHER inline enumValues OR a valueSetId referencing a feature-level value set (add_value_set) — not both. sharedWith[] lists other surfaces that also read/write this path. Declarative only (the runtime snapshot is global), but it lets the dashboard render cross-surface state sharing honestly.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -39,6 +40,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
         type: stateTypeSchema,
         defaultValue: z.unknown(),
         enumValues: z.array(z.string()).optional(),
+        valueSetId: z.string().optional(),
         description: z.string().min(1),
         sharedWith: z.array(z.string()).optional()
       }
@@ -50,6 +52,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
       type,
       defaultValue,
       enumValues,
+      valueSetId,
       description,
       sharedWith
     }) => {
@@ -59,6 +62,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
         type: type as StateType,
         defaultValue: coerceScalarByType(defaultValue, type) as StateDefinition['defaultValue'],
         ...(enumValues ? { enumValues } : {}),
+        ...(valueSetId ? { valueSetId: asValueSetId(valueSetId) } : {}),
         description,
         ...(sharedWith && sharedWith.length > 0
           ? { sharedWith: sharedWith.map((s) => asSurfaceId(s)) as readonly SurfaceId[] }
@@ -78,7 +82,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
   server.registerTool(
     'update_state_definition',
     {
-      description: 'Patch StateDefinition fields. Path renames are not auto-rewritten. Run find_state_references first. sharedWith:[] clears all sharing entries.',
+      description: 'Patch StateDefinition fields. Path renames are not auto-rewritten. Run find_state_references first. sharedWith:[] clears all sharing entries. valueSetId references a feature-level value set (mutually exclusive with enumValues); valueSetId:null clears it.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -87,6 +91,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
         type: stateTypeSchema.optional(),
         defaultValue: z.unknown().optional(),
         enumValues: z.array(z.string()).optional(),
+        valueSetId: z.string().nullable().optional(),
         description: z.string().min(1).optional(),
         sharedWith: z.array(z.string()).optional()
       }
@@ -99,6 +104,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
       type,
       defaultValue,
       enumValues,
+      valueSetId,
       description,
       sharedWith
     }) =>
@@ -121,6 +127,9 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
                   }
                 : {}),
               ...(enumValues !== undefined ? { enumValues } : {}),
+              ...(valueSetId !== undefined
+                ? { valueSetId: valueSetId === null ? undefined : asValueSetId(valueSetId) }
+                : {}),
               ...(description !== undefined ? { description } : {}),
               ...(sharedWith !== undefined
                 ? {

@@ -10,7 +10,8 @@ import {
   asActionId,
   asFeatureId,
   asParameterId,
-  asSurfaceId
+  asSurfaceId,
+  asValueSetId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
 import { coerceScalarByType, runMutation, type ToolDeps } from './_shared';
@@ -46,6 +47,7 @@ export const registerParameterTools = (deps: ToolDeps): void => {
         required: z.boolean(),
         description: z.string().min(1),
         enumValues: z.array(z.string()).optional(),
+        valueSetId: z.string().optional(),
         defaultValue: z.unknown().optional(),
         bindToStatePath: z.string().optional(),
         validations: z.array(z.record(z.string(), z.unknown())).optional()
@@ -59,6 +61,7 @@ export const registerParameterTools = (deps: ToolDeps): void => {
         required: input.required,
         description: input.description,
         ...(input.enumValues ? { enumValues: input.enumValues } : {}),
+        ...(input.valueSetId ? { valueSetId: asValueSetId(input.valueSetId) } : {}),
         ...(input.defaultValue !== undefined
           ? {
               defaultValue: coerceScalarByType(
@@ -94,7 +97,7 @@ export const registerParameterTools = (deps: ToolDeps): void => {
   server.registerTool(
     'update_parameter',
     {
-      description: 'Patch Parameter fields. bindToStatePath null clears; setting it auto-syncs the linked StateDefinition type/enumValues.',
+      description: 'Patch Parameter fields. bindToStatePath null clears; setting it auto-syncs the linked StateDefinition type/enumValues. valueSetId references a feature-level value set (mutually exclusive with enumValues); valueSetId:null clears it.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -105,6 +108,7 @@ export const registerParameterTools = (deps: ToolDeps): void => {
         required: z.boolean().optional(),
         description: z.string().min(1).optional(),
         enumValues: z.array(z.string()).optional(),
+        valueSetId: z.string().nullable().optional(),
         defaultValue: z.unknown().optional(),
         bindToStatePath: z.string().nullable().optional(),
         validations: z.array(z.record(z.string(), z.unknown())).optional()
@@ -117,6 +121,9 @@ export const registerParameterTools = (deps: ToolDeps): void => {
         ...(input.required !== undefined ? { required: input.required } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.enumValues !== undefined ? { enumValues: input.enumValues } : {}),
+        ...(input.valueSetId !== undefined
+          ? { valueSetId: input.valueSetId === null ? undefined : asValueSetId(input.valueSetId) }
+          : {}),
         ...(input.defaultValue !== undefined
           ? {
               defaultValue: coerceScalarByType(

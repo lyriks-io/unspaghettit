@@ -58,6 +58,7 @@ describe('MCP server', () => {
       'add_surface_invariant',
       'add_surface_rule',
       'add_transition',
+      'add_value_set',
       'apply_batch',
       'create_feature',
       'create_project',
@@ -110,6 +111,7 @@ describe('MCP server', () => {
       'remove_surface_invariant',
       'remove_surface_rule',
       'remove_transition',
+      'remove_value_set',
       'reorder_queue',
       'replace_project',
       'report_implementation_status',
@@ -138,7 +140,8 @@ describe('MCP server', () => {
       'update_surface',
       'update_surface_invariant',
       'update_surface_rule',
-      'update_transition'
+      'update_transition',
+      'update_value_set'
     ]);
     await server.close();
   });

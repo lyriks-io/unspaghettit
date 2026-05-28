@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Parameter } from '../entities/Parameter';
-import { asParameterId } from '../value-objects/ids';
+import { asParameterId, asValueSetId } from '../value-objects/ids';
 import { validateParameters } from './ParameterValidator';
 
 const param = (overrides: Partial<Parameter> = {}): Parameter => ({
@@ -192,5 +192,32 @@ describe('validateParameters with zod-style validations', () => {
         { value: Number.MAX_SAFE_INTEGER + 2 }
       )
     ).toHaveLength(1);
+  });
+});
+
+describe('validateParameters with enum value sets', () => {
+  const colorSet = {
+    id: asValueSetId('vs-color'),
+    name: 'Color',
+    description: 'Allowed colors.',
+    values: ['red', 'green']
+  };
+
+  it('accepts a value contained in the referenced value set', () => {
+    const p = param({ type: 'enum', valueSetId: asValueSetId('vs-color') });
+    expect(validateParameters([p], { value: 'red' }, [colorSet])).toHaveLength(0);
+  });
+
+  it('rejects a value not in the referenced value set', () => {
+    const p = param({ type: 'enum', valueSetId: asValueSetId('vs-color') });
+    const errors = validateParameters([p], { value: 'blue' }, [colorSet]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.reason).toContain('must be one of red, green');
+  });
+
+  it('still enforces inline enumValues with no value-set list passed', () => {
+    const p = param({ type: 'enum', enumValues: ['a', 'b'] });
+    expect(validateParameters([p], { value: 'c' })).toHaveLength(1);
+    expect(validateParameters([p], { value: 'a' })).toHaveLength(0);
   });
 });

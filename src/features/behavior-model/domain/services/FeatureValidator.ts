@@ -1,4 +1,5 @@
 import type { Feature } from '../entities/Feature';
+import { effectiveEnumValues } from './EnumValues';
 import { isEventName } from '../value-objects/EventName';
 import type { Expression } from '../value-objects/Expression';
 import { isExpression } from '../value-objects/Expression';
@@ -88,6 +89,25 @@ export const validateFeature = (feature: Feature): ValidationResult => {
     requireDescription(errors, `Persona ${p.id}`, p);
   }
 
+  // Named value sets (shared enums). Built up-front so state definitions and
+  // parameters can validate their `valueSetId` references below.
+  const valueSetIds = new Set<string>();
+  for (const vs of feature.valueSets ?? []) {
+    if (valueSetIds.has(String(vs.id))) {
+      errors.push(`Duplicate value set id "${vs.id}"`);
+    }
+    valueSetIds.add(String(vs.id));
+    if (!vs.name || vs.name.trim().length === 0) {
+      errors.push(`Value set ${vs.id} is missing a name.`);
+    }
+    requireDescription(errors, `Value set ${vs.id}`, vs);
+    if (!Array.isArray(vs.values) || vs.values.length === 0) {
+      errors.push(`Value set ${vs.id} ("${vs.name}") must declare at least one value.`);
+    } else if (new Set(vs.values).size !== vs.values.length) {
+      errors.push(`Value set ${vs.id} ("${vs.name}") has duplicate values.`);
+    }
+  }
+
   if (!feature.id || feature.id.trim().length === 0) {
     errors.push('Feature id is required.');
   }
@@ -143,14 +163,33 @@ export const validateFeature = (feature: Feature): ValidationResult => {
         errors.push(
           `State "${def.path}" in surface ${surface.id}: defaultValue is not assignable to declared type "${def.type}". ${defaultValueHint(def.defaultValue, def.type)}`
         );
-      } else if (
-        def.type === 'enum' &&
-        def.enumValues &&
-        typeof def.defaultValue === 'string' &&
-        !def.enumValues.includes(def.defaultValue)
-      ) {
+      } else if (def.type === 'enum') {
+        if (def.enumValues && def.valueSetId !== undefined) {
+          errors.push(
+            `State "${def.path}" in surface ${surface.id}: set either enumValues or valueSetId, not both.`
+          );
+        }
+        if (def.valueSetId !== undefined && !valueSetIds.has(String(def.valueSetId))) {
+          errors.push(
+            `State "${def.path}" in surface ${surface.id}: valueSetId "${def.valueSetId}" does not resolve to a value set on the feature.`
+          );
+        }
+        const allowed = effectiveEnumValues(def, feature.valueSets);
+        if (
+          allowed &&
+          typeof def.defaultValue === 'string' &&
+          !allowed.includes(def.defaultValue)
+        ) {
+          errors.push(
+            `State "${def.path}" in surface ${surface.id}: defaultValue "${def.defaultValue}" is not one of ${
+              def.valueSetId !== undefined ? `value set "${def.valueSetId}"` : 'enumValues'
+            }.`
+          );
+        }
+      }
+      if (def.valueSetId !== undefined && def.type !== 'enum') {
         errors.push(
-          `State "${def.path}" in surface ${surface.id}: defaultValue "${def.defaultValue}" is not one of enumValues.`
+          `State "${def.path}" in surface ${surface.id}: valueSetId is only valid for type "enum" (got "${def.type}").`
         );
       }
       if (def.sharedWith) {
@@ -233,14 +272,33 @@ export const validateFeature = (feature: Feature): ValidationResult => {
           errors.push(
             `Parameter "${p.name}" in action ${cap.id}: defaultValue is not assignable to declared type "${p.type}". ${defaultValueHint(p.defaultValue, expectedType)}`
           );
-        } else if (
-          p.type === 'enum' &&
-          p.enumValues &&
-          typeof p.defaultValue === 'string' &&
-          !p.enumValues.includes(p.defaultValue)
-        ) {
+        } else if (p.type === 'enum') {
+          if (p.enumValues && p.valueSetId !== undefined) {
+            errors.push(
+              `Parameter "${p.name}" in action ${cap.id}: set either enumValues or valueSetId, not both.`
+            );
+          }
+          if (p.valueSetId !== undefined && !valueSetIds.has(String(p.valueSetId))) {
+            errors.push(
+              `Parameter "${p.name}" in action ${cap.id}: valueSetId "${p.valueSetId}" does not resolve to a value set on the feature.`
+            );
+          }
+          const allowed = effectiveEnumValues(p, feature.valueSets);
+          if (
+            allowed &&
+            typeof p.defaultValue === 'string' &&
+            !allowed.includes(p.defaultValue)
+          ) {
+            errors.push(
+              `Parameter "${p.name}" in action ${cap.id}: defaultValue "${p.defaultValue}" is not one of ${
+                p.valueSetId !== undefined ? `value set "${p.valueSetId}"` : 'enumValues'
+              }.`
+            );
+          }
+        }
+        if (p.valueSetId !== undefined && p.type !== 'enum') {
           errors.push(
-            `Parameter "${p.name}" in action ${cap.id}: defaultValue "${p.defaultValue}" is not one of enumValues.`
+            `Parameter "${p.name}" in action ${cap.id}: valueSetId is only valid for type "enum" (got "${p.type}").`
           );
         }
       }
@@ -323,6 +381,51 @@ export const validateFeature = (feature: Feature): ValidationResult => {
             `Scenario assertion for "${assertion.path}" in scenario ${scenario.id}`,
             assertion
           );
+        }
+        // Multi-step scenarios: each step replays a real action before the
+        // subject action, so its actionId/surfaceId must resolve and its
+        // parameterOverrides must name real parameters on THAT action.
+        // Caught here so a typo'd step fails at save time, not silently at
+        // run time.
+        for (const [stepIdx, step] of (scenario.steps ?? []).entries()) {
+          const stepSurfaceId =
+            step.surfaceId === undefined ? surface.id : step.surfaceId;
+          const stepSurface = feature.surfaces.find((s) => s.id === stepSurfaceId);
+          if (!stepSurface) {
+            errors.push(
+              `Scenario ${scenario.id} in action ${cap.id}: step ${stepIdx} references unknown surfaceId "${String(step.surfaceId)}".`
+            );
+            continue;
+          }
+          const stepAction = stepSurface.actions.find((a) => a.id === step.actionId);
+          if (!stepAction) {
+            errors.push(
+              `Scenario ${scenario.id} in action ${cap.id}: step ${stepIdx} references unknown actionId "${String(step.actionId)}" on surface ${String(stepSurfaceId)}.`
+            );
+            continue;
+          }
+          const stepParamNames = new Set(stepAction.parameters.map((p) => p.name));
+          for (const override of step.parameterOverrides ?? []) {
+            if (
+              typeof override.parameterName !== 'string' ||
+              !stepParamNames.has(override.parameterName)
+            ) {
+              errors.push(
+                `Scenario ${scenario.id} in action ${cap.id}: step ${stepIdx} parameterOverrides references unknown parameter "${String(override.parameterName)}" on action ${String(step.actionId)}. Declared parameters: ${
+                  stepAction.parameters.length === 0
+                    ? '<none>'
+                    : stepAction.parameters.map((p) => p.name).join(', ')
+                }.`
+              );
+            }
+          }
+          for (const assertion of step.expectedAssertions ?? []) {
+            requireDescription(
+              errors,
+              `Scenario ${scenario.id} step ${stepIdx} assertion for "${assertion.path}"`,
+              assertion
+            );
+          }
         }
       }
     }

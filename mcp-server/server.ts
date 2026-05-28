@@ -39,6 +39,7 @@ import { registerSpecGapsTool } from './tools/specGaps';
 import { registerStateDefinitionTools } from './tools/state';
 import { registerSurfaceTools } from './tools/surface';
 import { registerTransitionTools } from './tools/transition';
+import { registerValueSetTools } from './tools/valueSet';
 import { json, type ToolDeps } from './tools/_shared';
 import { metrics } from './metrics';
 import type { RepoLink } from './repo-link';
@@ -167,6 +168,7 @@ export const buildServer = (
   registerInvariantTools(toolDeps);
   registerTransitionTools(toolDeps);
   registerPersonaTools(toolDeps);
+  registerValueSetTools(toolDeps);
   registerResourceTools(toolDeps);
   registerEntityTools(toolDeps);
   registerEntityFieldTools(toolDeps);

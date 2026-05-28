@@ -1,4 +1,4 @@
-import type { ParameterId, ResourceId } from '../value-objects/ids';
+import type { ParameterId, ResourceId, ValueSetId } from '../value-objects/ids';
 import type { ParameterType } from '../value-objects/ParameterType';
 import type { ParameterValidation } from '../value-objects/ParameterValidation';
 import type { StatePath } from '../value-objects/StatePath';
@@ -11,6 +11,12 @@ export type Parameter = {
   readonly required: boolean;
   readonly description?: string;
   readonly enumValues?: readonly string[];
+  /**
+   * For type=enum: reference a named ValueSet on the feature instead of
+   * inlining `enumValues`. Mutually exclusive with `enumValues`. Effective
+   * allowed values resolve via `effectiveEnumValues(param, feature.valueSets)`.
+   */
+  readonly valueSetId?: ValueSetId;
   readonly defaultValue?: StateValue;
   /**
    * Zod-style validators applied at parameter-validation time, before rules

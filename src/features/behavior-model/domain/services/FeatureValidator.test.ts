@@ -8,7 +8,8 @@ import {
   asEventDefinitionId,
   asFeatureId,
   asRuleId,
-  asSurfaceId
+  asSurfaceId,
+  asValueSetId
 } from '$features/behavior-model/domain/value-objects/ids';
 import { asEventName } from '$features/behavior-model/domain/value-objects/EventName';
 import { asStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
@@ -246,6 +247,142 @@ describe('validateFeature', () => {
     if (!result.valid) {
       expect(result.errors.some((e) => /not one of enumValues/i.test(e))).toBe(true);
     }
+  });
+
+  // ─── Named value sets (shared enums) ────────────────────────────────────
+
+  const withValueSetState = (
+    valueSets: Feature['valueSets'],
+    stateDef: Record<string, unknown>
+  ): Feature => ({
+    ...storefrontFeature,
+    valueSets,
+    surfaces: storefrontFeature.surfaces.map((s, i) =>
+      i === 0
+        ? { ...s, stateDefinitions: [...s.stateDefinitions, stateDef as never] }
+        : s
+    )
+  });
+
+  const themeSet = {
+    id: asValueSetId('vs-theme'),
+    name: 'Theme',
+    description: 'Allowed wedding themes.',
+    values: ['classic', 'modern']
+  };
+
+  it('accepts an enum state that references a value set with a valid default', () => {
+    const feature = withValueSetState([themeSet], {
+      id: 'theme-state',
+      path: 'wedding.theme',
+      type: 'enum',
+      valueSetId: asValueSetId('vs-theme'),
+      defaultValue: 'classic',
+      description: 'The selected wedding theme.'
+    });
+    expect(validateFeature(feature).valid).toBe(true);
+  });
+
+  it('rejects a default that is not in the referenced value set', () => {
+    const feature = withValueSetState([themeSet], {
+      id: 'theme-state',
+      path: 'wedding.theme',
+      type: 'enum',
+      valueSetId: asValueSetId('vs-theme'),
+      defaultValue: 'rustic',
+      description: 'The selected wedding theme.'
+    });
+    const result = validateFeature(feature);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /value set "vs-theme"/.test(e))).toBe(true);
+    }
+  });
+
+  it('rejects a dangling valueSetId reference', () => {
+    const feature = withValueSetState([themeSet], {
+      id: 'theme-state',
+      path: 'wedding.theme',
+      type: 'enum',
+      valueSetId: asValueSetId('vs-missing'),
+      defaultValue: 'classic',
+      description: 'The selected wedding theme.'
+    });
+    const result = validateFeature(feature);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /does not resolve to a value set/.test(e))).toBe(true);
+    }
+  });
+
+  it('rejects setting both enumValues and valueSetId', () => {
+    const feature = withValueSetState([themeSet], {
+      id: 'theme-state',
+      path: 'wedding.theme',
+      type: 'enum',
+      enumValues: ['classic', 'modern'],
+      valueSetId: asValueSetId('vs-theme'),
+      defaultValue: 'classic',
+      description: 'The selected wedding theme.'
+    });
+    const result = validateFeature(feature);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /either enumValues or valueSetId, not both/.test(e))).toBe(
+        true
+      );
+    }
+  });
+
+  it('rejects a valueSetId on a non-enum state', () => {
+    const feature = withValueSetState([themeSet], {
+      id: 'theme-state',
+      path: 'wedding.themeCount',
+      type: 'number',
+      valueSetId: asValueSetId('vs-theme'),
+      defaultValue: 0,
+      description: 'Not an enum.'
+    });
+    const result = validateFeature(feature);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /valueSetId is only valid for type "enum"/.test(e))).toBe(
+        true
+      );
+    }
+  });
+
+  it('rejects a value set with no values', () => {
+    const feature = withValueSetState(
+      [{ id: asValueSetId('vs-empty'), name: 'Empty', description: 'Has no values.', values: [] }],
+      {
+        id: 'x-state',
+        path: 'wedding.x',
+        type: 'string',
+        defaultValue: '',
+        description: 'unrelated.'
+      }
+    );
+    const result = validateFeature(feature);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /must declare at least one value/.test(e))).toBe(true);
+    }
+  });
+
+  it('rejects a value set missing a description', () => {
+    const feature = withValueSetState(
+      [{ id: asValueSetId('vs-nodesc'), name: 'NoDesc', values: ['a', 'b'] } as never],
+      {
+        id: 'x-state',
+        path: 'wedding.x',
+        type: 'string',
+        defaultValue: '',
+        description: 'unrelated.'
+      }
+    );
+    const result = validateFeature(feature);
+    expect(result.valid).toBe(false);
   });
 
   it('rejects an empty feature id', () => {
