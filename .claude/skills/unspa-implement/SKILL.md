@@ -31,28 +31,32 @@ single source of truth.
 ## The behavioral index entry
 
 Each spec entity that exists in code gets its own entry in `.unspa.json`,
-keyed `"<entityType>:<id-or-slug-or-path>"`:
+keyed `"<entityType>:<id-name-or-path>"`:
 
 ```
-action:<slug>
+action:<id>                    # id = 8-char hex minted by the spec
+surface:<id>
 rule:<id>
-invariant:<slug-or-id>
+invariant:<id>
 transition:<id>
-state:<dotted.path>
 surface_rule:<id>
-surface_invariant:<slug-or-id>
-event:<event-name>
+surface_invariant:<id>
 entity:<id>
+event:<event-name>             # event's string identifier (not an id)
+state:<dotted.path>            # e.g. cart.itemCount
 ```
 
-**Get the exact key from the MCP.** Do not synthesize slugs or guess ids
-from memory.
+**Read the exact id from the MCP. Never synthesize.** Use
+`get_behavioral_index` or `get_feature(verbose:true)` to look up the
+8-char hex id. Slug-shaped keys (e.g. `action:add-to-cart`) are not
+recognized by `sync_from_index` and will be reported in its `orphans`
+block with a fix hint.
 
 Minimum fields per entry:
 
 ```json
 {
-  "action:add-to-cart": {
+  "action:a1b2c3d4": {
     "status": "implemented",
     "file": "src/features/cart/AddToCart.ts",
     "line": 42,
