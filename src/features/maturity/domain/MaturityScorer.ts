@@ -1,4 +1,5 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
+import { committedActions } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import { isExpression, type Expression } from '$features/behavior-model/domain/value-objects/Expression';
@@ -701,13 +702,18 @@ export const scoreSurface = (surface: Surface, allSurfaces?: readonly Surface[])
   const allDeclaredPaths = allSurfaces !== undefined
     ? buildAllDeclaredPaths(allSurfaces)
     : undefined;
+  // Evolution actions are dashed proposals, not committed behavior: scoring
+  // their empty bodies would tank the surface. Exclude them from BOTH the
+  // surface-level checks (so an evolution-only surface still asks for a real
+  // action) and the per-action rollup.
+  const committed = committedActions(surface.actions);
   const baseReport = reportFromChecks(
     'surface',
     surface.name,
     { surfaceId: surface.id as unknown as string },
-    surfaceChecks(surface, knownPaths, allDeclaredPaths)
+    surfaceChecks({ ...surface, actions: committed }, knownPaths, allDeclaredPaths)
   );
-  const childrenReport = surface.actions.reduce<MaturityReport>(
+  const childrenReport = committed.reduce<MaturityReport>(
     (acc, c) => combineReports(acc, scoreCapability(surface, c, allSurfaces)),
     emptyReport()
   );
@@ -901,13 +907,16 @@ export const scoreSurfaceBreakdown = (
     allSurfaces !== undefined ? buildKnownPaths(String(surface.id), allSurfaces) : undefined;
   const allDeclaredPaths =
     allSurfaces !== undefined ? buildAllDeclaredPaths(allSurfaces) : undefined;
+  const committed = committedActions(surface.actions);
   const surfaceLevel = reportFromChecks(
     'surface',
     surface.name,
     { surfaceId: surface.id as unknown as string },
-    surfaceChecks(surface, knownPaths, allDeclaredPaths)
+    surfaceChecks({ ...surface, actions: committed }, knownPaths, allDeclaredPaths)
   );
-  const perAction = surface.actions.map((action) => ({
+  // Skip evolution proposals: the maturity breakdown lists committed actions
+  // only, so a dashed placeholder never appears as a "0/14" red row.
+  const perAction = committed.map((action) => ({
     action,
     report: scoreCapability(surface, action, allSurfaces)
   }));

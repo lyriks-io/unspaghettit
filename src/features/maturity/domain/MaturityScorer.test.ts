@@ -407,4 +407,30 @@ describe('MaturityScorer', () => {
     expect(report.recommendedIssues.map((issue) => issue.area)).not.toContain('event declarations');
     expect(report.passedChecks.map((check) => check.area)).toContain('expressions');
   });
+
+  it('excludes Evolution proposals from scoring entirely', () => {
+    const committed: Action = {
+      ...baseCapability,
+      id: asActionId('committed'),
+      intent: 'real behavior',
+      effects: [{ id: asEffectId('e1'), type: 'allow_action' }]
+    };
+    const proposal: Action = {
+      ...baseCapability,
+      id: asActionId('proposal'),
+      name: 'Sign in with SSO',
+      intent: 'Federated login',
+      evolution: { rationale: 'Competitors offer it', category: 'competitor' }
+    };
+    const withProposal: Surface = { ...dummySurface, actions: [committed, proposal] };
+    const withoutProposal: Surface = { ...dummySurface, actions: [committed] };
+
+    // The dashed placeholder must not move the needle: a surface with the
+    // proposal scores identically to one without it.
+    expect(scoreSurface(withProposal)).toEqual(scoreSurface(withoutProposal));
+
+    // And the per-action breakdown lists committed actions only.
+    const breakdown = scoreSurfaceBreakdown(withProposal);
+    expect(breakdown.perAction.map((p) => String(p.action.id))).toEqual(['committed']);
+  });
 });

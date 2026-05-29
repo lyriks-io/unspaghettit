@@ -91,6 +91,7 @@ describe('MCP server', () => {
       'move_parameter',
       'move_state_definition',
       'move_surface',
+      'propose_evolution',
       'remove_action',
       'remove_action_invariant',
       'remove_action_rule',
@@ -312,6 +313,52 @@ describe('MCP server', () => {
     expect(persisted?.name).toBe('My new model');
     expect(persisted?.description).toBe('trim me');
     expect(persisted?.surfaces).toEqual([]);
+    await server.close();
+  });
+
+  it('propose_evolution creates a dashed-placeholder action, then update_action accepts it', async () => {
+    const { client, server, repo } = await setup();
+    const surfaceId = String(storefrontFeature.surfaces[0]!.id);
+    const proposed = await client.callTool({
+      name: 'propose_evolution',
+      arguments: {
+        featureId: storefrontFeature.id,
+        surfaceId,
+        name: 'Sign in with SSO',
+        intent: 'Federated login',
+        rationale: 'Most competitors offer SSO',
+        category: 'competitor'
+      }
+    });
+    const ack = parseTextContent(proposed) as { ok: true; id: string };
+    expect(ack.ok).toBe(true);
+
+    const findAction = async () => {
+      const feat = await repo.get(storefrontFeature.id);
+      return feat?.surfaces
+        .flatMap((s) => s.actions)
+        .find((a) => String(a.id) === ack.id);
+    };
+
+    const created = await findAction();
+    expect(created?.evolution).toEqual({
+      rationale: 'Most competitors offer SSO',
+      category: 'competitor'
+    });
+    expect(created?.effects).toEqual([]); // skeleton body
+
+    // Accept: clearing the marker promotes it to a committed action.
+    await client.callTool({
+      name: 'update_action',
+      arguments: {
+        featureId: storefrontFeature.id,
+        surfaceId,
+        actionId: ack.id,
+        evolution: null
+      }
+    });
+    const accepted = await findAction();
+    expect(accepted?.evolution).toBeUndefined();
     await server.close();
   });
 

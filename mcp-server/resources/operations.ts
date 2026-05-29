@@ -21,8 +21,9 @@ actionRef: a_new }\` works when only the action was minted in this batch.
 ## ADD ops
 
   add_surface              { ref?, name, type, description, parentRef?|parentSurfaceId? }
-  add_action           { ref?, surfaceRef|surfaceId, name, intent, requiredStates?, emittedEvents?, bypassInvariants?, triggeredByEvent? }
+  add_action           { ref?, surfaceRef|surfaceId, name, intent, requiredStates?, emittedEvents?, bypassInvariants?, triggeredByEvent?, evolution? }
 . \`requiredStates\` is \`string[]\` of state paths declared on (or shared into) the action's surface - NOT condition objects. Use rules / invariants for value-level constraints.
+. \`evolution: { rationale, category?, source? }\` marks the action as a proposed Evolution (dashed placeholder; excluded from maturity / spec-gaps until accepted). Prefer the \`propose_evolution\` tool. On update_action pass \`evolution:null\` to accept (clear the marker).
 . Subscribe an action to an event with \`triggeredByEvent:"event.name"\`. When ANY action in the feature emits that event, the simulator runs this action as a cascaded handler against the post-emit snapshot. Bounded by depth limit (8) and per-cascade cycle guard. Handlers must not have required parameters without defaults.
   add_state_definition     { ref?, surfaceRef|surfaceId, path, type, defaultValue, enumValues?, valueSetId?, description, sharedWith? }
   add_parameter            { ref?, surfaceRef|surfaceId, actionRef|actionId, name, type, required, description, enumValues?, valueSetId?, defaultValue?, bindToStatePath?, validations? }

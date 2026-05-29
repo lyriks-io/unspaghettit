@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Action } from '../../src/features/behavior-model/domain/entities/Action';
+import { isEvolution } from '../../src/features/behavior-model/domain/entities/Action';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import type { Surface } from '../../src/features/behavior-model/domain/entities/Surface';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
@@ -51,9 +52,14 @@ export const detectSpecGaps = (
   const critical: SpecGap[] = [];
   const recommended: SpecGap[] = [];
 
+  // Evolution proposals (dashed placeholders) are not committed behavior, so
+  // a proposal named "Sign in with SSO" must NOT satisfy an expectedActions
+  // entry of the same name.
   const allActionNames = new Set<string>();
   for (const s of feature.surfaces) {
-    for (const c of s.actions) allActionNames.add(normalizeName(c.name));
+    for (const c of s.actions) {
+      if (!isEvolution(c)) allActionNames.add(normalizeName(c.name));
+    }
   }
 
   // Feature-level: expectedActions without a matching Action.
@@ -101,6 +107,13 @@ export const detectSpecGaps = (
     }
 
     surface.actions.forEach((cap: Action, capIndex: number) => {
+      // Skip Evolution proposals entirely: they're intentionally empty
+      // dashed placeholders, so every gap check (no effects, no impl status…)
+      // would fire falsely. They re-enter analysis once accepted.
+      if (isEvolution(cap)) {
+        void capIndex;
+        return;
+      }
       const roles = new Set<string>(cap.roles ?? []);
 
       if (cap.effects.length === 0) {

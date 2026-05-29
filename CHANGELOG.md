@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Evolutions — LLM-proposed improvements as dashed placeholders.** After building a feature or action, the assistant can now raise forward-looking suggestions (e.g. "Sign in with SSO — most competitors offer it", "rate-limit failed logins") via the new `propose_evolution` MCP tool. An Evolution is a real Action carrying an `evolution: { rationale, category?, source? }` marker and an empty body: it has an id, renders in the dashboard with a dashed violet border + its rationale, and can be added to the implementation queue like any action — but it is **excluded from maturity scoring and `get_spec_gaps`** until accepted, so proposing never lowers the score or generates "does nothing" noise. Accept one with `update_action evolution:null` (clears the marker, promotes it to committed behavior) or dismiss it with `remove_action`. `add_action` (granular + `apply_batch`) also accepts an `evolution` field. The `unspa-edit` skill now instructs the assistant to surface 1–3 high-signal evolutions each build pass.
+
 ### Changed
 
 - **The shared hub is now the zero-config default for `unspa init`.** Snapshot discovery (used by both the MCP server and `unspa dashboard`) now falls back to `~/.unspa-hub/unspa` instead of an empty `<cwd>/unspa`, so a bare `init` writes a clean MCP entry with no `UNSPA_SNAPSHOTS` and the dashboard/MCP agree on the first run — no more configuring an env var to make them line up. Cross-platform via `os.homedir()`. Discovery order is otherwise unchanged: explicit override → per-repo `unspa/` found by walk-up → hub. Claude Desktop now resolves the hub automatically (it previously needed `--hub`). Per-repo storage is **not removed** — it's demoted to opt-in: `unspa init --local` (model travels with the repo in git), `unspa init --hub <path>` (custom hub, pins `UNSPA_SNAPSHOTS`), or `unspa init --custom` (interactive picker). New `unspa dashboard --snapshots <dir>` points the UI at any folder for a one-off. Re-run `init` anytime to repoint.

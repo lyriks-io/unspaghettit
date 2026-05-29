@@ -211,12 +211,33 @@
       await projectContextStore.enqueueAction(featureId, action.id);
     }
   }
+
+  // Evolution: a proposed improvement rendered as a dashed placeholder. It's a
+  // real action (queueable above) but not committed behavior. "Accept" clears
+  // the marker so it joins the spec proper and re-enters maturity/gap analysis.
+  const proposal = $derived(action.evolution);
+  const articleClass = $derived(
+    [
+      'group rounded-md border bg-white',
+      proposal ? 'border-dashed' : '',
+      expanded
+        ? 'border-brand-300 ring-1 ring-brand-200'
+        : proposal
+          ? 'border-violet-300 bg-violet-50/40'
+          : 'border-slate-200'
+    ]
+      .filter(Boolean)
+      .join(' ')
+  );
+
+  async function acceptEvolution() {
+    // Clearing the marker promotes the proposal to a committed action.
+    await patchMeta({ evolution: undefined });
+  }
 </script>
 
 <article
-  class="group rounded-md border bg-white {expanded
-    ? 'border-brand-300 ring-1 ring-brand-200'
-    : 'border-slate-200'}"
+  class={articleClass}
   data-focus-target={`action:${action.id}`}
 >
   <header class="flex items-center justify-between gap-2 px-3 py-2">
@@ -226,12 +247,32 @@
       onclick={onToggle}
     >
       <span class="text-xs text-slate-400" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-      <span class="font-medium text-slate-900">{action.name}</span>
-      <span class="text-xs text-slate-500">
-        {action.rules.length} rule(s) · {action.effects.length} effect(s)
-      </span>
+      <span class="font-medium {proposal ? 'text-violet-900' : 'text-slate-900'}">{action.name}</span>
+      {#if proposal}
+        <span
+          class="rounded-full border border-violet-300 bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+          title="Proposed improvement — not committed behavior yet"
+        >
+          Evolution{proposal.category ? ` · ${proposal.category}` : ''}
+        </span>
+      {:else}
+        <span class="text-xs text-slate-500">
+          {action.rules.length} rule(s) · {action.effects.length} effect(s)
+        </span>
+      {/if}
     </button>
     <div class="flex items-center gap-0.5">
+      {#if proposal}
+        <button
+          type="button"
+          class="rounded px-1.5 text-xs font-medium text-violet-700 opacity-0 transition hover:bg-violet-100 group-hover:opacity-100"
+          onclick={acceptEvolution}
+          aria-label="Accept this proposal as a committed action"
+          title="Accept: clear the proposal marker and make this a committed action"
+        >
+          ✓ accept
+        </button>
+      {/if}
       {#if projectContextStore.isInProject && featureId}
         <button
           type="button"
@@ -278,6 +319,13 @@
       </button>
     </div>
   </header>
+
+  {#if proposal}
+    <p class="-mt-1 px-3 pb-2 text-xs leading-snug text-violet-700/90">
+      <span aria-hidden="true">💡</span>
+      {proposal.rationale}{proposal.source ? ` — ${proposal.source}` : ''}
+    </p>
+  {/if}
 
   {#if expanded}
     <div class="space-y-4 border-t border-slate-200 p-3">

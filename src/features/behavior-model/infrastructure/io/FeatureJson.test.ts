@@ -36,6 +36,37 @@ describe('FeatureJson', () => {
     expect(back).toEqual(sample);
   });
 
+  it('preserves an Evolution proposal on an action through the snapshot', () => {
+    const withProposal: Feature = {
+      ...sample,
+      surfaces: [
+        {
+          ...sample.surfaces[0]!,
+          actions: [
+            {
+              id: 'a' as never,
+              name: 'Sign in with SSO',
+              intent: 'Federated login',
+              parameters: [],
+              requiredStates: [],
+              rules: [],
+              invariants: [],
+              effects: [],
+              emittedEvents: [],
+              transitions: [],
+              evolution: { rationale: 'Competitors offer it', category: 'competitor' }
+            }
+          ]
+        }
+      ]
+    };
+    const back = importFeatureFromJson(exportFeatureToJson(withProposal));
+    expect(back.surfaces[0]!.actions[0]!.evolution).toEqual({
+      rationale: 'Competitors offer it',
+      category: 'competitor'
+    });
+  });
+
   it('rejects payloads without the unspaghettit format flag', () => {
     expect(() => importFeatureFromJson('{}')).toThrow(/format/);
   });

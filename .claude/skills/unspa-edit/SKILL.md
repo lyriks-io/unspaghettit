@@ -195,6 +195,50 @@ Use the granular tools for one-off tweaks. For anything ≥ 2 ops, use
      destructive caps, async without loading/error coverage, etc.).
    - `find_state_references` before any state rename / removal.
 
+6. **Propose Evolutions.** See the next section. Do this every build pass.
+
+## Evolutions — propose, don't just build
+
+An Evolution is a forward-looking improvement you raise *proactively*. After you
+build or meaningfully edit a feature/surface/action, don't stop at what was
+asked: infer what kind of app this is (from the feature name, descriptions,
+surfaces, entities, devContext) and surface what a strong version would add.
+Examples:
+
+- An email/password auth feature → "Sign in with SSO (most competitors offer
+  it)", "Rate-limit failed attempts (credential-stuffing defense)", "Offer
+  passkeys / WebAuthn".
+- A checkout flow → "Express wallet (Apple/Google Pay)", "Address validation",
+  "Abandoned-cart recovery".
+
+This is the ONE place you suggest rather than ask. It does not contradict
+"don't invent domain logic": an Evolution is an explicitly-labeled *proposal*
+with empty behavior, never silently-added rules.
+
+How to record one: call **`propose_evolution`** (featureId, surfaceId, name,
+intent, rationale, optional `category` ∈ security | competitor | ux |
+accessibility | scale | compliance | other, optional `source`). It creates a
+skeleton Action marked as a proposal:
+
+- It is REAL — has an id, shows in the dashboard as a dashed placeholder, can be
+  enqueued — but stays OUT of `score_feature` / `get_spec_gaps` until accepted,
+  so proposing never drags the maturity score down or generates "does nothing"
+  noise. Leave its body empty; flesh it out only on acceptance.
+- In an `apply_batch`, the `add_action` op also accepts `evolution:
+  {rationale, category?, source?}` if you prefer to propose inline.
+
+After building, present 1–N proposals to the user as a short labeled list with
+each rationale. Then, per the user's choice:
+
+- **Schedule it** → `enqueue` with `kind:"action"` and the proposal's actionId.
+  This is how a suggestion lands on the implement-next queue.
+- **Accept it** (build it now) → `update_action` with `evolution:null` to clear
+  the marker (promotes it to a committed action), then model its rules/effects
+  like any action.
+- **Dismiss it** → `remove_action`.
+
+Keep proposals few and high-signal. 1–3 strong ones beat a long generic list.
+
 ## What writes return
 
 Every granular write returns a slim ack:

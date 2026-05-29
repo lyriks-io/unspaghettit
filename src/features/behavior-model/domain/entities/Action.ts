@@ -34,6 +34,51 @@ export const ALL_CAPABILITY_ROLES: readonly ActionRole[] = [
   'persistence'
 ];
 
+/**
+ * Taxonomy for an Evolution proposal — what *kind* of improvement it is.
+ * Drives iconography/filtering in the dashboard; never affects simulation.
+ */
+export type EvolutionCategory =
+  | 'security'
+  | 'competitor'
+  | 'ux'
+  | 'accessibility'
+  | 'scale'
+  | 'compliance'
+  | 'other';
+
+export const ALL_EVOLUTION_CATEGORIES: readonly EvolutionCategory[] = [
+  'security',
+  'competitor',
+  'ux',
+  'accessibility',
+  'scale',
+  'compliance',
+  'other'
+];
+
+/**
+ * Marks an Action as a proposed **Evolution** rather than committed behavior.
+ *
+ * Evolutions are contextual improvement suggestions the LLM raises proactively
+ * while modeling ("competitors offer SSO", "harden the password reset flow") —
+ * created as skeleton actions with an empty body (no rules/effects). They are
+ * technically real (own an id, live in the spec, can be enqueued) but render
+ * distinctly (dashed) and are EXCLUDED from maturity scoring and spec-gap
+ * nagging so a proposal never drags the feature's score down or generates
+ * "this action does nothing" noise. Accepting one = flesh it out and clear
+ * this marker (or just `enqueue` it to implement later). Absent = a normal
+ * committed action.
+ */
+export type Evolution = {
+  /** The "because…" — why this is worth doing. Shown to the user. */
+  readonly rationale: string;
+  /** What kind of improvement this is. Optional; defaults to 'other' in UI. */
+  readonly category?: EvolutionCategory;
+  /** Optional provenance, e.g. "competitors", "OWASP ASVS", "WCAG 2.2". */
+  readonly source?: string;
+};
+
 export type Action = {
   readonly id: ActionId;
   readonly name: string;
@@ -92,4 +137,22 @@ export type Action = {
    * Cascading is bounded by a depth limit and a per-cascade cycle guard.
    */
   readonly triggeredByEvent?: EventName;
+  /**
+   * When present, this action is a proposed Evolution (a dashed-border
+   * placeholder), not committed behavior. See {@link Evolution}. Optional;
+   * absent means a normal action. Excluded from maturity + spec-gap analysis.
+   */
+  readonly evolution?: Evolution;
 };
+
+/**
+ * True when the action is a proposed Evolution rather than committed behavior.
+ * Single source of truth so maturity scoring, spec-gap diagnostics, and the
+ * dashboard all agree on what counts as a dashed placeholder.
+ */
+export const isEvolution = (action: Action): boolean => action.evolution !== undefined;
+
+/** The committed (non-proposal) actions on a surface. */
+export const committedActions = <T extends { readonly evolution?: Evolution }>(
+  actions: readonly T[]
+): readonly T[] => actions.filter((a) => a.evolution === undefined);

@@ -60,6 +60,7 @@ import {
 import { errorText, text, type ToolDeps } from './_shared';
 import { expandFeatureId } from './short-ids';
 import { maybeAutoGenerateTypes } from './_codegen';
+import { normalizeEvolutionLoose } from './_evolution';
 
 type Op = Record<string, unknown> & { readonly kind: string };
 type Refs = Record<string, string>;
@@ -337,6 +338,11 @@ const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): 
             // this one. See Action.triggeredByEvent doc.
             ...(typeof op.triggeredByEvent === 'string' && op.triggeredByEvent.length > 0
               ? { triggeredByEvent: op.triggeredByEvent as Action['triggeredByEvent'] }
+              : {}),
+            // Mark a brand-new action as a proposed Evolution (dashed
+            // placeholder). See Action.evolution doc / propose_evolution.
+            ...(op.evolution !== undefined && op.evolution !== null
+              ? { evolution: normalizeEvolutionLoose(op.evolution) }
               : {})
           };
           exp = T.addAction(
@@ -373,6 +379,13 @@ const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): 
                 ? { triggeredByEvent: undefined }
                 : typeof op.triggeredByEvent === 'string'
                   ? { triggeredByEvent: op.triggeredByEvent as Action['triggeredByEvent'] }
+                  : {}),
+              // null accepts the proposal (clears the marker); an object sets
+              // it; omit to leave the evolution state untouched.
+              ...(op.evolution === null
+                ? { evolution: undefined }
+                : op.evolution !== undefined
+                  ? { evolution: normalizeEvolutionLoose(op.evolution) }
                   : {})
             }
           );

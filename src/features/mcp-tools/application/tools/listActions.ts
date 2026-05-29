@@ -1,3 +1,4 @@
+import type { Evolution } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type {
   ActionId,
@@ -12,6 +13,12 @@ export type ActionListing = {
   readonly surfaceName: string;
   readonly parameterCount: number;
   readonly ruleCount: number;
+  /**
+   * Present only when this action is a proposed Evolution (dashed placeholder).
+   * Lets the LLM tell suggestions apart from committed behavior in the cheap
+   * listing without a get_action round-trip.
+   */
+  readonly evolution?: Evolution;
 };
 
 export type ListActionsOutput = readonly ActionListing[];
@@ -33,7 +40,8 @@ export const listActionsTool = (
         surfaceId: surface.id,
         surfaceName: surface.name,
         parameterCount: cap.parameters.length,
-        ruleCount: cap.rules.length
+        ruleCount: cap.rules.length,
+        ...(cap.evolution ? { evolution: cap.evolution } : {})
       });
     }
   }
