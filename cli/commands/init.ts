@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path';
 import pc from 'picocolors';
+import { defaultHubDirectory } from '../../src/features/behavior-model/infrastructure/persistence/snapshot-discovery';
 import { ALL_CLIENTS, clientById, SERVER_NAME, type ClientAdapter } from '../clients/registry';
 import { buildUnspaMcpEntry } from '../clients/claude-code';
 import type { ApplyResult, ConfigScope, McpServerEntry } from '../clients/types';
@@ -12,18 +13,6 @@ import { log } from '../util/log';
 import { installUnspaSkills } from '../util/skills';
 
 /**
- * Default shared-hub layout: `<home>/.unspa-hub/unspa`. The `unspa` subfolder
- * is the snapshot directory (the MCP entry's `UNSPA_SNAPSHOTS` points here);
- * the `.unspa-hub` parent is where `unspa dashboard` should be launched from
- * so its walk-up discovery finds the same folder.
- */
-const DEFAULT_HUB_ROOT_SEGMENT = '.unspa-hub';
-const HUB_SNAPSHOTS_SEGMENT = 'unspa';
-
-const defaultHubPath = (home: string): string =>
-  join(home, DEFAULT_HUB_ROOT_SEGMENT, HUB_SNAPSHOTS_SEGMENT);
-
-/**
  * Expand a user-supplied hub path: tilde-expansion, relative→absolute (resolved
  * against `cwd`), passthrough for absolute paths. Keeps the MCP entry's
  * `UNSPA_SNAPSHOTS` always absolute so AI clients launching from elsewhere
@@ -31,7 +20,7 @@ const defaultHubPath = (home: string): string =>
  */
 const resolveHubPath = (raw: string, home: string, cwd: string): string => {
   const trimmed = raw.trim();
-  if (trimmed === '~') return join(home, DEFAULT_HUB_ROOT_SEGMENT, HUB_SNAPSHOTS_SEGMENT);
+  if (trimmed === '~') return defaultHubDirectory(home);
   if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
     return join(home, trimmed.slice(2));
   }
@@ -88,20 +77,32 @@ export type InitOptions = {
   /** When set, skip installing the bundled skills under .claude/skills/. */
   readonly skipSkills?: boolean;
   /**
-   * Shared snapshot hub mode. When set, the MCP entry written to every
-   * selected client carries `UNSPA_SNAPSHOTS=<resolved hub path>`, the local
-   * `unspa/` folder is NOT created in this repo, and the dashboard is meant to
-   * be launched from one well-known location pointing at the same folder.
+   * Shared snapshot hub override. Hub mode is now the DEFAULT (see the module
+   * comment): discovery falls back to `~/.unspa-hub/unspa` with no env var, so
+   * the bare `init` writes a clean MCP entry and the dashboard/MCP agree on the
+   * first run. This option only matters when you want a NON-default location:
    *
-   * - `undefined`: per-repo mode (default). Today's behavior.
-   * - `true`: hub mode using the default path (`~/.unspa-hub/unspa`).
-   * - `string`: hub mode with a user-supplied absolute or `~/`-prefixed path.
-   *
-   * Required pairing for Claude Desktop, which has no project-scoped MCP
-   * config and no useful cwd at launch time - without an absolute env var
-   * its MCP would always discover whatever folder happens to be near it.
+   * - `undefined`: default hub (`~/.unspa-hub/unspa`), no `UNSPA_SNAPSHOTS`.
+   * - `true`: same as undefined - the default hub, explicit.
+   * - `string`: a custom hub path. Because discovery's fallback is the *default*
+   *   hub, a custom path can't be found by walk-up, so the MCP entry written to
+   *   every selected client carries `UNSPA_SNAPSHOTS=<resolved path>`.
    */
   readonly hub?: boolean | string;
+  /**
+   * Per-repo (custom) install: scaffold a local `unspa/` folder in this repo
+   * and rely on discovery's walk-up to find it, exactly like the pre-hub
+   * default. No `UNSPA_SNAPSHOTS` is written - the model travels with the repo
+   * in git. This is the opt-in escape hatch from the shared hub.
+   */
+  readonly local?: boolean;
+  /**
+   * Launch the interactive custom-install wizard: choose between the default
+   * hub, a per-repo `unspa/`, or a custom hub path, plus the config scope.
+   * Ignored under `--yes`. Without it (and without `--local`/`--hub <path>`),
+   * `init` takes the zero-question happy path: default hub.
+   */
+  readonly custom?: boolean;
   /**
    * Pre-check the opt-in narrative skills (worldbuild + worldplay) at the
    * skill installation prompt. Set when the user invoked the CLI as
@@ -204,44 +205,73 @@ const printApplyResult = (
 };
 
 /**
- * Resolve the shared-hub setting to an absolute snapshot directory (or
- * `null` for per-repo mode). Three input shapes:
+ * Where this install's behavior model lives.
  *
- * - `undefined`: prompt the user interactively when running with a TTY.
- *   With `--yes`, default to per-repo (null).
- * - `true`: hub mode at the default path, no prompting.
- * - `string`: explicit hub path. Tilde / relative paths get expanded.
- *
- * Returns null when the user opts out or hub mode is not requested.
+ * - `hub`: the shared default hub (`~/.unspa-hub/unspa`). `setEnv` is false -
+ *   discovery's fallback already lands here, so the MCP entry stays clean.
+ * - `custom-hub`: a non-default hub path. `setEnv` is true - walk-up can't find
+ *   it, so every MCP entry pins `UNSPA_SNAPSHOTS` to the absolute path.
+ * - `local`: a per-repo `unspa/` folder, found by walk-up. `setEnv` is false -
+ *   the model travels with the repo, no absolute path baked into config.
  */
-const resolveHub = async (
-  opt: boolean | string | undefined,
+type SnapshotTarget = {
+  readonly mode: 'hub' | 'custom-hub' | 'local';
+  readonly dir: string;
+  readonly setEnv: boolean;
+};
+
+/**
+ * Decide where snapshots live. The happy path (no `--custom`, no `--local`, no
+ * `--hub <path>`) is the zero-question default hub. Explicit flags win without
+ * prompting; `--custom` opens the interactive picker when a TTY is available.
+ */
+const resolveTarget = async (
+  options: InitOptions,
   yes: boolean,
   ctx: { home: string; cwd: string }
-): Promise<string | null> => {
-  if (typeof opt === 'string' && opt.length > 0) return resolveHubPath(opt, ctx.home, ctx.cwd);
-  if (opt === true) return defaultHubPath(ctx.home);
-  if (yes) return null;
+): Promise<SnapshotTarget> => {
+  const hubDir = defaultHubDirectory(ctx.home);
 
-  const { useHub } = await ask({
-    type: 'confirm',
-    name: 'useHub',
-    message: 'Use a shared snapshot hub instead of this repo\'s unspa/ folder?',
-    initial: false,
-    hint: 'one folder, many repos / Claude Desktop; press n to keep the per-repo default'
-  });
-  if (!useHub) return null;
+  // Explicit, non-interactive flags take precedence in priority order.
+  if (typeof options.hub === 'string' && options.hub.length > 0) {
+    return { mode: 'custom-hub', dir: resolveHubPath(options.hub, ctx.home, ctx.cwd), setEnv: true };
+  }
+  if (options.local === true) {
+    return { mode: 'local', dir: join(ctx.cwd, 'unspa'), setEnv: false };
+  }
+  // `--hub` with no value, or no custom request at all: the default hub.
+  if (options.hub === true || (!options.custom && !options.local)) {
+    return { mode: 'hub', dir: hubDir, setEnv: false };
+  }
 
-  const suggested = defaultHubPath(ctx.home);
-  const { hubPath } = await ask({
-    type: 'text',
-    name: 'hubPath',
-    message: 'Hub snapshot directory:',
-    initial: suggested,
-    hint: 'absolute path; ~/ expands to your home directory'
+  // `--custom` (interactive). Under --yes there's no TTY: keep the safe default.
+  if (yes) return { mode: 'hub', dir: hubDir, setEnv: false };
+
+  const { choice } = await ask({
+    type: 'select',
+    name: 'choice',
+    message: 'Where should this project\'s behavior model live?',
+    choices: [
+      { title: 'Shared hub (default)', value: 'hub', description: hubDir },
+      { title: 'This repo (per-repo unspa/ folder)', value: 'local', description: join(ctx.cwd, 'unspa') },
+      { title: 'A custom hub path', value: 'custom-hub', description: 'pick any folder' }
+    ],
+    initial: 0
   });
-  if (typeof hubPath !== 'string' || hubPath.trim().length === 0) return suggested;
-  return resolveHubPath(hubPath, ctx.home, ctx.cwd);
+
+  if (choice === 'local') return { mode: 'local', dir: join(ctx.cwd, 'unspa'), setEnv: false };
+  if (choice === 'custom-hub') {
+    const { hubPath } = await ask({
+      type: 'text',
+      name: 'hubPath',
+      message: 'Hub snapshot directory:',
+      initial: hubDir,
+      hint: 'absolute path; ~/ expands to your home directory'
+    });
+    const raw = typeof hubPath === 'string' && hubPath.trim().length > 0 ? hubPath : hubDir;
+    return { mode: 'custom-hub', dir: resolveHubPath(raw, ctx.home, ctx.cwd), setEnv: true };
+  }
+  return { mode: 'hub', dir: hubDir, setEnv: false };
 };
 
 export const runInitCommand = async (options: InitOptions = {}): Promise<number> => {
@@ -251,28 +281,25 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
 
   log.step(`Initializing Unspaghettit in ${pc.cyan(cwd)}`);
 
-  // 1. Resolve hub mode FIRST. If a hub is in play, we skip creating a local
-  //    unspa/ (it would shadow the hub via walk-up discovery whenever the env
-  //    var dropped out) and pin every MCP entry to the hub's absolute path.
-  const hubPath = await resolveHub(options.hub, yes, { home, cwd });
+  // 1. Resolve WHERE snapshots live. Default is the shared hub (zero config);
+  //    `--local` keeps a per-repo unspa/; `--hub <path>` / `--custom` pick a
+  //    non-default location. Only a custom hub path needs UNSPA_SNAPSHOTS - the
+  //    default hub is discovery's fallback and a per-repo unspa/ is found by
+  //    walk-up, so both stay out of the MCP entry's env.
+  const target = await resolveTarget(options, yes, { home, cwd });
 
-  if (hubPath) {
-    if (!existsSync(hubPath)) {
-      mkdirSync(hubPath, { recursive: true });
-      log.ok(`Created hub snapshots folder ${pc.cyan(hubPath)}`);
-    } else {
-      log.dim(`Using existing hub snapshots folder ${hubPath}`);
-    }
-    log.dim(`Skipping local unspa/ - MCP entries will set UNSPA_SNAPSHOTS=${hubPath}`);
+  if (!existsSync(target.dir)) {
+    mkdirSync(target.dir, { recursive: true });
+    log.ok(`Created snapshots folder ${pc.cyan(target.dir)}`);
   } else {
-    // Per-repo mode: ensure unspa/ folder exists. mkdirSync recursive is idempotent.
-    const unspaDir = join(cwd, 'unspa');
-    if (!existsSync(unspaDir)) {
-      mkdirSync(unspaDir, { recursive: true });
-      log.ok(`Created ${pc.cyan('unspa/')} folder`);
-    } else {
-      log.dim(`unspa/ already exists`);
-    }
+    log.dim(`Using existing snapshots folder ${target.dir}`);
+  }
+  if (target.mode === 'hub') {
+    log.dim('Shared hub is the default - no UNSPA_SNAPSHOTS needed; the MCP and dashboard discover it automatically.');
+  } else if (target.mode === 'custom-hub') {
+    log.dim(`Custom hub - MCP entries will set UNSPA_SNAPSHOTS=${target.dir}`);
+  } else {
+    log.dim('Per-repo mode - the model lives in this repo and is found by walk-up (no UNSPA_SNAPSHOTS).');
   }
 
   // 2. Pick clients, write MCP server entry. `mergeMcpServerEntry` compares
@@ -285,7 +312,7 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
   } else {
     const scope = resolveScope(options.scope);
     log.step(`Registering MCP server with ${clients.length} client(s) (${scope})`);
-    const entry = buildUnspaMcpEntry(hubPath ? { env: { UNSPA_SNAPSHOTS: hubPath } } : {});
+    const entry = buildUnspaMcpEntry(target.setEnv ? { env: { UNSPA_SNAPSHOTS: target.dir } } : {});
     for (const client of clients) {
       if (!client.scopes.includes(scope)) {
         log.dim(`  ${client.label} (${scope}): scope unsupported`);
@@ -396,16 +423,16 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
 
   log.blank();
   log.ok('Unspaghettit initialized.');
-  if (hubPath) {
-    // The dashboard discovers `unspa/` by walking up from cwd. When the hub
-    // snapshot dir is `<root>/unspa`, launching from `<root>` is what makes
-    // the dashboard see the same folder the MCP entries now point at.
-    const hubRoot = resolvePath(hubPath, '..');
-    log.dim(`Hub mode: run \`unspa dashboard\` from ${pc.cyan(hubRoot)} so it discovers the same snapshots.`);
-    log.dim(`Restart your AI clients to pick up the new MCP entry.`);
-  } else {
-    log.dim('Next: `unspa dashboard` to open the UI, or start talking to your LLM with the MCP attached.');
+  if (target.mode === 'hub') {
+    log.dim('Next: `unspa dashboard` (from anywhere) to open the UI, or start talking to your LLM with the MCP attached.');
+    log.dim('Both resolve the shared hub automatically. To point at a different folder later: re-run `unspa init --hub <path>`, or `unspa dashboard --snapshots <path>` for a one-off.');
     log.dim('New to MCP? Ask Claude Code: "Verify the unspa MCP tools are available in this repo." Restart the client if it does not see them yet.');
+  } else if (target.mode === 'custom-hub') {
+    log.dim(`Custom hub at ${pc.cyan(target.dir)}. Run \`unspa dashboard --snapshots ${target.dir}\` (or set UNSPA_SNAPSHOTS) so the UI sees the same folder.`);
+    log.dim('Restart your AI clients to pick up the new MCP entry. To switch later, re-run `unspa init --hub <path>` or `unspa init` for the default hub.');
+  } else {
+    log.dim('Per-repo mode: run `unspa dashboard` from this repo so its walk-up finds the local unspa/ folder.');
+    log.dim('To move this project into the shared hub later, re-run `unspa init` (the default).');
   }
   return 0;
 };

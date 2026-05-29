@@ -24,9 +24,10 @@ const isLoopback = (host: string): boolean =>
 /**
  * Boot the bundled SvelteKit production build via our custom server, which
  * wraps adapter-node's `handler` and adds the Yjs WebSocket upgrade listener
- * that the default `build/index.js` lacks. The dashboard discovers the user's
- * `unspa/` folder by walking up from process.cwd(), so the child's CWD must
- * stay set to wherever the user ran the CLI from.
+ * that the default `build/index.js` lacks. The dashboard discovers the
+ * snapshots folder by walking up from process.cwd() and otherwise falling back
+ * to the shared hub (`~/.unspa-hub/unspa`), so the child's CWD must stay set to
+ * wherever the user ran the CLI from. An explicit `--snapshots` overrides both.
  *
  * Defaults to binding 127.0.0.1: the REST sync routes and Yjs WebSocket
  * have no auth, no CSRF, no Origin allowlist, so a 0.0.0.0 bind would let
@@ -37,7 +38,7 @@ const isLoopback = (host: string): boolean =>
  * (e.g. shipped clone without `npm run build`) so the user gets a clear hint.
  */
 export const runDashboardCommand = async (
-  args: { readonly port?: number; readonly host?: string }
+  args: { readonly port?: number; readonly host?: string; readonly snapshots?: string }
 ): Promise<number> => {
   const repoRoot = resolve(__dirname, '..', '..');
   // build/handler.js (adapter-node's exported handler) is what the custom
@@ -91,6 +92,13 @@ export const runDashboardCommand = async (
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (args.port !== undefined) env.PORT = String(args.port);
   env.HOST = host;
+  // An explicit --snapshots wins over walk-up discovery for this run by
+  // seeding UNSPA_SNAPSHOTS, which discoverSnapshotDirectory treats as the
+  // top-priority override. Relative paths resolve against the child's cwd.
+  if (args.snapshots !== undefined && args.snapshots.trim().length > 0) {
+    env.UNSPA_SNAPSHOTS = args.snapshots;
+    log.dim(`Snapshots override: ${args.snapshots}`);
+  }
 
   return await new Promise<number>((resolvePromise) => {
     const child = spawn(process.execPath, [serverShim], {

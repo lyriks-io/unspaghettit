@@ -123,19 +123,20 @@ Bootstraps an Unspaghettit project in the current repo. Every step is idempotent
 re-running updates managed blocks in place, never duplicates.
 
 ```bash
-unspa init                              # interactive
-unspa init --yes                        # non-interactive, accept all defaults
+unspa init                              # default: shared hub, picks clients interactively
+unspa init --yes                        # non-interactive, accept all defaults (shared hub)
 unspa init --clients claude-code,cursor # only register specific clients
-unspa init --scope global               # write to ~/.claude.json etc. instead of per-repo
-unspa init --hub                        # shared snapshot hub at ~/.unspa-hub/unspa
-unspa init --hub /custom/path           # shared hub at a custom location
+unspa init --scope global               # write to ~/.claude.json etc. instead of per-project
+unspa init --local                      # per-repo install: scaffold this repo's unspa/ folder
+unspa init --custom                     # interactive picker: hub vs per-repo vs custom path
+unspa init --hub /custom/path           # a non-default hub location (pins UNSPA_SNAPSHOTS)
 unspa init --no-gitignore --no-context --no-skills  # opt out of optional steps
 unspa init --fun                        # pre-check the opt-in narrative skills (also: invoke as `unspaghettit init`)
 ```
 
 What it does:
 
-1. **Creates `unspa/`** at the repo root if missing. **Skipped when `--hub` is set** because the MCP entries are pinned to the hub instead.
+1. **Resolves where the model lives.** By default this is the **shared hub** (`~/.unspa-hub/unspa`) — no folder is scaffolded in the repo and no `UNSPA_SNAPSHOTS` is written, because discovery falls back to the hub automatically. Pass `--local` to scaffold a per-repo `unspa/` (found by walk-up, so the model travels with the repo in git), or `--hub <path>` for a non-default hub location.
 2. **Registers the MCP server** with the AI clients you pick, scoped to the
    current project (`.mcp.json`, `.cursor/mcp.json`, …). Pass `--scope global`
    if you'd rather write to `~/.claude.json` / `~/.cursor/mcp.json` and have
@@ -147,7 +148,7 @@ What it does:
      because AI clients spawn without a shell, and Node refuses to execute
      `.cmd` / `.ps1` shims directly, so we wrap with `cmd /c`.
 
-   When `--hub` is set, the entry also carries `env.UNSPA_SNAPSHOTS=<absolute hub path>` so the MCP picks the hub regardless of where the client launches it.
+   For the default hub and per-repo (`--local`) installs the entry carries **no env** — discovery finds the folder. Only `--hub <path>` (a non-default location) adds `env.UNSPA_SNAPSHOTS=<absolute path>`, since walk-up can't reach it.
 
    Merged into existing `mcpServers.*` entries, your other servers stay intact.
 3. **Adds a `# >>> unspa` block to `.gitignore`** for hot-reload artefacts.
@@ -158,22 +159,29 @@ What it does:
    - How to record implementations in the `.unspa.json` behavioral index
 5. **Installs the three core skills under `.claude/skills/`** (see [Skills](#skills)). Two opt-in narrative skills (`unspa-worldbuild`, `unspa-worldplay`) also ship with the package and land when fun mode is on — invoke the CLI as `unspaghettit init`, pass `--fun`, or tick the box in the interactive prompt.
 
-#### Shared snapshot hub (`--hub`)
+#### Where the model lives
 
-`--hub` swaps the default per-repo layout for a single shared snapshot directory used by every client and every repo. Use it when you want one source of truth across multiple repos, or when you're registering **Claude Desktop**. Claude Desktop has no per-project MCP config and no useful cwd at launch, so its entry needs an absolute `UNSPA_SNAPSHOTS` to find anything.
+Discovery order, shared by the MCP server and `unspa dashboard`:
+
+1. Explicit override — `UNSPA_SNAPSHOTS` env var, the MCP's `--snapshots` flag, or `unspa dashboard --snapshots <dir>`.
+2. A per-repo `unspa/` folder found by **walking up** from the launch directory.
+3. The **shared hub** at `~/.unspa-hub/unspa` (the default fallback).
+
+So the **default install needs zero configuration**: nothing is scaffolded, no env var is written, and both the MCP and the dashboard land on the hub the first time. One source of truth across every repo and client — including **Claude Desktop**, which has no per-project MCP config and no useful launch cwd, and now finds the hub without any absolute path baked in.
+
+Pick a different location explicitly:
 
 ```bash
-unspa init --hub                     # default: ~/.unspa-hub/unspa
-unspa init --hub ~/work/unspa-hub    # custom location (~/ expands)
-unspa init --hub /abs/path/to/hub    # absolute path
+unspa init --local                   # per-repo unspa/ folder, found by walk-up (model lives in git)
+unspa init --hub ~/work/unspa-hub    # non-default hub (~/ expands; pins UNSPA_SNAPSHOTS)
+unspa init --hub /abs/path/to/hub    # absolute non-default hub path
+unspa init --custom                  # interactive: choose hub / per-repo / custom path
 ```
 
-What changes:
-
-- **No local `unspa/`** is created in the current repo.
-- **Every selected client's MCP entry** gets `env.UNSPA_SNAPSHOTS=<resolved hub path>`. The MCP discovery order (CLI flag → env var → walk-up → cwd fallback) means this env var always wins.
-- The dashboard still does walk-up discovery, so launch it from the hub's parent directory (e.g. `cd ~/.unspa-hub && unspa dashboard`).
-- Repo-level binding still works: run `unspa link` inside each repo to write `.unspa.json` and scope that repo's MCP queries to one project from the hub.
+- A **per-repo `unspa/`** (`--local`) writes no env var — the model travels with the repo and wins via walk-up whenever a client launches inside it.
+- A **non-default hub path** (`--hub <path>`) does write `env.UNSPA_SNAPSHOTS=<resolved path>`, because walk-up can't reach it.
+- Repo-level binding still works in any mode: run `unspa link` inside a repo to write `.unspa.json` and scope that repo's MCP queries to one project.
+- Switch later with a re-run (`unspa init`, `unspa init --local`, `unspa init --hub <path>`), or take a one-off look at any folder with `unspa dashboard --snapshots <dir>`.
 
 The hub is loopback / single-machine. For cross-machine sharing use the LAN-share tier of `unspa dashboard` instead.
 

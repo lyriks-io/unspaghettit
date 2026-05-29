@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [SemVer](https://semver.org).
 
+## [Unreleased]
+
+### Changed
+
+- **The shared hub is now the zero-config default for `unspa init`.** Snapshot discovery (used by both the MCP server and `unspa dashboard`) now falls back to `~/.unspa-hub/unspa` instead of an empty `<cwd>/unspa`, so a bare `init` writes a clean MCP entry with no `UNSPA_SNAPSHOTS` and the dashboard/MCP agree on the first run — no more configuring an env var to make them line up. Cross-platform via `os.homedir()`. Discovery order is otherwise unchanged: explicit override → per-repo `unspa/` found by walk-up → hub. Claude Desktop now resolves the hub automatically (it previously needed `--hub`). Per-repo storage is **not removed** — it's demoted to opt-in: `unspa init --local` (model travels with the repo in git), `unspa init --hub <path>` (custom hub, pins `UNSPA_SNAPSHOTS`), or `unspa init --custom` (interactive picker). New `unspa dashboard --snapshots <dir>` points the UI at any folder for a one-off. Re-run `init` anytime to repoint.
+
 ## [0.1.8] — 2026-05-29
 
 Two additive modeling features plus one repository fix. Safe to upgrade in place.

@@ -2,9 +2,11 @@
 ## Unspaghettit (auto-managed by `unspa` CLI)
 
 This repo models its software as executable behavior with [Unspaghettit](https://unspaghettit.dev).
-The model lives in `unspa/*.feature.json`. Open the dashboard with `unspa dashboard`
-(http://localhost:3000) to see surfaces, actions, simulator, maturity, and
-implementation coverage.
+The model lives in your Unspaghettit snapshots folder — the shared hub
+(`~/.unspa-hub/unspa`) by default, or this repo's `unspa/` folder for a
+per-repo install (`unspa init --local`). Open the dashboard with
+`unspa dashboard` (http://localhost:3000) to see surfaces, actions, simulator,
+maturity, and implementation coverage.
 
 ### Editing the model. Use the MCP, don't re-emit JSON
 

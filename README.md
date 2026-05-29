@@ -300,22 +300,21 @@ Re-running `unspa init` is safe, every step is idempotent. Existing entries are 
 
 You normally don't run the MCP server manually — your AI client spawns `unspa-mcp` on demand. `unspa serve` exists as a debugging hatch if you ever need to test the stdio interface yourself.
 
-### Shared snapshot hub
+### Where the model lives (shared hub by default)
 
-By default `unspa init` scaffolds a per-repo `unspa/` folder. For workflows where you want **one source of truth across many repos**, or where you want to attach **Claude Desktop** (which has no project scope and no useful launch cwd), use a shared hub:
+`unspa init` needs no decision about storage: the behavior model lives in a **shared hub** at `~/.unspa-hub/unspa`, and both the MCP server and `unspa dashboard` discover it automatically on the first run — no `UNSPA_SNAPSHOTS`, no special launch directory. One source of truth across every repo and every client (including **Claude Desktop**, which has no project scope), and one `unspa dashboard` run from anywhere serves it.
+
+Want the model versioned **inside a specific repo** instead — travelling in git and PRs? Opt into a per-repo install:
 
 ```bash
-unspa init --hub              # default hub at ~/.unspa-hub/unspa
-unspa init --hub /custom/path # override the location
+unspa init --local            # scaffold this repo's unspa/ folder (found by walk-up)
+unspa init --custom           # interactive: hub vs per-repo vs custom path
+unspa init --hub /custom/path # a non-default hub location (pins UNSPA_SNAPSHOTS)
 ```
 
-In hub mode:
+Discovery order, used by both the MCP and the dashboard: explicit `UNSPA_SNAPSHOTS` / `--snapshots` → a per-repo `unspa/` found by walking up from the launch directory → the shared hub. So a per-repo `unspa/` always wins when present, and everything else falls back to the hub.
 
-- No local `unspa/` is created in the repo.
-- Every selected client's MCP entry carries `UNSPA_SNAPSHOTS=<absolute hub path>`, so the MCP always reads/writes the hub regardless of where the client launches it.
-- One `unspa dashboard` run from the hub root serves the same data every client sees.
-
-End state: Claude Desktop for cross-project querying, per-repo Claude Code instances pointed at the same hub via the env var (and bound to one project each via `unspa link`), and one live dashboard reflecting every change. All loopback / single-machine; the hub is not a network service.
+Switching later is just a re-run: `unspa init` for the hub, `unspa init --local` for per-repo, or `unspa dashboard --snapshots <path>` for a one-off look at any folder. All loopback / single-machine; the hub is not a network service.
 
 For the CLI details (commands, flags, troubleshooting), see [cli/README.md](cli/README.md).
 

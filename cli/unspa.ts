@@ -30,13 +30,14 @@ const FUN_MODE_BY_INVOCATION = process.env.UNSPA_FUN_MODE === '1';
 const pkg = createRequire(import.meta.url)('../package.json') as { version: string };
 
 // v0.1 surface:
-//   init       scaffold unspa/ + register MCP with picked clients
-//              + optional CLAUDE.md/AGENTS.md + skills. Fully idempotent.
+//   init       register MCP with picked clients + optional CLAUDE.md/AGENTS.md
+//              + skills. Snapshots default to the shared hub; --custom/--local/
+//              --hub <path> pick another location. Fully idempotent.
 //   serve      run the bundled MCP server on stdio. Used by the entry
 //              `init` writes into each client's config.
-//   dashboard  boot the SvelteKit dashboard from the unspa/ folder
-//              discovered by walking up from cwd.
-//   list       enumerate the features in the local unspa/ folder
+//   dashboard  boot the SvelteKit dashboard against the discovered snapshots
+//              (shared hub by default; a per-repo unspa/ wins via walk-up).
+//   list       enumerate the features in the discovered snapshots folder
 //              (human table + interactive picker, or JSON for scripts).
 //   link       bind this repo to one project via .unspa.json so the MCP
 //              scopes queries to that project without asking.
@@ -55,10 +56,12 @@ program
 
 program
   .command('init')
-  .description('Scaffold unspa/ folder, register the MCP server with picked AI clients, seed CLAUDE.md/AGENTS.md, install bundled skills. Safe to re-run.')
+  .description('Register the MCP server with picked AI clients, seed CLAUDE.md/AGENTS.md, install bundled skills. By default the behavior model lives in the shared hub (~/.unspa-hub/unspa) - no config needed. Safe to re-run.')
   .option('--clients <ids>', 'Comma list of client ids (e.g. claude-code,cursor,gemini) or "all".')
-  .option('--scope <scope>', 'Where to register the MCP: "project" (default) or "global". Project pairs with the per-repo unspa/ this command scaffolds; global writes to ~/.claude.json etc. for power users who want the MCP attached in every project.', 'project')
-  .option('--hub [path]', 'Use a shared snapshot hub instead of per-repo unspa/. Pass --hub for the default (~/.unspa-hub/unspa) or --hub <path> to override. The MCP entry written to every selected client carries UNSPA_SNAPSHOTS=<resolved-path>; the local unspa/ folder is NOT created. Required pairing for Claude Desktop.')
+  .option('--scope <scope>', 'Where to register the MCP: "project" (default) or "global". Global writes to ~/.claude.json etc. for power users who want the MCP attached in every project.', 'project')
+  .option('--custom', 'Open the interactive custom-install wizard: choose the shared hub, a per-repo unspa/ folder, or a custom hub path.')
+  .option('--local', 'Per-repo install: scaffold a local unspa/ folder found by walk-up, so the model travels with the repo in git (the pre-hub behavior). No UNSPA_SNAPSHOTS is written.')
+  .option('--hub [path]', 'Pin a hub location. Bare --hub is the default hub (same as no flag). --hub <path> points at a custom folder and writes UNSPA_SNAPSHOTS=<resolved-path> into each MCP entry. Re-run anytime to repoint.')
   .option('--no-gitignore', 'Skip the .gitignore additions.')
   .option('--no-context', 'Skip the CLAUDE.md / AGENTS.md context block additions.')
   .option('--no-skills', 'Skip installing the bundled unspa skills under .claude/skills/.')
@@ -79,6 +82,8 @@ program
       // Commander resolves `--hub` (no value) to `true` and `--hub <path>` to a
       // string; `undefined` means the flag was omitted entirely.
       hub: opts.hub,
+      local: opts.local === true,
+      custom: opts.custom === true,
       fun: opts.fun === true || FUN_MODE_BY_INVOCATION
     });
     process.exit(code);
@@ -87,7 +92,7 @@ program
 program
   .command('serve')
   .description('Run the bundled MCP server on stdio. Invoked by AI clients via the entry `init` writes into their MCP config.')
-  .option('-s, --snapshots <dir>', 'Override the unspa/ folder location (defaults to walking up from CWD).')
+  .option('-s, --snapshots <dir>', 'Override the snapshots folder (defaults to walking up from CWD, then the shared hub ~/.unspa-hub/unspa).')
   .action(async (opts) => {
     const code = await runServeCommand({ snapshots: opts.snapshots });
     process.exit(code);
@@ -95,17 +100,18 @@ program
 
 program
   .command('dashboard')
-  .description('Boot the bundled SvelteKit dashboard pointing at this repo\'s unspa/ folder.')
+  .description('Boot the bundled SvelteKit dashboard. Defaults to the shared hub (~/.unspa-hub/unspa); a per-repo unspa/ found by walking up from CWD wins when present.')
   .option('-p, --port <port>', 'Port to bind (default: 3000).', (v) => Number.parseInt(v, 10))
   .option('-h, --host <host>', 'Host to bind (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN; the dashboard has no auth, so do this only on trusted networks.')
+  .option('-s, --snapshots <dir>', 'Point the dashboard at a specific snapshots folder (sets UNSPA_SNAPSHOTS for this run). Handy for a one-off look at a custom hub or another repo.')
   .action(async (opts) => {
-    const code = await runDashboardCommand({ port: opts.port, host: opts.host });
+    const code = await runDashboardCommand({ port: opts.port, host: opts.host, snapshots: opts.snapshots });
     process.exit(code);
   });
 
 program
   .command('list')
-  .description('List the projects in the local unspa/ folder. Pass --json for a scriptable payload; interactive picker re-binds the repo link unless --no-interactive.')
+  .description('List the projects in the discovered snapshots folder (shared hub by default; a per-repo unspa/ wins via walk-up). Pass --json for a scriptable payload; interactive picker re-binds the repo link unless --no-interactive.')
   .option('--json', 'Print the catalog as JSON (implies --no-interactive).')
   .option('--no-interactive', 'Skip the interactive picker at the end.')
   .action(async (opts) => {

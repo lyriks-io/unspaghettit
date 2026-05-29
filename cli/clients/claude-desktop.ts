@@ -31,15 +31,16 @@ const resolveConfigPath = (home: string): string => {
 /**
  * Claude Desktop. Global-only (no per-project MCP config). The schema mirrors
  * Claude Code's `.mcp.json` for `mcpServers`, so we reuse the same merge
- * primitive. Pairs naturally with the shared-hub option in `unspa init`:
- * Claude Desktop has no cwd notion of its own, so its MCP entry needs an
- * absolute `UNSPA_SNAPSHOTS` env var to point at a real snapshot folder.
+ * primitive. Claude Desktop has no cwd notion of its own, but that's fine now
+ * that the shared hub is discovery's default fallback: with no per-repo
+ * `unspa/` to walk up to, its MCP resolves the hub automatically — no
+ * `UNSPA_SNAPSHOTS` needed. A non-default `--hub <path>` still pins the env var.
  */
 export const claudeDesktopClient: ClientAdapter = {
   id: 'claude-desktop',
   label: 'Claude Desktop',
   scopes: ['global'],
-  note: 'Global-only: Claude Desktop has no per-project MCP config. Pair with --hub so the MCP entry points at an absolute snapshot directory.',
+  note: 'Global-only: Claude Desktop has no per-project MCP config. Resolves the shared hub automatically; use --hub <path> only for a non-default location.',
   resolvePath(scope: ConfigScope, params): string | null {
     if (scope === 'global') return resolveConfigPath(params.home);
     return null;

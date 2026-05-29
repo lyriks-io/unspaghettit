@@ -51,17 +51,20 @@ describe('discoverSnapshotDirectory', () => {
     expect(result.source).toBe('walk');
   });
 
-  it('falls back to ./unspa/ in cwd when nothing is found', () => {
+  it('falls back to the shared hub when nothing is found', () => {
     const cwd = makeTempRoot();
-    const result = discoverSnapshotDirectory({ cwd });
-    expect(result.directory).toBe(resolve(cwd, 'unspa'));
-    expect(result.source).toBe('cwd-fallback');
+    const home = makeTempRoot();
+    const result = discoverSnapshotDirectory({ cwd, home });
+    expect(result.directory).toBe(join(home, '.unspa-hub', 'unspa'));
+    expect(result.source).toBe('hub-default');
   });
 
-  it('ignores empty unspa/ folders during walk', () => {
+  it('ignores empty unspa/ folders during walk and falls back to the hub', () => {
     const root = makeTempRoot();
+    const home = makeTempRoot();
     mkdirSync(join(root, 'unspa'), { recursive: true });
-    const result = discoverSnapshotDirectory({ cwd: root });
-    expect(result.source).toBe('cwd-fallback');
+    const result = discoverSnapshotDirectory({ cwd: root, home });
+    expect(result.directory).toBe(join(home, '.unspa-hub', 'unspa'));
+    expect(result.source).toBe('hub-default');
   });
 });

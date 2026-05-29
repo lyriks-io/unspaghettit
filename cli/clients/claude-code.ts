@@ -45,10 +45,11 @@ export const claudeCodeClient: ClientAdapter = {
  * raises EINVAL). Wrapping the call in `cmd /c` lets CMD resolve the
  * `.cmd` shim itself. macOS and Linux can invoke the POSIX shim directly.
  *
- * `env` lets the shared-hub flow inject `UNSPA_SNAPSHOTS=<absolute path>` so
- * the MCP picks the hub regardless of where the AI client launches it.
- * Required for Claude Desktop (no cwd notion) and useful for any client when
- * multiple repos share one snapshot folder.
+ * `env` lets a NON-default snapshot location inject `UNSPA_SNAPSHOTS=<absolute
+ * path>` so the MCP reads it regardless of where the AI client launches. The
+ * default hub and per-repo (`--local`) installs need no env — discovery's
+ * walk-up / hub fallback finds the folder on its own — so this stays empty for
+ * them and is only populated by `--hub <path>`.
  */
 export const buildUnspaMcpEntry = (opts: { env?: Record<string, string> } = {}): McpServerEntry => {
   const base: McpServerEntry =
