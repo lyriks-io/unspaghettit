@@ -98,6 +98,44 @@ describe('mutateFeatureUseCase', () => {
     ).rejects.toBeInstanceOf(FeatureValidationError);
   });
 
+  it('allows an unrelated edit when the feature already has a pre-existing structural error', async () => {
+    const { repository, mutate } = buildHarness();
+    // A surface with a blank description is a structural error. Before the
+    // diff-aware gate, this blocked EVERY subsequent write — you couldn't even
+    // set a description elsewhere without the whole feature already being valid.
+    const seedWithBlankDescription = {
+      ...storefrontFeature,
+      surfaces: storefrontFeature.surfaces.map((s, i) =>
+        i === 0 ? { ...s, description: '' } : s
+      )
+    };
+    await repository.save(seedWithBlankDescription);
+
+    const result = await mutate({
+      featureId: storefrontFeature.id,
+      transform: (current) => ({ ...current, name: 'Renamed despite the gap' })
+    });
+    expect(result.name).toBe('Renamed despite the gap');
+    // The pre-existing gap is untouched, not silently fixed.
+    expect(result.surfaces[0]!.description).toBe('');
+  });
+
+  it('still blocks a write that itself introduces a new structural error', async () => {
+    const { repository, mutate } = buildHarness();
+    await repository.save(storefrontFeature);
+    await expect(
+      mutate({
+        featureId: storefrontFeature.id,
+        transform: (current) => ({
+          ...current,
+          surfaces: current.surfaces.map((s, i) =>
+            i === 0 ? { ...s, description: '' } : s
+          )
+        })
+      })
+    ).rejects.toBeInstanceOf(FeatureValidationError);
+  });
+
   it('allows mutations on a snapshot that already has a pre-existing dangling reference', async () => {
     const { repository, mutate } = buildHarness();
     // Seed an feature that already contains a dangling transition_surface

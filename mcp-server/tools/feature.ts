@@ -6,7 +6,7 @@ import { normalizeFeatureEmittedEvents } from '../../src/features/behavior-model
 import { normalizeFeatureExpressions } from '../../src/features/behavior-model/domain/services/FeatureExpressionNormalizer';
 import { normalizeFeatureRuleCategories } from '../../src/features/behavior-model/domain/services/FeatureRuleCategoryNormalizer';
 import { normalizeFeatureSharedState } from '../../src/features/behavior-model/domain/services/FeatureSharedStateNormalizer';
-import { validateFeature } from '../../src/features/behavior-model/domain/services/FeatureValidator';
+import { introducedValidationErrors } from '../../src/features/behavior-model/domain/services/FeatureValidator';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { addTag, normalizeTags, removeTag } from '../../src/shared/domain/Tags';
 import { ack, errorText, text, writeErrorText, type ToolDeps } from './_shared';
@@ -232,17 +232,25 @@ export const registerFeatureTools = (deps: ToolDeps): void => {
     },
     async ({ feature }) => {
       try {
-        const candidate = normalizeFeatureSharedState(
-          normalizeFeatureRuleCategories(
-            normalizeFeatureEmittedEvents(
-              normalizeFeatureExpressions(feature as unknown as Feature)
+        const normalize = (f: Feature): Feature =>
+          normalizeFeatureSharedState(
+            normalizeFeatureRuleCategories(
+              normalizeFeatureEmittedEvents(normalizeFeatureExpressions(f))
             )
-          )
+          );
+        const candidate = normalize(feature as unknown as Feature);
+        // Diff-aware: a full-replace save is blocked only when it INTRODUCES a
+        // new error versus the current snapshot. Replacing an existing (maybe
+        // legacy / partially-built) feature can't be held hostage by an issue
+        // it already had; a brand-new feature (no prior) must be fully valid.
+        const prior = candidate.id ? await repo.get(asFeatureId(String(candidate.id))) : null;
+        const introduced = introducedValidationErrors(
+          prior ? normalize(prior) : null,
+          candidate
         );
-        const validation = validateFeature(candidate);
-        if (!validation.valid) {
+        if (introduced.length > 0) {
           return errorText(
-            `Feature validation failed:\n - ${validation.errors.join('\n - ')}`
+            `Save would introduce new validation errors (pre-existing issues are not blocking):\n - ${introduced.join('\n - ')}`
           );
         }
         const next: Feature = { ...candidate, updatedAt: clock() };

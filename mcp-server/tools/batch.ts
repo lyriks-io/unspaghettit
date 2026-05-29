@@ -5,8 +5,8 @@ import {
 } from '../../src/features/behavior-model/application/use-cases/MutateFeature';
 import * as T from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import {
-  validateFeature,
-  validateReferenceIntegrity
+  introducedValidationErrors,
+  type ValidationResult
 } from '../../src/features/behavior-model/domain/services/FeatureValidator';
 import { scoreFeature } from '../../src/features/maturity/domain/MaturityScorer';
 import { scoreFeatureTool } from '../../src/features/mcp-tools/application/tools/scoreFeature';
@@ -1172,19 +1172,18 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           operations as readonly Op[],
           ids
         );
-        // Structural validation + reference-integrity (state path declarations,
-        // event registry, handler integrity). The granular write tools run
-        // both via MutateFeature; apply_batch used to skip the second pass,
-        // letting bad handlers and stray emit_event references through.
-        const structural = validateFeature(next);
-        const refIntegrity = validateReferenceIntegrity(next);
-        // Annotate each validation error with the op index that introduced
-        // the referenced entity. Scans every long-ish hex id in the error
-        // string against the mintIdToOp map and prepends `op[N] (kind):` to
-        // the first match. Without this the agent gets errors like
-        // "Action 7bfd0b83 invariant 2909e02b: ..." with no way to know
-        // which op authored that action, forcing a guess-and-check loop
-        // through the whole batch.
+        // Diff-aware validation (structural + reference-integrity): a batch is
+        // blocked only when it INTRODUCES a new error versus the loaded
+        // snapshot. Pre-existing issues on a partially-built feature (e.g.
+        // descriptions not filled in yet, a legacy dangling ref) stay editable
+        // so an unrelated batch isn't held hostage by them; they remain visible
+        // via get_spec_gaps / score_feature. Same gate the granular tools use.
+        // Annotate each error with the op index that introduced the referenced
+        // entity. Scans every minted id in the error string against the
+        // mintIdToOp map and prepends `op[N] (kind):` to the match. Without this
+        // the agent gets errors like "Action 7bfd0b83 invariant 2909e02b: ..."
+        // with no way to know which op authored that action, forcing a
+        // guess-and-check loop through the whole batch.
         const annotateError = (msg: string): string => {
           // Substring-scan the message for any id we minted during this
           // batch. Regex-by-format would have to know about every id flavor
@@ -1204,15 +1203,13 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         };
         const annotateErrors = (errs: readonly string[]): readonly string[] =>
           errs.map(annotateError);
-        const validation: typeof structural = structural.valid && refIntegrity.valid
-          ? { valid: true }
-          : {
-              valid: false,
-              errors: [
-                ...(structural.valid ? [] : annotateErrors(structural.errors)),
-                ...(refIntegrity.valid ? [] : annotateErrors(refIntegrity.errors))
-              ]
-            };
+        // Both `current` and `next` are at the same (un-normalized) level here,
+        // so the diff reflects only what the ops changed.
+        const introduced = introducedValidationErrors(current, next);
+        const validation: ValidationResult =
+          introduced.length === 0
+            ? { valid: true }
+            : { valid: false, errors: annotateErrors(introduced) };
         if (dryRun) {
           if (verbose) {
             return text({

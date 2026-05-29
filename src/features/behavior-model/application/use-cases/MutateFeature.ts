@@ -4,11 +4,14 @@ import type { FeatureId } from '$features/behavior-model/domain/value-objects/id
 import { normalizeFeatureEmittedEvents } from '$features/behavior-model/domain/services/FeatureEmittedEventsNormalizer';
 import { normalizeFeatureExpressions } from '$features/behavior-model/domain/services/FeatureExpressionNormalizer';
 import { normalizeFeatureSharedState } from '$features/behavior-model/domain/services/FeatureSharedStateNormalizer';
-import {
-  validateFeature,
-  validateReferenceIntegrity
-} from '$features/behavior-model/domain/services/FeatureValidator';
+import { introducedValidationErrors } from '$features/behavior-model/domain/services/FeatureValidator';
 import type { FeatureRepository } from '../ports/FeatureRepository';
+
+/** The shared normalization pipeline applied before validation + save. */
+const normalizeForSave = (feature: Feature): Feature =>
+  normalizeFeatureSharedState(
+    normalizeFeatureEmittedEvents(normalizeFeatureExpressions(feature))
+  );
 
 export type FeatureTransform = (feature: Feature) => Feature;
 
@@ -63,35 +66,21 @@ export const mutateFeatureUseCase = (deps: {
     // the LLM hits the strict validator and gets a "did you mean..." error
     // instead of being silently remapped, fresh authoring learns the
     // canonical vocabulary on the next call. Legacy snapshots still load.
-    const transformed = normalizeFeatureSharedState(
-      normalizeFeatureEmittedEvents(
-        normalizeFeatureExpressions(input.transform(current))
-      )
-    );
-    const validation = validateFeature(transformed);
-    if (!validation.valid) {
-      throw new FeatureValidationError(
-        'Feature would be invalid after the requested change.',
-        validation.errors
-      );
-    }
+    const transformed = normalizeForSave(input.transform(current));
 
-    // Reference-integrity errors are enforced diff-aware: an error already
-    // present on the loaded snapshot stays editable (so legacy data with
-    // dangling refs isn't bricked), but a mutation cannot introduce a *new*
-    // dangling reference. Same error string before and after = the
-    // mutation didn't touch it.
-    const beforeRefs = validateReferenceIntegrity(current);
-    const afterRefs = validateReferenceIntegrity(transformed);
-    if (!afterRefs.valid) {
-      const baseline = beforeRefs.valid ? new Set<string>() : new Set(beforeRefs.errors);
-      const introduced = afterRefs.errors.filter((e) => !baseline.has(e));
-      if (introduced.length > 0) {
-        throw new FeatureValidationError(
-          'Feature would contain new dangling references after the requested change.',
-          introduced
-        );
-      }
+    // Diff-aware gate (both structural AND reference-integrity): block the
+    // write only when it INTRODUCES a new error. Pre-existing problems on a
+    // partially-built feature — most commonly descriptions not yet filled in —
+    // stay editable, so you can set a description (or any field) without the
+    // whole feature already being valid. The baseline is normalized the same
+    // way as `transformed` so normalization artifacts on untouched elements
+    // don't read as introduced. See introducedValidationErrors for the why.
+    const introduced = introducedValidationErrors(normalizeForSave(current), transformed);
+    if (introduced.length > 0) {
+      throw new FeatureValidationError(
+        'The requested change would introduce new validation errors. (Pre-existing issues elsewhere in the feature are not blocking — fix them whenever; they show up in get_spec_gaps / score_feature.)',
+        introduced
+      );
     }
 
     const next: Feature = { ...transformed, updatedAt: deps.clock() };

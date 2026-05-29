@@ -1,6 +1,6 @@
 import type { Clock } from '$shared/domain/Clock';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
-import { validateFeature } from '$features/behavior-model/domain/services/FeatureValidator';
+import { introducedValidationErrors } from '$features/behavior-model/domain/services/FeatureValidator';
 import type { FeatureRepository } from '../ports/FeatureRepository';
 import { FeatureValidationError } from './MutateFeature';
 
@@ -9,15 +9,19 @@ export const saveFeatureUseCase = (deps: {
   clock: Clock;
 }) => {
   return async (feature: Feature): Promise<Feature> => {
-    // Same gate as `mutateFeatureUseCase`: structural integrity must hold
-    // before we let an feature reach disk. The editor's full-replace save
-    // path used to skip this and was the channel through which mistyped
-    // defaults (e.g. `"365"` for type=number) sneaked into snapshots.
-    const validation = validateFeature(feature);
-    if (!validation.valid) {
+    // Same diff-aware gate as `mutateFeatureUseCase`: a full-replace save is
+    // blocked only when it INTRODUCES a new error versus the prior snapshot, so
+    // the editor can save edits to a partially-built feature without every
+    // not-yet-filled description blocking the write. A brand-new feature (no
+    // prior) must be fully valid. Still catches the regression this gate was
+    // added for — a newly mistyped default (e.g. `"365"` for type=number) is
+    // "introduced" and rejected.
+    const prior = await deps.repository.get(feature.id);
+    const introduced = introducedValidationErrors(prior, feature);
+    if (introduced.length > 0) {
       throw new FeatureValidationError(
-        'Cannot save invalid feature.',
-        validation.errors
+        'Cannot save: the change would introduce new validation errors.',
+        introduced
       );
     }
     const next: Feature = { ...feature, updatedAt: deps.clock() };

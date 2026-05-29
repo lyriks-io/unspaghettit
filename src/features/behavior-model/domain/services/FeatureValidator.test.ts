@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { storefrontFeature } from '$features/behavior-model/infrastructure/seed/seedStorefront';
-import { validateFeature, validateReferenceIntegrity } from './FeatureValidator';
+import {
+  introducedValidationErrors,
+  validateFeature,
+  validateReferenceIntegrity
+} from './FeatureValidator';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import {
   asActionId,
@@ -693,5 +697,39 @@ describe('validateReferenceIntegrity', () => {
       );
       expect(msg).toBeDefined();
     }
+  });
+});
+
+describe('introducedValidationErrors (diff-aware gate)', () => {
+  const withBlankSurfaceDescription = (f: Feature): Feature => ({
+    ...f,
+    surfaces: f.surfaces.map((s, i) => (i === 0 ? { ...s, description: '' } : s))
+  });
+
+  it('returns no errors when next only edits unrelated fields on an already-broken feature', () => {
+    const broken = withBlankSurfaceDescription(storefrontFeature);
+    const next = { ...broken, name: 'Renamed' };
+    expect(introducedValidationErrors(broken, next)).toEqual([]);
+  });
+
+  it('reports an error the change introduces', () => {
+    const next = withBlankSurfaceDescription(storefrontFeature);
+    const introduced = introducedValidationErrors(storefrontFeature, next);
+    expect(introduced.length).toBeGreaterThan(0);
+    expect(introduced.some((e) => e.toLowerCase().includes('description'))).toBe(true);
+  });
+
+  it('does not report a pre-existing error that the change leaves untouched', () => {
+    const broken = withBlankSurfaceDescription(storefrontFeature);
+    // Same blank description still present + an unrelated rename.
+    const next = { ...broken, name: 'Renamed' };
+    const introduced = introducedValidationErrors(broken, next);
+    expect(introduced.some((e) => e.toLowerCase().includes('description'))).toBe(false);
+  });
+
+  it('treats every error as introduced when there is no prior snapshot', () => {
+    const broken = withBlankSurfaceDescription(storefrontFeature);
+    expect(introducedValidationErrors(null, broken).length).toBeGreaterThan(0);
+    expect(introducedValidationErrors(null, storefrontFeature)).toEqual([]);
   });
 });
