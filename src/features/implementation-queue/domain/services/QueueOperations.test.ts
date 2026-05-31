@@ -5,7 +5,7 @@ import {
   asSurfaceId
 } from '$features/behavior-model/domain/value-objects/ids';
 import { asQueueItemId, queueItemKey, type QueueItem } from '../entities/QueueItem';
-import { dequeue, enqueue, isQueued, moveBy, moveTo } from './QueueOperations';
+import { dequeue, enqueue, isQueued, moveBy, moveTo, setTarget } from './QueueOperations';
 
 const featureItem = (id: string, featureId: string): QueueItem => ({
   id: asQueueItemId(id),
@@ -137,5 +137,29 @@ describe('isQueued', () => {
     const queue = [actionItem('synthetic-id', 'f1', 'a1')];
     expect(isQueued(queue, 'action:f1:a1')).toBe(true);
     expect(isQueued(queue, 'action:f1:a2')).toBe(false);
+  });
+});
+
+describe('setTarget', () => {
+  it('attaches a goal to the matching item', () => {
+    const result = setTarget([featureItem('a', 'f1')], asQueueItemId('a'), { implementation: 80 });
+    expect(result[0]!.target).toEqual({ implementation: 80 });
+  });
+
+  it('clears with undefined', () => {
+    const withGoal = setTarget([featureItem('a', 'f1')], asQueueItemId('a'), { maturity: 50 });
+    const cleared = setTarget(withGoal, asQueueItemId('a'), undefined);
+    expect(cleared[0]!.target).toBeUndefined();
+  });
+
+  it('treats an all-empty goal object as a clear', () => {
+    const withGoal = setTarget([featureItem('a', 'f1')], asQueueItemId('a'), { report: true });
+    const cleared = setTarget(withGoal, asQueueItemId('a'), {});
+    expect(cleared[0]!.target).toBeUndefined();
+  });
+
+  it('is a no-op (same ref) when the id is not found', () => {
+    const initial = [featureItem('a', 'f1')];
+    expect(setTarget(initial, asQueueItemId('missing'), { report: true })).toBe(initial);
   });
 });

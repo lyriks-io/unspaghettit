@@ -41,6 +41,7 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "mcp": "tsx mcp-server/bin.ts",
     "seed:snapshots": "tsx mcp-server/seed-snapshots.ts",
     "migrate:defaults": "tsx mcp-server/migrate-defaults.ts",
@@ -81,6 +82,7 @@
     "cookie": ">=0.7.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "^2.60.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
