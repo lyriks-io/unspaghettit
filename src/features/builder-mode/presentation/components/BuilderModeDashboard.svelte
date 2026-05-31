@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
+  import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
   import { fade, fly, slide } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
@@ -198,11 +200,46 @@
     if (types.length > 0) builderModeStore.registerTagTypes(types);
   });
 
+  // Deep-link / refresh-persist the current selection in the URL, like the
+  // Expert view's routes do. `?project=<id>&core=<id>` is restored on load and
+  // kept in sync as the user drills in/out. Guarded so the sync effect doesn't
+  // clobber the incoming params before they're restored.
+  let urlRestored = $state(false);
+
+  $effect(() => {
+    if (!urlRestored || typeof window === 'undefined') return;
+    const pid = builderModeStore.selectedProjectId;
+    const cid = builderModeStore.selectedCoreFeatureId;
+    const url = new URL(page.url);
+    const before = url.search;
+    if (pid) url.searchParams.set('project', pid);
+    else url.searchParams.delete('project');
+    if (cid) url.searchParams.set('core', cid);
+    else url.searchParams.delete('core');
+    if (url.search !== before) replaceState(`${url.pathname}${url.search}`, {});
+  });
+
   onMount(() => {
+    // Restore selection from the URL before the sync effect runs.
+    const params = page.url.searchParams;
+    const pid = params.get('project');
+    const cid = params.get('core');
+    if (pid) {
+      builderModeStore.selectProject(pid);
+      if (cid) builderModeStore.selectCoreFeature(cid);
+    }
+    urlRestored = true;
+
     void builderModeStore.refresh();
     void builderModeStore.refreshTagPalette();
     unsubscribeSync = builderModeStore.subscribeSync((event) => {
-      if (event.kind === 'project' || event.kind === 'feature') {
+      // Refresh on any change that can move what the Builder shows: project /
+      // feature edits and implementation-status reports (the Built dials).
+      if (
+        event.kind === 'project' ||
+        event.kind === 'feature' ||
+        event.kind === 'implementation-status'
+      ) {
         void builderModeStore.refreshSilent();
       }
     });
