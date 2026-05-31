@@ -470,6 +470,55 @@ export const removeAction = (
   }));
 
 /**
+ * Remove an action by id from whichever surface owns it, without the caller
+ * needing to know the surface. Pure; returns the feature unchanged when no
+ * action matches.
+ */
+export const removeActionAnywhere = (feature: Feature, actionId: ActionId): Feature => ({
+  ...feature,
+  surfaces: feature.surfaces.map((s) => ({
+    ...s,
+    actions: s.actions.filter((c) => c.id !== actionId)
+  }))
+});
+
+/**
+ * Clear the Evolution marker on an action (accept the proposal -> committed
+ * behavior), wherever it lives. Pure; a no-op for ids that don't match or
+ * actions that aren't Evolutions.
+ */
+export const clearActionEvolution = (feature: Feature, actionId: ActionId): Feature => ({
+  ...feature,
+  surfaces: feature.surfaces.map((s) => ({
+    ...s,
+    actions: s.actions.map((c) => {
+      if (c.id !== actionId || c.evolution === undefined) return c;
+      const { evolution: _evolution, ...committed } = c;
+      return committed;
+    })
+  }))
+});
+
+/**
+ * Dismiss an Evolution proposal — mark it `dismissed` rather than deleting it.
+ * The action stays in the spec as a tombstone so the assistant can see the
+ * idea was already raised-and-rejected and propose something different next
+ * time. Pure; a no-op for ids that don't match or actions that aren't
+ * Evolutions. Already-dismissed proposals are returned unchanged.
+ */
+export const dismissActionEvolution = (feature: Feature, actionId: ActionId): Feature => ({
+  ...feature,
+  surfaces: feature.surfaces.map((s) => ({
+    ...s,
+    actions: s.actions.map((c) =>
+      c.id === actionId && c.evolution !== undefined && c.evolution.dismissed !== true
+        ? { ...c, evolution: { ...c.evolution, dismissed: true } }
+        : c
+    )
+  }))
+});
+
+/**
  * Move an action up (delta = -1) or down (delta = +1) inside its surface's
  * action list. No-op when the action is at the relevant edge.
  */

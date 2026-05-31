@@ -122,6 +122,7 @@ describe('MCP server', () => {
       'score_feature',
       'set_expected_actions',
       'set_non_goals',
+      'set_queue_target',
       'sync_from_index',
       'update_action',
       'update_action_invariant',

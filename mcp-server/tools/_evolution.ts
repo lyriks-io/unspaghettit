@@ -23,7 +23,13 @@ export const evolutionInputSchema = z.object({
     .string()
     .min(1)
     .optional()
-    .describe('Optional provenance, e.g. "competitors", "OWASP ASVS", "WCAG 2.2".')
+    .describe('Optional provenance, e.g. "competitors", "OWASP ASVS", "WCAG 2.2".'),
+  dismissed: z
+    .boolean()
+    .optional()
+    .describe(
+      'True when the user dismissed this proposal in Builder mode. Kept as a tombstone so it is hidden from the user yet visible to you — do NOT re-propose a dismissed idea; suggest something different instead.'
+    )
 });
 
 export type EvolutionInput = z.infer<typeof evolutionInputSchema>;
@@ -32,7 +38,8 @@ export type EvolutionInput = z.infer<typeof evolutionInputSchema>;
 export const normalizeEvolution = (input: EvolutionInput): Evolution => ({
   rationale: input.rationale,
   ...(input.category ? { category: input.category as Evolution['category'] } : {}),
-  ...(input.source ? { source: input.source } : {})
+  ...(input.source ? { source: input.source } : {}),
+  ...(input.dismissed ? { dismissed: true } : {})
 });
 
 /**

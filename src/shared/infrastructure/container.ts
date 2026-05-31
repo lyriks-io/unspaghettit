@@ -10,6 +10,7 @@ import { listFeaturesUseCase } from '$features/behavior-model/application/use-ca
 import { listFeaturesWithMaturityUseCase } from '$features/behavior-model/application/use-cases/ListFeaturesWithMaturity';
 import { loadSamplesUseCase } from '$features/behavior-model/application/use-cases/LoadSamples';
 import { saveFeatureUseCase } from '$features/behavior-model/application/use-cases/SaveFeature';
+import { mutateFeatureUseCase } from '$features/behavior-model/application/use-cases/MutateFeature';
 import { simulateActionUseCase } from '$features/simulator/application/use-cases/SimulateAction';
 import { scoreFeatureUseCase } from '$features/maturity/application/use-cases/ScoreFeature';
 import type { Project } from '$features/projects/domain/entities/Project';
@@ -28,6 +29,7 @@ import { enqueueQueueItemUseCase } from '$features/implementation-queue/applicat
 import { dequeueQueueItemUseCase } from '$features/implementation-queue/application/use-cases/DequeueQueueItem';
 import { moveQueueItemUseCase } from '$features/implementation-queue/application/use-cases/MoveQueueItem';
 import { listQueueUseCase } from '$features/implementation-queue/application/use-cases/ListQueue';
+import { setQueueItemTargetUseCase } from '$features/implementation-queue/application/use-cases/SetQueueItemTarget';
 import type { DomainRepository } from '$features/domains/application/ports/DomainRepository';
 import { createDomainUseCase } from '$features/domains/application/use-cases/CreateDomain';
 import { deleteDomainUseCase } from '$features/domains/application/use-cases/DeleteDomain';
@@ -54,6 +56,7 @@ export type Container = {
   readonly useCases: {
     readonly createFeature: ReturnType<typeof createFeatureUseCase>;
     readonly saveFeature: ReturnType<typeof saveFeatureUseCase>;
+    readonly mutateFeature: ReturnType<typeof mutateFeatureUseCase>;
     readonly deleteFeature: ReturnType<typeof deleteFeatureUseCase>;
     readonly listFeatures: ReturnType<typeof listFeaturesUseCase>;
     readonly listFeaturesWithMaturity: ReturnType<typeof listFeaturesWithMaturityUseCase>;
@@ -85,6 +88,7 @@ export type Container = {
     readonly dequeueQueueItem: ReturnType<typeof dequeueQueueItemUseCase>;
     readonly moveQueueItem: ReturnType<typeof moveQueueItemUseCase>;
     readonly listQueue: ReturnType<typeof listQueueUseCase>;
+    readonly setQueueItemTarget: ReturnType<typeof setQueueItemTargetUseCase>;
     readonly getTagPalette: ReturnType<typeof getTagPaletteUseCase>;
     readonly setTagTypeColor: ReturnType<typeof setTagTypeColorUseCase>;
     readonly renameTag: TagOperations['renameTag'];
@@ -123,6 +127,7 @@ export const createContainer = (deps: {
     useCases: {
       createFeature: createFeatureUseCase({ repository, clock, ids }),
       saveFeature: saveFeatureUseCase({ repository, clock }),
+      mutateFeature: mutateFeatureUseCase({ repository, clock }),
       deleteFeature: deleteFeatureUseCase({ repository }),
       listFeatures: listFeaturesUseCase({ repository }),
       listFeaturesWithMaturity: listFeaturesWithMaturityUseCase({ repository, statusRepository }),
@@ -190,6 +195,10 @@ export const createContainer = (deps: {
       listQueue: listQueueUseCase({
         projects: projectRepository,
         features: repository
+      }),
+      setQueueItemTarget: setQueueItemTargetUseCase({
+        projects: projectRepository,
+        clock
       }),
       getTagPalette: getTagPaletteUseCase({ repository: tagPaletteRepository }),
       setTagTypeColor: setTagTypeColorUseCase({ repository: tagPaletteRepository }),

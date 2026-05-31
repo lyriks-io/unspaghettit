@@ -7,6 +7,7 @@ import { runListCommand } from './commands/list';
 import { runScenariosExportCommand } from './commands/scenarios-export';
 import { runServeCommand } from './commands/serve';
 import { runUninstallCommand } from './commands/uninstall';
+import { runViewCommand } from './commands/view';
 import { log } from './util/log';
 
 /**
@@ -66,6 +67,7 @@ program
   .option('--no-context', 'Skip the CLAUDE.md / AGENTS.md context block additions.')
   .option('--no-skills', 'Skip installing the bundled unspa skills under .claude/skills/.')
   .option('--fun', 'Pre-check the opt-in narrative skills (worldbuild + worldplay) in the skill picker. Also implicitly on when the CLI is invoked as `unspaghettit`.')
+  .option('--with <views>', 'Comma list of opt-in dashboard views to enable (e.g. "builder"). Expert is always on. Without it, interactive init offers the Builder view.')
   .option('-y, --yes', 'Accept defaults. Non-interactive (CI / scripts).')
   .action(async (opts) => {
     if (opts.scope !== 'project' && opts.scope !== 'global') {
@@ -84,7 +86,8 @@ program
       hub: opts.hub,
       local: opts.local === true,
       custom: opts.custom === true,
-      fun: opts.fun === true || FUN_MODE_BY_INVOCATION
+      fun: opts.fun === true || FUN_MODE_BY_INVOCATION,
+      withViews: opts.with
     });
     process.exit(code);
   });
@@ -104,8 +107,9 @@ program
   .option('-p, --port <port>', 'Port to bind (default: 3000).', (v) => Number.parseInt(v, 10))
   .option('-h, --host <host>', 'Host to bind (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN; the dashboard has no auth, so do this only on trusted networks.')
   .option('-s, --snapshots <dir>', 'Point the dashboard at a specific snapshots folder (sets UNSPA_SNAPSHOTS for this run). Handy for a one-off look at a custom hub or another repo.')
+  .option('--view <ids>', 'Comma list of optional views to enable beyond Expert (e.g. "builder"). Expert is always on and is the default; with no extra views the header shows no switcher.')
   .action(async (opts) => {
-    const code = await runDashboardCommand({ port: opts.port, host: opts.host, snapshots: opts.snapshots });
+    const code = await runDashboardCommand({ port: opts.port, host: opts.host, snapshots: opts.snapshots, views: opts.view });
     process.exit(code);
   });
 
@@ -152,6 +156,40 @@ program
       yes: opts.yes === true
     });
     process.exit(code);
+  });
+
+// `view list|add|remove` — manage which opt-in dashboard views are enabled.
+// Expert is always on; Builder (and future views) are opt-in. Enablement
+// persists next to the model (`<snapshots>/views.json`) so it survives across
+// dashboard runs. The header only shows a view switcher when more than one
+// view is on, so removing the last opt-in view returns a single-view, no-toggle
+// dashboard.
+const view = program
+  .command('view')
+  .description('Manage which opt-in dashboard views are enabled (Expert is always on).');
+
+view
+  .command('list')
+  .description('Show the opt-in views and whether each is enabled.')
+  .option('-s, --snapshots <dir>', 'Target a specific snapshots folder (defaults to walk-up, then the shared hub).')
+  .action(async (opts) => {
+    process.exit(await runViewCommand({ action: 'list', snapshots: opts.snapshots }));
+  });
+
+view
+  .command('add <id>')
+  .description('Enable an opt-in view (e.g. "builder"). Persists so the dashboard keeps showing it.')
+  .option('-s, --snapshots <dir>', 'Target a specific snapshots folder.')
+  .action(async (id, opts) => {
+    process.exit(await runViewCommand({ action: 'add', id, snapshots: opts.snapshots }));
+  });
+
+view
+  .command('remove <id>')
+  .description('Disable an opt-in view (e.g. "builder"). With no opt-in views left, the header drops the view switcher.')
+  .option('-s, --snapshots <dir>', 'Target a specific snapshots folder.')
+  .action(async (id, opts) => {
+    process.exit(await runViewCommand({ action: 'remove', id, snapshots: opts.snapshots }));
   });
 
 // `scenarios export <featureId>` — generates a Vitest spec from the feature's

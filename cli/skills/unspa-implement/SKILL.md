@@ -15,6 +15,46 @@ The MCP cannot see your code. The `.unspa.json` index is the only contract
 between spec and code. Do not annotate code with tags — the index is the
 single source of truth.
 
+## Always record at least presence
+
+**The moment you write code that implements a spec entity, record it.** Every
+implemented entity MUST get a `.unspa.json` entry with at minimum
+`status`, `file`, and `line`, followed by `sync_from_index`. This holds even
+when the work is partial: a half-built action still gets an entry (mark the
+unfinished pieces in `knownGaps`). Never leave implemented code unindexed —
+the dashboard's whole job is to show that a feature is *at least somewhere in
+the code*, and it can only do that from the index. "I'll index it later" is
+how coverage silently rots. If you touched code for it, it gets an entry in the
+same change.
+
+## Build targets (how far to take it)
+
+A queued item can carry one or more independent **goals**. `get_next_queued`
+and `list_queue` return them as `target` `{maturity?, implementation?,
+report?}` plus a plain-language `goal` line. Honor each that's present:
+
+- `implementation: <0–100>` → build until `get_implementation_status` for the
+  feature reports roughly that % coverage — how much of the spec's surface area
+  exists in code.
+- `maturity: <0–100>` → use `score_feature` and deepen the **spec** (rules,
+  invariants, scenarios, roles) until its maturity is roughly that %, then
+  implement to match.
+- `report: true` → the floor: at minimum make sure the item is reported as
+  existing somewhere in code (a `.unspa.json` entry + `sync_from_index`), even
+  if you implement nothing further.
+
+Loop until each goal is met: implement a slice → record it in `.unspa.json` →
+`sync_from_index` → re-check the metric → continue. If you can't reach a goal
+(blocked, ambiguous), stop and report the gap with what's missing rather than
+silently under-delivering.
+
+**How the user asks.** They set goals on the build-queue item in the Builder
+view (drag the Maturity / Built bars, tick "Report it's in the code"), or just
+say it in prose ("implement payments to half coverage", "take auth to full
+maturity", "just make sure search is wired up somewhere"). Map prose to a
+target and, when useful, persist it with `set_queue_target` so it survives the
+conversation. No goal on an item = implement it fully.
+
 ## Tools you will use
 
 | Tool | Use it to |
@@ -27,6 +67,9 @@ single source of truth.
 | `get_implementation_status` | Inspect the current sidecar for one feature after syncing. Confirms what the MCP recognized. |
 | `get_implementation_gaps` | Quick "what's left to implement". |
 | `get_spec_gaps` | Spec-depth check. Pair with the above before declaring the implementation pass complete. |
+| `get_next_queued` / `list_queue` | Read what to build next and its pinned `target`/`goal` (how far to take it). |
+| `set_queue_target` | Pin/clear a queue item's goals — `{maturity?:0–100, implementation?:0–100, report?:true}` (any combination) — when the user states one in prose. |
+| `score_feature` | Maturity check, for `metric:"maturity"` targets. |
 
 ## The behavioral index entry
 
@@ -186,7 +229,9 @@ You **cannot**:
 - Don't drop `@unspa:` or `@lyriks:` tags into source code. The index
   is the only place that maps code to spec.
 - Don't add an entity to code and forget its `.unspa.json` entry in the
-  same change.
+  same change. Partial counts — index it anyway with `knownGaps`.
+- Don't ignore a queued item's `target`/`goal`. Build to the requested
+  depth; if you can't, say so explicitly.
 - Don't write an action entry and skip its child rules / events /
   invariants / transitions. Each child needs its own key.
 - Don't end an implementation loop without calling `sync_from_index`.

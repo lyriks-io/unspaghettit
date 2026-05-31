@@ -116,3 +116,12 @@ Two outcomes:
   "the spec is deep enough to be worth implementing".
 - Don't invent index keys. Read existing ones with `get_behavioral_index`
   or open `.unspa.json` directly.
+
+## While you're here: every feature wants an Evolution
+
+Auditing means you have the feature open — so check it has at least one
+Evolution (a proposed improvement). If it has none, propose one with
+`propose_evolution` (see the unspa-edit skill). Evolutions are *your*
+forward-looking product ideas, distinct from the deterministic `get_spec_gaps`
+output: gaps are what's structurally missing; Evolutions are what a stronger
+version of the product would add. Don't restate a gap as an Evolution.

@@ -12,7 +12,8 @@ import type { IdGenerator } from '$shared/domain/IdGenerator';
 import {
   asQueueItemId,
   queueItemKey,
-  type QueueItem
+  type QueueItem,
+  type QueueTarget
 } from '../../domain/entities/QueueItem';
 import { enqueue, isQueued } from '../../domain/services/QueueOperations';
 
@@ -45,18 +46,25 @@ export class SurfaceNotInFeatureError extends Error {
 }
 
 export type EnqueueInput =
-  | { readonly kind: 'feature'; readonly featureId: FeatureId; readonly note?: string }
+  | {
+      readonly kind: 'feature';
+      readonly featureId: FeatureId;
+      readonly note?: string;
+      readonly target?: QueueTarget;
+    }
   | {
       readonly kind: 'surface';
       readonly featureId: FeatureId;
       readonly surfaceId: SurfaceId;
       readonly note?: string;
+      readonly target?: QueueTarget;
     }
   | {
       readonly kind: 'action';
       readonly featureId: FeatureId;
       readonly actionId: ActionId;
       readonly note?: string;
+      readonly target?: QueueTarget;
     };
 
 export type EnqueueResult = {
@@ -132,9 +140,10 @@ const buildItem = (
   const id = asQueueItemId(deps.ids());
   const addedAt = deps.clock();
   const note = input.note ? { note: input.note } : {};
+  const target = input.target ? { target: input.target } : {};
   switch (input.kind) {
     case 'feature':
-      return { id, kind: 'feature', featureId: input.featureId, addedAt, ...note };
+      return { id, kind: 'feature', featureId: input.featureId, addedAt, ...note, ...target };
     case 'surface':
       return {
         id,
@@ -142,7 +151,8 @@ const buildItem = (
         featureId: input.featureId,
         surfaceId: input.surfaceId,
         addedAt,
-        ...note
+        ...note,
+        ...target
       };
     case 'action':
       return {
@@ -151,7 +161,8 @@ const buildItem = (
         featureId: input.featureId,
         actionId: input.actionId,
         addedAt,
-        ...note
+        ...note,
+        ...target
       };
   }
 };

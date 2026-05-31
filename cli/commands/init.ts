@@ -6,11 +6,13 @@ import { defaultHubDirectory } from '../../src/features/behavior-model/infrastru
 import { ALL_CLIENTS, clientById, SERVER_NAME, type ClientAdapter } from '../clients/registry';
 import { buildUnspaMcpEntry } from '../clients/claude-code';
 import type { ApplyResult, ConfigScope, McpServerEntry } from '../clients/types';
+import { isOptionalViewId, optionalViews } from '../../src/lib/views/registry';
 import { ask } from '../util/ask';
 import { writeUnspaContextBlocks } from '../util/context-files';
 import { upsertGitignoreBlock } from '../util/gitignore';
 import { log } from '../util/log';
 import { installUnspaSkills } from '../util/skills';
+import { readEnabledViews, writeEnabledViews } from '../util/views';
 
 /**
  * Expand a user-supplied hub path: tilde-expansion, relative→absolute (resolved
@@ -110,6 +112,13 @@ export type InitOptions = {
    * With `--yes` this also bypasses the prompt and installs them directly.
    */
   readonly fun?: boolean;
+  /**
+   * Comma list of opt-in dashboard views to enable at setup (e.g. "builder").
+   * Persisted into `<snapshots>/views.json`, same as `unspa view add`. When
+   * omitted and interactive, init offers to enable the Builder view. Expert is
+   * always on regardless.
+   */
+  readonly withViews?: string;
 };
 
 const resolveClientsArg = async (
@@ -300,6 +309,33 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
     log.dim(`Custom hub - MCP entries will set UNSPA_SNAPSHOTS=${target.dir}`);
   } else {
     log.dim('Per-repo mode - the model lives in this repo and is found by walk-up (no UNSPA_SNAPSHOTS).');
+  }
+
+  // 1b. Optional dashboard views. Expert is the always-on default; Builder (and
+  //     future views) are opt-in. `--with <ids>` enables them non-interactively;
+  //     otherwise we offer the simpler Builder view once (default No, so hitting
+  //     enter keeps the clean Expert-only dashboard). Persisted next to the model
+  //     so `unspa dashboard` shows them; `unspa view remove <id>` turns them off.
+  const knownViews = optionalViews().map((v) => v.id);
+  let viewsToEnable: string[] = [];
+  if (options.withViews !== undefined) {
+    for (const raw of options.withViews.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+      if (isOptionalViewId(raw)) viewsToEnable.push(raw);
+      else log.warn(`Unknown view "${raw}" — skipping. Known opt-in views: ${knownViews.join(', ') || '(none)'}.`);
+    }
+  } else if (!yes && knownViews.includes('builder')) {
+    const { enable } = await ask({
+      type: 'confirm',
+      name: 'enable',
+      message: 'Enable the Builder view? (a simpler, guided dashboard; Expert stays the default)',
+      initial: false
+    });
+    if (enable) viewsToEnable = ['builder'];
+  }
+  if (viewsToEnable.length > 0) {
+    const next = writeEnabledViews(target.dir, [...readEnabledViews(target.dir), ...viewsToEnable]);
+    log.ok(`Enabled dashboard view(s): ${pc.cyan(next.join(', '))}`);
+    log.dim('Shows as a view switcher in `unspa dashboard`. Turn off later with `unspa view remove <id>`.');
   }
 
   // 2. Pick clients, write MCP server entry. `mergeMcpServerEntry` compares

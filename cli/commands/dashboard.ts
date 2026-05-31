@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { discoverSnapshotDirectory } from '../../src/features/behavior-model/infrastructure/persistence/snapshot-discovery';
+import { readEnabledViews } from '../util/views';
 import { log } from '../util/log';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,7 +40,12 @@ const isLoopback = (host: string): boolean =>
  * (e.g. shipped clone without `npm run build`) so the user gets a clear hint.
  */
 export const runDashboardCommand = async (
-  args: { readonly port?: number; readonly host?: string; readonly snapshots?: string }
+  args: {
+    readonly port?: number;
+    readonly host?: string;
+    readonly snapshots?: string;
+    readonly views?: string;
+  }
 ): Promise<number> => {
   const repoRoot = resolve(__dirname, '..', '..');
   // build/handler.js (adapter-node's exported handler) is what the custom
@@ -98,6 +105,25 @@ export const runDashboardCommand = async (
   if (args.snapshots !== undefined && args.snapshots.trim().length > 0) {
     env.UNSPA_SNAPSHOTS = args.snapshots;
     log.dim(`Snapshots override: ${args.snapshots}`);
+  }
+
+  // Opt-in views beyond the default Expert (e.g. "builder"). The persisted set
+  // (`unspa view add`) is the base; a `--view` flag augments it for this run.
+  // Exposed to the client as PUBLIC_UNSPA_VIEWS; the dashboard shows a switcher
+  // only when more than one view is on. No persisted views + no flag = Expert
+  // only, no switcher — the default for someone just trying unspag.
+  const { directory } = discoverSnapshotDirectory({
+    cwd: process.cwd(),
+    override: args.snapshots
+  });
+  const flagViews = (args.views ?? '')
+    .split(',')
+    .map((v) => v.trim().toLowerCase())
+    .filter((v) => v.length > 0);
+  const views = [...new Set([...readEnabledViews(directory), ...flagViews])];
+  if (views.length > 0) {
+    env.PUBLIC_UNSPA_VIEWS = views.join(',');
+    log.dim(`Views: expert + ${views.join(', ')}`);
   }
 
   return await new Promise<number>((resolvePromise) => {

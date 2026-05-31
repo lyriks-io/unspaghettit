@@ -77,6 +77,15 @@ export type Evolution = {
   readonly category?: EvolutionCategory;
   /** Optional provenance, e.g. "competitors", "OWASP ASVS", "WCAG 2.2". */
   readonly source?: string;
+  /**
+   * Set when the user dismissed this proposal in Builder mode. The action
+   * stays in the spec as a tombstone — still an Evolution (so it remains
+   * excluded from maturity + spec-gap analysis) but hidden from the Builder
+   * suggestions list. Its purpose is to tell the assistant "this idea was
+   * already raised and rejected" so it proposes something *different* next
+   * time instead of re-suggesting it. Absent on a live proposal.
+   */
+  readonly dismissed?: boolean;
 };
 
 export type Action = {

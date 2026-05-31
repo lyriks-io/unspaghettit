@@ -7,7 +7,11 @@ import {
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import {
   asQueueItemId,
-  type QueueItem
+  clampPercent,
+  describeQueueTarget,
+  isEmptyTarget,
+  type QueueItem,
+  type QueueTarget
 } from '../../src/features/implementation-queue/domain/entities/QueueItem';
 import {
   ActionNotInFeatureError,
@@ -20,6 +24,7 @@ import { dequeueQueueItemUseCase } from '../../src/features/implementation-queue
 import { moveQueueItemUseCase } from '../../src/features/implementation-queue/application/use-cases/MoveQueueItem';
 import { listQueueUseCase, type QueueView } from '../../src/features/implementation-queue/application/use-cases/ListQueue';
 import { getNextQueuedUseCase } from '../../src/features/implementation-queue/application/use-cases/GetNextQueued';
+import { setQueueItemTargetUseCase } from '../../src/features/implementation-queue/application/use-cases/SetQueueItemTarget';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { saveProjectUseCase } from '../../src/features/projects/application/use-cases/SaveProject';
 import { cryptoIdGenerator } from '../../src/shared/domain/IdGenerator';
@@ -114,6 +119,37 @@ const buildDonePredicate = (
   };
 };
 
+// Zod shape for the implementation goals on enqueue / set_queue_target. Each
+// field is independent and optional; set any combination.
+const targetInputSchema = z
+  .object({
+    maturity: z
+      .number()
+      .min(0)
+      .max(100)
+      .optional()
+      .describe('Take the model maturity score to ~this %.'),
+    implementation: z
+      .number()
+      .min(0)
+      .max(100)
+      .optional()
+      .describe('Take implementation (Built) coverage to ~this %.'),
+    report: z
+      .boolean()
+      .optional()
+      .describe('At minimum, report that it exists somewhere in code (presence floor).')
+  })
+  .describe(
+    'Implementation goals: maturity % and/or implementation % and/or report (presence). Any combination.'
+  );
+
+const resolveTarget = (raw: z.infer<typeof targetInputSchema>): QueueTarget => ({
+  ...(raw.maturity !== undefined ? { maturity: clampPercent(raw.maturity) } : {}),
+  ...(raw.implementation !== undefined ? { implementation: clampPercent(raw.implementation) } : {}),
+  ...(raw.report ? { report: true } : {})
+});
+
 const queueItemSummary = (view: QueueView) => ({
   id: String(view.item.id),
   kind: view.item.kind,
@@ -126,6 +162,11 @@ const queueItemSummary = (view: QueueView) => ({
     ? { actionId: String(view.item.actionId), actionName: view.actionName }
     : {}),
   ...(view.item.note ? { note: view.item.note } : {}),
+  // The implementation goal the user pinned, plus a plain-language phrasing.
+  // When present, build to ~target.value% of the named metric, then report.
+  ...(view.item.target
+    ? { target: view.item.target, goal: describeQueueTarget(view.item.target) }
+    : {}),
   addedAt: view.item.addedAt,
   orphaned: view.orphaned
 });
@@ -143,6 +184,7 @@ export const registerQueueTools = (deps: ToolDeps): void => {
   });
   const dequeueItem = dequeueQueueItemUseCase({ projects: projectRepo, clock });
   const moveItem = moveQueueItemUseCase({ projects: projectRepo, clock });
+  const setTarget = setQueueItemTargetUseCase({ projects: projectRepo, clock });
   const listQueue = listQueueUseCase({ projects: projectRepo, features: repo });
   const getNextQueued = getNextQueuedUseCase({
     projects: projectRepo,
@@ -153,17 +195,18 @@ export const registerQueueTools = (deps: ToolDeps): void => {
     'enqueue',
     {
       description:
-        'Add a Feature, Surface, or Action to a Project\'s "implement next" queue. Idempotent: re-queuing the same target is a no-op (returns the existing entry with alreadyQueued:true). Pass kind:"feature" with featureId, kind:"surface" with featureId+surfaceId, OR kind:"action" with featureId+actionId. Optional `note` lets you stash a one-line hint ("after the auth refactor"). projectId is optional when running inside a linked repo (.unspa.json).',
+        'Add a Feature, Surface, or Action to a Project\'s "implement next" queue. Idempotent: re-queuing the same target is a no-op (returns the existing entry with alreadyQueued:true). Pass kind:"feature" with featureId, kind:"surface" with featureId+surfaceId, OR kind:"action" with featureId+actionId. Optional `note` stashes a one-line hint. Optional `target` pins an implementation goal (how far to take it — see set_queue_target). projectId is optional when running inside a linked repo (.unspa.json).',
       inputSchema: {
         projectId: z.string().optional(),
         kind: z.enum(['feature', 'surface', 'action']),
         featureId: z.string(),
         surfaceId: z.string().optional(),
         actionId: z.string().optional(),
-        note: z.string().max(280).optional()
+        note: z.string().max(280).optional(),
+        target: targetInputSchema.optional()
       }
     },
-    async ({ projectId, kind, featureId, surfaceId, actionId, note }) => {
+    async ({ projectId, kind, featureId, surfaceId, actionId, note, target }) => {
       try {
         const resolvedProjectId = await resolveProjectId(deps, projectId);
         const resolvedFeatureId = await expandFeatureId(repo, featureId);
@@ -173,25 +216,31 @@ export const registerQueueTools = (deps: ToolDeps): void => {
         if (kind === 'action' && !actionId) {
           return errorText('enqueue: actionId is required when kind="action"');
         }
+        const resolvedTarget = target ? resolveTarget(target) : undefined;
+        const targetFields =
+          resolvedTarget && !isEmptyTarget(resolvedTarget) ? { target: resolvedTarget } : {};
         const input =
           kind === 'feature'
             ? {
                 kind: 'feature' as const,
                 featureId: asFeatureId(resolvedFeatureId),
-                ...(note ? { note } : {})
+                ...(note ? { note } : {}),
+                ...targetFields
               }
             : kind === 'surface'
               ? {
                   kind: 'surface' as const,
                   featureId: asFeatureId(resolvedFeatureId),
                   surfaceId: asSurfaceId(surfaceId!),
-                  ...(note ? { note } : {})
+                  ...(note ? { note } : {}),
+                  ...targetFields
                 }
               : {
                   kind: 'action' as const,
                   featureId: asFeatureId(resolvedFeatureId),
                   actionId: asActionId(actionId!),
-                  ...(note ? { note } : {})
+                  ...(note ? { note } : {}),
+                  ...targetFields
                 };
         const result = await enqueueItem(asProjectId(resolvedProjectId), input);
         return text(
@@ -291,10 +340,53 @@ export const registerQueueTools = (deps: ToolDeps): void => {
   );
 
   server.registerTool(
+    'set_queue_target',
+    {
+      description:
+        'Pin (or clear) the implementation GOALS on a queue entry — how far to take it. Pass `target` with any combination of: `maturity` (0–100, model depth via score_feature), `implementation` (0–100, code coverage via get_implementation_status), and `report` (true = at minimum report it exists somewhere in code). Pass `clear:true` to remove all goals. The goals flow back through list_queue / get_next_queued as a `goal` line so the implementer knows when to stop. projectId optional in a linked repo.',
+      inputSchema: {
+        projectId: z.string().optional(),
+        queueItemId: z.string(),
+        target: targetInputSchema.optional(),
+        clear: z.boolean().optional().describe('Set true to remove any existing goal.')
+      }
+    },
+    async ({ projectId, queueItemId, target, clear }) => {
+      try {
+        if (!clear && !target) {
+          return errorText('set_queue_target: pass either target {metric, level} or clear:true');
+        }
+        const resolvedProjectId = await resolveProjectId(deps, projectId);
+        const resolved = clear ? undefined : resolveTarget(target!);
+        const next = await setTarget(
+          asProjectId(resolvedProjectId),
+          asQueueItemId(queueItemId),
+          resolved
+        );
+        const item = (next.implementationQueue ?? []).find(
+          (q) => String(q.id) === queueItemId
+        );
+        return text(
+          trackTokens('set_queue_target', {
+            ok: true,
+            projectId: String(next.id),
+            queueItemId,
+            target: item?.target ?? null,
+            goal: item?.target ? describeQueueTarget(item.target) : null
+          })
+        );
+      } catch (e) {
+        if (e instanceof ProjectNotFoundForQueueError) return errorText(e.message);
+        return errorText(`set_queue_target failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
     'list_queue',
     {
       description:
-        'List the project\'s implement-next queue in order. Each entry carries id, kind, featureId/actionId, human labels (featureName/actionName), and a `done` flag computed from the behavioral index in .unspa.json. Orphan entries (target deleted from the spec) are returned with orphaned:true so the caller can prompt the user to dequeue them. projectId optional when running inside a linked repo.',
+        'List the project\'s implement-next queue in order. Each entry carries id, kind, featureId/actionId, human labels (featureName/actionName), a `done` flag computed from the behavioral index in .unspa.json, and — when the user pinned one — an implementation `target` plus a plain-language `goal` (how far to take it). Orphan entries (target deleted from the spec) are returned with orphaned:true so the caller can prompt the user to dequeue them. projectId optional when running inside a linked repo.',
       inputSchema: {
         projectId: z.string().optional(),
         includeDone: z
@@ -334,7 +426,7 @@ export const registerQueueTools = (deps: ToolDeps): void => {
     'get_next_queued',
     {
       description:
-        'Peek the next live queue entry the dev should implement. Skips orphans and anything the behavioral index marks implemented. Returns null when the queue is empty or fully done. Pure peek — call dequeue or update the index to remove it. projectId optional when running inside a linked repo.',
+        'Peek the next live queue entry the dev should implement. Skips orphans and anything the behavioral index marks implemented. Returns null when the queue is empty or fully done. When the entry has a pinned `target`/`goal`, build to that depth before moving on. Pure peek — call dequeue or update the index to remove it. projectId optional when running inside a linked repo.',
       inputSchema: { projectId: z.string().optional() }
     },
     async ({ projectId }) => {

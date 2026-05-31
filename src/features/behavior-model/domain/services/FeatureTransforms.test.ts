@@ -15,6 +15,9 @@ import { asStatePath } from '../value-objects/StatePath';
 import {
   addAction,
   addSurface,
+  clearActionEvolution,
+  dismissActionEvolution,
+  removeActionAnywhere,
   canMoveSurfaceDown,
   canMoveSurfaceUp,
   moveActionBy,
@@ -561,6 +564,89 @@ describe('FeatureTransforms', () => {
         asStatePath('b'),
         asStatePath('c')
       ]);
+    });
+  });
+
+  describe('removeActionAnywhere', () => {
+    const evolutionAction: Action = {
+      ...baseCapability,
+      id: asActionId('evo'),
+      name: 'Sign in with SSO',
+      evolution: { rationale: 'Competitors offer it', category: 'competitor' }
+    };
+    const committed: Action = { ...baseCapability, id: asActionId('committed'), name: 'Sign in' };
+    const feature: Feature = {
+      ...baseFeature,
+      surfaces: [{ ...baseSurface, actions: [committed, evolutionAction] }]
+    };
+
+    it('removes an action by id without needing its surface', () => {
+      const next = removeActionAnywhere(feature, asActionId('evo'));
+      expect(next.surfaces[0]?.actions.map((a) => String(a.id))).toEqual(['committed']);
+      // immutable
+      expect(feature.surfaces[0]?.actions).toHaveLength(2);
+    });
+
+    it('is a no-op for an unknown id', () => {
+      const next = removeActionAnywhere(feature, asActionId('nope'));
+      expect(next.surfaces[0]?.actions).toHaveLength(2);
+    });
+  });
+
+  describe('clearActionEvolution', () => {
+    const evolutionAction: Action = {
+      ...baseCapability,
+      id: asActionId('evo'),
+      evolution: { rationale: 'Competitors offer it' }
+    };
+    const feature: Feature = {
+      ...baseFeature,
+      surfaces: [{ ...baseSurface, actions: [evolutionAction] }]
+    };
+
+    it('strips the evolution marker (accept), leaving a committed action', () => {
+      const next = clearActionEvolution(feature, asActionId('evo'));
+      expect(next.surfaces[0]?.actions[0]?.evolution).toBeUndefined();
+      expect(next.surfaces[0]?.actions[0]?.name).toBe(evolutionAction.name);
+      // original untouched
+      expect(feature.surfaces[0]?.actions[0]?.evolution).toBeDefined();
+    });
+
+    it('leaves committed actions and unknown ids unchanged', () => {
+      const next = clearActionEvolution(feature, asActionId('nope'));
+      expect(next.surfaces[0]?.actions[0]?.evolution).toBeDefined();
+    });
+  });
+
+  describe('dismissActionEvolution', () => {
+    const evolutionAction: Action = {
+      ...baseCapability,
+      id: asActionId('evo'),
+      evolution: { rationale: 'Competitors offer it', category: 'competitor' }
+    };
+    const committed: Action = { ...baseCapability, id: asActionId('committed') };
+    const feature: Feature = {
+      ...baseFeature,
+      surfaces: [{ ...baseSurface, actions: [committed, evolutionAction] }]
+    };
+
+    it('marks the evolution dismissed without deleting the action (tombstone)', () => {
+      const next = dismissActionEvolution(feature, asActionId('evo'));
+      const action = next.surfaces[0]?.actions.find((a) => String(a.id) === 'evo');
+      expect(action).toBeDefined();
+      expect(action?.evolution?.dismissed).toBe(true);
+      // the rest of the proposal is preserved so the assistant retains context
+      expect(action?.evolution?.rationale).toBe('Competitors offer it');
+      expect(action?.evolution?.category).toBe('competitor');
+      // original untouched
+      expect(feature.surfaces[0]?.actions[1]?.evolution?.dismissed).toBeUndefined();
+    });
+
+    it('leaves committed actions and unknown ids unchanged', () => {
+      const next = dismissActionEvolution(feature, asActionId('committed'));
+      expect(next.surfaces[0]?.actions[0]?.evolution).toBeUndefined();
+      const unknown = dismissActionEvolution(feature, asActionId('nope'));
+      expect(unknown).toEqual(feature);
     });
   });
 });

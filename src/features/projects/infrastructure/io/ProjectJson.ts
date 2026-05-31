@@ -6,7 +6,10 @@ import type {
 import type { Project } from '$features/projects/domain/entities/Project';
 import {
   asQueueItemId,
-  type QueueItem
+  clampPercent,
+  isEmptyTarget,
+  type QueueItem,
+  type QueueTarget
 } from '$features/implementation-queue/domain/entities/QueueItem';
 
 const CANONICAL_FORMAT = 'unspaghettit-project';
@@ -63,6 +66,22 @@ export const importProjectFromJson = (raw: string): Project => {
  * JSON. Either way we'd rather lose the offender than fail the whole
  * project load (which would knock the project off the dashboard).
  */
+const normalizeTarget = (raw: unknown): QueueTarget | undefined => {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const t = raw as Record<string, unknown>;
+  const out: { maturity?: number; implementation?: number; report?: boolean } = {};
+  if (typeof t.maturity === 'number') out.maturity = clampPercent(t.maturity);
+  if (typeof t.implementation === 'number') out.implementation = clampPercent(t.implementation);
+  if (t.report === true) out.report = true;
+  // Migrate the older single-goal shape { metric, level, value }.
+  if (out.maturity === undefined && out.implementation === undefined && !out.report) {
+    if ((t.metric === 'maturity' || t.metric === 'implementation') && typeof t.value === 'number') {
+      out[t.metric] = clampPercent(t.value);
+    }
+  }
+  return isEmptyTarget(out) ? undefined : out;
+};
+
 const normalizeQueue = (raw: unknown): readonly QueueItem[] => {
   if (!Array.isArray(raw)) return [];
   const out: QueueItem[] = [];
@@ -74,8 +93,10 @@ const normalizeQueue = (raw: unknown): readonly QueueItem[] => {
     const addedAt = typeof e.addedAt === 'string' ? e.addedAt : null;
     if (!id || !featureId || !addedAt) continue;
     const note = typeof e.note === 'string' && e.note.length > 0 ? e.note : undefined;
+    const target = normalizeTarget(e.target);
+    const extra = { ...(note ? { note } : {}), ...(target ? { target } : {}) };
     if (e.kind === 'feature') {
-      out.push({ id, kind: 'feature', featureId, addedAt, ...(note ? { note } : {}) });
+      out.push({ id, kind: 'feature', featureId, addedAt, ...extra });
     } else if (e.kind === 'surface' && typeof e.surfaceId === 'string') {
       out.push({
         id,
@@ -83,7 +104,7 @@ const normalizeQueue = (raw: unknown): readonly QueueItem[] => {
         featureId,
         surfaceId: e.surfaceId as SurfaceId,
         addedAt,
-        ...(note ? { note } : {})
+        ...extra
       });
     } else if (e.kind === 'action' && typeof e.actionId === 'string') {
       out.push({
@@ -92,7 +113,7 @@ const normalizeQueue = (raw: unknown): readonly QueueItem[] => {
         featureId,
         actionId: e.actionId as ActionId,
         addedAt,
-        ...(note ? { note } : {})
+        ...extra
       });
     }
   }

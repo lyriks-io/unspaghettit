@@ -1,4 +1,10 @@
-import { queueItemKey, type QueueItem, type QueueItemId } from '../entities/QueueItem';
+import {
+  isEmptyTarget,
+  queueItemKey,
+  type QueueItem,
+  type QueueItemId,
+  type QueueTarget
+} from '../entities/QueueItem';
 
 /**
  * Pure ordered-list operations on a Project's implementation queue. Every
@@ -81,3 +87,22 @@ export const isQueued = (
   queue: readonly QueueItem[],
   key: string
 ): boolean => indexByKey(queue, key) >= 0;
+
+/**
+ * Attach (or, with `undefined`, clear) an implementation `target` on the entry
+ * with `id`. Returns the same array reference when the entry is not found so
+ * callers can skip a persist. The discriminant `kind` is preserved.
+ */
+export const setTarget = (
+  queue: readonly QueueItem[],
+  id: QueueItemId,
+  target: QueueTarget | undefined
+): readonly QueueItem[] => {
+  const idx = indexById(queue, id);
+  if (idx < 0) return queue;
+  const current = queue[idx]!;
+  const { target: _omit, ...rest } = current;
+  // An all-empty goal object is the same as no goal — drop it.
+  const next = (isEmptyTarget(target) ? rest : { ...rest, target }) as QueueItem;
+  return [...queue.slice(0, idx), next, ...queue.slice(idx + 1)];
+};

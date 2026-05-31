@@ -144,6 +144,16 @@ Use the granular tools for one-off tweaks. For anything ≥ 2 ops, use
 1. **Orient.** `get_repo_context` once. Default `featureId` to the
    linked id for the rest of the session.
 
+   **Ask which language the spec should be written in** before authoring any
+   names or descriptions, and only the FIRST time you write to a model in a
+   session (or when starting a new project/feature). Do NOT infer it from the
+   language the user is chatting in — someone speaking French may still want an
+   English spec (it's often shared with English-speaking teammates or tools).
+   Ask once, in one short line ("Which language should I write the spec in,
+   English or French?"), then write every name/description/intent/rationale in
+   that language for the rest of the session. If they already told you, or the
+   existing model is clearly in one language, match it and skip the question.
+
 2. **Discover.** `list_features` → `get_feature` (index) →
    `list_actions` → `get_action` for the one you intend to touch.
    Do not pull `verbose:true` reflexively.
@@ -199,6 +209,22 @@ Use the granular tools for one-off tweaks. For anything ≥ 2 ops, use
 
 ## Evolutions — propose, don't just build
 
+**Non-negotiable: every feature should always carry at least one Evolution (more
+when you can).** Whenever you create, edit, OR merely analyze/read a feature —
+any time you have it open — check whether it has a fresh, context-relevant
+proposal, and add one if it doesn't. A feature with zero Evolutions is an
+unfinished thought.
+
+**Evolutions are YOURS, not the tooling's.** They are *your* judgment about what
+a strong version of this product would add — drawn from the domain, competitors,
+security/UX/accessibility best practices, scale. They are explicitly NOT the
+output of `get_spec_gaps`, `score_feature`, or any deterministic check. Those
+tools tell you what's structurally missing against the model's own rules;
+Evolutions are forward-looking ideas about the *product* that no deterministic
+analysis can produce. Never reword a spec-gap into an Evolution — that's the
+tooling's job, not a suggestion. (Evolutions are also excluded from those tools'
+scoring, so proposing freely costs nothing.)
+
 An Evolution is a forward-looking improvement you raise *proactively*. After you
 build or meaningfully edit a feature/surface/action, don't stop at what was
 asked: infer what kind of app this is (from the feature name, descriptions,
@@ -237,7 +263,28 @@ each rationale. Then, per the user's choice:
   like any action.
 - **Dismiss it** → `remove_action`.
 
-Keep proposals few and high-signal. 1–3 strong ones beat a long generic list.
+Keep them high-signal: 1 to 3 strong, specific proposals per feature beat a long
+generic list, but never zero. These suggestions are what the "Build map" /
+builder-mode dashboard shows as each feature's next ideas, so a feature with no
+Evolution shows up empty there.
+
+### Write for a vibe coder, not an architect
+
+The reader is often a non-technical builder who wants to discover and add ideas,
+not a senior engineer. Write every Evolution's `name` and `rationale` so a
+beginner instantly gets WHAT it is and WHY it helps:
+
+- Plain language, no jargon. Prefer "Let people sign in with Google" over
+  "Add OAuth2 / OIDC federated identity provider".
+- Lead with the user benefit. The rationale should answer "why would I want
+  this?" in one short, concrete sentence (faster signup, fewer lost carts,
+  safer accounts, works on mobile, ...).
+- Keep it short. One sentence of rationale. No filler.
+- **Never use an em dash (—) or en dash (–).** They render badly and read as
+  noise. Use a comma, a period, a colon, or parentheses instead. (The dashboard
+  joins the name and rationale with a colon, so don't add your own dash either.)
+- Concrete, not vague. "Show a loading spinner while saving" beats "improve
+  perceived performance".
 
 ## What writes return
 
