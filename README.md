@@ -326,6 +326,25 @@ The sample is intentionally complete: scenarios, rules, invariants, events, pers
 
 If you'd rather follow a guided tour than poke at the sample, the dashboard's `/tutorial` page also has a 14-section written walkthrough and a **Run interactive tutorial** button that drives a spotlight tour through Project → Feature → Surface → Action → Parameter → Rule → Simulator, prefilling fields along the way.
 
+## Views
+
+The dashboard ships two views over the same model:
+
+- **Expert** (default) — the full control surface: projects, features, surfaces, actions, the simulator, maturity, and implementation coverage.
+- **Builder** (opt-in) — a simpler, guided view: browse projects → core features → features with Maturity / Built dials, accept AI-proposed improvements, and fill a per-project build queue where each item carries its own maturity / implementation goal.
+
+Expert is always on. Builder is opt-in — enable it whenever you want:
+
+```bash
+unspa init --with builder        # at setup (or just answer the init prompt)
+unspa view add builder           # anytime; persists for every `unspa dashboard`
+unspa dashboard --view builder   # one-off, no persistence
+unspa view remove builder        # turn it back off
+unspa view list                  # show which views are enabled
+```
+
+With one view enabled the header shows no switcher; enabling Builder adds an **Expert | Builder** toggle. Enabled views are persisted next to the model (`<snapshots>/views.json`).
+
 ## Collaboration
 
 Multiple humans + AI agents can edit the same runtime live:

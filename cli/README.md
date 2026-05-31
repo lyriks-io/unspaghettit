@@ -80,13 +80,14 @@ If `unspa` still resolves after `npm uninstall -g unspaghettit`, you hit the orp
 
 ## v0.1 surface
 
-Six commands ship in v0.1, plus one experimental preview.
+Seven commands ship, plus one experimental preview.
 
 | Command                       | What it does                                                                              |
 | ----------------------------- | ----------------------------------------------------------------------------------------- |
 | `unspa init`                  | Scaffold `unspa/`, register the MCP with picked AI clients (entry targets `unspa-mcp`), seed `CLAUDE.md`/`AGENTS.md`, install skills. Idempotent. |
 | `unspa serve`                 | Run the bundled MCP server on stdio (kept for manual debugging; init's entry uses `unspa-mcp` directly). |
-| `unspa dashboard`             | Boot the SvelteKit dashboard from the `unspa/` folder discovered by walking up from cwd. |
+| `unspa dashboard`             | Boot the SvelteKit dashboard from the `unspa/` folder discovered by walking up from cwd. `--view <ids>` enables opt-in views for the run. |
+| `unspa view`                  | Manage opt-in dashboard views (Expert is always on): `view list`, `view add <id>` (e.g. `builder`), `view remove <id>`. Persists in `<snapshots>/views.json`. |
 | `unspa list`                  | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload. |
 | `unspa link`                  | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding. |
 | `unspa scenarios export`      | **[experimental]** Generate a Vitest spec from a feature's authored scenarios, using the deterministic simulator as the oracle. |
@@ -205,6 +206,7 @@ Boots the SvelteKit dashboard pointing at this repo's `unspa/` folder.
 unspa dashboard               # default port 3000
 unspa dashboard --port 4000
 unspa dashboard --host 127.0.0.1
+unspa dashboard --view builder  # enable opt-in views for this run (see `unspa view`)
 ```
 
 Requires `npm run build` to have been run once in the Unspaghettit repo (this
@@ -237,6 +239,22 @@ Don't expose `0.0.0.0:3000` to the public internet. The OSS install is
 built for trusted networks; for SSO / RBAC / audit trails / encryption at
 rest you've outgrown the OSS tier. See `SECURITY.md` for the threat model
 and the enterprise pointer.
+
+### `unspa view`
+
+Manage which dashboard views are enabled. **Expert** is the always-on default;
+**Builder** (and future views) are opt-in. Enablement persists in
+`<snapshots>/views.json`, so it survives across `unspa dashboard` runs. The
+header only shows a view switcher when more than one view is on.
+
+```bash
+unspa view list             # show opt-in views and whether each is enabled
+unspa view add builder      # enable the Builder view (persists)
+unspa view remove builder   # disable it again
+```
+
+You can also enable a view at setup with `unspa init --with builder` (or answer
+the init prompt), or for a single run with `unspa dashboard --view builder`.
 
 ### `unspa scenarios export <featureId>` (experimental)
 

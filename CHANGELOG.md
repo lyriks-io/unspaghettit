@@ -6,7 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-31
+
+Adds an opt-in **Builder** view alongside the Expert dashboard, with a per-project build queue and per-item goals. Additive and non-breaking: the default dashboard is unchanged (Expert only, no view switcher) and every new MCP field/tool is optional.
+
 ### Added
+
+- **Builder view — an opt-in, simpler dashboard.** A second view over the same model: browse projects → core features → features with Maturity / Built dials, accept Evolution-driven suggestions inline, add/edit/delete tags (renames propagate everywhere via the shared `RenameTag` use case), and fill a per-project build queue. Off by default — enable with `unspa init --with builder` (or the init prompt), `unspa view add builder`, or one-off with `unspa dashboard --view builder`. A view registry renders the **Expert | Builder** switcher only when more than one view is on, and `/builder-mode` redirects to Expert when the view is off. Enabled views persist next to the model in `<snapshots>/views.json`. New CLI command group: `unspa view list|add|remove`.
+
+- **Build-queue goals.** Each queued item can carry its own optional goals — a **Maturity** target, an **Implementation (Built)** target (each a drag-to-set progress bar that starts at the item's current score and is tone-colored by value), and/or a **"report it exists in code"** flag. Surfaced to the assistant over MCP: `enqueue` accepts an optional `target`, the new `set_queue_target` tool sets or clears it, and `list_queue` / `get_next_queued` return a plain-language `goal` line. The `unspa-implement` skill now honors a queued item's goals and always records at least presence in `.unspa.json`.
 
 - **Evolutions — LLM-proposed improvements as dashed placeholders.** After building a feature or action, the assistant can now raise forward-looking suggestions (e.g. "Sign in with SSO — most competitors offer it", "rate-limit failed logins") via the new `propose_evolution` MCP tool. An Evolution is a real Action carrying an `evolution: { rationale, category?, source? }` marker and an empty body: it has an id, renders in the dashboard with a dashed violet border + its rationale, and can be added to the implementation queue like any action — but it is **excluded from maturity scoring and `get_spec_gaps`** until accepted, so proposing never lowers the score or generates "does nothing" noise. Accept one with `update_action evolution:null` (clears the marker, promotes it to committed behavior) or dismiss it with `remove_action`. `add_action` (granular + `apply_batch`) also accepts an `evolution` field. The `unspa-edit` skill now instructs the assistant to surface 1–3 high-signal evolutions each build pass.
 
