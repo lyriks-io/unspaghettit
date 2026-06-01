@@ -882,6 +882,14 @@ THEN show_message "You qualify for free shipping."`}
                 <span class="mono">get_next_queued</span>: peek the next live item
                 (drives "implement next").
               </li>
+              <li>
+                <span class="mono">set_queue_target</span>: pin a per-item goal —
+                how far to take it (maturity %, implementation %, and/or "report
+                it's in the code"). Returned on
+                <span class="mono">list_queue</span> /
+                <span class="mono">get_next_queued</span> as a plain-language
+                goal line.
+              </li>
             </ul>
           {/snippet}
         </Callout>
