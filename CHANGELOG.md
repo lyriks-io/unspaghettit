@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-18
+
+Two additive surfaces — an interactive **behavior graph** and an opt-in **Lyriks** dashboard skin — plus a round of Builder-view scaling and two robustness fixes. Non-breaking: the default look and every existing view are unchanged, and the new theme/graph are opt-in.
+
+### Added
+
+- **Behavior graph view.** Renders a feature — or a whole project's features — as an interactive node/edge map of the executable model: surfaces, actions, state, events, parameters, rules, effects, invariants, scenarios, personas, resources, and entities, wired by `contains` / `reads` / `writes` / `emits` / `transitions` / `asserts` / `uses` / `handles` edges. A pure `BehaviorGraphModel` builds the graph from the domain (unit-tested); presentation is split into a `vis-network` renderer adapter and a thin Svelte view. Reachable from a **Graph** link in the feature header and the project editor at `/features/<id>/graph` and `/projects/<id>/graph`; the project graph live-refreshes on sync events.
+
+- **Lyriks community-edition theme + `unspa theme` CLI.** A purely cosmetic skin that overrides the design-system color tokens (and the header/shell chrome) without adding, removing, or moving any feature — every surface and control is identical between themes. Ships the opt-in `lyriks` violet skin alongside the default. Pick it with `unspa theme set <id>` / `reset` / `list` (persisted in `<snapshots>/theme.json`), `unspa init --theme`, or `unspa dashboard --theme`; the dashboard header also has a live palette switcher (persists to `localStorage`). Server-rendered with a no-flash bootstrap, and unknown ids fall back to the default rather than blanking the UI.
+
+### Changed
+
+- **Builder view scales to a full hub.** Project cards now load **progressively** — the cheap project list first, then each scored card streamed in as it resolves (with skeleton placeholders), and a deep-linked `?project=` open loads only that project until you return to the all-projects view. Features list under their **surface** heading. Sync events do a **scoped** rebuild of just the affected project's card (mirroring the Expert view) instead of blanking the dashboard, and the activity toast's **View** button deep-links into the active Builder card, falling back to the Expert route. Tag chips on cards gain an opt-in collapsible mode to reclaim space.
+
+### Fixed
+
+- **A malformed assertion no longer crashes a scenario run.** Untyped scenario data could deserialize an assertion with no state path; evaluating it threw and took down the whole feature's run. A missing/empty path is now reported as not-held, so one bad assertion fails only its own scenario.
+
+- **MCP live-refresh works with zero config in dev too.** With no `UNSPA_SYNC_URL`, the sync notifier now probes the production dashboard port and both loopback families of the Vite dev port (Node 20+ resolves `localhost` to `::1` first on Windows), sticking to the first that answers — so both `unspa dashboard` and `npm run dev` get live refresh and activity toasts without configuring anything.
+
 ## [0.2.0] — 2026-05-31
 
 Adds an opt-in **Builder** view alongside the Expert dashboard, with a per-project build queue and per-item goals. Additive and non-breaking: the default dashboard is unchanged (Expert only, no view switcher) and every new MCP field/tool is optional.
