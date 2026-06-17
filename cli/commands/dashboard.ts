@@ -3,7 +3,9 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverSnapshotDirectory } from '../../src/features/behavior-model/infrastructure/persistence/snapshot-discovery';
+import { parseThemeId } from '../../src/lib/theme/registry';
 import { readEnabledViews } from '../util/views';
+import { readSelectedTheme } from '../util/theme';
 import { log } from '../util/log';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +47,7 @@ export const runDashboardCommand = async (
     readonly host?: string;
     readonly snapshots?: string;
     readonly views?: string;
+    readonly theme?: string;
   }
 ): Promise<number> => {
   const repoRoot = resolve(__dirname, '..', '..');
@@ -124,6 +127,17 @@ export const runDashboardCommand = async (
   if (views.length > 0) {
     env.PUBLIC_UNSPA_VIEWS = views.join(',');
     log.dim(`Views: expert + ${views.join(', ')}`);
+  }
+
+  // Colour theme (cosmetic). A `--theme` flag overrides the persisted choice
+  // (`unspa theme set`) for this run; both feed the app as PUBLIC_UNSPA_THEME,
+  // which seeds the no-flash server-rendered <html data-theme>. The in-app
+  // switcher can still change it live in the browser. Unknown ids fall back to
+  // the default, so a typo never blanks the UI.
+  const theme = parseThemeId(args.theme ?? readSelectedTheme(directory));
+  if (theme !== 'default') {
+    env.PUBLIC_UNSPA_THEME = theme;
+    log.dim(`Theme: ${theme}`);
   }
 
   return await new Promise<number>((resolvePromise) => {

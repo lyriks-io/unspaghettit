@@ -7,12 +7,14 @@ import { ALL_CLIENTS, clientById, SERVER_NAME, type ClientAdapter } from '../cli
 import { buildUnspaMcpEntry } from '../clients/claude-code';
 import type { ApplyResult, ConfigScope, McpServerEntry } from '../clients/types';
 import { isOptionalViewId, optionalViews } from '../../src/lib/views/registry';
+import { isThemeId, parseThemeId } from '../../src/lib/theme/registry';
 import { ask } from '../util/ask';
 import { writeUnspaContextBlocks } from '../util/context-files';
 import { upsertGitignoreBlock } from '../util/gitignore';
 import { log } from '../util/log';
 import { installUnspaSkills } from '../util/skills';
 import { readEnabledViews, writeEnabledViews } from '../util/views';
+import { writeSelectedTheme } from '../util/theme';
 
 /**
  * Expand a user-supplied hub path: tilde-expansion, relative→absolute (resolved
@@ -119,6 +121,13 @@ export type InitOptions = {
    * always on regardless.
    */
   readonly withViews?: string;
+  /**
+   * Dashboard colour theme to persist at setup (e.g. "lyriks"). Cosmetic only;
+   * written to `<snapshots>/theme.json`, same as `unspa theme set`, so
+   * `unspa dashboard` boots with it. The in-app header switcher can change it
+   * live later. Unknown ids fall back to the default with a warning.
+   */
+  readonly theme?: string;
 };
 
 const resolveClientsArg = async (
@@ -336,6 +345,23 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
     const next = writeEnabledViews(target.dir, [...readEnabledViews(target.dir), ...viewsToEnable]);
     log.ok(`Enabled dashboard view(s): ${pc.cyan(next.join(', '))}`);
     log.dim('Shows as a view switcher in `unspa dashboard`. Turn off later with `unspa view remove <id>`.');
+  }
+
+  // 1c. Optional colour theme. Cosmetic only — persists the chosen skin into
+  //     `<snapshots>/theme.json` so `unspa dashboard` boots with it. An unknown
+  //     id is a no-op (keeps the default) with a warning rather than a hard
+  //     fail. Switchable later via `unspa theme set` or the in-app switcher.
+  if (options.theme !== undefined) {
+    const raw = options.theme.trim().toLowerCase();
+    if (raw && raw !== 'default' && !isThemeId(raw)) {
+      log.warn(`Unknown theme "${raw}" — keeping the default theme.`);
+    }
+    const id = parseThemeId(options.theme);
+    writeSelectedTheme(target.dir, id);
+    if (id !== 'default') {
+      log.ok(`Dashboard theme set to ${pc.cyan(id)}.`);
+      log.dim('Cosmetic skin. Change it with `unspa theme set <id>` or the dashboard header switcher.');
+    }
   }
 
   // 2. Pick clients, write MCP server entry. `mergeMcpServerEntry` compares

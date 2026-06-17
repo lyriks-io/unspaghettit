@@ -1,10 +1,12 @@
 import type { Handle } from '@sveltejs/kit';
+import { env } from '$env/dynamic/public';
 import {
   checkOrigin,
   checkRequestAuth,
   isAuthEnabled,
   isOriginCheckEnabled
 } from '$lib/server/security/auth';
+import { parseThemeId } from '$lib/theme/registry';
 
 /**
  * Global request gate for the dashboard. When `UNSPA_AUTH_TOKEN` is
@@ -35,5 +37,13 @@ export const handle: Handle = async ({ event, resolve }) => {
       });
     }
   }
-  return resolve(event);
+  // Seed the initial colour theme into the server-rendered <html data-theme>
+  // so the CLI default (PUBLIC_UNSPA_THEME) paints with no flash. The inline
+  // head script in app.html may still override this from localStorage when the
+  // user picked a theme via the in-app switcher. Inert for HTML responses that
+  // don't carry the placeholder (e.g. the /api JSON above already returned).
+  const theme = parseThemeId(env.PUBLIC_UNSPA_THEME);
+  return resolve(event, {
+    transformPageChunk: ({ html }) => html.replace('%unspa.theme%', theme)
+  });
 };

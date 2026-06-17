@@ -1,8 +1,22 @@
 <!doctype html>
-<html lang="en" class="h-full">
+<html lang="en" class="h-full" data-theme="%unspa.theme%">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Theme bootstrap. The server fills the data-theme placeholder above from
+      PUBLIC_UNSPA_THEME (the CLI default) in hooks.server.ts. This runs before
+      first paint and lets a saved in-app switcher choice (localStorage) win
+      over that default, so the page never flashes the wrong colour skin. Kept
+      tiny + guarded so a blocked storage API (private browsing) just leaves
+      the server default.
+    -->
+    <script>
+      try {
+        var t = localStorage.getItem('unspa.theme');
+        if (t) document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
     <link rel="icon" href="%sveltekit.assets%/unspaghettit_logo.png" type="image/png" />
     <meta name="description" content="Executable specifications for AI-assisted software development. Local-first and MCP-native by Lyriks.io." />
     <meta property="og:title" content="Unspaghettit" />

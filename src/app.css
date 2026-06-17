@@ -40,6 +40,193 @@ body {
 }
 
 /*
+ * ============================================================================
+ * Lyriks theme — opt-in cosmetic skin (gated by data-theme="lyriks" on <html>)
+ * ============================================================================
+ *
+ * Purely a re-colour of the design system: it overrides the `@theme` token
+ * *values* (the brand ramp + canvas/hairline), so every token-driven utility
+ * (bg-brand-*, text-brand-*, ring-brand-*, the avatar gradient, progress bars,
+ * focus rings, chips, ...) adopts the Lyriks violet identity without touching a
+ * single component. The header/shell *chrome* (the signature gradient bar) is
+ * applied in +layout.svelte via the same theme flag. Inert unless the attribute
+ * is present, so the default install is unaffected.
+ *
+ * `:root[data-theme='lyriks']` (specificity 0,2,0) wins over Tailwind's
+ * `@theme`-emitted `:root` (0,1,0), and custom properties inherit, so the
+ * overridden values cascade to every element.
+ *
+ * Tailwind v4 exposes the WHOLE default palette as CSS vars too (every utility
+ * compiles to `var(--color-<family>-<shade>)`). So re-skinning the families the
+ * app is built on — the neutral ramps (slate + neutral) and the cool accents it
+ * uses as the default teal/cyan brand (cyan/sky/teal) — restyles every surface,
+ * border, input, chip, table, and accent across the whole dashboard from this
+ * one block, with no component edits. The semantic status colours (amber,
+ * emerald, rose, red) are deliberately left alone so warnings/success/danger
+ * keep their meaning — matching the reference's amber/teal status rings.
+ */
+:root[data-theme='lyriks'] {
+  /* Brand ramp → violet. */
+  --color-brand-50: #f5f3ff;
+  --color-brand-100: #ede9fe;
+  --color-brand-200: #ddd6fe;
+  --color-brand-300: #c4b5fd;
+  --color-brand-400: #a78bfa;
+  --color-brand-500: #8b5cf6;
+  --color-brand-600: #7c3aed;
+  --color-brand-700: #6d28d9;
+  --color-brand-800: #5b21b6;
+  --color-brand-900: #4c1d95;
+
+  /* Brand wordmark switches to Space Grotesk (the reference's clean grotesk)
+   * instead of the default Dancing Script. `font-brand` resolves through this
+   * token, so the header wordmark restyles with no markup change. */
+  --font-brand: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+
+  /* App semantic surfaces. A clearly lavender canvas so the body — not just the
+   * header — reads as themed; white cards float on top of it. */
+  --color-canvas: #eeeafb;
+  --color-surface-soft: #e6dff7;
+  --color-surface-strong: #ddd4f1;
+  --color-hairline: #e0d8f1;
+
+  /* Neutral ramps (slate + neutral) → a cool lavender-tinted gray. The light
+   * end is pushed visibly violet so panels/rows/borders read as Lyriks; the
+   * mid tones keep enough darkness for text contrast; the dark shades become a
+   * deep violet-navy (matches the reference's chrome). Lightness tracks the
+   * originals so contrast holds. */
+  --color-slate-50: #f2eefc;
+  --color-slate-100: #e9e3f7;
+  --color-slate-200: #ddd4ee;
+  --color-slate-300: #c7bce0;
+  --color-slate-400: #948ab0;
+  --color-slate-500: #645c7e;
+  --color-slate-600: #4d4669;
+  --color-slate-700: #393353;
+  --color-slate-800: #261e3b;
+  --color-slate-900: #18122f;
+  --color-slate-950: #0d0822;
+  --color-neutral-50: #f2eefc;
+  --color-neutral-100: #e9e3f7;
+  --color-neutral-200: #ddd4ee;
+  --color-neutral-300: #c7bce0;
+  --color-neutral-400: #948ab0;
+  --color-neutral-500: #645c7e;
+  --color-neutral-600: #4d4669;
+  --color-neutral-700: #393353;
+  --color-neutral-800: #261e3b;
+  --color-neutral-900: #18122f;
+  --color-neutral-950: #0d0822;
+
+  /* Cool accents the app uses as its default brand (cyan/sky/teal) → violet,
+   * so no teal/blue pockets survive next to the new violet primary. */
+  --color-cyan-50: #f5f3ff;
+  --color-cyan-100: #ede9fe;
+  --color-cyan-200: #ddd6fe;
+  --color-cyan-300: #c4b5fd;
+  --color-cyan-400: #a78bfa;
+  --color-cyan-500: #8b5cf6;
+  --color-cyan-600: #7c3aed;
+  --color-cyan-700: #6d28d9;
+  --color-cyan-800: #5b21b6;
+  --color-cyan-900: #4c1d95;
+  --color-cyan-950: #2e1065;
+  --color-sky-50: #f5f3ff;
+  --color-sky-100: #ede9fe;
+  --color-sky-200: #ddd6fe;
+  --color-sky-300: #c4b5fd;
+  --color-sky-400: #a78bfa;
+  --color-sky-500: #8b5cf6;
+  --color-sky-600: #7c3aed;
+  --color-sky-700: #6d28d9;
+  --color-sky-800: #5b21b6;
+  --color-sky-900: #4c1d95;
+  --color-sky-950: #2e1065;
+  --color-teal-50: #f5f3ff;
+  --color-teal-100: #ede9fe;
+  --color-teal-200: #ddd6fe;
+  --color-teal-300: #c4b5fd;
+  --color-teal-400: #a78bfa;
+  --color-teal-500: #8b5cf6;
+  --color-teal-600: #7c3aed;
+  --color-teal-700: #6d28d9;
+  --color-teal-800: #5b21b6;
+  --color-teal-900: #4c1d95;
+  --color-teal-950: #2e1065;
+}
+
+/* Cover the bare <html>/<body> backdrop (set outside the theme system above
+ * and via the body's `bg-neutral-50` utility) so edges match the cool canvas. */
+:root[data-theme='lyriks'],
+:root[data-theme='lyriks'] body {
+  background: var(--color-canvas);
+}
+
+/* Re-tint the navigateTo focus pulse to the violet brand so it matches. */
+@keyframes focus-flash-lyriks {
+  0% {
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.5);
+    background-color: rgba(237, 233, 254, 0.6);
+  }
+  60% {
+    box-shadow: 0 0 0 8px rgba(124, 58, 237, 0);
+    background-color: rgba(237, 233, 254, 0.25);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+    background-color: transparent;
+  }
+}
+:root[data-theme='lyriks'] .focus-flash {
+  animation-name: focus-flash-lyriks;
+}
+
+/*
+ * Emphasis colour. Primary buttons and active toggles across the app use a
+ * near-black `slate-900` surface (with a `slate-800` hover) as the "emphasis"
+ * colour — separate from the brand. Under Lyriks the brand IS the emphasis
+ * colour, so remap the SOLID dark button/active/border surfaces (and their
+ * hovers) to violet; otherwise primary CTAs read as leftover black buttons.
+ *
+ * We target the utility CLASSES, not the `--color-slate-*` variables, on
+ * purpose: the same slate-900 token is the body-text colour (`text-slate-900`),
+ * which must stay dark. Translucent scrims (`bg-slate-900/40`, …) and the
+ * builder's dark canvas gradients keep their own class names and are
+ * intentionally left as deep violet-navy.
+ */
+:root[data-theme='lyriks'] .bg-slate-900,
+:root[data-theme='lyriks'] .bg-slate-950,
+:root[data-theme='lyriks'] .bg-neutral-900,
+:root[data-theme='lyriks'] .bg-neutral-950 {
+  background-color: var(--color-brand-600);
+}
+:root[data-theme='lyriks'] .bg-slate-800 {
+  background-color: var(--color-brand-700);
+}
+:root[data-theme='lyriks'] .border-slate-900 {
+  border-color: var(--color-brand-600);
+}
+:root[data-theme='lyriks'] .hover\:bg-slate-900:hover,
+:root[data-theme='lyriks'] .hover\:bg-slate-800:hover {
+  background-color: var(--color-brand-700);
+}
+:root[data-theme='lyriks'] .hover\:bg-slate-700:hover {
+  background-color: var(--color-brand-600);
+}
+
+/*
+ * Card top-accent flourish. Project + feature cards paint a thin
+ * `from-brand-500 via-brand-mint to-violet-400` bar across the top; the mint
+ * (teal) middle stop is a fixed accent token we leave alone elsewhere (tags use
+ * that palette), so it survives the remap and clashes with Lyriks. Re-skin just
+ * this flourish to echo the header's violet→fuchsia→pink sweep. `.via-brand-mint`
+ * is unique to these accent bars, so the override is precise.
+ */
+:root[data-theme='lyriks'] .via-brand-mint {
+  background-image: linear-gradient(to right, #6d28d9, #a21caf, #db2777);
+}
+
+/*
  * Restore `cursor: pointer` on interactive elements.
  *
  * Tailwind v4 changed its Preflight base styles so <button>, <select>,

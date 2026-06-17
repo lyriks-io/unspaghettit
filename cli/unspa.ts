@@ -6,6 +6,7 @@ import { runLinkCommand } from './commands/link';
 import { runListCommand } from './commands/list';
 import { runScenariosExportCommand } from './commands/scenarios-export';
 import { runServeCommand } from './commands/serve';
+import { runThemeCommand } from './commands/theme';
 import { runUninstallCommand } from './commands/uninstall';
 import { runViewCommand } from './commands/view';
 import { log } from './util/log';
@@ -68,6 +69,7 @@ program
   .option('--no-skills', 'Skip installing the bundled unspa skills under .claude/skills/.')
   .option('--fun', 'Pre-check the opt-in narrative skills (worldbuild + worldplay) in the skill picker. Also implicitly on when the CLI is invoked as `unspaghettit`.')
   .option('--with <views>', 'Comma list of opt-in dashboard views to enable (e.g. "builder"). Expert is always on. Without it, interactive init offers the Builder view.')
+  .option('--theme <id>', 'Set the dashboard colour theme at install (e.g. "lyriks"). Cosmetic only; persists so `unspa dashboard` boots with it. Switchable later via `unspa theme set` or the in-app header switcher.')
   .option('-y, --yes', 'Accept defaults. Non-interactive (CI / scripts).')
   .action(async (opts) => {
     if (opts.scope !== 'project' && opts.scope !== 'global') {
@@ -87,7 +89,8 @@ program
       local: opts.local === true,
       custom: opts.custom === true,
       fun: opts.fun === true || FUN_MODE_BY_INVOCATION,
-      withViews: opts.with
+      withViews: opts.with,
+      theme: opts.theme
     });
     process.exit(code);
   });
@@ -108,8 +111,9 @@ program
   .option('-h, --host <host>', 'Host to bind (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN; the dashboard has no auth, so do this only on trusted networks.')
   .option('-s, --snapshots <dir>', 'Point the dashboard at a specific snapshots folder (sets UNSPA_SNAPSHOTS for this run). Handy for a one-off look at a custom hub or another repo.')
   .option('--view <ids>', 'Comma list of optional views to enable beyond Expert (e.g. "builder"). Expert is always on and is the default; with no extra views the header shows no switcher.')
+  .option('--theme <id>', 'Colour theme to boot with (e.g. "lyriks"). Cosmetic only; overrides the persisted `unspa theme set` choice for this run. The in-app header switcher can still change it live.')
   .action(async (opts) => {
-    const code = await runDashboardCommand({ port: opts.port, host: opts.host, snapshots: opts.snapshots, views: opts.view });
+    const code = await runDashboardCommand({ port: opts.port, host: opts.host, snapshots: opts.snapshots, views: opts.view, theme: opts.theme });
     process.exit(code);
   });
 
@@ -190,6 +194,38 @@ view
   .option('-s, --snapshots <dir>', 'Target a specific snapshots folder.')
   .action(async (id, opts) => {
     process.exit(await runViewCommand({ action: 'remove', id, snapshots: opts.snapshots }));
+  });
+
+// `theme list|set|reset` — pick the dashboard's colour skin. Purely cosmetic
+// (it never changes which features exist), persisted next to the model in
+// `<snapshots>/theme.json` so `unspa dashboard` boots with it. The in-app
+// header switcher flips it live in the browser without touching this file.
+const theme = program
+  .command('theme')
+  .description('Pick the dashboard colour theme (cosmetic). The in-app header switcher can also flip it live.');
+
+theme
+  .command('list')
+  .description('Show the available themes and which one is the persisted default.')
+  .option('-s, --snapshots <dir>', 'Target a specific snapshots folder (defaults to walk-up, then the shared hub).')
+  .action(async (opts) => {
+    process.exit(await runThemeCommand({ action: 'list', snapshots: opts.snapshots }));
+  });
+
+theme
+  .command('set <id>')
+  .description('Set the dashboard theme (e.g. "lyriks"). Persists so `unspa dashboard` uses it.')
+  .option('-s, --snapshots <dir>', 'Target a specific snapshots folder.')
+  .action(async (id, opts) => {
+    process.exit(await runThemeCommand({ action: 'set', id, snapshots: opts.snapshots }));
+  });
+
+theme
+  .command('reset')
+  .description('Revert to the default theme.')
+  .option('-s, --snapshots <dir>', 'Target a specific snapshots folder.')
+  .action(async (opts) => {
+    process.exit(await runThemeCommand({ action: 'reset', snapshots: opts.snapshots }));
   });
 
 // `scenarios export <featureId>` — generates a Vitest spec from the feature's

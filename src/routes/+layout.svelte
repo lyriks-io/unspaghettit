@@ -10,6 +10,8 @@
   import { projectsStore } from "$features/projects/presentation/stores/projectsStore.svelte";
   import { builderModeStore } from "$features/builder-mode/presentation/stores/builderModeStore.svelte";
   import { enabledViews, isEnabled } from "$lib/views/enabled";
+  import { themeStore } from "$lib/theme/themeStore.svelte";
+  import { ALL_THEMES } from "$lib/theme/registry";
   import { identityStore } from "$shared/identity/identityStore.svelte";
   import { authStore } from "$shared/security/authStore.svelte";
   import {
@@ -23,6 +25,10 @@
     // tries to read identityStore.author (notably the YDocClient
     // building its WebSocket URL). Idempotent on re-mount.
     identityStore.init();
+    // Mirror the active colour theme from the <html data-theme> attribute
+    // (server default + the inline head script's localStorage override) into
+    // reactive state so the header switcher and chrome track it live.
+    themeStore.init();
     // Hydrate the optional dashboard auth token the same way. When
     // unset, every API/SSE/WS request goes out unauthenticated; the
     // first 401 from the server triggers `apiFetch`'s prompt-and-retry
@@ -73,6 +79,8 @@
   let identityMenuRef = $state<HTMLDivElement | null>(null);
   let settingsMenuOpen = $state(false);
   let settingsMenuRef = $state<HTMLDivElement | null>(null);
+  let themeMenuOpen = $state(false);
+  let themeMenuRef = $state<HTMLDivElement | null>(null);
 
   function handleGlobalMouseDown(event: MouseEvent) {
     const target = event.target as Node;
@@ -89,6 +97,9 @@
       !settingsMenuRef.contains(target)
     ) {
       settingsMenuOpen = false;
+    }
+    if (themeMenuOpen && themeMenuRef && !themeMenuRef.contains(target)) {
+      themeMenuOpen = false;
     }
   }
 
@@ -143,13 +154,25 @@
   // only when more than one view is active — a toggle between one thing is
   // meaningless. Builder is only "active" when it's both enabled and routed to.
   const views = $derived(enabledViews());
-  const showViewSwitcher = $derived(views.length > 1);
+  // The Lyriks community edition presents a single, unswitched view, so hide
+  // the Expert/Builder switcher while that theme is active.
+  const showViewSwitcher = $derived(views.length > 1 && !themeStore.isLyriks);
   const builderActive = $derived(
     isEnabled("builder") && page.url.pathname.startsWith("/builder-mode"),
   );
   const mcpActive = $derived(page.url.pathname.startsWith("/mcp"));
-  // Dark chrome while in Builder so the header matches the dark canvas.
-  const dark = $derived(builderActive);
+  // The feature editor + graph use a wider 1600px content column than the rest
+  // of the app (max-w-7xl). Match the header container to whichever the current
+  // route uses, so the header always spans the same width as the content below.
+  const wideContent = $derived(page.url.pathname.startsWith("/features/"));
+  // The Lyriks theme paints the header with a saturated violet→fuchsia
+  // gradient (see below) and the shell with a cool canvas. Cosmetic only.
+  const lyriks = $derived(themeStore.isLyriks);
+  const themes = ALL_THEMES;
+  // Dark chrome while in Builder OR under the Lyriks gradient header, so the
+  // header's foreground (logo, icons, switcher) stays legible on a dark/vivid
+  // background. The dropdown panels keep their own white surface regardless.
+  const dark = $derived(builderActive || lyriks);
   const builderProject = $derived(
     builderActive ? builderModeStore.selectedProject : null,
   );
@@ -167,39 +190,65 @@
     if (e.key === "Escape") {
       identityMenuOpen = false;
       settingsMenuOpen = false;
+      themeMenuOpen = false;
     }
   }}
 />
 
 <div
-  class="flex min-h-full flex-col bg-[linear-gradient(180deg,#f0fdfa_0%,#f8fafc_220px,#f8fafc_100%)] text-ink"
+  class="flex min-h-full flex-col text-ink {lyriks
+    ? 'bg-[linear-gradient(180deg,#e6ddfa_0%,#eeeafb_220px,#eeeafb_100%)]'
+    : 'bg-[linear-gradient(180deg,#f0fdfa_0%,#f8fafc_220px,#f8fafc_100%)]'}"
 >
   <header
-    class="sticky top-0 z-30 border-b backdrop-blur transition-colors {dark
-      ? 'border-slate-800 bg-slate-950/90'
-      : 'border-slate-200 bg-white/95'}"
+    class="sticky top-0 z-30 border-b backdrop-blur transition-colors {lyriks
+      ? 'border-transparent bg-[linear-gradient(90deg,#6d28d9_0%,#a21caf_55%,#db2777_100%)]'
+      : dark
+        ? 'border-slate-800 bg-slate-950/90'
+        : 'border-slate-200 bg-white/95'}"
   >
     <div
-      class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6"
+      class="mx-auto flex h-16 items-center justify-between px-4 sm:px-6 {wideContent
+        ? 'max-w-400'
+        : 'max-w-7xl'}"
     >
       <div class="flex min-w-0 items-center gap-3">
-        <a href="/" class="flex shrink-0 items-center gap-2">
+        <a href="/" class="flex shrink-0 items-center gap-2.5">
           <img
-            src="/unspaghettit_logo.png"
-            alt="Unspaghettit"
-            class="h-12 w-auto"
+            src={lyriks ? "/lyriks_logo.svg" : "/unspaghettit_logo.png"}
+            alt={lyriks ? "Lyriks" : "Unspaghettit"}
+            class={lyriks ? "h-9 w-9 shrink-0" : "h-12 w-auto"}
           />
-          <span
-            class="relative hidden font-brand text-3xl font-semibold leading-none sm:inline-block {dark
-              ? 'text-white'
-              : 'text-slate-950'}"
-          >
-            Unspaghettit
+          {#if lyriks}
+            <!-- Clean stacked lockup: wordmark with an aligned uppercase
+                 edition label below (the old absolute subtitle overflowed
+                 because "community edition" is wider than "Lyriks"). -->
+            <span class="hidden flex-col items-start leading-none sm:flex">
+              <span
+                class="font-brand text-2xl font-bold tracking-tight {dark
+                  ? 'text-white'
+                  : 'text-slate-950'}">Lyriks.io</span
+              >
+              <span
+                class="mt-1 pl-px text-[9px] font-semibold uppercase tracking-[0.18em] {dark
+                  ? 'text-white/75'
+                  : 'text-slate-500'}">Community Edition</span
+              >
+            </span>
+          {:else}
             <span
-              class="font-grotesk absolute right-0 -bottom-2 text-[10px] font-medium tracking-wide text-slate-500"
-              >by Lyriks.io</span
+              class="relative hidden font-brand text-3xl font-semibold leading-none sm:inline-block {dark
+                ? 'text-white'
+                : 'text-slate-950'}"
             >
-          </span>
+              Unspaghettit
+              <span
+                class="font-grotesk absolute right-0 -bottom-2 text-[10px] font-medium tracking-wide {dark
+                  ? 'text-white/70'
+                  : 'text-slate-500'}">by Lyriks.io</span
+              >
+            </span>
+          {/if}
         </a>
         {#if showViewSwitcher}
           <div
@@ -287,6 +336,105 @@
         </div>
       {/if}
       <div class="flex shrink-0 items-center gap-1.5">
+        <div bind:this={themeMenuRef} class="relative">
+          <button
+            type="button"
+            onclick={() => {
+              themeMenuOpen = !themeMenuOpen;
+              settingsMenuOpen = false;
+              identityMenuOpen = false;
+            }}
+            aria-haspopup="menu"
+            aria-expanded={themeMenuOpen}
+            aria-label="Switch dashboard theme"
+            title="Switch theme"
+            class="grid h-9 w-9 place-items-center rounded-md transition {themeMenuOpen
+              ? lyriks
+                ? 'bg-white/30 text-white'
+                : dark
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-slate-900 text-white'
+              : lyriks
+                ? 'bg-white/15 text-white hover:bg-white/25'
+                : dark
+                  ? 'text-slate-300 hover:bg-white/10 hover:text-white'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}"
+          >
+            <!-- Swatch / palette glyph: overlapping colour discs. -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="h-5 w-5"
+              aria-hidden="true"
+            >
+              <circle cx="13.5" cy="6.5" r="2.5" />
+              <circle cx="17.5" cy="10.5" r="2.5" />
+              <circle cx="8.5" cy="7.5" r="2.5" />
+              <path
+                d="M12 21a9 9 0 1 1 0-18c4.97 0 9 3.58 9 8 0 2.5-2 3.5-3.5 3.5H15a2 2 0 0 0-1.4 3.42A1.5 1.5 0 0 1 12 21z"
+              />
+            </svg>
+          </button>
+          {#if themeMenuOpen}
+            <div
+              role="menu"
+              class="absolute right-0 top-12 z-40 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg shadow-slate-950/10"
+            >
+              <p
+                class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400"
+              >
+                Theme
+              </p>
+              {#each themes as theme (theme.id)}
+                {@const active = themeStore.current === theme.id}
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  onclick={() => {
+                    themeStore.setTheme(theme.id);
+                    themeMenuOpen = false;
+                  }}
+                  class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm {active
+                    ? 'bg-slate-100 text-slate-950'
+                    : 'text-slate-700 hover:bg-slate-50'}"
+                >
+                  <span
+                    class="h-5 w-5 shrink-0 rounded-full ring-1 ring-slate-950/10"
+                    style="background: {theme.swatch}"
+                    aria-hidden="true"
+                  ></span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block font-medium">{theme.label}</span>
+                    <span class="block text-[11px] text-slate-500"
+                      >{theme.description}</span
+                    >
+                  </span>
+                  {#if active}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="h-4 w-4 shrink-0 text-brand-600"
+                      aria-hidden="true"
+                    >
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
         <div bind:this={settingsMenuRef} class="relative">
           <button
             type="button"
@@ -300,12 +448,16 @@
             title="App menu"
             class="grid h-9 w-9 place-items-center rounded-md transition {settingsMenuOpen ||
             mcpActive
-              ? dark
-                ? 'bg-slate-800 text-white'
-                : 'bg-slate-900 text-white'
-              : dark
-                ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}"
+              ? lyriks
+                ? 'bg-white/30 text-white'
+                : dark
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-slate-900 text-white'
+              : lyriks
+                ? 'bg-white/15 text-white hover:bg-white/25'
+                : dark
+                  ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -399,9 +551,11 @@
           href="/tutorial"
           aria-label="Help & tutorial"
           title="Help & tutorial"
-          class="grid h-9 w-9 place-items-center rounded-md transition {dark
-            ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}"
+          class="grid h-9 w-9 place-items-center rounded-md transition {lyriks
+            ? 'bg-white/15 text-white hover:bg-white/25'
+            : dark
+              ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
