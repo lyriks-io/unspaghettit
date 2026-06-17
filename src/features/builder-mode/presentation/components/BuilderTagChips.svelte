@@ -99,6 +99,7 @@
     onRemove,
     onRename,
     typeOptions = [],
+    collapsible = false,
     class: className = ''
   }: {
     readonly tags: readonly Tag[];
@@ -108,8 +109,14 @@
     readonly onRemove?: (tag: Tag) => void | Promise<void>;
     readonly onRename?: (from: Tag, to: Tag) => void | Promise<void>;
     readonly typeOptions?: readonly string[];
+    // When true (the Builder cards), tags collapse to a compact tag-icon
+    // toggle by default and only reveal the chips + add/edit affordances on
+    // click — they were eating too much vertical space on every card.
+    readonly collapsible?: boolean;
     readonly class?: string;
   } = $props();
+
+  let expanded = $state(false);
 
   const datalistId = `buildertags-types-${++nextDatalistSerial}`;
 
@@ -185,6 +192,23 @@
 {#if tags.length > 0 || onAdd}
   <div class={className} use:animateHeight={adding || editingKey !== null}>
     <div class="flex flex-wrap items-center gap-1.5">
+    {#if collapsible}
+      <button
+        type="button"
+        class="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-slate-400 transition hover:text-brand-300 {expanded ? 'bg-slate-800/60 text-slate-200' : ''}"
+        onclick={() => (expanded = !expanded)}
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Hide tags' : 'Show tags'}
+        title={expanded ? 'Hide tags' : tags.length > 0 ? `Show ${tags.length} tag${tags.length === 1 ? '' : 's'}` : 'Add a tag'}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="size-3.5" aria-hidden="true">
+          <path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3H4a1 1 0 0 0-1 1v5.59A2 2 0 0 0 3.59 11l9.58 9.59a2 2 0 0 0 2.83 0l4.59-4.59a2 2 0 0 0 0-2.83z" />
+          <circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none" />
+        </svg>
+        {#if !expanded && tags.length > 0}<span>{tags.length}</span>{/if}
+      </button>
+    {/if}
+    {#if !collapsible || expanded}
     {#each tags as tag (tagKey(tag))}
       {#if editingKey === tagKey(tag)}
         <form class="inline-flex items-center gap-1" onsubmit={(e) => submitEdit(e, tag)}>
@@ -275,6 +299,7 @@
           title="Add tag"
         >+</button>
       {/if}
+    {/if}
     {/if}
 
     {#if typeOptions.length > 0}

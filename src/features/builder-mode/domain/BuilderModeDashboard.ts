@@ -20,6 +20,10 @@ export type BuilderModeFeature = {
   readonly maturityPercentage: number;
   readonly implementationPercentage: number | null;
   readonly suggestions: readonly BuilderModeSuggestion[];
+  // The surface this feature (action) lives on. A surface is a higher-level
+  // grouping — the Builder lists features under their surface as a heading.
+  readonly surfaceId: string;
+  readonly surfaceName: string;
 };
 
 export type BuilderModeCoreFeature = {
@@ -137,7 +141,9 @@ export const buildBuilderModeDashboard = (
             implementationPercentage,
             // Per-action advice was deterministic noise; suggestions now live at
             // the feature level as the model's Evolutions.
-            suggestions: []
+            suggestions: [],
+            surfaceId: String(surface.id),
+            surfaceName: surface.name
           };
         })
       );

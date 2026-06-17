@@ -55,6 +55,25 @@ class BuilderModeStore {
 
   loading = $state(true);
   dashboard = $state<BuilderModeDashboard>({ projects: [] });
+  // True once a full read of every project has happened. A deep-linked open
+  // (`?project=<id>`) loads ONLY that project (see `loadProjectOnly`), leaving
+  // this false until the user returns to the all-projects view, which fills in
+  // the rest via `ensureFullyLoaded`. Avoids reading + scoring the whole hub
+  // just to render one deep-linked project.
+  fullyLoaded = $state(false);
+  // Total projects in the hub, tracked apart from `dashboard.projects` because
+  // a deep-linked open only loads one. Cheap to fetch (project docs, no feature
+  // scoring), so the "All projects (N)" label shows the true total even while
+  // only one project is loaded.
+  totalProjectCount = $state(0);
+  // The count to show: the true total once known, else however many are loaded.
+  projectCount = $derived(Math.max(this.totalProjectCount, this.dashboard.projects.length));
+  // How many project cards are still streaming in — drives placeholder
+  // skeletons in the all-projects grid while the progressive load runs. Zero
+  // once fully loaded.
+  pendingProjectCount = $derived(
+    this.fullyLoaded ? 0 : Math.max(0, this.totalProjectCount - this.dashboard.projects.length)
+  );
   // Explicit selection model: `null` means "no filter" (show the whole list,
   // detail pane prompts the user to pick). Selecting a project/core feature
   // filters to it; the UI floats it to the top of its list and pins it sticky.
@@ -311,6 +330,35 @@ class BuilderModeStore {
     return byRelevance(coreFeature.features, (feature) => this.featureScore(feature, q));
   });
 
+  /**
+   * The selected core feature's features grouped by their surface, in surface
+   * (declaration) order. A surface is the higher-level grouping a feature lives
+   * on (Feature › Surface › action-level feature); the Builder lists features
+   * under a surface heading rather than one flat list. Honors the same search
+   * filter as `visibleSelectedFeatures`; empty surfaces are dropped.
+   */
+  visibleSelectedSurfaces = $derived.by<
+    readonly { surfaceId: string; surfaceName: string; features: readonly BuilderModeFeature[] }[]
+  >(() => {
+    const coreFeature = this.selectedCoreFeature;
+    if (!coreFeature) return [];
+    const q = this.searchQuery;
+    const showAll = !q || this.matchesText(q, coreFeature.name, coreFeature.description);
+    const groups: { surfaceId: string; surfaceName: string; features: BuilderModeFeature[] }[] = [];
+    const byId = new Map<string, (typeof groups)[number]>();
+    for (const feature of coreFeature.features) {
+      if (!showAll && this.featureScore(feature, q) === 0) continue;
+      let group = byId.get(feature.surfaceId);
+      if (!group) {
+        group = { surfaceId: feature.surfaceId, surfaceName: feature.surfaceName, features: [] };
+        byId.set(feature.surfaceId, group);
+        groups.push(group);
+      }
+      group.features.push(feature);
+    }
+    return groups;
+  });
+
   setSearch(query: string): void {
     this.search = query;
   }
@@ -368,10 +416,60 @@ class BuilderModeStore {
     );
   }
 
+  /**
+   * Load the full project list PROGRESSIVELY: read the cheap project list
+   * first, then load + score each project independently and stream it into the
+   * dashboard as it resolves — so cards appear one-by-one instead of the whole
+   * grid blocking on the slowest project. Cards are ordered by the project
+   * list regardless of which finishes first. The skeleton shows until the
+   * first card is ready (so the empty-state never flashes mid-load).
+   */
   async refresh(): Promise<void> {
     this.loading = true;
-    await this.refreshSilent();
-    this.loading = false;
+    this.error = null;
+    try {
+      const container = await this.host.data.getContainer();
+      const summaries = await container.useCases.listProjects();
+      this.totalProjectCount = summaries.length;
+      if (summaries.length === 0) {
+        this.dashboard = { projects: [] };
+        this.fullyLoaded = true;
+        this.loading = false;
+        return;
+      }
+      const order = new Map(summaries.map((summary, index) => [String(summary.id), index]));
+      const loadProject = getBuilderModeProjectUseCase({
+        projects: container.projectRepository,
+        features: container.repository,
+        statuses: container.statusRepository
+      });
+      const loaded: BuilderModeProject[] = [];
+      await Promise.all(
+        summaries.map(async (summary) => {
+          const project = await loadProject(asProjectId(String(summary.id)));
+          if (!project) return;
+          loaded.push(project);
+          // Keep the visible order stable (project-list order), independent of
+          // which load finishes first.
+          loaded.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+          this.dashboard = { projects: [...loaded] };
+          this.loading = false; // reveal the grid as soon as one card is ready
+        })
+      );
+      this.fullyLoaded = true;
+      this.loading = false;
+      if (
+        this.selectedProjectId &&
+        !this.dashboard.projects.some((project) => project.id === this.selectedProjectId)
+      ) {
+        this.selectedProjectId = null;
+        this.selectedCoreFeatureId = null;
+      }
+      await this.refreshQueue();
+    } catch (e) {
+      this.error = (e as Error).message;
+      this.loading = false;
+    }
   }
 
   async refreshSilent(): Promise<void> {
@@ -383,6 +481,8 @@ class BuilderModeStore {
         statuses: container.statusRepository
       });
       this.dashboard = await loadDashboard();
+      this.fullyLoaded = true;
+      this.totalProjectCount = this.dashboard.projects.length;
       if (
         this.selectedProjectId &&
         !this.dashboard.projects.some((project) => project.id === this.selectedProjectId)
@@ -397,22 +497,100 @@ class BuilderModeStore {
     }
   }
 
+  /**
+   * Load ONLY the given project (its features, scores, queue) into the
+   * dashboard — used on a deep-linked open so we don't read and score every
+   * project in the hub just to show one. The rest of the list stays unloaded
+   * (`fullyLoaded=false`) until `ensureFullyLoaded` runs. Falls back to a full
+   * read when the id can't be resolved alone, so an unknown/stale link still
+   * lands the user on a usable list.
+   */
+  async loadProjectOnly(projectId: string): Promise<void> {
+    this.loading = true;
+    // Fetch the real total in parallel so "All projects (N)" is right.
+    void this.refreshProjectCount();
+    try {
+      const container = await this.host.data.getContainer();
+      const loadProject = getBuilderModeProjectUseCase({
+        projects: container.projectRepository,
+        features: container.repository,
+        statuses: container.statusRepository
+      });
+      const project = await loadProject(asProjectId(projectId));
+      if (!project) {
+        await this.refreshSilent();
+      } else {
+        this.dashboard = { projects: [project] };
+        this.fullyLoaded = false;
+        this.error = null;
+        await this.refreshQueue();
+      }
+    } catch (e) {
+      this.error = (e as Error).message;
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  /** Ensure the whole project list is loaded (for the all-projects view). A
+   *  no-op once any full read has happened, so returning from a deep-linked
+   *  project triggers exactly one full load. */
+  async ensureFullyLoaded(): Promise<void> {
+    if (this.fullyLoaded) return;
+    await this.refresh();
+  }
+
+  /** Fetch the true total project count (cheap — project docs only, no feature
+   *  scoring) so the "All projects (N)" label is correct even when a single
+   *  project was deep-loaded. Decorative: failures are ignored. */
+  async refreshProjectCount(): Promise<void> {
+    try {
+      const container = await this.host.data.getContainer();
+      this.totalProjectCount = (await container.useCases.listProjects()).length;
+    } catch {
+      // Count is decorative; leave the previous value.
+    }
+  }
+
   selectProject(id: string): void {
     this.selectedProjectId = id;
     this.selectedCoreFeatureId = null;
     void this.refreshQueue();
   }
 
-  /** Cancel the project filter. */
+  /** Cancel the project filter. Returning to the all-projects view fills the
+   *  list if a deep-linked open only loaded one project. */
   deselectProject(): void {
     this.selectedProjectId = null;
     this.selectedCoreFeatureId = null;
     this.queue = [];
+    void this.ensureFullyLoaded();
   }
 
   /** Toggle a core feature filter (click the selected one again to clear). */
   selectCoreFeature(id: string): void {
     this.selectedCoreFeatureId = this.selectedCoreFeatureId === id ? null : id;
+  }
+
+  /**
+   * Set the full project + core-feature selection in ONE synchronous pass.
+   * Used when restoring from the URL (deep-link / refresh-persist, and the
+   * activity-toast "View" links that target the Builder while it's already
+   * open). Doing both at once avoids the project change transiently clearing
+   * the core and the URL writer racing to drop the `core` param before it's
+   * applied. Idempotent and order-independent for the URL ↔ store sync.
+   */
+  applySelection(projectId: string | null, coreFeatureId: string | null): void {
+    if (this.selectedProjectId !== projectId) {
+      this.selectedProjectId = projectId;
+      this.selectedCoreFeatureId = null;
+      this.queue = [];
+      void this.refreshQueue();
+      // Clearing the project (back to the all-projects view) needs the full
+      // list if we only deep-loaded one project.
+      if (!projectId) void this.ensureFullyLoaded();
+    }
+    this.selectedCoreFeatureId = coreFeatureId;
   }
 
   deselectCoreFeature(): void {
@@ -649,6 +827,72 @@ class BuilderModeStore {
 
   async refreshSelectedProject(): Promise<void> {
     if (this.selectedProjectId) await this.refreshProject(this.selectedProjectId);
+  }
+
+  private hasProject(projectId: string): boolean {
+    return this.dashboard.projects.some((project) => project.id === projectId);
+  }
+
+  /** The project whose core features include `featureId`, or null. A model
+   *  Feature maps to one Builder "core feature", so a feature/status event
+   *  touches exactly one project's card. */
+  private projectIdOwningFeature(featureId: string): string | null {
+    for (const project of this.dashboard.projects) {
+      if (project.coreFeatures.some((coreFeature) => coreFeature.id === featureId)) {
+        return project.id;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Apply one out-of-band sync event (MCP write) with the SMALLEST refresh
+   * that keeps the view correct — the Builder's mirror of the Expert view's
+   * refetchOne/syncWith. A `project` event rebuilds just that project's card
+   * in place; a `feature`/`implementation-status` event rebuilds only the
+   * owning project. Both reuse the keyed lists, so scroll, selection, queue
+   * widget, and expanded descriptions survive instead of the whole dashboard
+   * blanking and re-running its entrance animations. We fall back to a full
+   * silent refresh ONLY when the event names something we don't have yet (a
+   * brand-new project, or a feature not attached to any loaded project) —
+   * that's the one case a scoped rebuild can't surface.
+   */
+  async applySyncEvent(event: SyncEvent): Promise<void> {
+    if (event.kind === 'project') {
+      if (this.hasProject(event.id)) {
+        await this.refreshProject(event.id);
+        // Queue lives on the project; an enqueue/reorder/target write rides
+        // the same 'project' event, so refresh it when the open project moved.
+        if (event.id === this.selectedProjectId) await this.refreshQueue();
+      } else {
+        await this.refreshSilent();
+      }
+      return;
+    }
+    // 'feature' and 'implementation-status' both carry a feature id.
+    const projectId = this.projectIdOwningFeature(event.id);
+    if (projectId) {
+      await this.refreshProject(projectId);
+      if (projectId === this.selectedProjectId) await this.refreshQueue();
+    } else {
+      await this.refreshSilent();
+    }
+  }
+
+  /**
+   * A Builder deep-link for an entity touched by a sync event, or null when it
+   * isn't shown in the Builder (so the activity-toast falls back to the Expert
+   * route). A `project` event targets the project card; `feature` /
+   * `implementation-status` (both carry a feature id) target that feature's
+   * core card via `?project=&core=`.
+   */
+  deepLinkFor(kind: SyncEvent['kind'], id: string): string | null {
+    if (kind === 'project') {
+      return this.hasProject(id) ? `/builder-mode?project=${encodeURIComponent(id)}` : null;
+    }
+    const projectId = this.projectIdOwningFeature(id);
+    if (!projectId) return null;
+    return `/builder-mode?project=${encodeURIComponent(projectId)}&core=${encodeURIComponent(id)}`;
   }
 
   /** Drag-and-drop reorder: drop `itemId` at absolute position `targetIndex`. */

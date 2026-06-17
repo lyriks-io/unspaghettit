@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
   import { page } from '$app/state';
-  import { replaceState } from '$app/navigation';
+  import { afterNavigate, replaceState } from '$app/navigation';
   import { fade, fly, slide } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
@@ -10,6 +10,7 @@
   import { humanizeTagText } from '$shared/domain/Tags';
   import GameScore from './GameScore.svelte';
   import { builderModeStore } from '$features/builder-mode/presentation/stores/builderModeStore.svelte';
+  import { registerViewLinkResolver } from '$shared/presentation/toast/viewLinkResolver';
   import type {
     BuilderModeFeature,
     BuilderModeSuggestion
@@ -191,6 +192,7 @@
   });
 
   let unsubscribeSync: (() => void) | null = null;
+  let unregisterViewLink: (() => void) | null = null;
 
   // Keep tag colors resolvable in this view: load the palette and feed it the
   // tag types as the dashboard surfaces them (same handshake the expert pages
@@ -219,28 +221,54 @@
     if (url.search !== before) replaceState(`${url.pathname}${url.search}`, {});
   });
 
+  // The other half of the URL ↔ selection binding, but driven by real
+  // navigations only — the activity-toast "View" links into the Builder and
+  // browser back/forward. Crucially NOT a reactive `page.url` effect: that
+  // raced the writer above (on a card click it would run before the writer
+  // had reflected the new selection into the URL, read the stale empty query,
+  // and revert the click). `afterNavigate` fires on link clicks / popstate but
+  // NOT on the writer's `replaceState`, so there's no race. The initial load
+  // (`from` is null) is left to onMount's restore.
+  afterNavigate((nav) => {
+    if (!nav.from) return;
+    const params = page.url.searchParams;
+    builderModeStore.applySelection(params.get('project'), params.get('core'));
+  });
+
   onMount(() => {
     // Restore selection from the URL before the sync effect runs.
     const params = page.url.searchParams;
-    const pid = params.get('project');
-    const cid = params.get('core');
-    if (pid) {
-      builderModeStore.selectProject(pid);
-      if (cid) builderModeStore.selectCoreFeature(cid);
-    }
+    const initialProject = params.get('project');
+    builderModeStore.applySelection(initialProject, params.get('core'));
     urlRestored = true;
 
-    void builderModeStore.refresh();
+    // Teach the activity-toast to deep-link into the Builder while it's open
+    // (falling back to the Expert route when an entity isn't shown here).
+    unregisterViewLink = registerViewLinkResolver((kind, id) =>
+      builderModeStore.deepLinkFor(kind, id)
+    );
+
+    // Deep-linked to one project → load just that project (the rest of the
+    // list fills in lazily if the user goes back to all projects). No project
+    // in the URL → load the full list up front.
+    if (initialProject) {
+      void builderModeStore.loadProjectOnly(initialProject);
+    } else {
+      void builderModeStore.refresh();
+    }
     void builderModeStore.refreshTagPalette();
     unsubscribeSync = builderModeStore.subscribeSync((event) => {
-      // Refresh on any change that can move what the Builder shows: project /
-      // feature edits and implementation-status reports (the Built dials).
+      // Scoped, in-place update — rebuild only the affected project's card
+      // (like the Expert view's refetchOne) instead of the whole dashboard,
+      // so scroll / selection / the queue widget / expanded descriptions are
+      // preserved. The store decides project vs feature scope and only does a
+      // full refresh for a genuinely new entity.
       if (
         event.kind === 'project' ||
         event.kind === 'feature' ||
         event.kind === 'implementation-status'
       ) {
-        void builderModeStore.refreshSilent();
+        void builderModeStore.applySyncEvent(event);
       }
     });
   });
@@ -248,6 +276,8 @@
   onDestroy(() => {
     unsubscribeSync?.();
     unsubscribeSync = null;
+    unregisterViewLink?.();
+    unregisterViewLink = null;
   });
 
   // Floating build-queue widget: minimized (bubble) vs expanded (panel).
@@ -438,7 +468,7 @@
       {@const selectedProject = builderModeStore.selectedProject}
       <div class="space-y-6">
         <button type="button" class={ghostPill} onclick={() => builderModeStore.deselectProject()}>
-          ← All projects ({builderModeStore.dashboard.projects.length})
+          ← All projects ({builderModeStore.projectCount})
         </button>
 
         <section class="overflow-hidden rounded-2xl border border-slate-700/60 bg-linear-to-b from-slate-800/45 to-slate-900 shadow-xl shadow-black/20">
@@ -533,6 +563,7 @@
                             onRemove={(tag) => builderModeStore.removeCoreFeatureTag(coreFeature.id, tag)}
                             onRename={(from, to) => builderModeStore.renameTag(from, to)}
                             typeOptions={builderModeStore.allTagTypes}
+                            collapsible
                             class="relative z-20 mt-2"
                           />
                         </div>
@@ -611,9 +642,22 @@
               </div>
             {:else}
               {@const coreFeatureId = builderModeStore.selectedCoreFeature.id}
-              <div class="space-y-3">
-                {#each builderModeStore.visibleSelectedFeatures as feature, i (feature.id)}
-                  {@render FeatureCard(coreFeatureId, feature, i)}
+              <div class="space-y-4">
+                {#each builderModeStore.visibleSelectedSurfaces as surface (surface.surfaceId)}
+                  <div class="space-y-2">
+                    <!-- A surface is a higher-level grouping; its features
+                         (actions) are the specified leaves listed under it.
+                         Always shown so the surface level is visible even when a
+                         core feature has a single surface. -->
+                    <div class="flex items-center gap-2 px-1 pt-1">
+                      <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{surface.surfaceName}</span>
+                      <span class="h-px flex-1 bg-slate-800" aria-hidden="true"></span>
+                      <span class="text-[10px] tabular-nums text-slate-600">{surface.features.length}</span>
+                    </div>
+                    {#each surface.features as feature, i (feature.id)}
+                      {@render FeatureCard(coreFeatureId, feature, i)}
+                    {/each}
+                  </div>
                 {/each}
               </div>
             {/if}
@@ -630,7 +674,7 @@
           <div class="flex shrink-0 items-center gap-3">
             {@render ActiveTagFilter()}
             <p class="text-xs text-slate-500">
-              {builderModeStore.filteredProjects.length}{builderModeStore.searchActive || builderModeStore.tagActive ? ` of ${builderModeStore.dashboard.projects.length}` : ' total'}
+              {builderModeStore.filteredProjects.length}{builderModeStore.searchActive || builderModeStore.tagActive ? ` of ${builderModeStore.projectCount}` : ' total'}
             </p>
           </div>
         </div>
@@ -666,6 +710,7 @@
                       onRemove={(tag) => builderModeStore.removeProjectTag(project.id, tag)}
                       onRename={(from, to) => builderModeStore.renameTag(from, to)}
                       typeOptions={builderModeStore.allTagTypes}
+                      collapsible
                       class="relative z-20"
                     />
                   </div>
@@ -677,6 +722,23 @@
               </article>
             </li>
           {/each}
+          <!-- Placeholders for projects still streaming in (progressive load).
+               Only while not searching/filtering, where the visible set equals
+               the loaded set. -->
+          {#if builderModeStore.pendingProjectCount > 0 && !builderModeStore.searchActive && !builderModeStore.tagActive}
+            {#each Array.from({ length: builderModeStore.pendingProjectCount }) as _, i (`pending-${i}`)}
+              <li class="builder-skeleton__card" aria-hidden="true">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="builder-skeleton__shape h-2.5 w-3/5 rounded-full"></span>
+                  <span class="builder-skeleton__shape h-4 w-14 rounded-full"></span>
+                </div>
+                <div class="flex justify-center gap-10 pt-5">
+                  <span class="builder-skeleton__shape size-11 rounded-full"></span>
+                  <span class="builder-skeleton__shape size-11 rounded-full"></span>
+                </div>
+              </li>
+            {/each}
+          {/if}
         </ul>
       </section>
     {/if}

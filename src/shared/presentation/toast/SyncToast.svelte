@@ -3,6 +3,7 @@
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { syncToastStore, type SyncToast } from './syncToastStore.svelte';
+  import { resolveViewLink } from './viewLinkResolver';
 
   onMount(() => {
     // Idempotent — starts the SSE subscription on first mount, no-ops on
@@ -89,6 +90,15 @@
     if (cleaned.length === 0) cleaned.push(toast.entityId);
     return cleaned;
   }
+
+  // The "View" target. Prefer the active view's own deep-link (e.g. the
+  // Builder, while it's open) so the user stays where they are; fall back to
+  // the default Expert route the toast was created with. Deletes carry no
+  // viewable target (the entity is gone).
+  function viewHref(toast: SyncToast): string | undefined {
+    if (toast.op === 'delete') return undefined;
+    return resolveViewLink(toast.kind, toast.entityId) ?? toast.href;
+  }
 </script>
 
 {#if syncToastStore.toasts.length > 0}
@@ -99,6 +109,7 @@
   >
     {#each syncToastStore.toasts as toast (toast.id)}
       {@const crumbs = breadcrumb(toast)}
+      {@const target = viewHref(toast)}
       <div
         class="pointer-events-auto flex items-start gap-3 rounded-lg border px-3 py-2 shadow-md shadow-slate-950/10 {kindAccent(toast.kind)}"
         in:fly={{ x: 24, duration: 180, easing: cubicOut }}
@@ -137,9 +148,9 @@
           {/if}
         </div>
         <div class="flex shrink-0 items-center gap-1">
-          {#if toast.href}
+          {#if target}
             <a
-              href={toast.href}
+              href={target}
               class="rounded-md bg-white/70 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-white hover:text-brand-800"
               onclick={() => syncToastStore.dismiss(toast.id)}
             >
@@ -152,7 +163,7 @@
             onclick={() => syncToastStore.dismiss(toast.id)}
             aria-label="Dismiss"
           >
-            âœ•
+            &times;
           </button>
         </div>
       </div>

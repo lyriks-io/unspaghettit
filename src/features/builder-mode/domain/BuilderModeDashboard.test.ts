@@ -76,6 +76,9 @@ describe('buildBuilderModeDashboard', () => {
     expect(mappedCoreFeature?.name).toBe('Team management');
     expect(mappedFeature?.name).toBe('Send invite');
     expect(mappedFeature?.description).toBe('Invite a teammate by email.');
+    // Each feature carries the surface it lives on so the Builder can group
+    // features under a surface heading.
+    expect(mappedFeature?.surfaceName).toBe('Team settings');
     expect(mappedFeature?.implementationPercentage).toBe(0);
     // Suggestions are NOT deterministic anymore: a committed action with no
     // proposed Evolution carries no advice.
