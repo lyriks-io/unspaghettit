@@ -27,6 +27,11 @@ per-repo install (\`unspa init --local\`). Open the dashboard with
 \`unspa dashboard\` (http://localhost:3000) to see surfaces, actions, simulator,
 maturity, and implementation coverage.
 
+When using the CLI hub, treat \`~/.unspa-hub/unspa\` as the source of truth.
+Dashboard localhost ports are only views over that folder and may change per
+run. Do not inspect Docker containers, unrelated app integrations, or another
+product's embedded Unspa data unless the user explicitly asks for that source.
+
 ### Editing the model. Use the MCP, don't re-emit JSON
 
 The Unspaghettit **MCP server** is registered for this repo. Prefer its tools over
