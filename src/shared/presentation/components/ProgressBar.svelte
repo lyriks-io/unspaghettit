@@ -5,7 +5,7 @@
    * Designed to replace the "single flat colored fill" pattern that was
    * scattered across FeatureCard / MaturityPanel / FeatureHealthStrip.
    * Adds:
-   *   - tier-based color (red < 50%, amber < 80%, emerald â‰¥ 80%) when no
+   *   - tier-based color (red < 50%, amber < 80%, emerald >= 80%) when no
    *     explicit `color` is passed. The tier breakpoints match the
    *     existing scorer thresholds so the visual identity stays in step
    *     with the textual "critical / recommended" semantics.
