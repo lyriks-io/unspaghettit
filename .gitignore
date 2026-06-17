@@ -23,6 +23,10 @@ blob-report
 .codex/config.toml
 .claude/settings.local.json
 .claude/skills/unspa-quest-modeler/
+# Project MCP config: generated per-machine by `unspa init` and carries an
+# absolute, user-specific UNSPA_SNAPSHOTS path (and a dev sync URL), so it must
+# not be committed. Each clone runs `unspa init` to produce its own.
+.mcp.json
 
 # unspa local caches and artifacts
 .unspa.json
