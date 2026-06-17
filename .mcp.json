@@ -8,7 +8,8 @@
         "unspa-mcp"
       ],
       "env": {
-        "UNSPA_SNAPSHOTS": "C:\\Users\\Lazyee\\.unspa-hub\\unspa"
+        "UNSPA_SNAPSHOTS": "C:\\Users\\Lazyee\\.unspa-hub\\unspa",
+        "UNSPA_SYNC_URL": "http://localhost:5173"
       }
     }
   }
