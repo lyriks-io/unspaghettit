@@ -158,13 +158,27 @@ const evaluateAssertions = (
         ...(a.description ? { description: a.description } : {})
       };
     }
+    // Guard a malformed assertion that carries no state path (untyped scenario
+    // data can deserialize with `path: undefined`). Evaluating it would call
+    // `readPath(undefined)` → `undefined.split('.')` and crash the WHOLE
+    // feature's run. Report it as not-held with a clear path string instead, so
+    // one bad assertion fails just its own scenario rather than the run.
+    const rawPath: unknown = a.path;
+    if (typeof rawPath !== 'string' || rawPath.length === 0) {
+      return {
+        path: String(a.path),
+        operator: a.operator,
+        held: false,
+        ...(a.description ? { description: a.description } : {})
+      };
+    }
     const held = evaluateCondition(
       { left: a.path, operator: a.operator, right: a.value },
       snapshot,
       params
     );
     return {
-      path: String(a.path),
+      path: rawPath,
       operator: a.operator,
       held,
       ...(a.description ? { description: a.description } : {})

@@ -93,6 +93,56 @@ describe('runScenariosUseCase', () => {
     expect(out.results[0]?.pass).toBe(true);
   });
 
+  it('does not crash when a success scenario has an assertion with no state path', () => {
+    const action: Action = {
+      id: asActionId('c1'),
+      name: 'Increment',
+      intent: 'Add one to count',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [
+        {
+          id: asEffectId('eff1'),
+          type: 'set_state',
+          path: asStatePath('count'),
+          value: {
+            kind: 'add',
+            left: { kind: 'state', path: asStatePath('count') },
+            right: { kind: 'literal', value: 1 }
+          }
+        }
+      ],
+      emittedEvents: [],
+      transitions: [],
+      scenarios: [
+        {
+          id: asScenarioId('sc1'),
+          name: 'malformed assertion missing its path',
+          stateOverrides: [{ path: asStatePath('count'), value: 4 }],
+          parameterOverrides: [],
+          expectedStatus: 'success',
+          // Untyped scenario data can deserialize with a missing `path`. The
+          // runner must report that assertion as not-held, NOT crash the whole
+          // feature run on `undefined.split('.')`.
+          expectedAssertions: [
+            {
+              path: undefined as unknown as ReturnType<typeof asStatePath>,
+              operator: 'equals',
+              value: 5
+            }
+          ]
+        }
+      ]
+    };
+    const run = runScenariosUseCase();
+    expect(() => run({ feature: makeFeature(action) })).not.toThrow();
+    const out = run({ feature: makeFeature(action) });
+    expect(out.results[0]?.assertions[0]?.held).toBe(false);
+    expect(out.results[0]?.pass).toBe(false);
+  });
+
   it('applies a scenario persona before scenario overrides', () => {
     const persona: Persona = {
       id: asPersonaId('p1'),
