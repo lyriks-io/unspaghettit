@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Global search in the header.** A search bar in the dashboard header (focus it or press **⌘K / Ctrl+K**) that indexes the *entire* model — projects, domains, features, surfaces, actions, parameters, rules, effects, invariants, state definitions, transitions, personas, resources, entities (and nested fields), events, value sets, and scenarios — and opens a big, grouped results menu. Tag text is folded into its project/feature so a tag query still finds its carrier. Results are ranked (exact › prefix › word-prefix › substring, weighted by kind), grouped by type, and keyboard-navigable (↑/↓/Enter); selecting one **deep-links to the exact element**, expands it (an action's card opens so you see the searched item itself, not a collapsed header), and pulses it for ~3s (reusing the feature editor's `?surface=&panel=&focus=` contract + focus observer, now honoring a one-shot `focus` URL param). Built as a hexagonal feature slice (`global-search`): a pure, unit-tested index builder + scorer, an application use case over the repository ports, and a presentation store behind a driven `SearchHost` port. The index builds lazily on first open, is cached, and rebuilds on model-change sync events. Builder mode keeps its own local filter.
+
 ## [0.3.0] — 2026-06-18
 
 Two additive surfaces — an interactive **behavior graph** and an opt-in **Lyriks** dashboard skin — plus a round of Builder-view scaling and two robustness fixes. Non-breaking: the default look and every existing view are unchanged, and the new theme/graph are opt-in.

@@ -9,7 +9,6 @@ import type { HistoryEntry } from '$lib/sync/protocol';
 
 export type ProjectPanel =
   | 'features'
-  | 'queue'
   | 'resources'
   | 'data'
   | 'events'

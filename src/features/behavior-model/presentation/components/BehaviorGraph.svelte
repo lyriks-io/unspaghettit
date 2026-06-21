@@ -36,7 +36,10 @@
   let renderer: VisBehaviorGraphRenderer | null = null;
 
   let enabledKinds = $state<Record<BehaviorGraphEdgeKind, boolean>>({
-    contains: true,
+    // `contains` is the structural skeleton (project → feature → surface →
+    // action) and dominates the canvas; start it OFF so the behavioral edges
+    // (reads/writes/emits/…) read clearly. Users can toggle it back on.
+    contains: false,
     reads: true,
     writes: true,
     emits: true,
@@ -45,6 +48,27 @@
     uses: true,
     handles: true
   });
+
+  // Floating "smart" filter menu over the map.
+  let filtersOpen = $state(false);
+  let filtersMenuRef = $state<HTMLDivElement | null>(null);
+
+  const totalKindCount = ALL_BEHAVIOR_GRAPH_EDGE_KINDS.length;
+  const activeKindCount = $derived(
+    ALL_BEHAVIOR_GRAPH_EDGE_KINDS.filter((kind) => enabledKinds[kind]).length
+  );
+
+  const setAllKinds = (value: boolean): void => {
+    enabledKinds = Object.fromEntries(
+      ALL_BEHAVIOR_GRAPH_EDGE_KINDS.map((kind) => [kind, value])
+    ) as Record<BehaviorGraphEdgeKind, boolean>;
+  };
+
+  const handleWindowMouseDown = (event: MouseEvent): void => {
+    if (filtersOpen && filtersMenuRef && !filtersMenuRef.contains(event.target as Node)) {
+      filtersOpen = false;
+    }
+  };
 
   const sourceFeatures = $derived(features ?? (feature ? [feature] : []));
   const graphTitle = $derived(project?.name ?? feature?.name ?? 'Behavior graph');
@@ -150,105 +174,279 @@
   });
 </script>
 
+<svelte:window
+  onmousedown={handleWindowMouseDown}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') filtersOpen = false;
+  }}
+/>
+
 <section class="space-y-4">
   <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-950/5">
     <div class="border-b border-slate-200 bg-slate-950 px-4 py-4 text-white">
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div class="min-w-0">
-          <p class="text-xs font-semibold uppercase tracking-wide text-cyan-200">Behavior Graph</p>
-          <h2 class="mt-1 truncate text-2xl font-semibold">{graphTitle}</h2>
-          <p class="mt-1 max-w-3xl text-sm leading-6 text-slate-300">{graphSubtitle}</p>
-        </div>
-        <a
-          href={backHref}
-          class="rounded-md border border-white/20 px-3 py-2 text-sm font-medium text-white hover:bg-white/10"
+      <!-- Back link: top-left, no box — it sits directly on the header so its
+           background is the header's own colour (blends in any theme). -->
+      <a
+        href={backHref}
+        class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 transition hover:text-white"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="h-4 w-4"
+          aria-hidden="true"
         >
-          {backLabel}
-        </a>
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+        {backLabel}
+      </a>
+      <div class="mt-3 min-w-0">
+        <p class="text-xs font-semibold uppercase tracking-wide text-cyan-200">Behavior Graph</p>
+        <h2 class="mt-1 truncate text-2xl font-semibold">{graphTitle}</h2>
+        <p class="mt-1 max-w-3xl text-sm leading-6 text-slate-300">{graphSubtitle}</p>
       </div>
     </div>
 
     <div class="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div class="min-w-0 border-b border-slate-200 lg:border-b-0 lg:border-r">
-        <div class="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
-          <input
-            type="search"
-            bind:value={search}
-            placeholder="Search nodes"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-700 sm:w-64"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
-            onclick={() => renderer?.relayout(filteredGraph.nodes.length)}
-          >
-            Re-layout
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
-            onclick={() => renderer?.fit()}
-          >
-            Fit
-          </button>
-          <div class="flex rounded-md border border-slate-300 bg-white p-1">
-            <button
-              type="button"
-              class="rounded px-2.5 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              aria-label="Zoom out"
-              onclick={() => renderer?.zoomBy(0.72)}
-            >
-              -
-            </button>
-            <button
-              type="button"
-              class="rounded px-2.5 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              aria-label="Zoom in"
-              onclick={() => renderer?.zoomBy(1.38)}
-            >
-              +
-            </button>
-          </div>
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
-            onclick={resetView}
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium {labelsVisible ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-white'}"
-            onclick={() => (labelsVisible = !labelsVisible)}
-          >
-            Labels
-          </button>
-          <div class="flex flex-wrap gap-1">
-            {#each ALL_BEHAVIOR_GRAPH_EDGE_KINDS as kind}
-              <button
-                type="button"
-                class="rounded-full border px-2.5 py-1 text-xs font-medium {enabledKinds[kind]
-                  ? 'border-slate-300 bg-white text-slate-800'
-                  : 'border-slate-200 bg-slate-100 text-slate-400'}"
-                onclick={() => toggleKind(kind)}
-              >
-                {behaviorGraphEdgeTheme[kind].label}
-              </button>
-            {/each}
-          </div>
-        </div>
-
         <div class="graph-canvas relative">
           <div
             bind:this={graphContainer}
             class="h-[76vh] min-h-[720px] w-full"
             aria-label={`Interactive behavior graph for ${graphTitle}`}
           ></div>
-          <div class="pointer-events-none absolute bottom-3 left-3 rounded-md border border-slate-200 bg-white/88 px-3 py-2 text-xs text-slate-600 shadow-sm backdrop-blur">
-            ForceAtlas2 settles the graph, then physics stops for smooth panning. Wheel, pinch, or +/- to zoom.
+
+          <!-- Top-right: search + the smart filter menu, floated over the map. -->
+          <div class="absolute right-3 top-3 z-10 flex items-start gap-2">
+            <div class="relative">
+              <label for="graph-search" class="sr-only">Search nodes</label>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.9"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <input
+                id="graph-search"
+                type="search"
+                bind:value={search}
+                placeholder="Search nodes"
+                class="h-9 w-44 rounded-lg border border-slate-200 bg-white/95 pl-8 pr-3 text-sm shadow-sm outline-none backdrop-blur transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/15 sm:w-60"
+              />
+            </div>
+            <div class="relative" bind:this={filtersMenuRef}>
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={filtersOpen}
+                onclick={() => (filtersOpen = !filtersOpen)}
+                class="flex h-9 items-center gap-1.5 rounded-lg border bg-white/95 px-2.5 text-sm font-medium shadow-sm backdrop-blur transition {filtersOpen
+                  ? 'border-brand-400 text-slate-900'
+                  : 'border-slate-200 text-slate-700 hover:bg-white'}"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path d="M3 5h18l-7 8v6l-4-2v-4z" />
+                </svg>
+                <span class="hidden sm:inline">Filters</span>
+                <span class="rounded-full bg-slate-100 px-1.5 text-[11px] font-semibold text-slate-600">
+                  {activeKindCount}/{totalKindCount}
+                </span>
+              </button>
+              {#if filtersOpen}
+                <div
+                  role="menu"
+                  class="absolute right-0 top-11 z-20 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-950/10"
+                >
+                  <div class="flex items-center justify-between px-2 pb-1 pt-1">
+                    <span class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Connections
+                    </span>
+                    <div class="flex gap-1">
+                      <button
+                        type="button"
+                        onclick={() => setAllKinds(true)}
+                        class="rounded px-1.5 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-50"
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onclick={() => setAllKinds(false)}
+                        class="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-slate-100"
+                      >
+                        None
+                      </button>
+                    </div>
+                  </div>
+                  {#each ALL_BEHAVIOR_GRAPH_EDGE_KINDS as kind}
+                    {@const on = enabledKinds[kind]}
+                    <button
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={on}
+                      onclick={() => toggleKind(kind)}
+                      class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-slate-50"
+                    >
+                      <span
+                        class="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={`background:${behaviorGraphEdgeTheme[kind].color};opacity:${on ? 1 : 0.3}`}
+                      ></span>
+                      <span class="flex-1 truncate {on ? 'text-slate-800' : 'text-slate-400'}">
+                        {behaviorGraphEdgeTheme[kind].label}
+                      </span>
+                      {#if on}
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2.2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          class="h-4 w-4 shrink-0 text-brand-600"
+                          aria-hidden="true"
+                        >
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                      {/if}
+                    </button>
+                  {/each}
+                  <div class="my-1 h-px bg-slate-100"></div>
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={labelsVisible}
+                    onclick={() => (labelsVisible = !labelsVisible)}
+                    class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-slate-50"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="h-4 w-4 shrink-0 text-slate-400"
+                      aria-hidden="true"
+                    >
+                      <path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L3 13V4h9z" />
+                      <path d="M7.5 7.5h.01" />
+                    </svg>
+                    <span class="flex-1 {labelsVisible ? 'text-slate-800' : 'text-slate-600'}">Labels</span>
+                    {#if labelsVisible}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        class="h-4 w-4 shrink-0 text-brand-600"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    {/if}
+                  </button>
+                  <div class="my-1 h-px bg-slate-100"></div>
+                  <div class="flex gap-1.5 px-1 pb-1 pt-0.5">
+                    <button
+                      type="button"
+                      onclick={() => renderer?.relayout(filteredGraph.nodes.length)}
+                      class="flex-1 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Re-layout
+                    </button>
+                    <button
+                      type="button"
+                      onclick={() => {
+                        resetView();
+                        filtersOpen = false;
+                      }}
+                      class="flex-1 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              {/if}
+            </div>
           </div>
+
+          <!-- Bottom-right: Google-Maps-style zoom + fit control. -->
+          <div
+            class="absolute bottom-3 right-3 z-10 flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white/95 shadow-sm backdrop-blur"
+          >
+            <button
+              type="button"
+              aria-label="Zoom in"
+              onclick={() => renderer?.zoomBy(1.38)}
+              class="grid h-9 w-9 place-items-center text-lg font-semibold leading-none text-slate-700 transition hover:bg-slate-100"
+            >
+              +
+            </button>
+            <div class="h-px bg-slate-200"></div>
+            <button
+              type="button"
+              aria-label="Zoom out"
+              onclick={() => renderer?.zoomBy(0.72)}
+              class="grid h-9 w-9 place-items-center text-lg font-semibold leading-none text-slate-700 transition hover:bg-slate-100"
+            >
+              −
+            </button>
+            <div class="h-px bg-slate-200"></div>
+            <button
+              type="button"
+              aria-label="Fit graph to view"
+              onclick={() => renderer?.fit()}
+              class="grid h-9 w-9 place-items-center text-slate-700 transition hover:bg-slate-100"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path d="M4 9V5a1 1 0 0 1 1-1h4" />
+                <path d="M20 9V5a1 1 0 0 0-1-1h-4" />
+                <path d="M4 15v4a1 1 0 0 0 1 1h4" />
+                <path d="M20 15v4a1 1 0 0 1-1 1h-4" />
+              </svg>
+            </button>
+          </div>
+
           {#if !physicsSettled && stabilizationProgress < 100}
-            <div class="pointer-events-none absolute left-1/2 top-3 w-64 -translate-x-1/2 rounded-md border border-slate-200 bg-white/90 p-3 text-xs text-slate-600 shadow-sm backdrop-blur">
+            <div class="pointer-events-none absolute left-3 top-3 z-10 w-56 rounded-md border border-slate-200 bg-white/90 p-3 text-xs text-slate-600 shadow-sm backdrop-blur">
               <div class="flex justify-between font-medium text-slate-800">
                 <span>Stabilizing layout</span>
                 <span>{stabilizationProgress}%</span>

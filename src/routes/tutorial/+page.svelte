@@ -840,7 +840,8 @@ THEN show_message "You qualify for free shipping."`}
     <TutorialSection id="queue" title="9. Implementation queue">
       {#snippet children()}
         <p>
-          Every project has an <strong>Implementation Queue</strong> tab: an ordered
+          The <strong>Implementation Queue</strong> rides along in a floating panel
+          pinned to the bottom-right corner, visible from every page — an ordered
           "implement next" list of Features, Surfaces, or Actions you (or the LLM)
           plan to build. The point: a dev can say "implement the next thing in the
           queue" and the LLM picks it up via the MCP without you naming the entity.
@@ -852,7 +853,7 @@ THEN show_message "You qualify for free shipping."`}
             them. This keeps the design minimal first.
           </li>
           <li>
-            <strong>Drag to reorder</strong> on the Queue tab. Order persists to
+            <strong>Drag to reorder</strong> in the corner panel. Order persists to
             disk via the project file.
           </li>
           <li>

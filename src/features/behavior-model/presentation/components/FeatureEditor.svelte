@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
-  import { asSurfaceId } from '$features/behavior-model/domain/value-objects/ids';
+  import { asActionId, asSurfaceId } from '$features/behavior-model/domain/value-objects/ids';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import { editorStore } from '$features/behavior-model/presentation/stores/editorStore.svelte';
   import { getEffectiveEntities } from '$features/behavior-model/domain/services/EffectiveEntities';
@@ -84,27 +84,40 @@
   });
 
   // Focus observer: when the editor asks to focus a target (e.g. via the
-  // maturity panel's "Fix →" anchor), wait a tick for the surface/tab/cap
-  // selection to settle, then scroll the matching DOM element into view and
-  // briefly pulse it so the user can see exactly what to act on.
+  // maturity panel's "Fix →" anchor or a global-search result), wait a tick for
+  // the surface/tab/capability selection to settle, then scroll the matching
+  // DOM element into view and pulse it so the user can see exactly what they
+  // searched for. The pulse holds for ~3s (FOCUS_FLASH_MS) — long enough to
+  // catch the eye after the scroll lands.
+  const FOCUS_FLASH_MS = 3000;
   $effect(() => {
     editorStore.focusToken; // re-fire each navigation
     const target = editorStore.focusTarget;
     if (!target) return;
     let cancelled = false;
+    let flashed: Element | null = null;
     const timers: ReturnType<typeof setTimeout>[] = [];
+    // Clear any leftover highlight from a previous navigation so re-searching
+    // never leaves two elements glowing at once.
+    document
+      .querySelectorAll('.focus-flash')
+      .forEach((el) => el.classList.remove('focus-flash'));
     const tryFocus = (attempt = 0) => {
       if (cancelled) return;
       const el = document.querySelector(`[data-focus-target="${CSS.escape(target)}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Restart the CSS animation cleanly even if the class lingered.
+        el.classList.remove('focus-flash');
+        void (el as HTMLElement).offsetWidth; // reflow so the animation replays
         el.classList.add('focus-flash');
-        timers.push(setTimeout(() => el.classList.remove('focus-flash'), 1700));
+        flashed = el;
+        timers.push(setTimeout(() => el.classList.remove('focus-flash'), FOCUS_FLASH_MS + 200));
         return;
       }
       // The element may not be in the DOM yet (tab switching, action
       // expanding). Retry a handful of times before giving up.
-      if (attempt < 5) {
+      if (attempt < 6) {
         timers.push(setTimeout(() => tryFocus(attempt + 1), 80));
       }
     };
@@ -112,6 +125,8 @@
     return () => {
       cancelled = true;
       for (const t of timers) clearTimeout(t);
+      // Drop the highlight if we navigate away mid-pulse.
+      flashed?.classList.remove('focus-flash');
     };
   });
 
@@ -132,6 +147,11 @@
     const tabParam = url.searchParams.get('tab');
     const surfaceParam = url.searchParams.get('surface');
     const panelParam = url.searchParams.get('panel');
+    // Optional one-shot deep-link focus (e.g. from global search): the value of
+    // a `data-focus-target` attribute the focus observer below scrolls to and
+    // pulses. Read here so it survives a fresh page load; the store→URL effect
+    // strips it from the URL afterward, which is fine — it's a one-time pulse.
+    const focusParam = url.searchParams.get('focus');
 
     untrack(() => {
       const tab =
@@ -153,6 +173,22 @@
           : 'actions';
       if (editorStore.surfacePanelTab !== panel) {
         editorStore.setSurfacePanelTab(panel);
+      }
+
+      if (focusParam) {
+        // Open the dropdown for the exact target so the user sees the searched
+        // item itself, not a collapsed header. An `action:<id>` focus selects
+        // that capability, which expands its card (ActionsEditor renders the
+        // selected action expanded). Runs AFTER selectSurface above, which
+        // would otherwise reset the selected capability to null.
+        const actionMatch = /^action:(.+)$/.exec(focusParam);
+        if (actionMatch?.[1]) {
+          editorStore.selectCapability(asActionId(actionMatch[1]));
+        }
+        // Bump the token so re-navigating to the same target still re-fires the
+        // focus observer; writes propagate even from inside untrack.
+        editorStore.focusTarget = focusParam;
+        editorStore.focusToken += 1;
       }
     });
   });

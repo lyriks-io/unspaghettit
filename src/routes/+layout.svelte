@@ -7,6 +7,8 @@
   import FlyingSpaghettiEasterEgg from "$shared/presentation/easter-eggs/FlyingSpaghettiEasterEgg.svelte";
   import SyncToast from "$shared/presentation/toast/SyncToast.svelte";
   import TourOverlay from "$features/tutorial/presentation/components/TourOverlay.svelte";
+  import GlobalSearch from "$features/global-search/presentation/components/GlobalSearch.svelte";
+  import FloatingQueueWidget from "$features/implementation-queue/presentation/components/FloatingQueueWidget.svelte";
   import { projectsStore } from "$features/projects/presentation/stores/projectsStore.svelte";
   import { builderModeStore } from "$features/builder-mode/presentation/stores/builderModeStore.svelte";
   import { enabledViews, isEnabled } from "$lib/views/enabled";
@@ -14,6 +16,7 @@
   import { ALL_THEMES } from "$lib/theme/registry";
   import { identityStore } from "$shared/identity/identityStore.svelte";
   import { authStore } from "$shared/security/authStore.svelte";
+  import { apiFetch } from "$shared/security/apiFetch";
   import {
     confirmDialog,
     promptDialog,
@@ -34,6 +37,7 @@
     // first 401 from the server triggers `apiFetch`'s prompt-and-retry
     // path which fills this store and persists the value.
     authStore.init();
+    void loadHubDirectory();
     // First visit only: auto-prompt for a name. Once the user has been
     // asked (even if they dismissed without setting one), the flag in
     // localStorage suppresses the dialog on every subsequent reload.
@@ -81,6 +85,9 @@
   let settingsMenuRef = $state<HTMLDivElement | null>(null);
   let themeMenuOpen = $state(false);
   let themeMenuRef = $state<HTMLDivElement | null>(null);
+  let hubDirectory = $state("");
+  let hubDirectoryError = $state("");
+  let openingHubDirectory = $state(false);
 
   function handleGlobalMouseDown(event: MouseEvent) {
     const target = event.target as Node;
@@ -111,6 +118,45 @@
   async function pickReset() {
     settingsMenuOpen = false;
     await clearLocalData();
+  }
+
+  async function loadHubDirectory() {
+    try {
+      const response = await apiFetch("/api/system/hub-directory");
+      if (!response.ok) throw new Error(await response.text());
+      const payload = (await response.json()) as { directory?: unknown };
+      if (typeof payload.directory !== "string") {
+        throw new Error("The server returned an invalid directory.");
+      }
+      hubDirectory = payload.directory;
+      hubDirectoryError = "";
+    } catch (error) {
+      hubDirectoryError =
+        error instanceof Error ? error.message : "Could not locate the hub.";
+    }
+  }
+
+  async function openHubDirectory() {
+    openingHubDirectory = true;
+    hubDirectoryError = "";
+    try {
+      const response = await apiFetch("/api/system/hub-directory", {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const payload = (await response.json()) as { directory?: unknown };
+      if (typeof payload.directory === "string") {
+        hubDirectory = payload.directory;
+      }
+      settingsMenuOpen = false;
+    } catch (error) {
+      hubDirectoryError =
+        error instanceof Error
+          ? error.message
+          : "Could not open the hub folder.";
+    } finally {
+      openingHubDirectory = false;
+    }
   }
 
   // Wipe every browser-side persistence surface the dashboard uses:
@@ -335,6 +381,14 @@
           </div>
         </div>
       {/if}
+      {#if !builderActive}
+        <!-- Global model search. Builder keeps its own local filter (above),
+             so this only renders outside Builder. Flexes to fill the header
+             center on every breakpoint; opens a grouped results menu. -->
+        <div class="mx-2 flex min-w-0 flex-1 justify-center sm:mx-4 md:mx-6">
+          <GlobalSearch {dark} {lyriks} />
+        </div>
+      {/if}
       <div class="flex shrink-0 items-center gap-1.5">
         <div bind:this={themeMenuRef} class="relative">
           <button
@@ -512,6 +566,49 @@
                   >
                 </span>
               </a>
+              <div class="my-1 h-px bg-slate-100"></div>
+              <button
+                type="button"
+                role="menuitem"
+                onclick={openHubDirectory}
+                disabled={openingHubDirectory}
+                title={hubDirectory || "Open the active snapshot folder"}
+                class="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+                  />
+                  <path d="m14 12 3 3 3-3" />
+                  <path d="M17 15V9" />
+                </svg>
+                <span class="min-w-0 flex-1">
+                  <span class="block font-medium">
+                    {openingHubDirectory ? "Opening hub folder…" : "Open hub folder"}
+                  </span>
+                  <span
+                    class="block truncate text-[11px] text-slate-500"
+                    title={hubDirectory}
+                  >
+                    {hubDirectory || "Folder containing all project snapshots"}
+                  </span>
+                  {#if hubDirectoryError}
+                    <span class="mt-0.5 block text-[11px] text-rose-600">
+                      Could not open the folder. Try again.
+                    </span>
+                  {/if}
+                </span>
+              </button>
               <div class="my-1 h-px bg-slate-100"></div>
               <button
                 type="button"
@@ -737,6 +834,13 @@
     {/key}
   </main>
 </div>
+
+<!-- Always-in-corner implementation queue for the default view. Builder mode
+     ships its own dark, project-scoped queue widget, so suppress this one there
+     to avoid two stacked widgets in the same corner. -->
+{#if !builderActive}
+  <FloatingQueueWidget />
+{/if}
 
 <AppDialog />
 <FlyingSpaghettiEasterEgg />

@@ -165,12 +165,18 @@ body {
 /* Re-tint the navigateTo focus pulse to the violet brand so it matches. */
 @keyframes focus-flash-lyriks {
   0% {
-    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.5);
-    background-color: rgba(237, 233, 254, 0.6);
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55);
+    background-color: rgba(237, 233, 254, 0.65);
   }
-  60% {
-    box-shadow: 0 0 0 8px rgba(124, 58, 237, 0);
-    background-color: rgba(237, 233, 254, 0.25);
+  8% {
+    box-shadow: 0 0 0 6px rgba(124, 58, 237, 0.3);
+    background-color: rgba(237, 233, 254, 0.55);
+  }
+  /* Hold a visible ring + tint through most of the animation so the target
+     stays obvious after the scroll lands, then fade out at the end. */
+  75% {
+    box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.22);
+    background-color: rgba(237, 233, 254, 0.4);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
@@ -262,25 +268,31 @@ body {
 }
 
 /*
- * Pulses a brief project-accent ring + soft fill on whatever element is being
- * focused via editorStore.navigateTo. Triggered by adding the
- * `.focus-flash` class for ~1.6s.
+ * Pulses a project-accent ring + soft fill on whatever element is being
+ * focused via editorStore.navigateTo or a global-search result. Triggered by
+ * adding the `.focus-flash` class; holds for ~3s (kept in sync with
+ * FOCUS_FLASH_MS in FeatureEditor) so the searched item stays obvious.
  */
 @keyframes focus-flash {
   0% {
-    box-shadow: 0 0 0 0 rgba(8, 145, 178, 0.5);
+    box-shadow: 0 0 0 0 rgba(8, 145, 178, 0.55);
+    background-color: rgba(207, 250, 254, 0.6);
+  }
+  8% {
+    box-shadow: 0 0 0 6px rgba(8, 145, 178, 0.3);
     background-color: rgba(207, 250, 254, 0.55);
   }
-  60% {
-    box-shadow: 0 0 0 8px rgba(8, 145, 178, 0);
-    background-color: rgba(207, 250, 254, 0.25);
+  /* Hold the ring + tint through most of the animation, then fade at the end. */
+  75% {
+    box-shadow: 0 0 0 4px rgba(8, 145, 178, 0.22);
+    background-color: rgba(207, 250, 254, 0.4);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+    box-shadow: 0 0 0 0 rgba(8, 145, 178, 0);
     background-color: transparent;
   }
 }
 .focus-flash {
-  animation: focus-flash 1.6s ease-out;
+  animation: focus-flash 3s ease-out;
   border-radius: 0.5rem;
 }

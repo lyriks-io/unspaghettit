@@ -9,7 +9,6 @@
   import ProjectEventsPanel from './ProjectEventsPanel.svelte';
   import ProjectTransitionsPanel from './ProjectTransitionsPanel.svelte';
   import ProjectHistoryPanel from './ProjectHistoryPanel.svelte';
-  import QueuePanel from '$features/implementation-queue/presentation/components/QueuePanel.svelte';
   import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
   import {
     alertDialog,
@@ -34,7 +33,6 @@
 
   const PANELS: { id: ProjectPanel; label: string }[] = [
     { id: 'features', label: 'Features' },
-    { id: 'queue', label: 'Queue' },
     { id: 'resources', label: 'Resources' },
     { id: 'data', label: 'Entity' },
     { id: 'events', label: 'Events' },
@@ -70,11 +68,6 @@
     switch (panel) {
       case 'features':
         return exps.length;
-      case 'queue':
-        // Read straight off the project so the badge is correct on first
-        // paint, before the user ever clicks the Queue tab (the panel-side
-        // queueStore only populates on mount).
-        return projectStore.project?.implementationQueue?.length ?? 0;
       case 'resources':
         return groupResources(exps).length;
       case 'data':
@@ -283,7 +276,7 @@
       </nav>
     </div>
 
-    {#if projectStore.activePanel !== 'features' && projectStore.activePanel !== 'queue' && projectStore.activePanel !== 'history'}
+    {#if projectStore.activePanel !== 'features' && projectStore.activePanel !== 'history'}
       <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <input
           type="search"
@@ -313,8 +306,6 @@
               onRemoveTag={handleRemoveFeatureTag}
               onRemove={handleRemoveFeature}
             />
-          {:else if projectStore.activePanel === 'queue'}
-            <QueuePanel />
           {:else if projectStore.activePanel === 'resources'}
             <ProjectResourcesPanel features={projectFeaturesStore.features} search={projectStore.search} />
           {:else if projectStore.activePanel === 'data'}

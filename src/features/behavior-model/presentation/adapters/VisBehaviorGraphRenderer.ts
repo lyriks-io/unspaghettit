@@ -264,7 +264,16 @@ export class VisBehaviorGraphRenderer {
         zoomView: true,
         multiselect: false,
         navigationButtons: false,
-        keyboard: false
+        keyboard: false,
+        // Pan/zoom performance: physics is already frozen post-stabilization, so
+        // the only cost while panning or zooming is vis-network redrawing every
+        // node AND edge each frame — and edges (lines, arrows, dashes) are by far
+        // the most expensive. These built-in flags skip drawing edges entirely
+        // during a drag or a zoom and snap them back the moment interaction ends,
+        // so moving the graph stays smooth on large maps. Nodes keep rendering so
+        // the graph still visibly moves rather than blanking.
+        hideEdgesOnDrag: true,
+        hideEdgesOnZoom: true
       },
       layout: {
         improvedLayout: nodeCount < 350
