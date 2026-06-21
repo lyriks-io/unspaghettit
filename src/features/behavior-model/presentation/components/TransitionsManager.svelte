@@ -20,16 +20,17 @@
   } from '$features/behavior-model/domain/services/TransitionCatalog';
   import { editorStore } from '$features/behavior-model/presentation/stores/editorStore.svelte';
   import { cryptoIdGenerator } from '$shared/domain/IdGenerator';
-  import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
+  import { useFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import { inheritedTransitions } from '$features/projects/domain/services/InheritedFromProject';
 
   type Props = { feature: Feature };
   let { feature }: Props = $props();
 
+  const queueCtx = useFeatureQueueContext();
   const entries = $derived(buildTransitionCatalog(feature));
   const groups = $derived(groupTransitionCatalog(entries));
   const total = $derived(entries.length);
-  const inherited = $derived(inheritedTransitions(projectContextStore.siblings));
+  const inherited = $derived(inheritedTransitions(queueCtx.siblings));
   let sourceDraft = $state<string>('');
   let targetDraft = $state<string>('');
 

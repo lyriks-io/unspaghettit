@@ -23,12 +23,13 @@
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import { cryptoIdGenerator } from '$shared/domain/IdGenerator';
   import ResourceEditor from './ResourceEditor.svelte';
-  import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
+  import { useFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import { inheritedResources } from '$features/projects/domain/services/InheritedFromProject';
 
   type Props = { feature: Feature };
   let { feature }: Props = $props();
 
+  const queueCtx = useFeatureQueueContext();
   let expandedId = $state<ResourceId | null>(null);
 
   async function add() {
@@ -82,7 +83,7 @@
     editorStore.setTopLevelTab('data');
   }
 
-  const inherited = $derived(inheritedResources(projectContextStore.siblings));
+  const inherited = $derived(inheritedResources(queueCtx.siblings));
 </script>
 
 <div class="space-y-3 text-sm">

@@ -5,7 +5,13 @@
   import { implementationStatusStore } from '$features/implementation-status/presentation/stores/implementationStatusStore.svelte';
   import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
   import { asFeatureId } from '$features/behavior-model/domain/value-objects/ids';
+  import { setFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import FeatureEditor from '$features/behavior-model/presentation/components/FeatureEditor.svelte';
+
+  // Composition root: provide the projects-feature queue context to the
+  // behavior-model editors via a port they own, so they never import a sibling
+  // feature's store directly.
+  setFeatureQueueContext(projectContextStore);
 
   // Page owns the lifecycle of every editor-level store. The managers and
   // insights tabs only read; flipping between them does not tear down any

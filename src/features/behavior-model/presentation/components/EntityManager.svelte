@@ -24,16 +24,17 @@
   import { editorStore } from '$features/behavior-model/presentation/stores/editorStore.svelte';
   import { cryptoIdGenerator } from '$shared/domain/IdGenerator';
   import EntityEditor from './EntityEditor.svelte';
-  import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
+  import { useFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import { inheritedData } from '$features/projects/domain/services/InheritedFromProject';
 
   type Props = { feature: Feature };
   let { feature }: Props = $props();
 
+  const queueCtx = useFeatureQueueContext();
   let expandedNamespace = $state<string | null>(null);
 
   const effective = $derived(getEffectiveEntities(feature));
-  const inherited = $derived(inheritedData(projectContextStore.siblings));
+  const inherited = $derived(inheritedData(queueCtx.siblings));
 
   // Build a stored Entity record on-demand so the user can attach metadata to a
   // deduced entry without seeing two list items.

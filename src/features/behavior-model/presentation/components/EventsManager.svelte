@@ -23,16 +23,17 @@
   } from '$features/behavior-model/domain/services/EventCatalog';
   import { editorStore } from '$features/behavior-model/presentation/stores/editorStore.svelte';
   import { cryptoIdGenerator } from '$shared/domain/IdGenerator';
-  import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
+  import { useFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import { inheritedEvents } from '$features/projects/domain/services/InheritedFromProject';
 
   type Props = { feature: Feature };
   let { feature }: Props = $props();
 
+  const queueCtx = useFeatureQueueContext();
   const groups = $derived(groupEventCatalog(buildEventCatalog(feature)));
   const total = $derived(groups.reduce((acc, g) => acc + g.events.length, 0));
   const registered = $derived(feature.events ?? []);
-  const inherited = $derived(inheritedEvents(projectContextStore.siblings));
+  const inherited = $derived(inheritedEvents(queueCtx.siblings));
   const payloadTypes: readonly StateType[] = [
     'string',
     'number',

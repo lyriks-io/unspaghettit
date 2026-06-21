@@ -2,15 +2,19 @@ import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { Project } from '$features/projects/domain/entities/Project';
 import type { ProjectId } from '$features/projects/domain/value-objects/ids';
+import { systemClock } from '$shared/domain/Clock';
 import { getSnapshotRepository } from '$lib/server/snapshotRepository';
-import { replaceSnapshotViaSync } from '$lib/server/syncBridge';
+import { createSyncAwareProjectRepository } from '$lib/server/syncAwareRepositories';
+import { getProjectUseCase } from '$features/projects/application/use-cases/GetProject';
+import { saveProjectUseCase } from '$features/projects/application/use-cases/SaveProject';
+import { deleteProjectUseCase } from '$features/projects/application/use-cases/DeleteProject';
 
 export const prerender = false;
 
 export const GET: RequestHandler = async ({ params }) => {
   const id = params.id as ProjectId;
   const { projectRepo } = getSnapshotRepository();
-  const project = await projectRepo.get(id);
+  const project = await getProjectUseCase({ repository: projectRepo })(id);
   if (!project) throw error(404, `Project ${id} not found`);
   return json(project);
 };
@@ -34,13 +38,19 @@ export const PUT: RequestHandler = async ({ params, request }) => {
   if (typeof project.description !== 'string' || project.description.trim().length === 0) {
     throw error(400, 'Project description is required');
   }
-  await replaceSnapshotViaSync('project', id, project);
+  // Persist (tag normalization + updatedAt + sync-bridge write) through the use
+  // case + port instead of calling replaceSnapshotViaSync straight from transport.
+  const { projectRepo } = getSnapshotRepository();
+  await saveProjectUseCase({
+    repository: createSyncAwareProjectRepository(projectRepo),
+    clock: systemClock
+  })(project);
   return json({ ok: true });
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
   const id = params.id as ProjectId;
   const { projectRepo } = getSnapshotRepository();
-  await projectRepo.delete(id);
+  await deleteProjectUseCase({ repository: projectRepo })(id);
   return new Response(null, { status: 204 });
 };

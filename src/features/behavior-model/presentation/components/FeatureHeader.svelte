@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
-  import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
+  import { useFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
   import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
 
@@ -13,6 +13,7 @@
   };
   let { feature, saving, historyOpen = false, onToggleHistory }: Props = $props();
 
+  const queueCtx = useFeatureQueueContext();
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
   const modKey = isMac ? 'Cmd' : 'Ctrl';
@@ -53,11 +54,11 @@
   // project, "Back" returns to the project it was opened from; otherwise
   // it falls back to the all-features list.
   const backHref = $derived(
-    projectContextStore.project ? `/projects/${projectContextStore.project.id}` : '/features'
+    queueCtx.project ? `/projects/${queueCtx.project.id}` : '/features'
   );
   const backLabel = $derived(
-    projectContextStore.project
-      ? `Back to ${projectContextStore.project.name}`
+    queueCtx.project
+      ? `Back to ${queueCtx.project.name}`
       : 'Back to features'
   );
 </script>

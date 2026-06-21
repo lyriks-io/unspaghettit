@@ -5,7 +5,12 @@
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import { implementationStatusStore } from '$features/implementation-status/presentation/stores/implementationStatusStore.svelte';
   import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
+  import { setFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import BehaviorGraph from '$features/behavior-model/presentation/components/BehaviorGraph.svelte';
+
+  // Provide the queue context for any editor descendant (e.g. FeatureHeader)
+  // rendered under the graph view, mirroring the main feature page.
+  setFeatureQueueContext(projectContextStore);
 
   onMount(() => {
     const id = asFeatureId($page.params.id ?? '');

@@ -35,7 +35,7 @@
   import ParametersEditor from './ParametersEditor.svelte';
   import ScenariosEditor from './ScenariosEditor.svelte';
   import StatePathSelect from './StatePathSelect.svelte';
-  import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
+  import { useFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
 
   type AvailableSurface = { readonly id: Surface['id']; readonly name: string };
 
@@ -197,18 +197,19 @@
   // Queue toggle is only shown when the feature is part of a project; that's
   // the only context where "implement next" is meaningful. Computed reactively
   // so the button label flips immediately after an enqueue without a refresh.
+  const queueCtx = useFeatureQueueContext();
   const featureId = $derived(featureStore.feature?.id);
   const isQueued = $derived(
-    featureId ? projectContextStore.isActionQueued(featureId, action.id) : false
+    featureId ? queueCtx.isActionQueued(featureId, action.id) : false
   );
 
   async function toggleQueue() {
     if (!featureId) return;
     if (isQueued) {
-      const itemId = projectContextStore.findQueueItemIdForAction(featureId, action.id);
-      if (itemId) await projectContextStore.dequeueByItemId(itemId);
+      const itemId = queueCtx.findQueueItemIdForAction(featureId, action.id);
+      if (itemId) await queueCtx.dequeueByItemId(itemId);
     } else {
-      await projectContextStore.enqueueAction(featureId, action.id);
+      await queueCtx.enqueueAction(featureId, action.id);
     }
   }
 
@@ -273,7 +274,7 @@
           ✓ accept
         </button>
       {/if}
-      {#if projectContextStore.isInProject && featureId}
+      {#if queueCtx.isInProject && featureId}
         <button
           type="button"
           class="rounded px-1.5 text-xs transition-opacity {isQueued

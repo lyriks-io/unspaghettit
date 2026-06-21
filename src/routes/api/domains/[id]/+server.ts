@@ -2,14 +2,18 @@ import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { Domain } from '$features/domains/domain/entities/Domain';
 import type { DomainId } from '$features/domains/domain/value-objects/ids';
+import { systemClock } from '$shared/domain/Clock';
 import { getSnapshotRepository } from '$lib/server/snapshotRepository';
+import { getDomainUseCase } from '$features/domains/application/use-cases/GetDomain';
+import { saveDomainUseCase } from '$features/domains/application/use-cases/SaveDomain';
+import { deleteDomainUseCase } from '$features/domains/application/use-cases/DeleteDomain';
 
 export const prerender = false;
 
 export const GET: RequestHandler = async ({ params }) => {
   const id = params.id as DomainId;
   const { domainRepo } = getSnapshotRepository();
-  const domain = await domainRepo.get(id);
+  const domain = await getDomainUseCase({ repository: domainRepo })(id);
   if (!domain) throw error(404, `Domain ${id} not found`);
   return json(domain);
 };
@@ -31,13 +35,13 @@ export const PUT: RequestHandler = async ({ params, request }) => {
     throw error(400, 'Domain name is required');
   }
   const { domainRepo } = getSnapshotRepository();
-  await domainRepo.save(domain);
+  await saveDomainUseCase({ repository: domainRepo, clock: systemClock })(domain);
   return json({ ok: true });
 };
 
 export const DELETE: RequestHandler = async ({ params }) => {
   const id = params.id as DomainId;
   const { domainRepo } = getSnapshotRepository();
-  await domainRepo.delete(id);
+  await deleteDomainUseCase({ repository: domainRepo })(id);
   return new Response(null, { status: 204 });
 };

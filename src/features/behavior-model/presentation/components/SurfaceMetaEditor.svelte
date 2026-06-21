@@ -3,10 +3,12 @@
   import { ALL_SURFACE_TYPES, surfaceTypeLabel } from '$features/behavior-model/domain/entities/Surface';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import { renameSurface } from '$features/behavior-model/domain/services/FeatureTransforms';
-  import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
+  import { useFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
 
   type Props = { surface: Surface };
   let { surface }: Props = $props();
+
+  const queueCtx = useFeatureQueueContext();
 
   // Queue toggle: only renders when the surface's feature is part of a
   // project (the only context where "implement next" is meaningful).
@@ -14,16 +16,16 @@
   // after enqueue/dequeue without a refresh.
   const featureId = $derived(featureStore.feature?.id);
   const isQueued = $derived(
-    featureId ? projectContextStore.isSurfaceQueued(featureId, surface.id) : false
+    featureId ? queueCtx.isSurfaceQueued(featureId, surface.id) : false
   );
 
   async function toggleQueue() {
     if (!featureId) return;
     if (isQueued) {
-      const itemId = projectContextStore.findQueueItemIdForSurface(featureId, surface.id);
-      if (itemId) await projectContextStore.dequeueByItemId(itemId);
+      const itemId = queueCtx.findQueueItemIdForSurface(featureId, surface.id);
+      if (itemId) await queueCtx.dequeueByItemId(itemId);
     } else {
-      await projectContextStore.enqueueSurface(featureId, surface.id);
+      await queueCtx.enqueueSurface(featureId, surface.id);
     }
   }
 
@@ -121,7 +123,7 @@
           </span>
         </div>
         <div class="flex shrink-0 items-center gap-1">
-          {#if projectContextStore.isInProject && featureId}
+          {#if queueCtx.isInProject && featureId}
             <button
               type="button"
               class="rounded-md border border-transparent px-2 py-1 text-xs font-medium transition {isQueued
