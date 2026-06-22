@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { runCheckCommand } from './commands/check';
+import { runCiCommand } from './commands/ci';
 import { runDashboardCommand } from './commands/dashboard';
 import { runInitCommand } from './commands/init';
 import { runLinkCommand } from './commands/link';
@@ -164,6 +165,23 @@ program
       failOnDeadActions: opts.failOnDeadActions === true,
       failOnUnmetGoals: opts.failOnUnmetGoals === true,
       allowInvariantViolations: opts.allowInvariantViolations === true
+    });
+    process.exit(code);
+  });
+
+program
+  .command('ci')
+  .description('Scaffold a GitHub Actions workflow (.github/workflows/unspaghettit.yml) that runs `unspa check` on every push / PR, so the spec gates CI. Requires the model to travel with the repo (`unspa init --local`). Refuses to clobber without --force.')
+  .option('-o, --out <path>', 'Output path (default: .github/workflows/unspaghettit.yml).')
+  .option('--model-check', 'Run bounded model checking in the workflow (deeper: invariant + liveness counterexamples).')
+  .option('--dry-run', 'Print the workflow to stdout instead of writing it.')
+  .option('-f, --force', 'Overwrite an existing workflow file.')
+  .action(async (opts) => {
+    const code = await runCiCommand({
+      out: opts.out,
+      modelCheck: opts.modelCheck === true,
+      dryRun: opts.dryRun === true,
+      force: opts.force === true
     });
     process.exit(code);
   });

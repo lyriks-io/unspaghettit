@@ -88,6 +88,7 @@ Setup, run, verify, and codegen.
 | `unspa serve`                 | Run the bundled MCP server on stdio (kept for manual debugging; init's entry uses `unspa-mcp` directly). |
 | `unspa dashboard`             | Boot the SvelteKit dashboard from the `unspa/` folder discovered by walking up from cwd. `--view <ids>` enables opt-in views for the run. |
 | `unspa check`                 | **CI gate.** Run the verification spine headlessly (scenarios + maturity + reachability + optional model checking + spec→code drift + cross-feature event coherence) and **exit non-zero on failure**. `--json` for CI dashboards. |
+| `unspa ci`                    | Scaffold a GitHub Actions workflow (`.github/workflows/unspaghettit.yml`) that runs `unspa check` on every push / PR. |
 | `unspa view`                  | Manage opt-in dashboard views (Expert is always on): `view list`, `view add <id>` (e.g. `builder`), `view remove <id>`. Persists in `<snapshots>/views.json`. |
 | `unspa list`                  | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload. |
 | `unspa link`                  | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding. |
