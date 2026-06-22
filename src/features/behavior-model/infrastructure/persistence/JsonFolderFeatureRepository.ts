@@ -65,6 +65,16 @@ export class JsonFolderFeatureRepository implements FeatureRepository {
     return found ? found.feature : null;
   }
 
+  /**
+   * Server-only bulk read: every full Feature in ONE directory pass. Not on the
+   * {@link FeatureRepository} port — it exists so derived artifacts (notably the
+   * global-search index) can build in O(N) instead of the O(N²) that
+   * `list()` + a `get()` per id incurs (each `get` re-walks the whole folder).
+   */
+  async listFull(): Promise<readonly Feature[]> {
+    return this.readAll().map((s) => s.feature);
+  }
+
   async save(feature: Feature): Promise<void> {
     // Re-resolve the owning project on every save: when a feature is reassigned
     // (add_feature_to_project / remove_feature_from_project), the very next

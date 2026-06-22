@@ -55,6 +55,15 @@ export class JsonFolderDomainRepository implements DomainRepository {
     return found ? found.domain : null;
   }
 
+  /**
+   * Server-only bulk read: every full Domain in ONE directory pass. Not on the
+   * {@link DomainRepository} port — used by derived artifacts (the
+   * global-search index) so they avoid an O(N²) `get()`-per-id scan.
+   */
+  async listFull(): Promise<readonly Domain[]> {
+    return this.readAll().map((s) => s.domain);
+  }
+
   async save(domain: Domain): Promise<void> {
     if (!existsSync(this.directory)) mkdirSync(this.directory, { recursive: true });
     const all = this.readAll();

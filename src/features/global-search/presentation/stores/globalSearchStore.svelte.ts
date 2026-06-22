@@ -97,22 +97,34 @@ class GlobalSearchStore {
     await this.rebuild();
   }
 
-  /** Read the whole model and (re)build the index. */
+  /**
+   * (Re)load the index. Primary path is one fetch of the server-built index;
+   * the heavy walk happens once server-side and is cached to a file. If that
+   * endpoint ever fails we fall back to building the index in-browser from the
+   * repositories — slower, but search keeps working.
+   */
   async rebuild(): Promise<void> {
     this.loading = true;
     this.error = null;
     try {
-      const container = await this.host.data.getContainer();
-      const load = loadSearchIndexUseCase({
-        features: container.repository,
-        projects: container.projectRepository,
-        domains: container.domainRepository
-      });
-      this.indexDocs = await load();
+      this.indexDocs = await this.host.search.load();
       this.built = true;
       this.stale = false;
     } catch (e) {
-      this.error = (e as Error).message;
+      try {
+        const container = await this.host.data.getContainer();
+        const load = loadSearchIndexUseCase({
+          features: container.repository,
+          projects: container.projectRepository,
+          domains: container.domainRepository
+        });
+        this.indexDocs = await load();
+        this.built = true;
+        this.stale = false;
+      } catch {
+        // Surface the primary failure — it's the actionable one.
+        this.error = (e as Error).message;
+      }
     } finally {
       this.loading = false;
     }

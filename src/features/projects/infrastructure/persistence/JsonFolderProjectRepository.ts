@@ -55,6 +55,15 @@ export class JsonFolderProjectRepository implements ProjectRepository {
     return found ? found.project : null;
   }
 
+  /**
+   * Server-only bulk read: every full Project in ONE directory pass. Not on the
+   * {@link ProjectRepository} port — used by derived artifacts (the
+   * global-search index) so they avoid an O(N²) `get()`-per-id scan.
+   */
+  async listFull(): Promise<readonly Project[]> {
+    return this.readAll().map((s) => s.project);
+  }
+
   async save(project: Project): Promise<void> {
     const all = this.readAll();
     const previous = all.find((s) => s.project.id === project.id);
