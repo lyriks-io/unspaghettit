@@ -9,6 +9,7 @@ import {
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { runScenariosUseCase } from '../../src/features/simulator/application/use-cases/RunScenarios';
 import { exploreStateSpace } from '../../src/features/simulator/domain/StateExplorer';
+import { analyzeSurfaceReachability } from '../../src/features/simulator/domain/SurfaceReachability';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
 import {
   ALL_NEIGHBORHOOD_EDGE_KINDS,
@@ -488,7 +489,7 @@ export const registerReadTools = ({
     'model_check',
     {
       description:
-        'Bounded exhaustive verification: explore the reachable state space (apply every action from every reachable state via the real simulator, BFS from the default snapshot) to find what hand-authored scenarios cannot. Returns: invariantViolations (each with the SHORTEST action-name path that reaches a state where an invariant breaks — the counterexample), deadActions (committed actions never observed firing within the bound — a sign of an unreachable branch or contradictory rules), deadlockStates (count of reachable states from which no action can fire), and skippedActions (required parameter with no default — the explorer cannot invent a value, so it is skipped, NOT proven dead). This is BOUNDED ("no violation within N steps", not a proof): tune maxDepth (default 6) and maxStates (default 2000). If truncated is true, dead/deadlock results are "not observed within bounds", not definitive. Actions run with parameter defaults. Use after editing rules/invariants to catch a reachable violation no scenario covers.',
+        'Bounded exhaustive verification: explore the reachable state space (apply every action from every reachable state via the real simulator, BFS from the default snapshot) to find what hand-authored scenarios cannot. Returns: invariantViolations (each with the SHORTEST action-name path that reaches a state where an invariant breaks — the counterexample), deadActions (committed actions never observed firing within the bound — a sign of an unreachable branch or contradictory rules), deadlockStates (count of reachable states from which no action can fire), skippedActions (required parameter with no default — the explorer cannot invent a value, so it is skipped, NOT proven dead), and reachability (a STATIC analysis of the navigation graph: unreachableSurfaces a user can never navigate to, and terminalSurfaces with no way out). This is BOUNDED ("no violation within N steps", not a proof): tune maxDepth (default 6) and maxStates (default 2000). If truncated is true, dead/deadlock results are "not observed within bounds", not definitive. Actions run with parameter defaults. Use after editing rules/invariants to catch a reachable violation no scenario covers.',
       inputSchema: {
         featureId: z.string(),
         maxDepth: z.number().int().positive().optional(),
@@ -513,7 +514,12 @@ export const registerReadTools = ({
           },
           projectFeatures
         );
-        return text(trackTokens('model_check', report));
+        // Pair the dynamic state-space search with the static navigation
+        // analysis: unreachable/terminal surfaces are cheap to compute and
+        // answer "can the user even get here / ever leave" — the structural
+        // question the data-space exploration doesn't.
+        const reachability = analyzeSurfaceReachability(exp);
+        return text(trackTokens('model_check', { ...report, reachability }));
       } catch (e) {
         return errorText(`model_check failed: ${(e as Error).message}`);
       }

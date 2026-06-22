@@ -71,6 +71,7 @@ describe('MCP server', () => {
       'generate_types',
       'get_action',
       'get_behavioral_index',
+      'get_drift',
       'get_feature',
       'get_implementation_gaps',
       'get_implementation_status',
@@ -144,7 +145,8 @@ describe('MCP server', () => {
       'update_surface_invariant',
       'update_surface_rule',
       'update_transition',
-      'update_value_set'
+      'update_value_set',
+      'verify'
     ]);
     await server.close();
   });

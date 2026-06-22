@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
+import { runCheckCommand } from './commands/check';
 import { runDashboardCommand } from './commands/dashboard';
 import { runInitCommand } from './commands/init';
 import { runLinkCommand } from './commands/link';
@@ -126,6 +127,40 @@ program
     const code = await runListCommand({
       json: opts.json === true,
       noInteractive: opts.interactive === false || opts.json === true
+    });
+    process.exit(code);
+  });
+
+program
+  .command('check [featureId]')
+  .description('Verify the spec headlessly and exit non-zero on failure (CI gate). Runs every scenario as an executable spec test, scores maturity, analyses surface reachability, optionally model-checks the reachable state space, and reports spec→code drift. Scopes to the repo\'s linked project by default; pass a featureId or --project to narrow.')
+  .option('-s, --snapshots <dir>', 'Verify a specific snapshots folder (defaults to walk-up, then the shared hub).')
+  .option('--project <id>', 'Verify a specific project\'s features (overrides the .unspa.json link).')
+  .option('--model-check', 'Also run bounded model checking (exhaustive state-space exploration). Off by default; it is the costly part.')
+  .option('--max-depth <n>', 'Model-check action-depth bound (default 6).', (v) => Number.parseInt(v, 10))
+  .option('--max-states <n>', 'Model-check state cap (default 2000).', (v) => Number.parseInt(v, 10))
+  .option('--min-maturity <n>', 'Fail any feature scoring below this maturity percentage.', (v) => Number.parseInt(v, 10))
+  .option('--max-scenario-failures <n>', 'Tolerate up to N failing scenarios before failing (default 0).', (v) => Number.parseInt(v, 10))
+  .option('--require-scenarios', 'Fail a feature that has no scenarios authored.')
+  .option('--fail-on-drift', 'Fail when an implementation was audited against an older spec (default: warn only).')
+  .option('--fail-on-dead-actions', 'Fail when an action never fires within the model-check bound (default: warn only).')
+  .option('--allow-invariant-violations', 'Downgrade reachable invariant violations from failure to warning.')
+  .option('--json', 'Emit the full verification report as JSON instead of the human view.')
+  .action(async (featureId, opts) => {
+    const code = await runCheckCommand({
+      featureId,
+      snapshots: opts.snapshots,
+      project: opts.project,
+      json: opts.json === true,
+      modelCheck: opts.modelCheck === true,
+      maxDepth: opts.maxDepth,
+      maxStates: opts.maxStates,
+      minMaturity: opts.minMaturity,
+      maxScenarioFailures: opts.maxScenarioFailures,
+      requireScenarios: opts.requireScenarios === true,
+      failOnDrift: opts.failOnDrift === true,
+      failOnDeadActions: opts.failOnDeadActions === true,
+      allowInvariantViolations: opts.allowInvariantViolations === true
     });
     process.exit(code);
   });
