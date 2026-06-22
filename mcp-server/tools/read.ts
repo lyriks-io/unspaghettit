@@ -8,6 +8,7 @@ import {
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { runScenariosUseCase } from '../../src/features/simulator/application/use-cases/RunScenarios';
+import { exploreStateSpace } from '../../src/features/simulator/domain/StateExplorer';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
 import {
   ALL_NEIGHBORHOOD_EDGE_KINDS,
@@ -479,6 +480,42 @@ export const registerReadTools = ({
         return text(trackTokens('run_all_scenarios', output));
       } catch (e) {
         return errorText(`run_all_scenarios failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'model_check',
+    {
+      description:
+        'Bounded exhaustive verification: explore the reachable state space (apply every action from every reachable state via the real simulator, BFS from the default snapshot) to find what hand-authored scenarios cannot. Returns: invariantViolations (each with the SHORTEST action-name path that reaches a state where an invariant breaks — the counterexample), deadActions (committed actions never observed firing within the bound — a sign of an unreachable branch or contradictory rules), deadlockStates (count of reachable states from which no action can fire), and skippedActions (required parameter with no default — the explorer cannot invent a value, so it is skipped, NOT proven dead). This is BOUNDED ("no violation within N steps", not a proof): tune maxDepth (default 6) and maxStates (default 2000). If truncated is true, dead/deadlock results are "not observed within bounds", not definitive. Actions run with parameter defaults. Use after editing rules/invariants to catch a reachable violation no scenario covers.',
+      inputSchema: {
+        featureId: z.string(),
+        maxDepth: z.number().int().positive().optional(),
+        maxStates: z.number().int().positive().optional()
+      }
+    },
+    async ({ featureId, maxDepth, maxStates }) => {
+      try {
+        featureId = await expandFeatureId(repo, featureId);
+      } catch (e) {
+        return errorText((e as Error).message);
+      }
+      const exp = await repo.get(asFeatureId(featureId));
+      if (!exp) return errorText(`Feature ${featureId} not found`);
+      const projectFeatures = await loadProjectSiblings(repo, projectRepo, featureId);
+      try {
+        const report = exploreStateSpace(
+          exp,
+          {
+            ...(maxDepth !== undefined ? { maxDepth } : {}),
+            ...(maxStates !== undefined ? { maxStates } : {})
+          },
+          projectFeatures
+        );
+        return text(trackTokens('model_check', report));
+      } catch (e) {
+        return errorText(`model_check failed: ${(e as Error).message}`);
       }
     }
   );

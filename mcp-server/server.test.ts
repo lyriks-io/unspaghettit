@@ -86,6 +86,7 @@ describe('MCP server', () => {
       'list_features',
       'list_projects',
       'list_queue',
+      'model_check',
       'move_action',
       'move_feature_in_project',
       'move_parameter',
