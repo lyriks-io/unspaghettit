@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
+import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { detectDrift } from '../../src/features/verification/domain/detectDrift';
@@ -22,23 +23,36 @@ const indexReader = (repoContext: ToolDeps['repoContext']): BehavioralIndexReade
     : staticBehavioralIndexReader([]);
 
 /**
- * The cohort to verify: one feature when named, otherwise the linked project's
- * features (so cross-feature cascades resolve), otherwise everything. Mirrors
- * the CLI's `unspa check` scoping so chat and CI verify the same thing.
+ * The cohort to verify plus the owning project's cross-feature invariants: one
+ * feature when named, otherwise the linked project's features (so cross-feature
+ * cascades + project invariants resolve), otherwise everything. Mirrors the
+ * CLI's `unspa check` scoping so chat and CI verify the same thing.
  */
-const resolveCohort = async (deps: ToolDeps, featureId?: string): Promise<Feature[]> => {
+const resolveCohort = async (
+  deps: ToolDeps,
+  featureId?: string
+): Promise<{ features: Feature[]; projectInvariants: readonly Invariant[] }> => {
   const { repo, projectRepo, repoContext } = deps;
 
   if (featureId) {
     const id = await expandFeatureId(repo, featureId);
     const feature = await repo.get(asFeatureId(id));
-    return feature ? [feature] : [];
+    let projectInvariants: readonly Invariant[] = [];
+    if (feature) {
+      for (const summary of await projectRepo.list()) {
+        const project = await projectRepo.get(summary.id);
+        if (project?.featureIds.some((f) => String(f) === String(feature.id))) {
+          projectInvariants = project.projectInvariants ?? [];
+          break;
+        }
+      }
+    }
+    return { features: feature ? [feature] : [], projectInvariants };
   }
 
   const projectId = repoContext?.link?.projectId;
-  const ids = projectId
-    ? ((await projectRepo.get(asProjectId(projectId)))?.featureIds ?? null)
-    : null;
+  const project = projectId ? await projectRepo.get(asProjectId(projectId)) : null;
+  const ids = project?.featureIds ?? null;
 
   const summaries = ids ?? (await repo.list()).map((s) => s.id);
   const out: Feature[] = [];
@@ -46,7 +60,7 @@ const resolveCohort = async (deps: ToolDeps, featureId?: string): Promise<Featur
     const feature = await repo.get(id);
     if (feature) out.push(feature);
   }
-  return out;
+  return { features: out, projectInvariants: project?.projectInvariants ?? [] };
 };
 
 export const registerVerificationTools = (deps: ToolDeps): void => {
@@ -61,7 +75,7 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
     },
     async ({ featureId }) => {
       try {
-        const features = await resolveCohort(deps, featureId);
+        const { features } = await resolveCohort(deps, featureId);
         const entries = await indexReader(repoContext).read();
         return text(trackTokens('get_drift', detectDrift(features, entries)));
       } catch (e) {
@@ -88,10 +102,11 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
     },
     async (args) => {
       try {
-        const features = await resolveCohort(deps, args.featureId);
+        const { features, projectInvariants } = await resolveCohort(deps, args.featureId);
         const verify = verifyFeaturesUseCase({ features: repo, index: indexReader(repoContext) });
         const report = await verify({
           featureIds: features.map((f) => f.id),
+          projectInvariants,
           thresholds: {
             minMaturity: args.minMaturity ?? 0,
             requireScenarios: args.requireScenarios === true,

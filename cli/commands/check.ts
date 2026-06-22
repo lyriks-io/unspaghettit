@@ -4,6 +4,7 @@ import { discoverSnapshotDirectory } from '../../src/features/behavior-model/inf
 import { JsonFolderFeatureRepository } from '../../src/features/behavior-model/infrastructure/persistence/JsonFolderFeatureRepository';
 import { JsonFolderProjectRepository } from '../../src/features/projects/infrastructure/persistence/JsonFolderProjectRepository';
 import { asFeatureId, type FeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
+import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { fileBehavioralIndexReader } from '../../src/features/verification/infrastructure/persistence/FileBehavioralIndexReader';
 import { verifyFeaturesUseCase } from '../../src/features/verification/application/use-cases/VerifyFeatures';
@@ -75,33 +76,45 @@ const printSummary = (report: VerificationReport): void => {
  * siblings (which would skew cross-feature checks). Each cohort is verified
  * independently and the reports are merged. Empty cohorts are dropped.
  */
+type Cohort = {
+  readonly featureIds: readonly FeatureId[];
+  readonly projectInvariants: readonly Invariant[];
+};
+
 const resolveCohorts = async (
   options: CheckOptions,
   cwd: string,
   featureRepo: JsonFolderFeatureRepository,
   projectRepo: JsonFolderProjectRepository
-): Promise<readonly (readonly FeatureId[])[]> => {
-  if (options.featureId) return [[asFeatureId(options.featureId)]];
+): Promise<readonly Cohort[]> => {
+  if (options.featureId) {
+    return [{ featureIds: [asFeatureId(options.featureId)], projectInvariants: [] }];
+  }
 
   const explicitProjectId = options.project ?? readRepoLink(cwd)?.projectId;
   if (explicitProjectId) {
     const project = await projectRepo.get(asProjectId(explicitProjectId));
-    return project && project.featureIds.length > 0 ? [[...project.featureIds]] : [];
+    return project && project.featureIds.length > 0
+      ? [{ featureIds: [...project.featureIds], projectInvariants: project.projectInvariants ?? [] }]
+      : [];
   }
 
-  const cohorts: FeatureId[][] = [];
+  const cohorts: Cohort[] = [];
   const assigned = new Set<string>();
   for (const summary of await projectRepo.list()) {
     const project = await projectRepo.get(summary.id);
     if (project && project.featureIds.length > 0) {
-      cohorts.push([...project.featureIds]);
+      cohorts.push({
+        featureIds: [...project.featureIds],
+        projectInvariants: project.projectInvariants ?? []
+      });
       for (const id of project.featureIds) assigned.add(String(id));
     }
   }
   const orphans = (await featureRepo.list())
     .map((s) => s.id)
     .filter((id) => !assigned.has(String(id)));
-  if (orphans.length > 0) cohorts.push(orphans);
+  if (orphans.length > 0) cohorts.push({ featureIds: orphans, projectInvariants: [] });
   return cohorts;
 };
 
@@ -146,7 +159,14 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
 
   const reports: VerificationReport[] = [];
   for (const cohort of cohorts) {
-    reports.push(await verify({ featureIds: cohort, thresholds, modelCheck }));
+    reports.push(
+      await verify({
+        featureIds: cohort.featureIds,
+        projectInvariants: cohort.projectInvariants,
+        thresholds,
+        modelCheck
+      })
+    );
   }
   const report = mergeVerificationReports(reports);
 

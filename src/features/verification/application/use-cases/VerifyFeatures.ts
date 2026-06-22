@@ -1,4 +1,5 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { FeatureRepository } from '$features/behavior-model/application/ports/FeatureRepository';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import { scoreFeature } from '$features/maturity/domain/MaturityScorer';
@@ -28,6 +29,13 @@ export type VerifyFeaturesInput = {
    * before calling, so the cohort is a real project).
    */
   readonly featureIds?: readonly FeatureId[];
+  /**
+   * Cross-feature project invariants enforced during model checking: each is
+   * checked at every explored state of every feature, over a snapshot seeded
+   * with the other features' defaults. Violations ride the feature's
+   * invariantViolations channel. Only meaningful when `modelCheck` is on.
+   */
+  readonly projectInvariants?: readonly Invariant[];
   readonly thresholds?: Partial<VerificationThresholds>;
   /**
    * Bounded model checking. Off by default — it explores the state space and is
@@ -74,13 +82,29 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
           ? input.modelCheck
           : null;
 
+    const projectInvariants = input.projectInvariants ?? [];
+
     const perFeature = loaded.map((feature) => {
       const siblings = loaded.filter((f) => f.id !== feature.id);
       const scenarios = runScenarios({ feature, projectFeatures: siblings });
       const maturity = scoreFeature(feature);
       const reachability = analyzeSurfaceReachability(feature);
       const exploration =
-        explorerOptions !== null ? exploreStateSpace(feature, explorerOptions, siblings) : undefined;
+        explorerOptions !== null
+          ? exploreStateSpace(
+              feature,
+              projectInvariants.length > 0
+                ? {
+                    ...explorerOptions,
+                    extraInvariants: projectInvariants,
+                    seedStateDefs: siblings.flatMap((f) =>
+                      f.surfaces.flatMap((s) => s.stateDefinitions)
+                    )
+                  }
+                : explorerOptions,
+              siblings
+            )
+          : undefined;
       const featureDrift = drift.stale.filter((d) => d.featureId === String(feature.id));
       const featureDeadHandlers = eventCoherence.deadHandlers.filter(
         (h) => h.featureId === String(feature.id)

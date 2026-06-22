@@ -131,6 +131,32 @@ describe('verifyFeaturesUseCase', () => {
     expect(gated.passed).toBe(false);
   });
 
+  it('enforces project invariants during model checking', async () => {
+    // The Bump action drives count 0 → 1; a project invariant "count stays
+    // below 1" must therefore be reported as violated by the model checker.
+    const verify = verifyFeaturesUseCase({
+      features: fakeRepo([feature('f1')]),
+      index: staticBehavioralIndexReader([])
+    });
+
+    const report = await verify({
+      projectInvariants: [
+        {
+          id: 'pinv' as never,
+          name: 'count stays below 1',
+          condition: { left: asStatePath('count'), operator: 'lower_than', right: 1 },
+          message: 'count exceeded the project ceiling',
+          description: 'cross-feature ceiling'
+        }
+      ],
+      modelCheck: { maxDepth: 3, maxStates: 50 }
+    });
+
+    const invariants = report.features[0]!.checks.find((c) => c.id === 'invariants');
+    expect(invariants?.status).toBe('fail');
+    expect(invariants?.items?.some((i) => i.includes('count stays below 1'))).toBe(true);
+  });
+
   it('runs bounded model checking when asked and includes the invariant check', async () => {
     const verify = verifyFeaturesUseCase({
       features: fakeRepo([feature('f1')]),

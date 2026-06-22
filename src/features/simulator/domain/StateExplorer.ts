@@ -1,7 +1,9 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
 import { isEvolution } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { ReachabilityGoalKind } from '$features/behavior-model/domain/entities/ReachabilityGoal';
+import type { StateDefinition } from '$features/behavior-model/domain/entities/StateDefinition';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import {
   collectDerivedDefs,
@@ -36,6 +38,20 @@ export type ExplorerOptions = {
   readonly maxDepth?: number;
   /** Hard cap on states dequeued, so a wide model can't run away. */
   readonly maxStates?: number;
+  /**
+   * Invariants checked at every explored state IN ADDITION to the feature's
+   * own. Used to enforce PROJECT-level (cross-feature) invariants while
+   * exploring one feature's actions — they ride the same invariantViolations
+   * channel, attributed to the action that reaches the violating state.
+   */
+  readonly extraInvariants?: readonly Invariant[];
+  /**
+   * State definitions whose defaults seed the initial snapshot beyond the
+   * feature's own — typically the OTHER features' state in the project, so a
+   * cross-feature invariant referencing their paths resolves against real
+   * defaults instead of undefined.
+   */
+  readonly seedStateDefs?: readonly StateDefinition[];
 };
 
 export type InvariantCounterexample = {
@@ -124,8 +140,18 @@ export const exploreStateSpace = (
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
   const maxStates = options.maxStates ?? DEFAULT_MAX_STATES;
 
-  const allDefs = feature.surfaces.flatMap((s) => s.stateDefinitions);
+  // Seed sibling/project state alongside the feature's own so cross-feature
+  // invariants resolve against real defaults. The focal feature's derived state
+  // recomputes after every effect; seeded paths ride along as static values.
+  const allDefs = [
+    ...feature.surfaces.flatMap((s) => s.stateDefinitions),
+    ...(options.seedStateDefs ?? [])
+  ];
   const derivedDefs = collectDerivedDefs(allDefs);
+  const checkedInvariants = [
+    ...(feature.featureInvariants ?? []),
+    ...(options.extraInvariants ?? [])
+  ];
 
   // Enumerate the moves once. Skip evolution placeholders (no committed body)
   // and actions whose required parameters have no default — record the latter
@@ -207,7 +233,7 @@ export const exploreStateSpace = (
         action: move.action,
         snapshot: node.snapshot,
         parameters: params,
-        featureInvariants: feature.featureInvariants,
+        featureInvariants: checkedInvariants,
         feature,
         ...(projectFeatures ? { projectFeatures } : {})
       });

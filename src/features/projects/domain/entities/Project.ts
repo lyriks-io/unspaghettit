@@ -1,3 +1,4 @@
+import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import type { DomainId } from '$features/domains/domain/value-objects/ids';
 import type { QueueItem } from '$features/implementation-queue/domain/entities/QueueItem';
@@ -12,6 +13,17 @@ export type Project = {
   readonly customTagType?: string;
   readonly customTag?: string;
   readonly featureIds: readonly FeatureId[];
+  /**
+   * Cross-FEATURE invariants — safety properties that span the whole project,
+   * referencing state paths declared in different member features (e.g. "the
+   * orders feature's open count equals the billing feature's unpaid count").
+   * A feature invariant can't express this (its validator rejects paths not
+   * declared on its own surfaces). The verification spine enforces these over
+   * the union of the project's features' state during bounded model checking,
+   * and reports any reachable violation with the action path that reaches it.
+   * Optional and additive; downstream reads `project.projectInvariants ?? []`.
+   */
+  readonly projectInvariants?: readonly Invariant[];
   /**
    * Optional parent Domain. Projects predating the Domain layer leave this
    * undefined. New projects created from Domain Editor get the active

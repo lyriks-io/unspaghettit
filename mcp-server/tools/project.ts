@@ -13,8 +13,21 @@ import { asFeatureId } from '../../src/features/behavior-model/domain/value-obje
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import type { Project } from '../../src/features/projects/domain/entities/Project';
 import { addTag, normalizeTags, removeTag } from '../../src/shared/domain/Tags';
+import { buildInvariant as buildInvariantBody } from './_entity_builders';
 import { errorText, text, writeErrorText, type ToolDeps } from './_shared';
 import { expandFeatureId, expandProjectId } from './short-ids';
+
+/** Authoring shape for a cross-feature project invariant (id is server-minted). */
+const projectInvariantInputSchema = z
+  .object({
+    name: z.string().min(1),
+    condition: z.record(z.string(), z.unknown()),
+    message: z.string().min(1),
+    description: z.string().min(1)
+  })
+  .describe(
+    'A cross-FEATURE invariant: { name, condition: { left, operator, right? }, message, description }. condition.left/right may reference state paths declared in ANY feature of the project (that is the point — feature invariants can\'t). Same inverted semantics as an invariant: condition TRUE = holds, FALSE = violation. Enforced during model checking (verify / unspa check --model-check) over the union of the project\'s features\' state.'
+  );
 
 export const registerProjectTools = (deps: ToolDeps): void => {
   const { server, repo, projectRepo, clock, ids } = deps;
@@ -152,17 +165,18 @@ export const registerProjectTools = (deps: ToolDeps): void => {
     'update_project',
     {
       description:
-        'Patch a Project. name / description can be updated; featureIds is patched separately via add_feature_to_project / remove_feature_from_project.',
+        'Patch a Project. name / description can be updated; featureIds is patched separately via add_feature_to_project / remove_feature_from_project. projectInvariants is a full REPLACEMENT of the cross-feature invariant list (omit to leave unchanged, pass [] to clear) — read the current list from get_project first if you mean to append.',
       inputSchema: {
         projectId: z.string(),
         name: z.string().min(1).optional(),
         description: z.string().min(1).optional(),
         tags: tagsSchema,
         customTagType: z.string().min(1).optional(),
-        customTag: z.string().min(1).optional()
+        customTag: z.string().min(1).optional(),
+        projectInvariants: z.array(projectInvariantInputSchema).optional()
       }
     },
-    async ({ projectId, name, description, tags, customTagType, customTag }) => {
+    async ({ projectId, name, description, tags, customTagType, customTag, projectInvariants }) => {
       try {
         projectId = await expandProjectId(projectRepo, projectId);
         const current = await getProject(asProjectId(projectId));
@@ -179,7 +193,13 @@ export const registerProjectTools = (deps: ToolDeps): void => {
               ? normalizeTags(tags ?? current.tags, { type: customTagType, value: customTag })
               : current.tags,
           customTagType: undefined,
-          customTag: undefined
+          customTag: undefined,
+          projectInvariants:
+            projectInvariants !== undefined
+              ? projectInvariants.map((inv) =>
+                  buildInvariantBody(inv as unknown as Record<string, unknown>, ids)
+                )
+              : current.projectInvariants
         });
         return text({ ok: true, id: next.id, updatedAt: next.updatedAt });
       } catch (e) {
