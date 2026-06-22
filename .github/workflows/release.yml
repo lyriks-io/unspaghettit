@@ -1,17 +1,20 @@
 name: Publish
 
-# Publishes the package to npm when a GitHub Release is published.
+# Publishes the package to npm when a GitHub Release is published, using npm
+# Trusted Publishing (OIDC). No long-lived NPM_TOKEN secret: the job exchanges
+# a short-lived GitHub OIDC token for npm credentials at publish time, and npm
+# attaches build provenance automatically.
+#
+# One-time setup on npmjs.com (no repository secret required): on the
+# `unspaghettit` package → Settings → Trusted Publisher → GitHub Actions, with
+# organization `lyriks-io`, repository `unspaghettit`, workflow `release.yml`.
 #
 # Release flow:
 #   1. Bump version + finalize CHANGELOG, commit `chore(release): x.y.z`.
 #   2. Tag `vX.Y.Z` and push; let CI (ci.yml) go green on main.
-#   3. Publish the GitHub Release for that tag — this workflow then runs the
+#   3. Publish the GitHub Release for that tag — this workflow runs the
 #      package's prepublishOnly gate (skills:check, bom:check, lint, build,
 #      test) via `npm publish` and ships it.
-#
-# Requires an `NPM_TOKEN` repository secret (Settings > Secrets and variables >
-# Actions). Use an npm **Automation** access token: automation tokens bypass
-# the account's 2FA-on-publish prompt, which interactive/publish tokens do not.
 
 on:
   release:
@@ -19,7 +22,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # lets `npm publish --provenance` attest the build
+  id-token: write # OIDC: trusted publishing + provenance attestation
 
 jobs:
   publish:
@@ -35,15 +38,18 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: npm
 
+      # Trusted publishing (OIDC) requires npm >= 11.5.1; Node 22 still ships 10.x.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: npm ci
 
       - name: Type-check
         run: npm run check
 
-      # `npm publish` runs prepublishOnly (skills:check, bom:check, lint, build,
-      # test) before it ships, so the registry never gets an unverified build.
+      # No NODE_AUTH_TOKEN: npm authenticates via OIDC trusted publishing and
+      # attaches provenance automatically. `npm publish` runs prepublishOnly
+      # (skills:check, bom:check, lint, build, test) before shipping.
       - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
