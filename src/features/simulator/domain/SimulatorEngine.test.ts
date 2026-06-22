@@ -689,4 +689,79 @@ describe('simulate', () => {
     expect(result.status).toBe('success');
     expect(result.nextState).toEqual({ cart: { lines: ['a', 'b'] } });
   });
+
+  it('auto-recomputes a derived total when an action appends a line (no manual set_state)', () => {
+    const surface: Surface = {
+      id: asSurfaceId('cart'),
+      name: 'Cart',
+      type: 'screen',
+      stateDefinitions: [
+        {
+          id: asStateDefinitionId('d-lines'),
+          path: asStatePath('cart.lines'),
+          type: 'array',
+          defaultValue: []
+        },
+        {
+          id: asStateDefinitionId('d-subtotal'),
+          path: asStatePath('cart.subtotal'),
+          type: 'number',
+          defaultValue: 0,
+          // subtotal is COMPUTED from the lines — the action never sets it.
+          derived: {
+            kind: 'sum_pluck',
+            operand: { kind: 'state', path: asStatePath('cart.lines') },
+            field: 'amount'
+          }
+        }
+      ],
+      actions: [],
+      rules: [],
+      invariants: [
+        {
+          id: asInvariantId('subtotal-nonneg'),
+          name: 'subtotal >= 0',
+          condition: { left: asStatePath('cart.subtotal'), operator: 'greater_than', right: -1 },
+          message: 'subtotal went negative'
+        }
+      ],
+      transitions: []
+    };
+    const addLine: Action = {
+      id: asActionId('add-line'),
+      name: 'Add line',
+      intent: 'add a priced line to the cart',
+      parameters: [
+        {
+          id: asParameterId('p-line'),
+          name: 'line',
+          type: 'object',
+          required: true,
+          description: 'the line to add ({ amount })'
+        }
+      ],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [
+        {
+          id: asEffectId('e-append'),
+          type: 'append_to_list',
+          path: asStatePath('cart.lines'),
+          item: { kind: 'param', name: 'line' }
+        }
+      ],
+      emittedEvents: [],
+      transitions: []
+    };
+    const result = simulate({
+      surface,
+      action: addLine,
+      snapshot: { cart: { lines: [{ amount: 10 }] } },
+      parameters: { line: { amount: 5 } }
+    });
+    expect(result.status).toBe('success');
+    // The derived subtotal reflects the appended line without any set_state.
+    expect((result.nextState.cart as { subtotal: number }).subtotal).toBe(15);
+  });
 });

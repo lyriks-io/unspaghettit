@@ -39,6 +39,11 @@ export const normalizeFeatureExpressions = (feature: Feature): Feature => ({
 
 const normalizeSurfaceExpressions = (surface: Surface): Surface => ({
   ...surface,
+  stateDefinitions: surface.stateDefinitions.map((def) =>
+    def.derived === undefined
+      ? def
+      : { ...def, derived: normalizeExpression(def.derived) as typeof def.derived }
+  ),
   rules: surface.rules.map(normalizeRule),
   invariants: surface.invariants.map(normalizeInvariant),
   actions: surface.actions.map(normalizeAction)

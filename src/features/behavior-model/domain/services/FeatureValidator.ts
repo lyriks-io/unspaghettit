@@ -620,6 +620,16 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
   for (const e of feature.events ?? []) eventNames.add(String(e.name));
   const enforceEvents = eventNames.size > 0;
 
+  // Derived (computed) paths — declared anywhere via a stateDefinition with a
+  // `derived` expression. Effects must not write these: the engine recomputes
+  // them, and a stray write would be silently overwritten.
+  const derivedPaths = new Set<string>();
+  for (const s of feature.surfaces) {
+    for (const def of s.stateDefinitions) {
+      if (def.derived !== undefined) derivedPaths.add(String(def.path));
+    }
+  }
+
   // Per-surface set of reachable paths: declared on this surface OR declared
   // on another surface whose stateDefinition.sharedWith includes this one.
   const ownPathsBySurface = new Map<string, Set<string>>();
@@ -677,6 +687,11 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       if (typeof path === 'string' && !paths.has(path)) {
         errors.push(
           `${label} effect ${effect.id}: ${verb} path "${path}" is not declared on surface ${surfaceId} (or shared into it).`
+        );
+      }
+      if (typeof path === 'string' && derivedPaths.has(path)) {
+        errors.push(
+          `${label} effect ${effect.id}: ${verb} writes derived path "${path}", which is computed from its \`derived\` expression and cannot be set by an effect. Remove the write (the engine maintains it) or drop the path's \`derived\` expression to make it author-controlled.`
         );
       }
     };
@@ -784,6 +799,19 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
 
   for (const surface of feature.surfaces) {
     const paths = pathsFor(surface.id);
+
+    // Derived state expressions read state — every path they touch must be
+    // declared on (or shared into) this surface, same as a condition/effect.
+    for (const def of surface.stateDefinitions) {
+      if (def.derived === undefined) continue;
+      for (const p of statePathsFromEffectValue(def.derived)) {
+        if (!paths.has(p)) {
+          errors.push(
+            `Surface ${surface.id} derived state "${def.path}": expression references unknown state path "${p}" (not declared on or shared into this surface).`
+          );
+        }
+      }
+    }
 
     for (const rule of surface.rules) {
       const label = `Surface ${surface.id} rule ${rule.id}`;

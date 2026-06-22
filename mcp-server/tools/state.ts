@@ -32,13 +32,14 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
     'add_state_definition',
     {
       description:
-        'Declare schema for a state path on a Surface (path, type, default). When type=enum, supply EITHER inline enumValues OR a valueSetId referencing a feature-level value set (add_value_set) — not both. sharedWith[] lists other surfaces that also read/write this path. Declarative only (the runtime snapshot is global), but it lets the dashboard render cross-surface state sharing honestly.',
+        'Declare schema for a state path on a Surface (path, type, default). When type=enum, supply EITHER inline enumValues OR a valueSetId referencing a feature-level value set (add_value_set) — not both. sharedWith[] lists other surfaces that also read/write this path. Declarative only (the runtime snapshot is global), but it lets the dashboard render cross-surface state sharing honestly. Pass `derived` (an Expression, same AST as set_state.value) to make the path COMPUTED: the engine recomputes it after every mutation, so e.g. cart.subtotal stays correct without any action re-setting it. Derived paths are read-only — effects that write them are rejected. defaultValue is still required (used before the first compute / when the expression cannot evaluate). Example: derived:{ kind:"sum_pluck", operand:{kind:"state",path:"cart.lines"}, field:"amount" }.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
         path: z.string(),
         type: stateTypeSchema,
         defaultValue: z.unknown(),
+        derived: z.unknown().optional(),
         enumValues: z.array(z.string()).optional(),
         valueSetId: z.string().optional(),
         description: z.string().min(1),
@@ -51,6 +52,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
       path,
       type,
       defaultValue,
+      derived,
       enumValues,
       valueSetId,
       description,
@@ -61,6 +63,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
         path: asStatePath(path),
         type: type as StateType,
         defaultValue: coerceScalarByType(defaultValue, type) as StateDefinition['defaultValue'],
+        ...(derived !== undefined ? { derived: derived as StateDefinition['derived'] } : {}),
         ...(enumValues ? { enumValues } : {}),
         ...(valueSetId ? { valueSetId: asValueSetId(valueSetId) } : {}),
         description,
@@ -82,7 +85,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
   server.registerTool(
     'update_state_definition',
     {
-      description: 'Patch StateDefinition fields. Path renames are not auto-rewritten. Run find_state_references first. sharedWith:[] clears all sharing entries. valueSetId references a feature-level value set (mutually exclusive with enumValues); valueSetId:null clears it.',
+      description: 'Patch StateDefinition fields. Path renames are not auto-rewritten. Run find_state_references first. sharedWith:[] clears all sharing entries. valueSetId references a feature-level value set (mutually exclusive with enumValues); valueSetId:null clears it. `derived` (an Expression) makes the path computed/read-only; derived:null clears it back to an authored path.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -90,6 +93,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
         path: z.string().optional(),
         type: stateTypeSchema.optional(),
         defaultValue: z.unknown().optional(),
+        derived: z.unknown().optional(),
         enumValues: z.array(z.string()).optional(),
         valueSetId: z.string().nullable().optional(),
         description: z.string().min(1).optional(),
@@ -103,6 +107,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
       path,
       type,
       defaultValue,
+      derived,
       enumValues,
       valueSetId,
       description,
@@ -118,6 +123,9 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
             {
               ...(path !== undefined ? { path: asStatePath(path) } : {}),
               ...(type !== undefined ? { type: type as StateType } : {}),
+              ...(derived !== undefined
+                ? { derived: derived === null ? undefined : (derived as StateDefinition['derived']) }
+                : {}),
               ...(defaultValue !== undefined
                 ? {
                     defaultValue: coerceScalarByType(

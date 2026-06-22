@@ -12,6 +12,7 @@ import {
   asEventDefinitionId,
   asFeatureId,
   asRuleId,
+  asStateDefinitionId,
   asSurfaceId,
   asValueSetId
 } from '$features/behavior-model/domain/value-objects/ids';
@@ -694,6 +695,60 @@ describe('validateReferenceIntegrity', () => {
     if (!result.valid) {
       const msg = result.errors.find((e) =>
         /triggeredByEvent "does\.not\.exist" is not registered/.test(e)
+      );
+      expect(msg).toBeDefined();
+    }
+  });
+
+  it('rejects an effect that writes a derived (computed) state path', () => {
+    const surface = storefrontFeature.surfaces[0]!;
+    // A derived path (constant expression, so the expression itself is clean).
+    const derivedDef = {
+      id: asStateDefinitionId('d-derived-total'),
+      path: asStatePath('derived.total'),
+      type: 'number' as const,
+      defaultValue: 0,
+      derived: {
+        kind: 'add' as const,
+        left: { kind: 'literal' as const, value: 1 },
+        right: { kind: 'literal' as const, value: 1 }
+      },
+      description: 'computed total'
+    };
+    // An action that tries to set_state the derived path — not allowed.
+    const writer: NonNullable<typeof surface.actions[number]> = {
+      ...surface.actions[0]!,
+      id: asActionId('writes-derived'),
+      name: 'Writes Derived',
+      intent: 'Illegally writes a computed path.',
+      emittedEvents: [],
+      effects: [
+        {
+          id: asEffectId('e-write-derived'),
+          type: 'set_state',
+          path: asStatePath('derived.total'),
+          value: 5,
+          description: 'should be rejected'
+        }
+      ]
+    };
+    const broken: Feature = {
+      ...storefrontFeature,
+      surfaces: storefrontFeature.surfaces.map((s, i) =>
+        i === 0
+          ? {
+              ...s,
+              stateDefinitions: [...s.stateDefinitions, derivedDef],
+              actions: [...s.actions, writer]
+            }
+          : s
+      )
+    };
+    const result = validateReferenceIntegrity(broken);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      const msg = result.errors.find((e) =>
+        /writes derived path "derived\.total"/.test(e)
       );
       expect(msg).toBeDefined();
     }

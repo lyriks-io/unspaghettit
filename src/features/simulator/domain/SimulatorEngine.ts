@@ -6,6 +6,11 @@ import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import type { ActionId } from '$features/behavior-model/domain/value-objects/ids';
 import type { EventName } from '$features/behavior-model/domain/value-objects/EventName';
 import {
+  collectDerivedDefs,
+  recomputeDerived,
+  type DerivedDef
+} from '$features/behavior-model/domain/services/DerivedState';
+import {
   applyEffect,
   initialApplication,
   type EffectApplication
@@ -68,7 +73,8 @@ const evaluateRules = (
   rules: readonly Rule[],
   origin: 'surface' | 'action',
   application: EffectApplication,
-  parameters: ParameterValues
+  parameters: ParameterValues,
+  derivedDefs: readonly DerivedDef[]
 ): { readonly application: EffectApplication; readonly records: readonly EvaluatedRuleRecord[] } => {
   let current = application;
   const records: EvaluatedRuleRecord[] = [];
@@ -82,6 +88,9 @@ const evaluateRules = (
     });
     if (!held) continue;
     current = applyEffect(current, rule.effect, parameters);
+    // Keep derived paths consistent so a LATER rule's condition sees the
+    // recomputed value, not a stale one from before this effect landed.
+    current = { ...current, snapshot: recomputeDerived(current.snapshot, derivedDefs) };
   }
   return { application: current, records };
 };
@@ -196,7 +205,14 @@ const simulateInternal = (
   const allFeatureDefs = feature
     ? feature.surfaces.flatMap((s) => s.stateDefinitions)
     : surface.stateDefinitions;
-  const completeSnapshot = mergeSnapshotWithDefaults(normalizedSnapshot, allFeatureDefs);
+  // Derived (computed) state paths declared anywhere in scope. Recomputed after
+  // every mutation below so authors never hand-maintain them and a stale write
+  // can't survive (the next recompute overwrites it).
+  const derivedDefs = collectDerivedDefs(allFeatureDefs);
+  const completeSnapshot = recomputeDerived(
+    mergeSnapshotWithDefaults(normalizedSnapshot, allFeatureDefs),
+    derivedDefs
+  );
 
   const filledParams = fillDefaults(action.parameters, parameters);
   const parameterErrors = validateParameters(
@@ -221,15 +237,15 @@ const simulateInternal = (
 
   // Apply parameter -> state-path bindings before any rule looks at state, so
   // rules can react to bound parameter values just like any other state.
-  const boundSnapshot = applyParameterBindings(
-    action.parameters,
-    filledParams,
-    completeSnapshot
+  // Recompute derived afterwards: a bound parameter can feed a derived value.
+  const boundSnapshot = recomputeDerived(
+    applyParameterBindings(action.parameters, filledParams, completeSnapshot),
+    derivedDefs
   );
 
   let application = initialApplication(boundSnapshot);
 
-  const surfaceEval = evaluateRules(surface.rules, 'surface', application, filledParams);
+  const surfaceEval = evaluateRules(surface.rules, 'surface', application, filledParams, derivedDefs);
   application = surfaceEval.application;
   const evaluatedRules: EvaluatedRuleRecord[] = [...surfaceEval.records];
 
@@ -238,7 +254,8 @@ const simulateInternal = (
       action.rules,
       'action',
       application,
-      filledParams
+      filledParams,
+      derivedDefs
     );
     application = capabilityEval.application;
     evaluatedRules.push(...capabilityEval.records);
@@ -247,6 +264,7 @@ const simulateInternal = (
   if (!application.blocked) {
     for (const effect of action.effects) {
       application = applyEffect(application, effect, filledParams);
+      application = { ...application, snapshot: recomputeDerived(application.snapshot, derivedDefs) };
     }
   } else if (action.onBlockedEffects && action.onBlockedEffects.length > 0) {
     // Universal "what to do when something blocked" fallbacks. State mutations
@@ -255,6 +273,7 @@ const simulateInternal = (
     // observability signal.
     for (const effect of action.onBlockedEffects) {
       application = applyEffect(application, effect, filledParams);
+      application = { ...application, snapshot: recomputeDerived(application.snapshot, derivedDefs) };
     }
   }
 
