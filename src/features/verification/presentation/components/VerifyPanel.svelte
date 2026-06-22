@@ -35,7 +35,30 @@
           <span class="w-28 shrink-0 text-xs font-medium {text[check.status]}">{check.label}</span>
           <span class="text-xs text-slate-500">{check.detail}</span>
         </div>
-        {#if check.items && check.items.length > 0}
+        {#if check.traces && check.traces.length > 0}
+          <ul class="mt-1.5 space-y-1.5 pl-[2.6rem]">
+            {#each check.traces as trace, ti (trace.label + ti)}
+              <li class="text-[11px] leading-relaxed text-slate-600">
+                <span class="font-medium text-slate-700">{trace.label}</span>
+                <span class="ml-1 inline-flex flex-wrap items-center gap-1 align-middle">
+                  {#each trace.path as step, si (si)}
+                    {#if si > 0}<span class="text-slate-300">→</span>{/if}
+                    <span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-700">{step}</span>
+                  {/each}
+                </span>
+                {#if trace.actionId && trace.surfaceId}
+                  <a
+                    class="ml-1 whitespace-nowrap text-brand-700 hover:underline"
+                    href={`/features/${verdict.featureId}?surface=${trace.surfaceId}&panel=actions&focus=${trace.actionId}`}
+                    title="Jump to the violating action"
+                  >
+                    open ↗
+                  </a>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else if check.items && check.items.length > 0}
           <ul class="mt-1.5 space-y-1 pl-[2.6rem]">
             {#each check.items as item (item)}
               <li class="font-mono text-[11px] leading-relaxed text-slate-600">

@@ -66,7 +66,13 @@ const invariantsCheck = (
     detail: `${exploration.invariantViolations.length} reachable violation(s)`,
     items: exploration.invariantViolations.map(
       (v) => `${v.invariantName} via [${v.path.join(' → ')}]`
-    )
+    ),
+    traces: exploration.invariantViolations.map((v) => ({
+      label: v.invariantName,
+      path: v.path,
+      surfaceId: v.surfaceId,
+      actionId: v.actionId
+    }))
   };
 };
 
@@ -124,7 +130,10 @@ const livenessCheck = (
       g.counterexamplePath && g.counterexamplePath.length > 0
         ? `${g.goalName} (${g.kind}) — trap via [${g.counterexamplePath.join(' → ')}]`
         : `${g.goalName} (${g.kind}) — never reached within bounds`
-    )
+    ),
+    traces: unmet
+      .filter((g) => g.counterexamplePath && g.counterexamplePath.length > 0)
+      .map((g) => ({ label: `${g.goalName} (${g.kind})`, path: g.counterexamplePath ?? [] }))
   };
 };
 
