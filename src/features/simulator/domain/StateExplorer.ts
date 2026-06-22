@@ -1,12 +1,14 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
 import { isEvolution } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import type { ReachabilityGoalKind } from '$features/behavior-model/domain/entities/ReachabilityGoal';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import {
   collectDerivedDefs,
   recomputeDerived
 } from '$features/behavior-model/domain/services/DerivedState';
 import { fillDefaults } from '$features/behavior-model/domain/services/ParameterValidator';
+import { evaluateCondition } from '$features/behavior-model/domain/services/RuleEvaluator';
 import { buildInitialSnapshot } from '$features/behavior-model/domain/services/StateSnapshot';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
 import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
@@ -59,6 +61,23 @@ export type SkippedAction = {
   readonly reason: string;
 };
 
+export type GoalResult = {
+  readonly goalId: string;
+  readonly goalName: string;
+  readonly kind: ReachabilityGoalKind;
+  /**
+   * `reachable`: a reachable state satisfied the goal. `always_reachable`: every
+   * reachable state can still reach a goal-satisfying state (no traps).
+   */
+  readonly satisfied: boolean;
+  /**
+   * `always_reachable` failures: shortest path to a TRAP state from which the
+   * goal can no longer be reached. `reachable` failures have no path (the goal
+   * was simply never reached within bounds).
+   */
+  readonly counterexamplePath?: readonly string[];
+};
+
 export type ExplorationReport = {
   readonly statesExplored: number;
   readonly depthReached: number;
@@ -70,6 +89,8 @@ export type ExplorationReport = {
   /** Count of reachable states from which no action could fire (potential dead-ends). */
   readonly deadlockStates: number;
   readonly skippedActions: readonly SkippedAction[];
+  /** One entry per authored reachability/liveness goal; empty when none are declared. */
+  readonly goalResults: readonly GoalResult[];
 };
 
 const DEFAULT_MAX_DEPTH = 6;
@@ -127,12 +148,16 @@ export const exploreStateSpace = (
     }
   }
 
-  const initial = recomputeDerived(buildInitialSnapshot(allDefs), derivedDefs);
+  const goals = feature.reachabilityGoals ?? [];
+  const trackGoals = goals.length > 0;
 
-  const queue: { snapshot: StateSnapshot; path: readonly string[] }[] = [
-    { snapshot: initial, path: [] }
+  const initial = recomputeDerived(buildInitialSnapshot(allDefs), derivedDefs);
+  const initialKey = canonical(initial);
+
+  const queue: { snapshot: StateSnapshot; path: readonly string[]; key: string }[] = [
+    { snapshot: initial, path: [], key: initialKey }
   ];
-  const visited = new Set<string>([canonical(initial)]);
+  const visited = new Set<string>([initialKey]);
   const firedActions = new Set<string>();
   const violations: InvariantCounterexample[] = [];
   const violationSeen = new Set<string>();
@@ -140,6 +165,29 @@ export const exploreStateSpace = (
   let depthReached = 0;
   let deadlockStates = 0;
   let truncated = false;
+
+  // Liveness bookkeeping, populated only when goals are declared so the common
+  // path stays allocation-light: the forward transition graph between
+  // discovered states, the shortest path to each EXPANDED (dequeued) state, and
+  // per-goal the set of state keys satisfying the goal condition. Goal
+  // satisfaction is evaluated once per discovered state (dedup via goalEvaluated)
+  // so frontier states cut at the depth bound still count toward reachability.
+  const forwardEdges = new Map<string, Set<string>>();
+  const expandedPath = new Map<string, readonly string[]>();
+  const goalSatisfyingKeys = new Map<string, Set<string>>();
+  const goalEvaluated = new Set<string>();
+  for (const goal of goals) goalSatisfyingKeys.set(String(goal.id), new Set<string>());
+
+  const recordGoalSatisfaction = (snapshot: StateSnapshot, key: string): void => {
+    if (goalEvaluated.has(key)) return;
+    goalEvaluated.add(key);
+    for (const goal of goals) {
+      if (evaluateCondition(goal.condition, snapshot)) {
+        goalSatisfyingKeys.get(String(goal.id))!.add(key);
+      }
+    }
+  };
+  if (trackGoals) recordGoalSatisfaction(initial, initialKey);
 
   while (queue.length > 0) {
     const node = queue.shift()!;
@@ -149,6 +197,7 @@ export const exploreStateSpace = (
     }
     statesExplored += 1;
     depthReached = Math.max(depthReached, node.path.length);
+    if (trackGoals) expandedPath.set(node.key, node.path);
 
     let anySuccess = false;
     for (const move of moves) {
@@ -189,9 +238,20 @@ export const exploreStateSpace = (
         firedActions.add(String(move.action.id));
         anySuccess = true;
         const key = canonical(result.nextState as StateValue);
+        if (trackGoals) {
+          let succ = forwardEdges.get(node.key);
+          if (!succ) {
+            succ = new Set<string>();
+            forwardEdges.set(node.key, succ);
+          }
+          succ.add(key);
+          // Evaluate the goal on the successor even if it sits beyond the depth
+          // bound (never enqueued) — a frontier state can still BE the goal.
+          recordGoalSatisfaction(result.nextState, key);
+        }
         if (!visited.has(key) && node.path.length < maxDepth) {
           visited.add(key);
-          queue.push({ snapshot: result.nextState, path: [...node.path, move.action.name] });
+          queue.push({ snapshot: result.nextState, path: [...node.path, move.action.name], key });
         }
       }
     }
@@ -209,6 +269,35 @@ export const exploreStateSpace = (
       actionName: m.action.name
     }));
 
+  const goalResults: GoalResult[] = goals.map((goal) => {
+    const satisfyingKeys = goalSatisfyingKeys.get(String(goal.id))!;
+    if (goal.kind === 'reachable') {
+      return {
+        goalId: String(goal.id),
+        goalName: goal.name,
+        kind: goal.kind,
+        satisfied: satisfyingKeys.size > 0
+      };
+    }
+    // always_reachable: every expanded state must still be able to reach a
+    // goal-satisfying state. Reverse-reach from the satisfying set; any expanded
+    // state left out is a trap (shortest path to it is the counterexample).
+    const reachesGoal = reverseReachable(satisfyingKeys, forwardEdges);
+    let trapPath: readonly string[] | null = null;
+    for (const [key, path] of expandedPath) {
+      if (!reachesGoal.has(key) && (trapPath === null || path.length < trapPath.length)) {
+        trapPath = path;
+      }
+    }
+    return {
+      goalId: String(goal.id),
+      goalName: goal.name,
+      kind: goal.kind,
+      satisfied: trapPath === null,
+      ...(trapPath ? { counterexamplePath: trapPath } : {})
+    };
+  });
+
   return {
     statesExplored,
     depthReached,
@@ -216,6 +305,39 @@ export const exploreStateSpace = (
     invariantViolations: violations,
     deadActions,
     deadlockStates,
-    skippedActions
+    skippedActions,
+    goalResults
   };
+};
+
+/**
+ * The set of state keys that can reach any key in `targets` by following the
+ * transition graph forward — computed by walking the graph BACKWARD from the
+ * targets. Used for `always_reachable`: a state outside this set is one from
+ * which the goal can no longer be reached (a liveness trap).
+ */
+const reverseReachable = (
+  targets: ReadonlySet<string>,
+  forwardEdges: ReadonlyMap<string, ReadonlySet<string>>
+): ReadonlySet<string> => {
+  const reverse = new Map<string, string[]>();
+  for (const [from, tos] of forwardEdges) {
+    for (const to of tos) {
+      const preds = reverse.get(to);
+      if (preds) preds.push(from);
+      else reverse.set(to, [from]);
+    }
+  }
+  const reached = new Set<string>(targets);
+  const stack = [...targets];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const pred of reverse.get(current) ?? []) {
+      if (!reached.has(pred)) {
+        reached.add(pred);
+        stack.push(pred);
+      }
+    }
+  }
+  return reached;
 };

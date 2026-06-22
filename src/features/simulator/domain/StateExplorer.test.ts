@@ -8,6 +8,7 @@ import {
   asFeatureId,
   asInvariantId,
   asParameterId,
+  asReachabilityGoalId,
   asRuleId,
   asStateDefinitionId,
   asSurfaceId
@@ -156,5 +157,72 @@ describe('exploreStateSpace', () => {
     const report = exploreStateSpace(feature, { maxDepth: 1000, maxStates: 5 });
     expect(report.truncated).toBe(true);
     expect(report.statesExplored).toBeLessThanOrEqual(5);
+  });
+
+  it('has no goalResults when no goals are declared', () => {
+    const feature = featureWith(countSurface([incr], []));
+    expect(exploreStateSpace(feature, { maxDepth: 3 }).goalResults).toEqual([]);
+  });
+});
+
+describe('exploreStateSpace — reachability goals', () => {
+  const withGoals = (goals: NonNullable<Feature['reachabilityGoals']>): Feature => ({
+    ...featureWith(countSurface([incr], [])),
+    reachabilityGoals: goals
+  });
+
+  it("satisfies a 'reachable' goal that some state meets", () => {
+    // incr: 0 → 1 → 2 … so count > 1 is reachable.
+    const report = exploreStateSpace(
+      withGoals([
+        {
+          id: asReachabilityGoalId('g-reach'),
+          name: 'count reaches 2',
+          kind: 'reachable',
+          condition: { left: asStatePath('count'), operator: 'greater_than', right: 1 },
+          description: 'the counter can climb past one'
+        }
+      ]),
+      { maxDepth: 4 }
+    );
+    expect(report.goalResults).toHaveLength(1);
+    expect(report.goalResults[0]!.satisfied).toBe(true);
+  });
+
+  it("fails a 'reachable' goal no state meets within bounds", () => {
+    const report = exploreStateSpace(
+      withGoals([
+        {
+          id: asReachabilityGoalId('g-far'),
+          name: 'count reaches 100',
+          kind: 'reachable',
+          condition: { left: asStatePath('count'), operator: 'greater_than', right: 100 },
+          description: 'unreachable within the depth bound'
+        }
+      ]),
+      { maxDepth: 4 }
+    );
+    expect(report.goalResults[0]!.satisfied).toBe(false);
+    expect(report.goalResults[0]!.counterexamplePath).toBeUndefined();
+  });
+
+  it("detects a trap for an 'always_reachable' goal with a counterexample path", () => {
+    // Goal: count == 0. The only action increments, so once incr fires the
+    // model can never return to 0 — every count>0 state is a trap.
+    const report = exploreStateSpace(
+      withGoals([
+        {
+          id: asReachabilityGoalId('g-zero'),
+          name: 'count can always return to 0',
+          kind: 'always_reachable',
+          condition: { left: asStatePath('count'), operator: 'equals', right: 0 },
+          description: 'zero stays reachable from anywhere'
+        }
+      ]),
+      { maxDepth: 4 }
+    );
+    expect(report.goalResults[0]!.satisfied).toBe(false);
+    // Shortest path to a trap is a single incr (count 0 → 1).
+    expect(report.goalResults[0]!.counterexamplePath).toEqual(['incr']);
   });
 });

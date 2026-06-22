@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   asFeatureId,
+  asReachabilityGoalId,
   asSurfaceId
 } from '$features/behavior-model/domain/value-objects/ids';
+import { asStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import { exportFeatureToJson, importFeatureFromJson } from './FeatureJson';
 
@@ -34,6 +36,23 @@ describe('FeatureJson', () => {
     const json = exportFeatureToJson(sample);
     const back = importFeatureFromJson(json);
     expect(back).toEqual(sample);
+  });
+
+  it('preserves reachability goals through the snapshot', () => {
+    const withGoal: Feature = {
+      ...sample,
+      reachabilityGoals: [
+        {
+          id: asReachabilityGoalId('g1'),
+          name: 'completion stays reachable',
+          kind: 'always_reachable',
+          condition: { left: asStatePath('flow.done'), operator: 'is_true' },
+          description: 'the user can always still finish'
+        }
+      ]
+    };
+    const back = importFeatureFromJson(exportFeatureToJson(withGoal));
+    expect(back.reachabilityGoals).toEqual(withGoal.reachabilityGoals);
   });
 
   it('preserves an Evolution proposal on an action through the snapshot', () => {

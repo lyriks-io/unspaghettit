@@ -961,6 +961,47 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     }
   }
 
+  // Reachability/liveness goals: like feature invariants, they run outside any
+  // action scope against the union of declared paths. Mirror the same leaf
+  // checks (declared left/right paths, no param-left) plus a kind enum guard.
+  const goalIds = new Set<string>();
+  for (const goal of feature.reachabilityGoals ?? []) {
+    if (goalIds.has(goal.id)) {
+      errors.push(`Duplicate reachability goal id "${goal.id}"`);
+    }
+    goalIds.add(goal.id);
+    requireDescription(errors, `Reachability goal ${goal.id}`, goal);
+    if (goal.kind !== 'reachable' && goal.kind !== 'always_reachable') {
+      errors.push(
+        `Reachability goal ${goal.id}: kind must be "reachable" or "always_reachable" (got ${JSON.stringify(goal.kind)}).`
+      );
+    }
+    if (!goal.condition) {
+      errors.push(`Reachability goal ${goal.id}: a condition is required (the target state to reach).`);
+      continue;
+    }
+    for (const leaf of flattenLeafConditions(goal.condition)) {
+      if (isParamLeft(leaf.left)) {
+        errors.push(
+          `Reachability goal ${goal.id}: condition.left references parameter "${leaf.left.name}" but goals run outside any action scope and have no parameters available.`
+        );
+        continue;
+      }
+      if (!anySurfacePaths.has(leaf.left as string)) {
+        errors.push(
+          `Reachability goal ${goal.id}: condition.left "${leaf.left}" is not declared on any surface in the feature.`
+        );
+      }
+      for (const p of statePathsFromConditionRight(leaf.right)) {
+        if (!anySurfacePaths.has(p)) {
+          errors.push(
+            `Reachability goal ${goal.id}: condition.right references unknown state path "${p}".`
+          );
+        }
+      }
+    }
+  }
+
   // Transitive parent cycle detection. Self-parent is caught by the
   // structural validator; here we follow each chain and flag the first
   // surface that closes a loop.

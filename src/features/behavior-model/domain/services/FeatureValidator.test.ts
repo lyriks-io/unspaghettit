@@ -11,6 +11,7 @@ import {
   asEffectId,
   asEventDefinitionId,
   asFeatureId,
+  asReachabilityGoalId,
   asRuleId,
   asStateDefinitionId,
   asSurfaceId,
@@ -22,6 +23,38 @@ import { asStatePath } from '$features/behavior-model/domain/value-objects/State
 describe('validateFeature', () => {
   it('passes a healthy seed feature', () => {
     expect(validateFeature(storefrontFeature).valid).toBe(true);
+  });
+
+  it('accepts a well-formed reachability goal and rejects bad kind / undeclared path', () => {
+    const goal = (over: Record<string, unknown>) => ({
+      ...storefrontFeature,
+      reachabilityGoals: [
+        {
+          id: asReachabilityGoalId('g1'),
+          name: 'cart can hold items',
+          kind: 'reachable' as const,
+          condition: { left: asStatePath('cart.itemCount'), operator: 'greater_than' as const, right: 0 },
+          description: 'a non-empty cart is reachable',
+          ...over
+        }
+      ]
+    });
+
+    // Goal conditions are checked in reference-integrity (where feature
+    // invariants are validated), which is the path MCP writes run.
+    expect(validateReferenceIntegrity(goal({})).valid).toBe(true);
+
+    const badKind = validateReferenceIntegrity(goal({ kind: 'eventually' }));
+    expect(badKind.valid).toBe(false);
+    if (!badKind.valid) expect(badKind.errors.some((e) => e.includes('kind must be'))).toBe(true);
+
+    const badPath = validateReferenceIntegrity(
+      goal({ condition: { left: asStatePath('nope.missing'), operator: 'is_true' } })
+    );
+    expect(badPath.valid).toBe(false);
+    if (!badPath.valid) {
+      expect(badPath.errors.some((e) => e.includes('not declared on any surface'))).toBe(true);
+    }
   });
 
   it('rejects a missing feature name', () => {

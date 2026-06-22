@@ -4,6 +4,7 @@ import type { Entity } from './Entity';
 import type { EventDefinition } from './EventDefinition';
 import type { Invariant } from './Invariant';
 import type { Persona } from './Persona';
+import type { ReachabilityGoal } from './ReachabilityGoal';
 import type { Resource } from './Resource';
 import type { Surface } from './Surface';
 import type { ValueSet } from './ValueSet';
@@ -34,6 +35,15 @@ export type Feature = {
    * on the surface; declare here only when the check must hold globally.
    */
   readonly featureInvariants?: readonly Invariant[];
+  /**
+   * Liveness / reachability goals checked by the model checker against the
+   * reachable state space: "this target state is reachable" (`reachable`) and
+   * "the target stays reachable from everywhere" (`always_reachable`). The
+   * complement to featureInvariants (safety) — goals assert something good is
+   * achievable rather than something bad never happening. Optional and additive;
+   * downstream code reads `feature.reachabilityGoals ?? []`.
+   */
+  readonly reachabilityGoals?: readonly ReachabilityGoal[];
   /**
    * Registered events with optional payload schemas. Actions still
    * declare `emittedEvents: EventName[]` and emit_event effects still fire
