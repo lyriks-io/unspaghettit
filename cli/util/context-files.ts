@@ -45,8 +45,13 @@ and produce smaller diffs. Workflow:
 3. For multi-step edits use \`apply_batch\`. N ops in one atomic load + validate +
    save. Add ops can capture their new id under \`op.ref\` so later ops in the same
    batch reference it via \`*Ref\` (e.g. \`surfaceRef:"shop"\`).
-4. Validate risky proposals with \`dry_run_simulate\` (pure, no persist) and
-   \`score_feature\` before committing.
+4. Validate before committing: \`dry_run_simulate\` (pure, no persist),
+   \`run_all_scenarios\`, \`model_check\` (bounded state-space exploration —
+   invariant counterexamples with the action path, dead actions, deadlocks,
+   reachability, reachability-goal results), and \`score_feature\` (maturity).
+   Gate the whole feature/project in one call with \`verify\` — the in-chat form
+   of the \`unspa check\` CI command. \`get_drift\` finds code audited against an
+   older spec than the one now on disk.
 5. Run \`find_state_references\` before renaming or removing a state path.
 
 ### \`.unspa.json\`. Record implementations in the index
@@ -73,6 +78,12 @@ in its \`orphans\` block with a fix hint.
 
 Each entry stores \`{ file, line, signature, ... }\`. After editing the index,
 call \`sync_from_index\` so the MCP refreshes the coverage report.
+
+To PROVE coverage (not just claim it), run the feature's scenarios against the
+real code: \`unspa scenarios export <featureId>\` → \`vitest run --reporter=json\`
+→ \`unspa coverage ingest <report>\`. That stamps \`verifiedAt\` on actions whose
+scenarios all passed; \`verify\` / \`unspa check --min-verified\` gate on the
+proven share.
 
 ### Don't
 

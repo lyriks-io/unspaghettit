@@ -120,9 +120,19 @@ Before committing a large change:
   5. score_feature          → maturity report; use to catch regressions
 
 To gate the whole feature/project in one call (the CI shape), use verify — it folds scenarios +
-maturity + reachability + optional model_check + spec→code drift + cross-feature event coherence
-into one pass/warn/fail verdict (the in-chat form of the \`unspa check\` CLI). get_drift surfaces
-just the spec-drift part (code audited against an older spec than the one now on disk).
+maturity + reachability + optional model_check + spec→code drift + cross-feature event coherence +
+verified coverage into one pass/warn/fail verdict (the in-chat form of the \`unspa check\` CLI).
+get_drift surfaces just the spec-drift part (code audited against an older spec than the one now on
+disk). With modelCheck on, verify also enforces project-level invariants (project.projectInvariants,
+authored via add_project_invariant / update_project — cross-FEATURE safety properties referencing
+state paths in different features, which a feature invariant can't) over the union of the project's
+state.
+
+Verified coverage closes the spec↔code loop: \`.unspa.json\` records WHERE each entity lives; running
+the generated scenario spec (\`unspa scenarios export\` → \`vitest --reporter=json\`) and
+\`unspa coverage ingest <report>\` stamps \`verifiedAt\` on the actions whose scenarios PASSED against
+the real code — "proven", not just "claimed". verify / \`unspa check --min-verified <pct>\` gate on
+that proven share.
 
 Run find_state_references before renaming or removing a state path. It shows every rule,
 effect, invariant, and requiredState that references that path.

@@ -26,8 +26,13 @@ and produce smaller diffs. Workflow:
 3. For multi-step edits use `apply_batch`. N ops in one atomic load + validate +
    save. Add ops can capture their new id under `op.ref` so later ops in the same
    batch reference it via `*Ref` (e.g. `surfaceRef:"shop"`).
-4. Validate risky proposals with `dry_run_simulate` (pure, no persist) and
-   `score_feature` before committing.
+4. Validate before committing: `dry_run_simulate` (pure, no persist),
+   `run_all_scenarios`, `model_check` (bounded state-space exploration —
+   invariant counterexamples with the action path, dead actions, deadlocks,
+   reachability, reachability-goal results), and `score_feature` (maturity).
+   Gate the whole feature/project in one call with `verify` — the in-chat form
+   of the `unspa check` CI command. `get_drift` finds code audited against an
+   older spec than the one now on disk.
 5. Run `find_state_references` before renaming or removing a state path.
 
 ### `.unspa.json`. Record implementations in the index
@@ -35,19 +40,31 @@ and produce smaller diffs. Workflow:
 When you implement an entity in code, add or update its entry in the
 `.unspa.json` behavioral index — **do not** annotate source code. The index
 is the only mapping between code and spec. Keys follow
-`<entityType>:<id-or-slug-or-path>`:
+`<entityType>:<id-name-or-path>`:
 
-- `action:<slug>`
+- `action:<id>` (id = 8-char hex minted by the spec)
+- `surface:<id>`
 - `rule:<id>`
-- `invariant:<slug>`
+- `invariant:<id>`
 - `transition:<id>`
-- `state:<state.path>`
-- `surface_rule:<id>` / `surface_invariant:<slug>`
-- `event:<event-name>`
+- `surface_rule:<id>` / `surface_invariant:<id>`
 - `entity:<id>`
+- `event:<event-name>` (the event's string identifier, not an id)
+- `state:<state.path>` (e.g. `cart.itemCount`)
+
+**Never synthesize ids from slugs.** Read the real id with
+`get_behavioral_index` or `get_feature(verbose:true)`. Slug-shaped keys
+(e.g. `action:add-to-cart`) are rejected by `sync_from_index` and surfaced
+in its `orphans` block with a fix hint.
 
 Each entry stores `{ file, line, signature, ... }`. After editing the index,
 call `sync_from_index` so the MCP refreshes the coverage report.
+
+To PROVE coverage (not just claim it), run the feature's scenarios against the
+real code: `unspa scenarios export <featureId>` → `vitest run --reporter=json`
+→ `unspa coverage ingest <report>`. That stamps `verifiedAt` on actions whose
+scenarios all passed; `verify` / `unspa check --min-verified` gate on the
+proven share.
 
 ### Don't
 

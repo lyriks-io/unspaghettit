@@ -131,7 +131,16 @@ Atomic state-from-state-and-param write:
 `update_entity_field`, `remove_entity_field`,
 `create_project`, `update_project`, `replace_project`, `delete_project`,
 `add_feature_to_project`, `remove_feature_from_project`,
-`move_feature_in_project`.
+`move_feature_in_project`, `add_project_invariant`,
+`update_project_invariant`, `remove_project_invariant`.
+
+**Cross-feature invariants** live on the Project, not a feature:
+`project.projectInvariants` are safety properties spanning member features
+(referencing state paths in different features, which a feature invariant
+can't). Author with `add_project_invariant` / `update_project_invariant` /
+`remove_project_invariant`; the model checker enforces them across the
+project's state. Use a feature invariant when the property is within one
+feature, a project invariant when it spans two or more.
 
 Use the granular tools for one-off tweaks. For anything ≥ 2 ops, use
 `apply_batch`.

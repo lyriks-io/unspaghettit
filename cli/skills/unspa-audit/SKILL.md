@@ -73,9 +73,17 @@ source code is not annotated.
    implementation you previously mapped) — re-audit the `stale` entries. Then
    `verify` for the one-call verdict: it runs the whole spine (scenarios +
    maturity + reachability + model check + drift + cross-feature event
-   coherence) and reports `pass` / `warn` / `fail` per check. A clean `verify`
-   (plus zero critical spec gaps) is what "the audit is clean" means. The same
-   gate runs headlessly in CI as `unspa check`.
+   coherence + verified coverage) and reports `pass` / `warn` / `fail` per
+   check. A clean `verify` (plus zero critical spec gaps) is what "the audit is
+   clean" means. The same gate runs headlessly in CI as `unspa check`.
+
+7. **Distinguish claimed from proven.** A `.unspa.json` `{file,line}` entry
+   says an entity is *implemented*, not *correct*. To prove it, run the
+   feature's scenarios against the real code: `unspa scenarios export` →
+   `vitest run --reporter=json` → `unspa coverage ingest <report>`, which
+   stamps `verifiedAt` on actions whose scenarios all passed. `verify` reports
+   the proven share; `unspa check --min-verified <pct>` gates on it. An honest
+   audit reports both: indexed coverage **and** verified coverage.
 
 ## Reading the index correctly
 
