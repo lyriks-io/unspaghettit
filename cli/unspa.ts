@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { runCheckCommand } from './commands/check';
 import { runCiCommand } from './commands/ci';
+import { runCoverageIngestCommand } from './commands/coverage-ingest';
 import { runDashboardCommand } from './commands/dashboard';
 import { runInitCommand } from './commands/init';
 import { runLinkCommand } from './commands/link';
@@ -142,6 +143,7 @@ program
   .option('--max-depth <n>', 'Model-check action-depth bound (default 6).', (v) => Number.parseInt(v, 10))
   .option('--max-states <n>', 'Model-check state cap (default 2000).', (v) => Number.parseInt(v, 10))
   .option('--min-maturity <n>', 'Fail any feature scoring below this maturity percentage.', (v) => Number.parseInt(v, 10))
+  .option('--min-verified <n>', 'Fail any feature where fewer than N% of actions are proven against code (via `unspa coverage ingest`).', (v) => Number.parseInt(v, 10))
   .option('--max-scenario-failures <n>', 'Tolerate up to N failing scenarios before failing (default 0).', (v) => Number.parseInt(v, 10))
   .option('--require-scenarios', 'Fail a feature that has no scenarios authored.')
   .option('--fail-on-drift', 'Fail when an implementation was audited against an older spec (default: warn only).')
@@ -159,6 +161,7 @@ program
       maxDepth: opts.maxDepth,
       maxStates: opts.maxStates,
       minMaturity: opts.minMaturity,
+      minVerified: opts.minVerified,
       maxScenarioFailures: opts.maxScenarioFailures,
       requireScenarios: opts.requireScenarios === true,
       failOnDrift: opts.failOnDrift === true,
@@ -332,6 +335,27 @@ scenarios
       adapterExport: opts.adapterExport,
       dryRun: opts.dryRun === true,
       force: opts.force === true
+    });
+    process.exit(code);
+  });
+
+// `coverage ingest <file>` — close the spec↔code proof loop. Reads a Vitest
+// JSON report of the generated scenario spec and stamps `verifiedAt` on the
+// matching .unspa.json action entries, promoting them from "claimed
+// implemented" to "proven against the spec". Gate on it with
+// `unspa check --min-verified`.
+const coverage = program
+  .command('coverage')
+  .description('Work with implementation coverage recorded in .unspa.json.');
+
+coverage
+  .command('ingest <resultsFile>')
+  .description('[experimental] Read a Vitest JSON report (vitest run --reporter=json --outputFile=<file>) of the generated scenario spec and mark each action whose scenarios all passed as verified in .unspa.json (clears stale verifications that now fail). Recording only; gate with `unspa check --min-verified`.')
+  .option('--dry-run', 'Report what would change without writing .unspa.json.')
+  .action(async (resultsFile, opts) => {
+    const code = await runCoverageIngestCommand({
+      file: resultsFile,
+      dryRun: opts.dryRun === true
     });
     process.exit(code);
   });

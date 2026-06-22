@@ -89,6 +89,7 @@ Setup, run, verify, and codegen.
 | `unspa dashboard`             | Boot the SvelteKit dashboard from the `unspa/` folder discovered by walking up from cwd. `--view <ids>` enables opt-in views for the run. |
 | `unspa check`                 | **CI gate.** Run the verification spine headlessly (scenarios + maturity + reachability + optional model checking + spec→code drift + cross-feature event coherence) and **exit non-zero on failure**. `--json` for CI dashboards. |
 | `unspa ci`                    | Scaffold a GitHub Actions workflow (`.github/workflows/unspaghettit.yml`) that runs `unspa check` on every push / PR. |
+| `unspa coverage ingest`       | **[experimental]** Read a Vitest JSON report of the generated scenario spec and mark actions whose scenarios passed as **verified** in `.unspa.json` (proven against the spec). Gate with `unspa check --min-verified`. |
 | `unspa view`                  | Manage opt-in dashboard views (Expert is always on): `view list`, `view add <id>` (e.g. `builder`), `view remove <id>`. Persists in `<snapshots>/views.json`. |
 | `unspa list`                  | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload. |
 | `unspa link`                  | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding. |
@@ -275,6 +276,7 @@ Gating flags (default: warn, not fail):
 
 ```bash
 unspa check --min-maturity 80        # fail features below 80% maturity
+unspa check --min-verified 80        # fail features <80% of actions proven against code (see `coverage ingest`)
 unspa check --require-scenarios      # fail features with no scenarios
 unspa check --fail-on-drift          # fail when code was audited against an older spec
 unspa check --fail-on-unmet-goals    # fail when a reachability/liveness goal is unmet (needs --model-check)
@@ -348,6 +350,26 @@ unspa scenarios adapter <featureId> --force    # overwrite an existing file
 Loop: `scenarios adapter` → fill the TODOs with calls into your real code →
 `scenarios export` → `vitest`. A scenario that disagrees with the implementation
 then fails CI. Same experimental status as `export`.
+
+### `unspa coverage ingest <resultsFile>` (experimental)
+
+Closes the proof loop: turns a real `vitest` run into **verified** coverage in
+`.unspa.json`. The generated spec tags each test with a token
+(`[unspa:surface:action:scenario]`), so a standard Vitest JSON report maps back
+to the spec — no custom reporter needed.
+
+```bash
+# 1. generate the spec + adapter, fill the adapter, then run vitest with the JSON reporter:
+vitest run my-feature.scenarios.spec.ts --reporter=json --outputFile=unspa-results.json
+# 2. ingest the report — stamps verifiedAt on each action whose scenarios all passed:
+unspa coverage ingest unspa-results.json
+unspa coverage ingest unspa-results.json --dry-run   # preview, don't write
+```
+
+An action whose scenarios all pass is stamped `verifiedAt` (promoted from
+"claimed implemented" to "proven"); one that regresses has the stamp cleared.
+Recording only — gate on it with `unspa check --min-verified <pct>`. The
+adapter/report contract is preview, same as `scenarios export`.
 
 ## Skills
 

@@ -4,6 +4,7 @@ import type { SurfaceReachabilityReport } from '$features/simulator/domain/Surfa
 import type { RunScenariosOutput } from '$features/simulator/application/use-cases/RunScenarios';
 import type { DriftEntry } from './DriftReport';
 import type { EventHandlerFinding } from './EventCoherenceReport';
+import type { VerifiedCoverage } from './verifiedCoverage';
 import type { VerificationThresholds } from './VerificationThresholds';
 import { verdictPassed, type FeatureVerdict, type VerdictCheck } from './VerificationVerdict';
 
@@ -23,6 +24,8 @@ export type FeatureVerdictInput = {
   readonly drift: readonly DriftEntry[];
   /** Dead event handlers in this feature (triggering event emitted by nothing in the project). */
   readonly deadHandlers?: readonly EventHandlerFinding[];
+  /** Share of this feature's actions proven against code (verifiedAt stamped). */
+  readonly verifiedCoverage?: VerifiedCoverage;
   readonly thresholds: VerificationThresholds;
 };
 
@@ -95,6 +98,27 @@ const maturityCheck = (
   };
 };
 
+const verifiedCheck = (
+  coverage: VerifiedCoverage,
+  thresholds: VerificationThresholds
+): VerdictCheck => {
+  const pct = coverage.total === 0 ? 100 : Math.round((coverage.verified / coverage.total) * 100);
+  if (thresholds.minVerified <= 0) {
+    return {
+      id: 'verified',
+      label: 'Verified',
+      status: 'pass',
+      detail: `${coverage.verified}/${coverage.total} action(s) proven against code (${pct}%, no gate)`
+    };
+  }
+  return {
+    id: 'verified',
+    label: 'Verified',
+    status: pct >= thresholds.minVerified ? 'pass' : 'fail',
+    detail: `${pct}% of actions proven against code (${coverage.verified}/${coverage.total}, min ${thresholds.minVerified}%)`
+  };
+};
+
 const reachabilityCheck = (reachability: SurfaceReachabilityReport): VerdictCheck => {
   if (reachability.unreachableSurfaces.length === 0) {
     return { id: 'reachability', label: 'Reachability', status: 'pass', detail: 'every surface is reachable' };
@@ -154,7 +178,8 @@ const deadActionsCheck = (
 };
 
 const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
-  const { scenarios, maturity, exploration, reachability, drift, deadHandlers, thresholds } = input;
+  const { scenarios, maturity, exploration, reachability, drift, deadHandlers, verifiedCoverage, thresholds } =
+    input;
   const checks: VerdictCheck[] = [scenariosCheck(scenarios, thresholds)];
 
   if (exploration) {
@@ -180,6 +205,8 @@ const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
   }
 
   checks.push(maturityCheck(maturity, thresholds));
+
+  if (verifiedCoverage) checks.push(verifiedCheck(verifiedCoverage, thresholds));
 
   if (reachability) checks.push(reachabilityCheck(reachability));
 

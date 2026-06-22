@@ -9,7 +9,11 @@ import type {
 const LINK_FILENAME = '.unspa.json';
 const VALID_STATUS = new Set<IndexedImplementationStatus>(['implemented', 'partial', 'missing']);
 
-type RawEntry = { readonly status?: string; readonly specVersion?: string };
+type RawEntry = {
+  readonly status?: string;
+  readonly specVersion?: string;
+  readonly verifiedAt?: string;
+};
 type RawLink = { readonly index?: Record<string, RawEntry> };
 
 /** Walk up from `cwd` to the nearest `.unspa.json`, mirroring the MCP/CLI link discovery. */
@@ -69,7 +73,8 @@ export const fileBehavioralIndexReader = (
       return {
         key,
         status,
-        ...(typeof raw?.specVersion === 'string' ? { auditedSpecVersion: raw.specVersion } : {})
+        ...(typeof raw?.specVersion === 'string' ? { auditedSpecVersion: raw.specVersion } : {}),
+        ...(typeof raw?.verifiedAt === 'string' ? { verifiedAt: raw.verifiedAt } : {})
       };
     });
   }

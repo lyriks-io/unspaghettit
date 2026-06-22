@@ -132,7 +132,9 @@ describe('generated spec — buggy adapter triggers drift', () => {
 
   it('catches the buggy implementation: "Add 5 from 10" fails, others pass', async () => {
     await Promise.all(pendingRuns);
-    expect(failures.map((f) => f.name)).toEqual(['Add 5 to a counter already at 10']);
+    // Strip the [unspa:...] coverage token the codegen prepends to titles.
+    const names = failures.map((f) => f.name.replace(/^\[unspa:[^\]]+\]\s*/, ''));
+    expect(names).toEqual(['Add 5 to a counter already at 10']);
     const message = String((failures[0]?.error as { message?: unknown })?.message ?? '');
     expect(message).toMatch(/15/); // expected 15
     expect(message).toMatch(/11/); // actual: 10 + (buggy: +1) = 11

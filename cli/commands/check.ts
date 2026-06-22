@@ -29,6 +29,7 @@ export type CheckOptions = {
   readonly maxDepth?: number;
   readonly maxStates?: number;
   readonly minMaturity?: number;
+  readonly minVerified?: number;
   readonly maxScenarioFailures?: number;
   readonly requireScenarios?: boolean;
   readonly failOnDrift?: boolean;
@@ -143,6 +144,7 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
 
   const thresholds = {
     minMaturity: options.minMaturity ?? 0,
+    minVerified: options.minVerified ?? 0,
     maxScenarioFailures: options.maxScenarioFailures ?? 0,
     allowInvariantViolations: options.allowInvariantViolations === true,
     failOnDeadActions: options.failOnDeadActions === true,

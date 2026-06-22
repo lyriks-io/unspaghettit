@@ -161,6 +161,21 @@ describe('aggregateFeatureVerdict', () => {
     expect(checkById(verdict, 'liveness')).toBeUndefined();
   });
 
+  it('gates on verified coverage only when a floor is set', () => {
+    const cov = { verified: 1, total: 2 }; // 50% proven
+
+    const ungated = aggregateFeatureVerdict(base({ verifiedCoverage: cov }));
+    expect(ungated.passed).toBe(true);
+    expect(checkById(ungated, 'verified')?.status).toBe('pass');
+    expect(checkById(ungated, 'verified')?.detail).toContain('1/2');
+
+    const gated = aggregateFeatureVerdict(
+      base({ verifiedCoverage: cov, thresholds: withThresholdDefaults({ minVerified: 80 }) })
+    );
+    expect(gated.passed).toBe(false);
+    expect(checkById(gated, 'verified')?.status).toBe('fail');
+  });
+
   it('warns (never fails) when the model check was truncated', () => {
     const verdict = aggregateFeatureVerdict(base({ exploration: exploration({ truncated: true }) }));
     expect(verdict.passed).toBe(true);

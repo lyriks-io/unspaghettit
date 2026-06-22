@@ -23,6 +23,12 @@ export type VerificationThresholds = {
   /** When true, a feature with zero scenarios fails verification. */
   readonly requireScenarios: boolean;
   /**
+   * Minimum % of a feature's actions that must be VERIFIED (scenarios proven to
+   * pass against the real code, via `unspa coverage ingest`). `0` disables the
+   * gate (report only).
+   */
+  readonly minVerified: number;
+  /**
    * When true, an unmet reachability/liveness goal fails verification. Off by
    * default: like dead actions, "not reached within bounds" is not a proof, so
    * it warns unless opted in.
@@ -37,7 +43,8 @@ export const defaultThresholds = (): VerificationThresholds => ({
   failOnDeadActions: false,
   allowDrift: true,
   requireScenarios: false,
-  failOnUnmetGoals: false
+  failOnUnmetGoals: false,
+  minVerified: 0
 });
 
 export const withThresholdDefaults = (

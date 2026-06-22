@@ -194,12 +194,18 @@ feature's scenarios into a real code-vs-spec test:
    `input.initialState` + `input.parameters` and returns `{ status, finalState }`.
 2. `unspa scenarios export <featureId>` — generates a Vitest spec whose oracle
    is the simulator's prediction for each scenario.
-3. Run `vitest`. Green means the implementation agrees with the spec on every
-   authored scenario; a failure is a real spec↔code divergence — fix the code
-   (or the spec, if the spec was wrong) and re-run.
-4. CI: `unspa ci` drops a workflow that runs `unspa check` (the spec's own
-   consistency) on every push; add the generated scenario spec to the repo's
-   test run to gate the code against it too.
+3. Run vitest with the JSON reporter:
+   `vitest run <spec> --reporter=json --outputFile=unspa-results.json`. Green
+   means the implementation agrees with the spec on every authored scenario; a
+   failure is a real spec↔code divergence — fix the code (or the spec, if the
+   spec was wrong) and re-run.
+4. `unspa coverage ingest unspa-results.json` — stamps `verifiedAt` on every
+   action whose scenarios all passed (and clears it on a regression), promoting
+   those entities from "claimed implemented" to **proven against the spec**.
+5. CI: `unspa ci` drops a workflow running `unspa check`; add
+   `--min-verified <pct>` to require that share of actions be proven, and run
+   the generated scenario spec + ingest in the same job so the code is gated
+   against the spec on every push.
 
 This is the experimental wedge — the adapter contract may shift between minor
 versions. Recording presence in `.unspa.json` (step 5 above) is still the

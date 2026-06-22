@@ -9,6 +9,7 @@ import { analyzeSurfaceReachability } from '$features/simulator/domain/SurfaceRe
 import { aggregateFeatureVerdict } from '../../domain/aggregateVerdict';
 import { analyzeEventCoherence } from '../../domain/analyzeEventCoherence';
 import { detectDrift } from '../../domain/detectDrift';
+import { verifiedCoverageForFeature } from '../../domain/verifiedCoverage';
 import type { VerificationReport } from '../../domain/VerificationReport';
 import {
   withThresholdDefaults,
@@ -72,7 +73,8 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
       if (feature) loaded.push(feature);
     }
 
-    const drift = detectDrift(loaded, await deps.index.read());
+    const indexEntries = await deps.index.read();
+    const drift = detectDrift(loaded, indexEntries);
     const eventCoherence = analyzeEventCoherence(loaded);
 
     const explorerOptions: ExplorerOptions | null =
@@ -119,6 +121,7 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
         ...(exploration ? { exploration } : {}),
         drift: featureDrift,
         deadHandlers: featureDeadHandlers,
+        verifiedCoverage: verifiedCoverageForFeature(feature, indexEntries),
         thresholds
       });
 

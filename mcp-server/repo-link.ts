@@ -19,6 +19,14 @@ export type IndexEntry = {
   /** Feature updatedAt (ISO) when this entry was last audited. Detects spec drift. */
   readonly specVersion?: string;
   /**
+   * ISO timestamp of the last time this entity's scenarios PASSED against the
+   * real implementation (stamped by `unspa coverage ingest` from a vitest run).
+   * Distinguishes "claimed implemented" from "proven against the spec".
+   */
+  readonly verifiedAt?: string;
+  /** Number of scenarios that passed at the last verification. */
+  readonly verifiedScenarios?: number;
+  /**
    * Pattern hint so the LLM knows what to expect before reading the file.
    * Known values: svelte-route | svelte-store | svelte-component | mcp-tool |
    *               mcp-entrypoint | domain-service

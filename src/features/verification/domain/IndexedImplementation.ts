@@ -19,4 +19,9 @@ export type IndexedImplementation = {
    * stamped — those can't be judged for drift, only reported as unversioned.
    */
   readonly auditedSpecVersion?: string;
+  /**
+   * ISO timestamp the entity's scenarios last passed against the real code
+   * (`.unspa.json` `verifiedAt`). Present → "proven", not just "claimed".
+   */
+  readonly verifiedAt?: string;
 };

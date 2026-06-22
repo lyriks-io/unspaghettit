@@ -135,7 +135,8 @@ describe('stress test: generated spec against faithful adapter', () => {
 
   it('5 of 6 scenarios pass; only the drift case fails', async () => {
     await Promise.all(pendingRuns);
-    const failedNames = failures.map((f) => f.name);
+    // Strip the [unspa:...] coverage token the codegen prepends to titles.
+    const failedNames = failures.map((f) => f.name.replace(/^\[unspa:[^\]]+\]\s*/, ''));
     expect(failedNames).toEqual(['DRIFT: author claims success on overdraft']);
     // The failure message should call out the status mismatch.
     const message = String((failures[0]?.error as { message?: unknown })?.message ?? '');

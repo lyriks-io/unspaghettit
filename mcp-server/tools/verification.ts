@@ -95,6 +95,7 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
         maxDepth: z.number().int().positive().optional(),
         maxStates: z.number().int().positive().optional(),
         minMaturity: z.number().int().min(0).max(100).optional(),
+        minVerified: z.number().int().min(0).max(100).optional(),
         requireScenarios: z.boolean().optional(),
         failOnDrift: z.boolean().optional(),
         failOnUnmetGoals: z.boolean().optional()
@@ -109,6 +110,7 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
           projectInvariants,
           thresholds: {
             minMaturity: args.minMaturity ?? 0,
+            minVerified: args.minVerified ?? 0,
             requireScenarios: args.requireScenarios === true,
             allowDrift: args.failOnDrift !== true,
             failOnUnmetGoals: args.failOnUnmetGoals === true

@@ -17,6 +17,7 @@ import {
 import { mergeSnapshotWithDefaults } from '../../src/features/behavior-model/domain/services/StateSnapshot';
 import { isExpression } from '../../src/features/behavior-model/domain/value-objects/Expression';
 import { simulate } from '../../src/features/simulator/domain/SimulatorEngine';
+import { scenarioTitleToken } from './results';
 
 export type CodegenOptions = {
   /**
@@ -206,8 +207,13 @@ const renderScenarioBlock = (
     }
   }
 
+  const titleToken = scenarioTitleToken(
+    String(surface.id),
+    String(action.id),
+    String(scenario.id)
+  );
   const code = [
-    `  it(${tsString(scenario.name)}, async () => {`,
+    `  it(${tsString(`${titleToken} ${scenario.name}`)}, async () => {`,
     driftBanner.trimEnd(),
     `    const initialState = ${jsonLiteral(initialState)};`,
     `    const parameters = ${jsonLiteral(parameters)};`,
