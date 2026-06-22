@@ -295,7 +295,17 @@ const simulateInternal = (
     : [
         ...(featureInvariants ?? []),
         ...surface.invariants,
-        ...action.invariants
+        // Action invariants are post-conditions of THIS action COMPLETING. When
+        // a rule blocked the action, no effects ran, so checking its
+        // post-condition is vacuous and would falsely flag a precondition guard
+        // — e.g. an action invariant "order.status == delivered" on "Confirm
+        // delivery", invoked from a state where a rule blocks it, would report a
+        // violation even though the action never happened. Skip them on a
+        // rule-block, mirroring the scenario runner skipping assertions on a
+        // blocked action. Feature + surface invariants are state predicates that
+        // must hold in EVERY reachable state, so they're still checked (the
+        // unchanged pre-action state was already valid, so they hold).
+        ...(application.blocked ? [] : action.invariants)
       ];
   const invariantViolations = checkInvariants(
     allInvariants,

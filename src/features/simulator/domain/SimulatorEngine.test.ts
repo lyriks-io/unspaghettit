@@ -635,6 +635,73 @@ describe('simulate', () => {
     expect(result.invariantViolations.map((v) => v.invariantName)).toContain('count >= 0');
   });
 
+  it('does not check an action invariant when a rule blocked the action', () => {
+    // "Finish" requires gate.open; its action invariant is the success
+    // post-condition thing.done == true. Invoked while the gate is closed, the
+    // rule blocks it and no effect runs — the post-condition must NOT be flagged
+    // (it's vacuous), while the same invariant holds when the action succeeds.
+    const surface: Surface = {
+      id: asSurfaceId('s'),
+      name: 'Flow',
+      type: 'screen',
+      stateDefinitions: [
+        { id: asStateDefinitionId('d-gate'), path: asStatePath('gate.open'), type: 'boolean', defaultValue: false },
+        { id: asStateDefinitionId('d-done'), path: asStatePath('thing.done'), type: 'boolean', defaultValue: false }
+      ],
+      actions: [],
+      rules: [],
+      invariants: [],
+      transitions: []
+    };
+    const finish: Action = {
+      id: asActionId('finish'),
+      name: 'Finish',
+      intent: 'complete the thing',
+      parameters: [],
+      requiredStates: [],
+      rules: [
+        {
+          id: asRuleId('r-gate'),
+          category: 'business',
+          condition: { left: asStatePath('gate.open'), operator: 'is_false' },
+          effect: { id: asEffectId('e-block'), type: 'block_action', reason: 'gate closed' }
+        }
+      ],
+      invariants: [
+        {
+          id: asInvariantId('i-done'),
+          name: 'Finish leaves thing done',
+          condition: { left: asStatePath('thing.done'), operator: 'is_true' },
+          message: 'thing should be done'
+        }
+      ],
+      effects: [
+        { id: asEffectId('e-done'), type: 'set_state', path: asStatePath('thing.done'), value: true }
+      ],
+      emittedEvents: [],
+      transitions: []
+    };
+
+    const blocked = simulate({
+      surface,
+      action: finish,
+      snapshot: buildInitialSnapshot(surface.stateDefinitions),
+      parameters: {}
+    });
+    expect(blocked.status).toBe('blocked');
+    // The post-condition invariant is skipped because the action never ran.
+    expect(blocked.invariantViolations).toHaveLength(0);
+
+    const succeeded = simulate({
+      surface,
+      action: finish,
+      snapshot: { gate: { open: true }, thing: { done: false } },
+      parameters: {}
+    });
+    expect(succeeded.status).toBe('success');
+    expect(succeeded.invariantViolations).toHaveLength(0);
+  });
+
   it('flows a collection mutation (append) through a real action with an Expression item', () => {
     const surface: Surface = {
       id: asSurfaceId('cart'),
