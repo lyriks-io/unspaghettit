@@ -1,0 +1,49 @@
+name: Publish
+
+# Publishes the package to npm when a GitHub Release is published.
+#
+# Release flow:
+#   1. Bump version + finalize CHANGELOG, commit `chore(release): x.y.z`.
+#   2. Tag `vX.Y.Z` and push; let CI (ci.yml) go green on main.
+#   3. Publish the GitHub Release for that tag — this workflow then runs the
+#      package's prepublishOnly gate (skills:check, bom:check, lint, build,
+#      test) via `npm publish` and ships it.
+#
+# Requires an `NPM_TOKEN` repository secret (Settings > Secrets and variables >
+# Actions). Use an npm **Automation** access token: automation tokens bypass
+# the account's 2FA-on-publish prompt, which interactive/publish tokens do not.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # lets `npm publish --provenance` attest the build
+
+jobs:
+  publish:
+    name: npm publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run check
+
+      # `npm publish` runs prepublishOnly (skills:check, bom:check, lint, build,
+      # test) before it ships, so the registry never gets an unverified build.
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
