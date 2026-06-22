@@ -8,7 +8,10 @@ import { asProjectId } from '../../src/features/projects/domain/value-objects/id
 import { fileBehavioralIndexReader } from '../../src/features/verification/infrastructure/persistence/FileBehavioralIndexReader';
 import { verifyFeaturesUseCase } from '../../src/features/verification/application/use-cases/VerifyFeatures';
 import type { CheckStatus, FeatureVerdict } from '../../src/features/verification/domain/VerificationVerdict';
-import type { VerificationReport } from '../../src/features/verification/domain/VerificationReport';
+import {
+  mergeVerificationReports,
+  type VerificationReport
+} from '../../src/features/verification/domain/VerificationReport';
 import { readRepoLink } from '../util/link';
 import { log } from '../util/log';
 
@@ -65,21 +68,41 @@ const printSummary = (report: VerificationReport): void => {
 };
 
 /**
- * Resolve which features make up this run's cohort. Precedence: an explicit
- * feature id, then an explicit/linked project's features, then "every feature
- * in the snapshot folder". Returns `undefined` to mean "all" (the use case
- * lists them), which keeps the all-features path a single source of truth.
+ * Resolve the cohorts to verify. Precedence: an explicit feature id (one
+ * cohort of one), then an explicit/linked project (one cohort), then — when
+ * unscoped — EACH project as its own cohort plus any orphan features, so a
+ * multi-project hub doesn't treat features from different products as
+ * siblings (which would skew cross-feature checks). Each cohort is verified
+ * independently and the reports are merged. Empty cohorts are dropped.
  */
-const resolveCohort = async (
+const resolveCohorts = async (
   options: CheckOptions,
   cwd: string,
+  featureRepo: JsonFolderFeatureRepository,
   projectRepo: JsonFolderProjectRepository
-): Promise<readonly FeatureId[] | undefined> => {
-  if (options.featureId) return [asFeatureId(options.featureId)];
-  const projectId = options.project ?? readRepoLink(cwd)?.projectId;
-  if (!projectId) return undefined;
-  const project = await projectRepo.get(asProjectId(projectId));
-  return project ? [...project.featureIds] : undefined;
+): Promise<readonly (readonly FeatureId[])[]> => {
+  if (options.featureId) return [[asFeatureId(options.featureId)]];
+
+  const explicitProjectId = options.project ?? readRepoLink(cwd)?.projectId;
+  if (explicitProjectId) {
+    const project = await projectRepo.get(asProjectId(explicitProjectId));
+    return project && project.featureIds.length > 0 ? [[...project.featureIds]] : [];
+  }
+
+  const cohorts: FeatureId[][] = [];
+  const assigned = new Set<string>();
+  for (const summary of await projectRepo.list()) {
+    const project = await projectRepo.get(summary.id);
+    if (project && project.featureIds.length > 0) {
+      cohorts.push([...project.featureIds]);
+      for (const id of project.featureIds) assigned.add(String(id));
+    }
+  }
+  const orphans = (await featureRepo.list())
+    .map((s) => s.id)
+    .filter((id) => !assigned.has(String(id)));
+  if (orphans.length > 0) cohorts.push(orphans);
+  return cohorts;
 };
 
 export const runCheckCommand = async (options: CheckOptions = {}): Promise<number> => {
@@ -98,31 +121,34 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
 
   const featureRepo = new JsonFolderFeatureRepository(directory);
   const projectRepo = new JsonFolderProjectRepository(directory);
-  const cohort = await resolveCohort(options, cwd, projectRepo);
+  const cohorts = await resolveCohorts(options, cwd, featureRepo, projectRepo);
 
   const verify = verifyFeaturesUseCase({
     features: featureRepo,
     index: fileBehavioralIndexReader({ cwd })
   });
 
-  const report = await verify({
-    ...(cohort ? { featureIds: cohort } : {}),
-    thresholds: {
-      minMaturity: options.minMaturity ?? 0,
-      maxScenarioFailures: options.maxScenarioFailures ?? 0,
-      allowInvariantViolations: options.allowInvariantViolations === true,
-      failOnDeadActions: options.failOnDeadActions === true,
-      allowDrift: options.failOnDrift !== true,
-      requireScenarios: options.requireScenarios === true,
-      failOnUnmetGoals: options.failOnUnmetGoals === true
-    },
-    modelCheck: options.modelCheck
-      ? {
-          ...(options.maxDepth !== undefined ? { maxDepth: options.maxDepth } : {}),
-          ...(options.maxStates !== undefined ? { maxStates: options.maxStates } : {})
-        }
-      : false
-  });
+  const thresholds = {
+    minMaturity: options.minMaturity ?? 0,
+    maxScenarioFailures: options.maxScenarioFailures ?? 0,
+    allowInvariantViolations: options.allowInvariantViolations === true,
+    failOnDeadActions: options.failOnDeadActions === true,
+    allowDrift: options.failOnDrift !== true,
+    requireScenarios: options.requireScenarios === true,
+    failOnUnmetGoals: options.failOnUnmetGoals === true
+  };
+  const modelCheck = options.modelCheck
+    ? {
+        ...(options.maxDepth !== undefined ? { maxDepth: options.maxDepth } : {}),
+        ...(options.maxStates !== undefined ? { maxStates: options.maxStates } : {})
+      }
+    : false;
+
+  const reports: VerificationReport[] = [];
+  for (const cohort of cohorts) {
+    reports.push(await verify({ featureIds: cohort, thresholds, modelCheck }));
+  }
+  const report = mergeVerificationReports(reports);
 
   if (options.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

@@ -24,3 +24,36 @@ export type VerificationReport = {
   readonly eventCoherence: EventCoherenceReport;
   readonly summary: VerificationSummary;
 };
+
+/**
+ * Fold several per-cohort reports into one. Used when a run spans multiple
+ * projects (each verified as its own cohort so cross-feature checks don't bleed
+ * across project boundaries) but the caller wants a single aggregate result.
+ * `passed` is the AND of every cohort.
+ */
+export const mergeVerificationReports = (
+  reports: readonly VerificationReport[]
+): VerificationReport => {
+  const features = reports.flatMap((r) => r.features);
+  return {
+    passed: reports.every((r) => r.passed),
+    features,
+    drift: {
+      stale: reports.flatMap((r) => r.drift.stale),
+      unversioned: reports.flatMap((r) => r.drift.unversioned),
+      orphans: reports.flatMap((r) => r.drift.orphans),
+      checked: reports.reduce((n, r) => n + r.drift.checked, 0)
+    },
+    eventCoherence: {
+      deadHandlers: reports.flatMap((r) => r.eventCoherence.deadHandlers)
+    },
+    summary: {
+      featuresChecked: features.length,
+      featuresPassed: features.filter((f) => f.passed).length,
+      featuresFailed: features.filter((f) => !f.passed).length,
+      scenariosRun: reports.reduce((n, r) => n + r.summary.scenariosRun, 0),
+      scenariosFailed: reports.reduce((n, r) => n + r.summary.scenariosFailed, 0),
+      invariantViolations: reports.reduce((n, r) => n + r.summary.invariantViolations, 0)
+    }
+  };
+};
