@@ -16,11 +16,16 @@
   } from '$shared/presentation/dialogs/dialogStore.svelte';
   import { getBrowserContainer } from '$shared/infrastructure/browserContainer';
   import {
+    downloadEnvelopeAs,
+    exportProjectBundle,
     importEnvelope,
     readEnvelopeFromFile,
     MalformedEnvelopeError,
+    WeakPassphraseError,
     WrongPassphraseError
   } from '$features/projects/presentation/services/projectBundleClient';
+  import KebabMenu from '$shared/presentation/components/KebabMenu.svelte';
+  import MenuItem from '$shared/presentation/components/MenuItem.svelte';
   import { addTag, humanizeTagText, removeTag, tagKey, type Tag } from '$shared/domain/Tags';
   import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
   import TagFilterSelect, {
@@ -129,6 +134,40 @@
       await alertDialog({ title: 'Import failed', message, tone: 'danger' });
     } finally {
       importing = false;
+    }
+  }
+
+  let exporting = $state(false);
+
+  // Export from the card's ⋮ menu — no need to open the project first. Same
+  // flow as the detail page: prompt for a passphrase, fetch the bundle,
+  // encrypt client-side, download the `.unspa`. The passphrase never reaches
+  // the server. Only the project id + name are needed, both on the summary.
+  async function handleExport(id: ProjectId, name: string) {
+    if (exporting) return;
+    const passphrase = await promptDialog({
+      title: 'Export project',
+      message:
+        `Encrypt "${name}" with a passphrase and download as a .unspa file. ` +
+        `You'll need the same passphrase to import it back. Minimum 8 characters.`,
+      inputLabel: 'Passphrase',
+      placeholder: 'At least 8 characters',
+      password: true,
+      confirmLabel: 'Export',
+      tone: 'info',
+      validate: (v) => (v.length < 8 ? 'Passphrase must be at least 8 characters.' : null)
+    });
+    if (passphrase === null) return;
+    exporting = true;
+    try {
+      const { envelope, projectName } = await exportProjectBundle(id, passphrase);
+      downloadEnvelopeAs(envelope, projectName);
+    } catch (e) {
+      const message =
+        e instanceof WeakPassphraseError ? e.message : `Export failed: ${(e as Error).message}`;
+      await alertDialog({ title: 'Export failed', message, tone: 'danger' });
+    } finally {
+      exporting = false;
     }
   }
 
@@ -290,16 +329,20 @@
   <header class="mb-6 border-b border-slate-200 pb-6">
     <div class="flex items-center justify-between gap-3">
       <p class="text-xs font-semibold uppercase tracking-wide text-brand-700">Home</p>
-      <button
-        type="button"
-        class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800 disabled:opacity-50"
-        onclick={openImportPicker}
-        disabled={importing}
-        title="Restore a project from a .unspa file"
-      >
-        <span aria-hidden="true">&#x2B06;</span>
-        {importing ? 'Importing...' : 'Import .unspa'}
-      </button>
+      <KebabMenu align="right" placement="down" label="Page actions">
+        {#snippet children(close)}
+          <MenuItem
+            disabled={importing}
+            onclick={() => {
+              close();
+              openImportPicker();
+            }}
+          >
+            <span aria-hidden="true">&#x2B06;</span>
+            {importing ? 'Importing...' : 'Import .unspa'}
+          </MenuItem>
+        {/snippet}
+      </KebabMenu>
       <input
         bind:this={importFileInput}
         type="file"
@@ -407,6 +450,7 @@
               {tagTypeOptions}
               onAddTag={(type, value) => appendTag(summary.id, type, value)}
               onRemoveTag={(type, value) => dropTag(summary.id, type, value)}
+              onExport={() => handleExport(summary.id, summary.name)}
               onDelete={() => handleDelete(summary.id)}
             />
           </li>

@@ -30,6 +30,8 @@
   import type { Tag } from '$shared/domain/Tags';
   import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
   import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
+  import KebabMenu from '$shared/presentation/components/KebabMenu.svelte';
+  import MenuItem from '$shared/presentation/components/MenuItem.svelte';
 
   const PANELS: { id: ProjectPanel; label: string }[] = [
     { id: 'features', label: 'Features' },
@@ -173,16 +175,20 @@
         >
           Graph
         </a>
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800 disabled:opacity-50"
-          onclick={handleExport}
-          disabled={exporting}
-          title="Encrypt the project (and all its features + status) into a .unspa file you can share or back up"
-        >
-          <span aria-hidden="true">⬇</span>
-          {exporting ? 'Exporting...' : 'Export .unspa'}
-        </button>
+        <KebabMenu align="right" placement="down" label="Project actions">
+          {#snippet children(close)}
+            <MenuItem
+              disabled={exporting}
+              onclick={() => {
+                close();
+                handleExport();
+              }}
+            >
+              <span aria-hidden="true">⬇</span>
+              {exporting ? 'Exporting...' : 'Export .unspa'}
+            </MenuItem>
+          {/snippet}
+        </KebabMenu>
       </div>
       <div class="mt-3">
         <div class="min-w-0">
