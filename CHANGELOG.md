@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-23
+
+The verification release. Unspaghettit moves from *describing* behavior to *proving* it. Bounded model checking explores a feature's reachable state space for invariant violations; **liveness / reachability goals** prove "good is reachable", not just "bad never happens"; **project-level invariants** span features; **cross-feature event coherence** catches dead wiring; and spec→code **drift** plus **verified coverage** close the loop so a divergence between model and code fails the build. A headless **`unspa check`** gate, an **`unspa ci`** scaffold, the **`verify` / `get_drift`** MCP tools, and a dashboard **Verify** view (with navigable counterexample traces) make it executable from CLI, chat, and browser. Plus **global search** across the whole model (⌘K / Ctrl+K) and a **reachability-goals editor**. Additive and non-breaking.
+
 ### Added
 
 - **Verified coverage — prove the code matches the spec, and gate on it.** Closes the spec↔code loop, turning the model from "claimed implemented" into "proven against the spec". The generated scenario spec now tags each test with a machine token (`[unspa:surface:action:scenario]`); run it (`vitest run --reporter=json --outputFile=…`) and **`unspa coverage ingest <report>`** stamps `verifiedAt` on the matching `.unspa.json` entries when every one of an action's scenarios passed (and clears the stamp when a scenario regresses). `verify` and **`unspa check --min-verified <pct>`** then gate on the share of a feature's actions that are proven, so a divergence between spec and code fails the build — not just a stale doc. The verdict gains a `verified` check (claimed vs. proven). The full loop: `scenarios adapter` → fill → `scenarios export` → `vitest --reporter=json` → `coverage ingest` → `check --min-verified`.
@@ -33,6 +37,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Navigation reachability in the model checker.** A new pure static analysis (`analyzeSurfaceReachability`) over the surface-transition graph (declared transitions + `transition_surface` effects) finds surfaces the user can never navigate to (`unreachableSurfaces`) and surfaces with no way out (`terminalSurfaces`). Surfaced in `model_check` next to the state-space results and folded into `verify` / `unspa check` as an advisory check.
 
 - **Global search in the header.** A search bar in the dashboard header (focus it or press **⌘K / Ctrl+K**) that indexes the *entire* model — projects, domains, features, surfaces, actions, parameters, rules, effects, invariants, state definitions, transitions, personas, resources, entities (and nested fields), events, value sets, and scenarios — and opens a big, grouped results menu. Tag text is folded into its project/feature so a tag query still finds its carrier. Results are ranked (exact › prefix › word-prefix › substring, weighted by kind), grouped by type, and keyboard-navigable (↑/↓/Enter); selecting one **deep-links to the exact element**, expands it (an action's card opens so you see the searched item itself, not a collapsed header), and pulses it for ~3s (reusing the feature editor's `?surface=&panel=&focus=` contract + focus observer, now honoring a one-shot `focus` URL param). Built as a hexagonal feature slice (`global-search`): a pure, unit-tested index builder + scorer, an application use case over the repository ports, and a presentation store behind a driven `SearchHost` port. The index builds lazily on first open, is cached, and rebuilds on model-change sync events. Builder mode keeps its own local filter.
+
+### Changed
+
+- **Wider test coverage and a lint gate in CI.** Added end-to-end MCP-tool tests (the implement-next queue, the read/query wrappers, and entity add→update→remove round-trips) driven through the real MCP client, and an **ESLint (flat config) + Prettier** setup wired into CI and `prepublishOnly`. Lint runs alongside the existing cross-OS type-check + test + build matrix, so unused code, unsafe casts, and Svelte template mistakes now fail the build too. No runtime behavior change.
 
 ### Fixed
 
