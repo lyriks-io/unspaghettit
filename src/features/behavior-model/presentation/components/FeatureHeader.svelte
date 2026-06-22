@@ -121,6 +121,14 @@
       >
         Graph
       </a>
+      <a
+        href={`/features/${feature.id}/verify`}
+        title="Verify this feature (scenarios, model check, drift)"
+        aria-label="Verify this feature"
+        class="rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+      >
+        Verify
+      </a>
       <button
         type="button"
         title={undoTitle}
