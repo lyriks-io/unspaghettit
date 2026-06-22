@@ -183,6 +183,28 @@ own key will be reported as missing even when the parent is `implemented`.
    `get_spec_gaps` to catch shallow specs that *look* covered but lack
    scenarios, blocking validation rules, etc.
 
+## Prove the code matches the spec (close the loop)
+
+Recording a `{file, line}` says "implemented", not "correct". To turn the
+feature's scenarios into a real code-vs-spec test:
+
+1. `unspa scenarios adapter <featureId>` — scaffolds `unspa.adapter.ts`, one
+   `case` per scenario-bearing action, pre-seeded with the `.unspa.json`
+   implementation locations. Fill each `case` so it drives the real code from
+   `input.initialState` + `input.parameters` and returns `{ status, finalState }`.
+2. `unspa scenarios export <featureId>` — generates a Vitest spec whose oracle
+   is the simulator's prediction for each scenario.
+3. Run `vitest`. Green means the implementation agrees with the spec on every
+   authored scenario; a failure is a real spec↔code divergence — fix the code
+   (or the spec, if the spec was wrong) and re-run.
+4. CI: `unspa ci` drops a workflow that runs `unspa check` (the spec's own
+   consistency) on every push; add the generated scenario spec to the repo's
+   test run to gate the code against it too.
+
+This is the experimental wedge — the adapter contract may shift between minor
+versions. Recording presence in `.unspa.json` (step 5 above) is still the
+baseline; this proves the behavior on top of it.
+
 ## "Don't ask, just build" mode
 
 If the user's prompt signals one-shot autonomy ("one pass", "make
