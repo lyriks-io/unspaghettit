@@ -5,6 +5,7 @@ import { runDashboardCommand } from './commands/dashboard';
 import { runInitCommand } from './commands/init';
 import { runLinkCommand } from './commands/link';
 import { runListCommand } from './commands/list';
+import { runScenariosAdapterCommand } from './commands/scenarios-adapter';
 import { runScenariosExportCommand } from './commands/scenarios-export';
 import { runServeCommand } from './commands/serve';
 import { runThemeCommand } from './commands/theme';
@@ -292,6 +293,24 @@ scenarios
       featureId,
       out: opts.out,
       adapter: opts.adapter,
+      adapterExport: opts.adapterExport,
+      dryRun: opts.dryRun === true,
+      force: opts.force === true
+    });
+    process.exit(code);
+  });
+
+scenarios
+  .command('adapter <featureId>')
+  .description('[experimental] Scaffold the UnspaAdapter stub for a feature: one case per scenario-bearing action, pre-seeded with the implementation location from .unspa.json. Fill the TODOs, then `scenarios export` + vitest closes the spec↔code loop. Refuses to clobber without --force.')
+  .option('-o, --out <path>', 'Output file path. Defaults to ./unspa.adapter.ts (so the export command\'s default import resolves).')
+  .option('--adapter-export <name>', 'Named export for the adapter.', 'adapter')
+  .option('--dry-run', 'Print the generated adapter to stdout instead of writing it.')
+  .option('-f, --force', 'Overwrite the output file if it already exists.')
+  .action(async (featureId, opts) => {
+    const code = await runScenariosAdapterCommand({
+      featureId,
+      out: opts.out,
       adapterExport: opts.adapterExport,
       dryRun: opts.dryRun === true,
       force: opts.force === true
