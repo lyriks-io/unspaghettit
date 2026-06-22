@@ -444,7 +444,10 @@
         'delete_project',
         'add_feature_to_project',
         'remove_feature_from_project',
-        'move_feature_in_project'
+        'move_feature_in_project',
+        'add_project_invariant',
+        'update_project_invariant',
+        'remove_project_invariant'
       ]
     },
     {

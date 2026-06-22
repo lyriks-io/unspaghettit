@@ -208,6 +208,95 @@ export const registerProjectTools = (deps: ToolDeps): void => {
     }
   );
 
+  // Granular project-invariant authoring — the per-item alternative to
+  // update_project's full-replace projectInvariants, mirroring the
+  // add/update/remove_feature_invariant tools but at the project scope.
+  server.registerTool(
+    'add_project_invariant',
+    {
+      description:
+        'Append one cross-feature project invariant (safety property spanning member features). Granular alternative to update_project\'s full-replace projectInvariants — no read-modify-write needed. Enforced during model checking by verify / unspa check --model-check.',
+      inputSchema: {
+        projectId: z.string(),
+        invariant: projectInvariantInputSchema
+      }
+    },
+    async ({ projectId, invariant }) => {
+      try {
+        projectId = await expandProjectId(projectRepo, projectId);
+        const current = await getProject(asProjectId(projectId));
+        if (!current) return errorText(`Project ${projectId} not found`);
+        const built = buildInvariantBody(invariant as unknown as Record<string, unknown>, ids);
+        const next = await saveProject({
+          ...current,
+          projectInvariants: [...(current.projectInvariants ?? []), built]
+        });
+        return text({ ok: true, id: String(built.id), updatedAt: next.updatedAt });
+      } catch (e) {
+        return writeErrorText(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'update_project_invariant',
+    {
+      description: 'Patch one project invariant\'s fields (name / condition / message / description).',
+      inputSchema: {
+        projectId: z.string(),
+        invariantId: z.string(),
+        patch: z.record(z.string(), z.unknown())
+      }
+    },
+    async ({ projectId, invariantId, patch }) => {
+      try {
+        projectId = await expandProjectId(projectRepo, projectId);
+        const current = await getProject(asProjectId(projectId));
+        if (!current) return errorText(`Project ${projectId} not found`);
+        const list = current.projectInvariants ?? [];
+        if (!list.some((inv) => String(inv.id) === invariantId)) {
+          return errorText(`Project invariant ${invariantId} not found`);
+        }
+        const next = await saveProject({
+          ...current,
+          projectInvariants: list.map((inv) =>
+            String(inv.id) === invariantId ? { ...inv, ...(patch as Partial<typeof inv>) } : inv
+          )
+        });
+        return text({ ok: true, id: invariantId, updatedAt: next.updatedAt });
+      } catch (e) {
+        return writeErrorText(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'remove_project_invariant',
+    {
+      description: 'Delete one project invariant.',
+      inputSchema: {
+        projectId: z.string(),
+        invariantId: z.string()
+      }
+    },
+    async ({ projectId, invariantId }) => {
+      try {
+        projectId = await expandProjectId(projectRepo, projectId);
+        const current = await getProject(asProjectId(projectId));
+        if (!current) return errorText(`Project ${projectId} not found`);
+        const next = await saveProject({
+          ...current,
+          projectInvariants: (current.projectInvariants ?? []).filter(
+            (inv) => String(inv.id) !== invariantId
+          )
+        });
+        return text({ ok: true, id: invariantId, updatedAt: next.updatedAt });
+      } catch (e) {
+        return writeErrorText(e);
+      }
+    }
+  );
+
   server.registerTool(
     'add_project_tag',
     {
