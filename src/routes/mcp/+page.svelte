@@ -408,6 +408,14 @@
       ]
     },
     {
+      label: 'Feature-level: invariants & liveness',
+      description: 'Cross-surface invariants (safety — "nothing bad happens") and reachability goals (liveness — "good stays reachable": reachable / always_reachable). Checked over the whole feature by model_check and verify.',
+      tools: [
+        'add_feature_invariant', 'remove_feature_invariant', 'update_feature_invariant',
+        'add_reachability_goal', 'remove_reachability_goal', 'update_reachability_goal'
+      ]
+    },
+    {
       label: 'Events, personas, resources & entities',
       description: 'Manage first-class events, personas, external resources, and entity schemas.',
       tools: [

@@ -29,7 +29,9 @@ many Features. Use `add_feature_to_project` to attach.
 ## The domain in 60 seconds
 
 A **Feature** holds `surfaces[]`, `personas[]`, `resources[]`, `entities[]`,
-`events[]`, and optional `devContext`, `expectedActions[]`, `nonGoals[]`.
+`events[]`, `featureInvariants[]` (cross-surface safety), `reachabilityGoals[]`
+(liveness: `reachable` / `always_reachable` target states), and optional
+`devContext`, `expectedActions[]`, `nonGoals[]`.
 
 A **Surface** is one context (screen, terminal, workflow, canvas, ...) with
 `stateDefinitions[]`, `actions[]`, `rules[]`, `invariants[]`,
@@ -117,7 +119,10 @@ Atomic state-from-state-and-param write:
 `remove_surface_rule`, `add_action_invariant`,
 `update_action_invariant`, `remove_action_invariant`,
 `add_surface_invariant`, `update_surface_invariant`,
-`remove_surface_invariant`, `add_transition`, `update_transition`,
+`remove_surface_invariant`, `add_feature_invariant`,
+`update_feature_invariant`, `remove_feature_invariant`,
+`add_reachability_goal`, `update_reachability_goal`, `remove_reachability_goal`,
+`add_transition`, `update_transition`,
 `remove_transition`, `add_effect`, `update_effect`, `remove_effect`,
 `add_event`, `update_event`, `remove_event`, `add_scenario`,
 `update_scenario`, `remove_scenario`, `add_persona`, `update_persona`,
@@ -138,6 +143,9 @@ Use the granular tools for one-off tweaks. For anything ≥ 2 ops, use
 | `get_spec_gaps` | Spec-depth diagnostics. Prioritized critical + recommended gaps. |
 | `get_implementation_gaps` | Implementation coverage gaps (spec vs. `.unspa.json` index). |
 | `get_implementation_status` | Detailed per-action / per-surface coverage report. |
+| `model_check` | Bounded state-space exploration: invariant counterexamples (shortest action path), dead actions, deadlocks, unreachable surfaces, reachability-goal results. |
+| `verify` | One gated `pass`/`warn`/`fail` verdict per feature (scenarios + maturity + reachability + model check + drift + event coherence) — the in-chat form of `unspa check`. |
+| `get_drift` | Implementations audited against an older spec than the one now on disk (stale / unversioned / orphan). |
 
 ## Workflow
 

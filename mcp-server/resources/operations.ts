@@ -41,6 +41,8 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   add_surface_invariant    { ref?, surfaceRef|surfaceId, invariant }
   add_feature_invariant    { ref?, invariant }
 . Feature-level invariants are checked after every action in the feature regardless of surface. Use for cross-surface properties (Σ balances = 0). Eliminates the workaround of duplicating one invariant onto every surface.
+  add_reachability_goal    { ref?, name, kind, condition, description, message? }
+. Feature-level LIVENESS goal, the complement to invariants (safety). \`kind:"reachable"\` = some reachable state satisfies \`condition\` (the target is achievable at all); \`kind:"always_reachable"\` = the target stays reachable from EVERY reachable state (no trap). \`condition\` is the target state, same shape as an invariant condition; no parameter scope. Evaluated by model_check / verify over the reachable state space (bounded), which return the shortest action path to a trap on an always_reachable failure.
   add_transition           { ref?, surfaceRef|surfaceId, target|targetRef, label?, description }
   add_persona              { ref?, name, description, stateOverrides?, parameterOverrides?, persistAcrossSurfaces? }
   add_value_set            { ref?, name, description, values }
@@ -66,6 +68,7 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   update_action_invariant { ..., invariantId, patch }
   update_surface_invariant    { surfaceRef|surfaceId, invariantId, patch }
   update_feature_invariant    { invariantId, patch }
+  update_reachability_goal    { goalId, patch }
   update_transition           { surfaceRef|surfaceId, transitionId, target?, label?, description? }
   update_persona              { personaId, ...partial }
   update_value_set            { valueSetId, name?, description?, values? }

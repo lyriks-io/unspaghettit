@@ -24,6 +24,8 @@ source code is not annotated.
 | `get_implementation_gaps` | Authoritative "what is missing/partial/implemented" report. Read this before deciding where to point the user. |
 | `get_implementation_status` | Detailed sidecar for one feature (or filtered to one action/surface). Shows captured fields, locations, staleness flags. |
 | `get_spec_gaps` | Spec-depth diagnostics. Critical + recommended to-do list grounded in entities. Catches shallow specs (effect-less actions, stateless surfaces, untested destructive paths, etc.), orthogonal to "is code indexed?". |
+| `get_drift` | Spec→code drift: implementations audited against an OLDER spec than the one now on disk — the `entry.specVersion` vs `feature.updatedAt` comparison, done for you. Returns `stale` (re-audit these), `unversioned` (audited but never stamped), and `orphans` (keys that no longer resolve). The fastest "what silently went stale" read. |
+| `verify` | One gated `pass`/`warn`/`fail` verdict per feature — scenarios + maturity + reachability + bounded model check + drift + cross-feature event coherence. The in-chat form of the `unspa check` CLI. Use to confirm the spec itself is sound before declaring an audit clean. |
 | `sync_from_index` | After you rewrite `.unspa.json`, the MCP re-reads it, resolves UUIDs, and posts one report per action and per surface. Use this instead of the lower-level `report_implementation_status_batch` unless you need per-entity granularity. |
 | `report_implementation_status` | Fine-grained: sync ONE action or surface plus its children. Use when you intentionally do not want to push the whole index. |
 
@@ -65,6 +67,15 @@ source code is not annotated.
 
    Resolve every critical gap before declaring the audit clean.
    Recommended gaps are a defensible backlog.
+
+6. **Check for drift, then verify.** Call `get_drift` to find code audited
+   against an older spec than the one on disk (a rule changed under an
+   implementation you previously mapped) — re-audit the `stale` entries. Then
+   `verify` for the one-call verdict: it runs the whole spine (scenarios +
+   maturity + reachability + model check + drift + cross-feature event
+   coherence) and reports `pass` / `warn` / `fail` per check. A clean `verify`
+   (plus zero critical spec gaps) is what "the audit is clean" means. The same
+   gate runs headlessly in CI as `unspa check`.
 
 ## Reading the index correctly
 

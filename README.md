@@ -97,7 +97,7 @@ The strongest idea in here, surfaced up front:
 Two complementary uses of the same scenarios:
 
 - **Spec self-test (always on).** `run_all_scenarios` checks that the spec is internally consistent: every scenario's expected outcome matches what the simulator computes from the rules. Catches contradictions in product logic before a line of code is written.
-- **Code-vs-spec test (preview).** `unspa scenarios export <featureId>` generates a Vitest file from those same scenarios, using the simulator's predictions as the oracle. You write one thin adapter (`UnspaAdapter` from `unspaghettit/cli/scenarios`) that calls your real implementation; the generated tests drive every scenario through it and assert state path-by-path. Experimental — adapter contract may shift between minor versions.
+- **Code-vs-spec test (preview).** `unspa scenarios export <featureId>` generates a Vitest file from those same scenarios, using the simulator's predictions as the oracle. You write one thin adapter (`UnspaAdapter` from `unspaghettit/cli/scenarios`) that calls your real implementation; the generated tests drive every scenario through it and assert state path-by-path. `unspa scenarios adapter <featureId>` **scaffolds that adapter for you** — a `case` per scenario-bearing action, pre-seeded with the implementation location from `.unspa.json` — so closing the loop is filling in TODOs, not writing the bridge from scratch. Experimental — adapter contract may shift between minor versions.
 
 Scenarios can be **multi-step**: a scenario's `steps[]` replays preceding actions (each through the simulator, threading state forward) before the action under test, so `run_all_scenarios` verifies whole flows — add to cart → apply coupon → checkout — not just single transitions.
 
@@ -108,7 +108,9 @@ Specs stop being documentation. They become a runtime contract you can break lou
 - **Structured behavior specification**, features, surfaces, actions, states, rules, invariants, transitions, scenarios, personas, resources, entities, events.
 - **Code → spec mapping**, an LLM can read an existing repo, model its behavior into an Unspaghettit runtime, and wire the spec back to source files through the behavioral index.
 - **MCP-native**, every entity is created, read, edited, and validated through MCP tool calls. Works with any MCP-compatible IDE (Claude Code, Claude Desktop, Cursor, Gemini, Windsurf, Kiro, Codex).
-- **Deterministic simulator**, `dry_run_simulate` runs an action against a state snapshot. `run_all_scenarios` runs every scenario as a deterministic spec test, with pass/fail per assertion.
+- **Deterministic simulator & bounded model checking**, `dry_run_simulate` runs an action against a state snapshot. `run_all_scenarios` runs every scenario as a deterministic spec test, with pass/fail per assertion. `model_check` exhaustively explores the reachable state space (bounded) to find what example flows can't: invariant counterexamples with the **shortest action path** that reaches them, dead actions, deadlocks, and unreachable/terminal surfaces.
+- **Safety + liveness properties**, invariants assert "nothing bad ever happens"; **reachability goals** assert "something good stays reachable" — `reachable` (a target state is achievable) and `always_reachable` (it stays reachable from everywhere, with a counterexample path to any trap). Both checked over the reachable state space.
+- **One-command verification gate**, `unspa check` runs the whole spine headlessly and **exits non-zero on failure** — scenarios + maturity + reachability + model checking + spec→code drift + cross-feature event coherence — so the spec becomes a CI gate, not a document (`--json` for dashboards). `verify` and `get_drift` are the in-chat MCP forms; the dashboard's **Verify** tab renders the verdict with replayable counterexample traces.
 - **Maturity scoring**, `score_feature` returns a per-area score with critical/recommended issues; surfaces the worst surfaces and biggest gaps.
 - **Generated TypeScript contracts**, `generate_types` writes types for state shapes, event names, and action parameters. Your implementation imports them, so TypeScript catches drift when the spec changes.
 - **Implementation audit**, record each implementation in a `.unspa.json` behavioral index (`{ file, line, signature }` per entity); the MCP reconciles it against the spec and reports coverage + gaps.
@@ -404,7 +406,8 @@ unspaghettit/
 ├── mcp-server/                   ← MCP server (stdio)
 ├── src/                          ← SvelteKit dashboard + domain
 │   ├── features/behavior-model/  ← Feature/Surface/Action entities + transforms
-│   ├── features/simulator/       ← deterministic simulator
+│   ├── features/simulator/       ← deterministic simulator + bounded model checker
+│   ├── features/verification/    ← verification spine (drift, liveness, gated verdict)
 │   └── features/mcp-tools/       ← read-side tool implementations
 ├── cli/                          ← `unspa` command (init / serve / dashboard)
 └── build/                        ← SvelteKit production build (npm run build)

@@ -47,15 +47,17 @@ Feature
   ├── resources[]       External dependencies (APIs, storage, …)
   ├── entities[]        Structured data namespaces with typed fields
   ├── events[]          First-class event registry { name, description, payloadSchema? }
-  └── valueSets[]       Named reusable enums { name, values } referenced by valueSetId
+  ├── valueSets[]       Named reusable enums { name, values } referenced by valueSetId
+  ├── featureInvariants[]  Cross-surface post-conditions (checked after every action)
+  └── reachabilityGoals[]  Liveness goals — reachable / always_reachable target states (the complement to invariants)
 
 State paths use dot notation: "cart.itemCount", "user.profile.name".
 StateDefinition: { path, type (string|number|boolean|enum|object|array), defaultValue, enumValues? | valueSetId?, sharedWith?: SurfaceId[] }
 
 Descriptions are mandatory for every authored element. That includes Feature,
 Project, Surface, StateDefinition, Parameter, Rule, Effect, Invariant,
-Transition, Persona, Resource, Entity, EntityField, Scenario, Scenario
-expectedAssertion, Event, and Event payload field. Action uses the mandatory
+Reachability goal, Transition, Persona, Resource, Entity, EntityField, Scenario,
+Scenario expectedAssertion, Event, and Event payload field. Action uses the mandatory
 \`intent\` field as its description. If the user has not provided a description,
 ask for it or write a concise one from the provided context before calling tools.
 
@@ -112,7 +114,15 @@ Before committing a large change:
   1. apply_batch dryRun:true  → catches type errors and structural issues
   2. dry_run_simulate          → runs the simulator on one action (pure, no persist)
   3. run_all_scenarios         → executes every scenario, applying personaId first when set
-  4. score_feature          → maturity report; use to catch regressions
+  4. model_check               → bounded exhaustive state-space exploration: invariant counterexamples
+                                 (with the shortest action path that reaches them), dead actions,
+                                 deadlocks, unreachable/terminal surfaces, and reachability-goal results
+  5. score_feature          → maturity report; use to catch regressions
+
+To gate the whole feature/project in one call (the CI shape), use verify — it folds scenarios +
+maturity + reachability + optional model_check + spec→code drift + cross-feature event coherence
+into one pass/warn/fail verdict (the in-chat form of the \`unspa check\` CLI). get_drift surfaces
+just the spec-drift part (code audited against an older spec than the one now on disk).
 
 Run find_state_references before renaming or removing a state path. It shows every rule,
 effect, invariant, and requiredState that references that path.

@@ -78,19 +78,21 @@ If `unspa` still resolves after `npm uninstall -g unspaghettit`, you hit the orp
 
 `unspa uninstall` only cleans the project it's run in. If you ran `unspa init` in several repos on this machine, every one of them has an MCP server entry pointing at the (now-deleted) CLI. The AI clients will log "MCP server failed to start" until those entries are cleaned. Either run `unspa uninstall` inside each project *before* removing the clone, or hand-edit the MCP config files listed in the [AI client support](#ai-client-support) table.
 
-## v0.1 surface
+## Command surface
 
-Seven commands ship, plus one experimental preview.
+Setup, run, verify, and codegen.
 
 | Command                       | What it does                                                                              |
 | ----------------------------- | ----------------------------------------------------------------------------------------- |
 | `unspa init`                  | Scaffold `unspa/`, register the MCP with picked AI clients (entry targets `unspa-mcp`), seed `CLAUDE.md`/`AGENTS.md`, install skills. Idempotent. |
 | `unspa serve`                 | Run the bundled MCP server on stdio (kept for manual debugging; init's entry uses `unspa-mcp` directly). |
 | `unspa dashboard`             | Boot the SvelteKit dashboard from the `unspa/` folder discovered by walking up from cwd. `--view <ids>` enables opt-in views for the run. |
+| `unspa check`                 | **CI gate.** Run the verification spine headlessly (scenarios + maturity + reachability + optional model checking + spec→code drift + cross-feature event coherence) and **exit non-zero on failure**. `--json` for CI dashboards. |
 | `unspa view`                  | Manage opt-in dashboard views (Expert is always on): `view list`, `view add <id>` (e.g. `builder`), `view remove <id>`. Persists in `<snapshots>/views.json`. |
 | `unspa list`                  | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload. |
 | `unspa link`                  | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding. |
 | `unspa scenarios export`      | **[experimental]** Generate a Vitest spec from a feature's authored scenarios, using the deterministic simulator as the oracle. |
+| `unspa scenarios adapter`     | **[experimental]** Scaffold the `UnspaAdapter` stub the export needs — a case per scenario-bearing action, pre-seeded with `.unspa.json` implementation locations. |
 | `unspa uninstall`             | Reverse `init`: strip the MCP entry from picked clients, remove the unspa blocks from `.gitignore` / `CLAUDE.md` / `AGENTS.md`, uninstall skills, optionally purge `unspa/` and unlink the CLI globally. |
 
 ## Quick start (in any repo)
@@ -256,6 +258,31 @@ unspa view remove builder   # disable it again
 You can also enable a view at setup with `unspa init --with builder` (or answer
 the init prompt), or for a single run with `unspa dashboard --view builder`.
 
+### `unspa check [featureId]`
+
+Runs the whole verification spine over a project and **exits non-zero on failure**, so the spec can break a build instead of staying advisory. Per feature it runs every scenario as an executable spec test, scores maturity, analyses surface (navigation) reachability, optionally model-checks the reachable state space, and folds in spec→code drift and cross-feature event coherence. Each check is `pass` / `warn` / `fail`; the run fails only on genuine failures (a failing scenario, a reachable invariant violation, or — when explicitly gated — the others).
+
+```bash
+unspa check                          # verify the repo's linked project (or all features)
+unspa check <featureId>              # verify one feature
+unspa check --project <id>           # verify a specific project's features
+unspa check --model-check            # also run bounded model checking (counterexamples, liveness)
+unspa check --json                   # full report as JSON (for CI dashboards)
+```
+
+Gating flags (default: warn, not fail):
+
+```bash
+unspa check --min-maturity 80        # fail features below 80% maturity
+unspa check --require-scenarios      # fail features with no scenarios
+unspa check --fail-on-drift          # fail when code was audited against an older spec
+unspa check --fail-on-unmet-goals    # fail when a reachability/liveness goal is unmet (needs --model-check)
+unspa check --fail-on-dead-actions   # fail when an action never fires within the model-check bound
+unspa check --allow-invariant-violations   # downgrade reachable invariant violations to warnings
+```
+
+Exit codes: `0` pass, `1` verification failed, `2` no snapshots / bad feature id. In CI, drop it after install: `unspa check --model-check --min-maturity 80`. The MCP exposes the same thing in-chat as `verify`, and drift alone as `get_drift`.
+
 ### `unspa scenarios export <featureId>` (experimental)
 
 Generates a Vitest spec from a feature's authored scenarios. The deterministic
@@ -302,6 +329,24 @@ picks which oracle is right.
 **Status: preview.** The adapter contract (`UnspaAdapter`, `AdapterInvocation`,
 `AdapterResult`) may change between minor versions until the wedge graduates.
 Pin the `unspaghettit` dependency if CI depends on these tests.
+
+### `unspa scenarios adapter <featureId>` (experimental)
+
+Scaffolds the adapter that `scenarios export` calls, so you don't write it from
+scratch. It emits one `case` per scenario-bearing action (exactly the actions the
+export tests cover), pre-seeded with the implementation location recorded in
+`.unspa.json` (`file:line — signature`) as a comment, plus a `TODO` body.
+
+```bash
+unspa scenarios adapter <featureId>            # writes ./unspa.adapter.ts
+unspa scenarios adapter <featureId> --dry-run  # print to stdout
+unspa scenarios adapter <featureId> --out tests/unspa.adapter.ts
+unspa scenarios adapter <featureId> --force    # overwrite an existing file
+```
+
+Loop: `scenarios adapter` → fill the TODOs with calls into your real code →
+`scenarios export` → `vitest`. A scenario that disagrees with the implementation
+then fails CI. Same experimental status as `export`.
 
 ## Skills
 
