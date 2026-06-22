@@ -5,6 +5,7 @@ import type { Expression } from '../value-objects/Expression';
 import { isExpression } from '../value-objects/Expression';
 import { parameterTypeToStateType } from '../value-objects/ParameterType';
 import { ALL_RULE_CATEGORIES } from '../value-objects/RuleCategory';
+import { CLOCK_NOW_PATH } from '../value-objects/SimulationClock';
 import {
   flattenLeafConditions,
   isParamLeft,
@@ -651,7 +652,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
   const pathsFor = (surfaceId: string): Set<string> => {
     const own = ownPathsBySurface.get(surfaceId) ?? new Set<string>();
     const shared = sharedIntoBySurface.get(surfaceId) ?? new Set<string>();
-    return new Set([...own, ...shared]);
+    // The simulation clock is a reserved, engine-seeded path readable from any
+    // surface — always in scope, never something the author has to declare.
+    return new Set([...own, ...shared, String(CLOCK_NOW_PATH)]);
   };
 
   const KNOWN_EFFECT_TYPES = new Set([
@@ -663,7 +666,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     'transition_surface',
     'append_to_list',
     'remove_from_list',
-    'update_list_item'
+    'update_list_item',
+    'advance_time'
   ]);
 
   const checkEffect = (
@@ -727,6 +731,12 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         const where = effect.where as { equals?: unknown } | undefined;
         if (where) checkValuePaths('update_list_item where.equals', where.equals);
         checkValuePaths('update_list_item value', effect.value);
+        return;
+      }
+      case 'advance_time': {
+        // Targets the reserved clock.now path; only the `by` duration can carry
+        // state references that need validating.
+        checkValuePaths('advance_time by', effect.by);
         return;
       }
       case 'emit_event': {
@@ -923,7 +933,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
   // declared paths (own + everything everybody else shares anywhere) since
   // the invariant isn't bound to one surface. We re-use the leaf walker via
   // an "any-surface" path set.
-  const anySurfacePaths = new Set<string>();
+  const anySurfacePaths = new Set<string>([String(CLOCK_NOW_PATH)]);
   for (const surface of feature.surfaces) {
     for (const def of surface.stateDefinitions) anySurfacePaths.add(String(def.path));
   }

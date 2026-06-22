@@ -131,6 +131,8 @@ const countRefsInEffect = (effect: Effect, target: string): number => {
         countStateRefsInExpression(effect.where.equals, target) +
         countStateRefsInExpression(effect.value, target)
       );
+    case 'advance_time':
+      return countStateRefsInExpression(effect.by, target);
     default:
       return 0;
   }

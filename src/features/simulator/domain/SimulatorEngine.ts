@@ -209,6 +209,11 @@ const simulateInternal = (
   // every mutation below so authors never hand-maintain them and a stale write
   // can't survive (the next recompute overwrites it).
   const derivedDefs = collectDerivedDefs(allFeatureDefs);
+  // Note: the simulation clock (`clock.now`) is NOT auto-seeded here — it
+  // materializes only when time is actually advanced (an `advance_time` effect
+  // or a scenario `timeAdvance`), so time-free features keep a clean snapshot.
+  // Until advanced the clock reads 0 (via readNow), and future-deadline
+  // comparisons degrade correctly when the path is still absent.
   const completeSnapshot = recomputeDerived(
     mergeSnapshotWithDefaults(normalizedSnapshot, allFeatureDefs),
     derivedDefs

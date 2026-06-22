@@ -10,6 +10,7 @@ import { humanizeStatePath } from '../value-objects/humanize';
 import type { EffectId, SurfaceId } from '../value-objects/ids';
 import type { EventName } from '../value-objects/EventName';
 import type { StateValue } from '../value-objects/StateValue';
+import { advanceClock } from '../value-objects/SimulationClock';
 import { readPath, writePath, type StateSnapshot, type StatePath } from '../value-objects/StatePath';
 
 export type AppliedEffectRecord = {
@@ -104,6 +105,8 @@ const summarize = (effect: Effect): string => {
       return `remove from ${humanizeStatePath(effect.path)}${effect.where ? ` where ${effect.where.field} matches` : ''}`;
     case 'update_list_item':
       return `set ${effect.field} on ${humanizeStatePath(effect.path)} items where ${effect.where.field} matches`;
+    case 'advance_time':
+      return `advance time by ${isExpression(effect.by) ? `<expr:${effect.by.kind}>` : JSON.stringify(effect.by)}`;
   }
 };
 
@@ -303,6 +306,16 @@ export const applyEffect = (
       const nextSnapshot = writePath(current.snapshot, effect.path, nextArray);
       return { ...current, snapshot: nextSnapshot, applied: [...current.applied, record] };
     }
+    case 'advance_time': {
+      if (current.blocked) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters };
+      const by = resolveValueOrExpression(effect.by, context);
+      // Non-numeric / unresolvable duration → no-op (advanceClock clamps).
+      const nextSnapshot = advanceClock(current.snapshot, typeof by === 'number' ? by : 0);
+      return { ...current, snapshot: nextSnapshot, applied: [...current.applied, record] };
+    }
     default: {
       // An unrecognized effect type means malformed data slipped past the
       // Zod schema (the only legitimate route into `Effect`). Falling through
@@ -314,7 +327,7 @@ export const applyEffect = (
       throw new Error(
         `EffectApplier: unknown effect type "${unknown.type ?? '<missing>'}". ` +
           `Valid types: set_state, show_message, emit_event, block_action, allow_action, ` +
-          `transition_surface, append_to_list, remove_from_list, update_list_item.`
+          `transition_surface, append_to_list, remove_from_list, update_list_item, advance_time.`
       );
     }
   }

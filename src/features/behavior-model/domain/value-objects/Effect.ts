@@ -13,7 +13,8 @@ export type EffectType =
   | 'transition_surface'
   | 'append_to_list'
   | 'remove_from_list'
-  | 'update_list_item';
+  | 'update_list_item'
+  | 'advance_time';
 
 /**
  * Writes `value` (or the result of `value` if it is an `Expression`) to the
@@ -127,6 +128,20 @@ export type UpdateListItemEffect = {
   readonly description?: string;
 };
 
+/**
+ * Advances the simulation clock (`clock.now`) forward by `by` logical time
+ * units. Time never runs backward — a non-positive delta is a no-op. Lets an
+ * action model "extend the session by 30", or a Tick action push time so a
+ * deadline rule ("now >= token.expiresAt → expire") becomes reachable. `by`
+ * may be an Expression (e.g. a `param` carrying the duration).
+ */
+export type AdvanceTimeEffect = {
+  readonly id: EffectId;
+  readonly type: 'advance_time';
+  readonly by: StateValue | Expression;
+  readonly description?: string;
+};
+
 export type Effect =
   | SetStateEffect
   | ShowMessageEffect
@@ -136,7 +151,8 @@ export type Effect =
   | TransitionSurfaceEffect
   | AppendToListEffect
   | RemoveFromListEffect
-  | UpdateListItemEffect;
+  | UpdateListItemEffect
+  | AdvanceTimeEffect;
 
 export const ALL_EFFECT_TYPES: readonly EffectType[] = [
   'set_state',
@@ -147,7 +163,8 @@ export const ALL_EFFECT_TYPES: readonly EffectType[] = [
   'transition_surface',
   'append_to_list',
   'remove_from_list',
-  'update_list_item'
+  'update_list_item',
+  'advance_time'
 ];
 
 export const effectTypeLabel = (t: EffectType): string => {
@@ -170,6 +187,8 @@ export const effectTypeLabel = (t: EffectType): string => {
       return 'Remove from list';
     case 'update_list_item':
       return 'Update list item';
+    case 'advance_time':
+      return 'Advance time';
   }
 };
 

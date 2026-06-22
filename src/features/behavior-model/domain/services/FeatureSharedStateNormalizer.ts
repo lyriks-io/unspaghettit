@@ -105,6 +105,9 @@ const collectStatePathsOnSurface = (surface: Surface): Set<string> => {
         if (isExpression(e.where.equals)) collectExpr(e.where.equals, out);
         if (isExpression(e.value)) collectExpr(e.value, out);
         return;
+      case 'advance_time':
+        if (isExpression(e.by)) collectExpr(e.by, out);
+        return;
       default:
         return;
     }

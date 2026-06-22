@@ -138,6 +138,12 @@ export const newEffect = (ids: IdGenerator, type: Effect['type']): Effect => {
         field: '',
         value: ''
       };
+    case 'advance_time':
+      return {
+        id: asEffectId(ids()),
+        type: 'advance_time',
+        by: 0
+      };
   }
 };
 

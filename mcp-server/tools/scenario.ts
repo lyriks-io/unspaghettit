@@ -55,6 +55,7 @@ const stepSchema = z.object({
   parameterOverrides: z.array(parameterOverrideSchema).default([]),
   expectedStatus: expectedStatusSchema.optional(),
   expectedAssertions: z.array(expectedAssertionSchema).optional(),
+  timeAdvance: z.number().optional(),
   description: z.string().optional()
 });
 
@@ -65,7 +66,7 @@ export const registerScenarioTools = (deps: ToolDeps): void => {
     'add_scenario',
     {
       description:
-        'Add a state preset for one Action (exercises a rule branch). Optional personaId supplies the user baseline; scenario overrides layer after persona overrides. expectedStatus, expectedAssertions[], and expectedTransition make the scenario executable. `run_all_scenarios` will mark a fail when actual status / any post-simulation assertion / the transition target drifts. Assertion `value` accepts a literal or an Expression (see rule schema). `expectedTransition` should be the target surfaceId (or null to assert "no transition fires"). Use it to verify routing / wizard / state-machine actions. Optional steps[] turn this into a multi-step flow: each step is a preceding action invocation (replayed before the subject action, threading state forward) so the scenario verifies a sequence (e.g. add to cart → apply coupon → checkout), not just one transition. Each step takes actionId (+ optional surfaceId, defaults to this surface), its own parameterOverrides, and optional expectedStatus (defaults "success") / expectedAssertions.',
+        'Add a state preset for one Action (exercises a rule branch). Optional personaId supplies the user baseline; scenario overrides layer after persona overrides. expectedStatus, expectedAssertions[], and expectedTransition make the scenario executable. `run_all_scenarios` will mark a fail when actual status / any post-simulation assertion / the transition target drifts. Assertion `value` accepts a literal or an Expression (see rule schema). `expectedTransition` should be the target surfaceId (or null to assert "no transition fires"). Use it to verify routing / wizard / state-machine actions. Optional steps[] turn this into a multi-step flow: each step is a preceding action invocation (replayed before the subject action, threading state forward) so the scenario verifies a sequence (e.g. add to cart → apply coupon → checkout), not just one transition. Each step takes actionId (+ optional surfaceId, defaults to this surface), its own parameterOverrides, and optional expectedStatus (defaults "success") / expectedAssertions. `timeAdvance` (logical time units) moves the simulation clock (clock.now) forward before the subject action — and per-step before that step — so you can verify time-dependent behavior ("token rejected once clock.now passes its expiry") deterministically.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -78,6 +79,7 @@ export const registerScenarioTools = (deps: ToolDeps): void => {
         expectedStatus: expectedStatusSchema.optional(),
         expectedAssertions: z.array(expectedAssertionSchema).optional(),
         expectedTransition: z.string().nullable().optional(),
+        timeAdvance: z.number().optional(),
         steps: z.array(stepSchema).optional()
       }
     },
@@ -121,6 +123,7 @@ export const registerScenarioTools = (deps: ToolDeps): void => {
         expectedStatus: expectedStatusSchema.optional(),
         expectedAssertions: z.array(expectedAssertionSchema).optional(),
         expectedTransition: z.string().nullable().optional(),
+        timeAdvance: z.number().optional(),
         steps: z.array(stepSchema).optional()
       }
     },

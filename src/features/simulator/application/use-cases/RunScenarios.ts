@@ -7,6 +7,7 @@ import type {
 } from '$features/behavior-model/domain/entities/Scenario';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
+import { advanceClock } from '$features/behavior-model/domain/value-objects/SimulationClock';
 import {
   fillDefaults,
   type ParameterError,
@@ -243,6 +244,11 @@ const runOne = (
       }
     }
     const stepParams: ParameterValues = { ...stepPersonaParams, ...stepOverrideParams };
+    // Advance the clock before this step runs so "let N pass, then act" is a
+    // first-class arrange primitive rather than a manual set_state poke.
+    if (step.timeAdvance !== undefined && step.timeAdvance !== 0) {
+      snapshot = advanceClock(snapshot, step.timeAdvance);
+    }
     const stepResult = simulate({
       surface: stepSurface,
       action: stepAction,
@@ -295,6 +301,12 @@ const runOne = (
 
   const scenarioParams = applyScenarioToParameters(scenario, action, {});
   const baseParams: ParameterValues = { ...personaParams, ...scenarioParams };
+
+  // Advance the clock before the subject action so a single-action scenario can
+  // verify "expired once enough time has passed" without a Tick action.
+  if (scenario.timeAdvance !== undefined && scenario.timeAdvance !== 0) {
+    snapshot = advanceClock(snapshot, scenario.timeAdvance);
+  }
 
   const result = simulate({
     surface,

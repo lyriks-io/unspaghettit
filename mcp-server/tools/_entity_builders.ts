@@ -118,6 +118,7 @@ const buildStep = (raw: unknown): ScenarioStep => {
       ? { expectedStatus: x.expectedStatus as 'success' | 'blocked' }
       : {}),
     ...(expectedAssertions && expectedAssertions.length > 0 ? { expectedAssertions } : {}),
+    ...(typeof x.timeAdvance === 'number' ? { timeAdvance: x.timeAdvance } : {}),
     ...(typeof x.description === 'string' ? { description: x.description } : {})
   };
 };
@@ -168,6 +169,7 @@ export const buildScenarioBody = (input: Raw): Omit<Scenario, 'id'> => {
               : asSurfaceId(input.expectedTransition as string)
         }
       : {}),
+    ...(typeof input.timeAdvance === 'number' ? { timeAdvance: input.timeAdvance } : {}),
     ...(steps && steps.length > 0 ? { steps } : {})
   };
 };
@@ -213,6 +215,10 @@ export const buildScenarioPatch = (input: Raw): Partial<Scenario> => {
               ? null
               : asSurfaceId(input.expectedTransition as string)
         }
+      : {}),
+    // timeAdvance:0 (or null) clears it; a positive number sets it.
+    ...(input.timeAdvance !== undefined
+      ? { timeAdvance: typeof input.timeAdvance === 'number' && input.timeAdvance > 0 ? input.timeAdvance : undefined }
       : {}),
     // `steps: []` clears the sequence (back to a single-action preset);
     // omitting steps keeps the current value.

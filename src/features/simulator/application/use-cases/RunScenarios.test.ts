@@ -706,4 +706,90 @@ describe('runScenariosUseCase — multi-step scenarios', () => {
     expect(r?.steps[0]?.pass).toBe(true);
     expect(r?.steps[0]?.statusMatches).toBe(true);
   });
+
+  describe('time model — scenario timeAdvance drives a deadline', () => {
+    // "Use Token" blocks once the clock passes the token's expiry. Expiry is a
+    // rule comparing token.expiresAt to the reserved clock.now path.
+    const useTokenFeature = (scenarios: readonly Scenario[]): Feature => {
+      const surface: Surface = {
+        id: asSurfaceId('s-token'),
+        name: 'Token',
+        type: 'screen',
+        stateDefinitions: [
+          {
+            id: asStateDefinitionId('sd-exp'),
+            path: asStatePath('token.expiresAt'),
+            type: 'number',
+            defaultValue: 0
+          }
+        ],
+        actions: [
+          {
+            id: asActionId('use-token'),
+            name: 'Use Token',
+            intent: 'consume the token if it has not expired',
+            parameters: [],
+            requiredStates: [],
+            rules: [
+              {
+                id: asRuleId('r-expired'),
+                category: 'business',
+                // token.expiresAt < clock.now  ⇒  expired ⇒ block
+                condition: {
+                  left: asStatePath('token.expiresAt'),
+                  operator: 'lower_than',
+                  right: { kind: 'state', path: asStatePath('clock.now') }
+                },
+                effect: {
+                  id: asEffectId('e-block'),
+                  type: 'block_action',
+                  reason: 'token expired'
+                }
+              }
+            ],
+            invariants: [],
+            effects: [],
+            emittedEvents: [],
+            transitions: [],
+            scenarios
+          }
+        ],
+        rules: [],
+        invariants: [],
+        transitions: []
+      };
+      return {
+        id: asFeatureId('e-token'),
+        name: 'Token',
+        surfaces: [surface],
+        personas: [],
+        resources: [],
+        entities: [],
+        createdAt: '2026-05-11T00:00:00.000Z',
+        updatedAt: '2026-05-11T00:00:00.000Z'
+      };
+    };
+
+    it('succeeds before expiry and blocks after advancing the clock past it', () => {
+      const fresh: Scenario = {
+        id: asScenarioId('sc-fresh'),
+        name: 'token still valid',
+        stateOverrides: [{ path: asStatePath('token.expiresAt'), value: 100 }],
+        parameterOverrides: [],
+        expectedStatus: 'success'
+      };
+      const expired: Scenario = {
+        id: asScenarioId('sc-expired'),
+        name: 'token expired after time passes',
+        stateOverrides: [{ path: asStatePath('token.expiresAt'), value: 100 }],
+        parameterOverrides: [],
+        // advance the clock from 0 to 150, past the expiry at 100
+        timeAdvance: 150,
+        expectedStatus: 'blocked'
+      };
+      const out = runScenariosUseCase()({ feature: useTokenFeature([fresh, expired]) });
+      expect(out.failed).toBe(0);
+      expect(out.passed).toBe(2);
+    });
+  });
 });

@@ -117,6 +117,8 @@ const effectLabel = (effect: Effect): string => {
       return `remove ${effect.path}`;
     case 'update_list_item':
       return `update ${effect.path}`;
+    case 'advance_time':
+      return 'advance time';
   }
 };
 

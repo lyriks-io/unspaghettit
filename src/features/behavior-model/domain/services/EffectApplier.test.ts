@@ -210,6 +210,55 @@ describe('EffectApplier', () => {
     });
   });
 
+  describe('advance_time', () => {
+    it('moves clock.now forward by a literal amount', () => {
+      const result = applyEffect(initialApplication({ clock: { now: 100 } }), {
+        id: asEffectId('e-adv'),
+        type: 'advance_time',
+        by: 30
+      });
+      expect(result.snapshot).toEqual({ clock: { now: 130 } });
+    });
+
+    it('seeds from 0 when clock.now is absent', () => {
+      const result = applyEffect(initialApplication({}), {
+        id: asEffectId('e-adv2'),
+        type: 'advance_time',
+        by: 5
+      });
+      expect((result.snapshot.clock as { now: number }).now).toBe(5);
+    });
+
+    it('never runs time backward (negative delta is a no-op)', () => {
+      const result = applyEffect(initialApplication({ clock: { now: 100 } }), {
+        id: asEffectId('e-adv3'),
+        type: 'advance_time',
+        by: -50
+      });
+      expect((result.snapshot.clock as { now: number }).now).toBe(100);
+    });
+
+    it('resolves an Expression duration from a parameter', () => {
+      const result = applyEffect(
+        initialApplication({ clock: { now: 10 } }),
+        { id: asEffectId('e-adv4'), type: 'advance_time', by: { kind: 'param', name: 'mins' } },
+        { mins: 15 }
+      );
+      expect((result.snapshot.clock as { now: number }).now).toBe(25);
+    });
+
+    it('is suppressed after a block but still recorded', () => {
+      const blocked = applyEffect(initialApplication({ clock: { now: 1 } }), {
+        id: asEffectId('e-blk'),
+        type: 'block_action',
+        reason: 'no'
+      });
+      const after = applyEffect(blocked, { id: asEffectId('e-adv5'), type: 'advance_time', by: 9 });
+      expect((after.snapshot.clock as { now: number }).now).toBe(1);
+      expect(after.applied.map((a) => a.effectId)).toContain('e-adv5');
+    });
+  });
+
   it('records a surface transition target', () => {
     const result = applyEffect(initialApplication({}), {
       id: asEffectId('e8'),

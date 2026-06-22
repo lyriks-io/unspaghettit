@@ -5,6 +5,7 @@ import type { Rule } from '../entities/Rule';
 import type { Scenario, ScenarioAssertion } from '../entities/Scenario';
 import type { Surface } from '../entities/Surface';
 import type {
+  AdvanceTimeEffect,
   AppendToListEffect,
   Effect,
   RemoveFromListEffect,
@@ -112,6 +113,8 @@ const normalizeEffect = (effect: Effect): Effect => {
         where: { ...effect.where, equals: normalizeExpression(effect.where.equals) },
         value: normalizeExpression(effect.value)
       } as UpdateListItemEffect;
+    case 'advance_time':
+      return { ...effect, by: normalizeExpression(effect.by) } as AdvanceTimeEffect;
     default:
       return effect;
   }

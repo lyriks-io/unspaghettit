@@ -67,6 +67,14 @@ export type ScenarioStep = {
   readonly expectedStatus?: 'success' | 'blocked';
   /** Assertions checked against the snapshot AFTER this step runs. */
   readonly expectedAssertions?: readonly ScenarioAssertion[];
+  /**
+   * Logical time units to advance the simulation clock (`clock.now`) BEFORE
+   * this step's action runs. The deterministic "let N minutes pass, then do X"
+   * arrange primitive — used to drive a step's action past a deadline so an
+   * expiry rule fires. Omit (or 0) to keep the clock where the previous step
+   * left it.
+   */
+  readonly timeAdvance?: number;
   readonly description?: string;
 };
 
@@ -108,6 +116,13 @@ export type Scenario = {
    * action metadata not reachable from a state path.
    */
   readonly expectedTransition?: SurfaceId | null;
+  /**
+   * Logical time units to advance the simulation clock (`clock.now`) before the
+   * subject action runs (after any `steps` have replayed). Lets a single-action
+   * scenario verify time-dependent behavior — "the token is rejected once
+   * clock.now has advanced past its expiry" — without authoring a Tick action.
+   */
+  readonly timeAdvance?: number;
   /**
    * Optional preceding action invocations. When present, the runner replays
    * each step in order — threading the resulting snapshot forward — before

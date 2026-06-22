@@ -62,6 +62,8 @@ const effectSummary = (effect: Effect): string => {
       return `Remove from ${effect.path}`;
     case 'update_list_item':
       return `Update ${effect.field} in ${effect.path}`;
+    case 'advance_time':
+      return 'Advance time';
   }
 };
 
