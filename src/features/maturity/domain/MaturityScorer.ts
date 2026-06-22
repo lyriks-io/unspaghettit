@@ -850,6 +850,22 @@ const featureChecks = (feature: Feature): readonly Check[] => {
       message:
         'Add devContext so MCP implementation audits can reflect the stack and coding conventions.',
       passLabel: feature.devContext ? 'Has implementation context' : 'Implementation context optional'
+    },
+    {
+      area: 'liveness',
+      weight: 1,
+      severity: 'recommended',
+      // Liveness goals are optional (not every feature has a "this must stay
+      // reachable" property), so this never fails — it credits the modeler for
+      // declaring goals the model checker can verify, the complement to the
+      // invariant (safety) coverage the surface/action checks already reward.
+      passes: true,
+      message:
+        'Add reachability goals so the model checker can prove key states stay reachable (liveness), not just that invariants hold (safety).',
+      passLabel:
+        (feature.reachabilityGoals?.length ?? 0) > 0
+          ? `Declares ${feature.reachabilityGoals!.length} liveness goal${feature.reachabilityGoals!.length === 1 ? '' : 's'}`
+          : 'Liveness goals optional'
     }
   ];
 };

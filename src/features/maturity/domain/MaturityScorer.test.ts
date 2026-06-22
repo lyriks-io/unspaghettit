@@ -215,6 +215,46 @@ describe('MaturityScorer', () => {
     expect(report.percentage).toBeLessThan(100);
   });
 
+  it('credits declared reachability goals (liveness) as a passed check', () => {
+    const surface: Surface = {
+      id: asSurfaceId('s'),
+      name: 'Surf',
+      type: 'screen',
+      stateDefinitions: [],
+      actions: [baseCapability],
+      rules: [],
+      invariants: [],
+      transitions: []
+    };
+    const base: Feature = {
+      id: asFeatureId('e'),
+      name: 'Exp',
+      surfaces: [surface],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-05-08T00:00:00.000Z',
+      updatedAt: '2026-05-08T00:00:00.000Z'
+    };
+
+    const without = scoreFeature(base).passedChecks.find((c) => c.area === 'liveness');
+    expect(without?.message).toContain('Liveness goals optional');
+
+    const withGoal = scoreFeature({
+      ...base,
+      reachabilityGoals: [
+        {
+          id: 'g1' as never,
+          name: 'done stays reachable',
+          kind: 'always_reachable',
+          condition: { left: asStatePath('flow.done'), operator: 'is_true' },
+          description: 'liveness'
+        }
+      ]
+    }).passedChecks.find((c) => c.area === 'liveness');
+    expect(withGoal?.message).toContain('Declares 1 liveness goal');
+  });
+
   it('flags malformed newer options when they are used', () => {
     const surface: Surface = {
       ...dummySurface,
