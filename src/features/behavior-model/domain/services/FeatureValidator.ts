@@ -650,7 +650,10 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     'emit_event',
     'block_action',
     'allow_action',
-    'transition_surface'
+    'transition_surface',
+    'append_to_list',
+    'remove_from_list',
+    'update_list_item'
   ]);
 
   const checkEffect = (
@@ -664,25 +667,51 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     // (which crashes on unknown effect types in its switch default).
     if (!KNOWN_EFFECT_TYPES.has(effect.type)) {
       errors.push(
-        `${label} effect ${effect.id}: unknown effect.type "${effect.type}". Valid: set_state, show_message, emit_event, block_action, allow_action, transition_surface.`
+        `${label} effect ${effect.id}: unknown effect.type "${effect.type}". Valid: set_state, show_message, emit_event, block_action, allow_action, transition_surface, append_to_list, remove_from_list, update_list_item.`
       );
       return;
     }
-    switch (effect.type) {
-      case 'set_state': {
-        const path = effect.path as string | undefined;
-        if (typeof path === 'string' && !paths.has(path)) {
+    // Shared path-existence check for the effects that target a state path.
+    const checkTargetPath = (verb: string): void => {
+      const path = effect.path as string | undefined;
+      if (typeof path === 'string' && !paths.has(path)) {
+        errors.push(
+          `${label} effect ${effect.id}: ${verb} path "${path}" is not declared on surface ${surfaceId} (or shared into it).`
+        );
+      }
+    };
+    const checkValuePaths = (verb: string, value: unknown): void => {
+      for (const p of statePathsFromEffectValue(value)) {
+        if (!paths.has(p)) {
           errors.push(
-            `${label} effect ${effect.id}: set_state path "${path}" is not declared on surface ${surfaceId} (or shared into it).`
+            `${label} effect ${effect.id}: ${verb} references unknown state path "${p}" on surface ${surfaceId}.`
           );
         }
-        for (const p of statePathsFromEffectValue(effect.value)) {
-          if (!paths.has(p)) {
-            errors.push(
-              `${label} effect ${effect.id}: set_state value references unknown state path "${p}" on surface ${surfaceId}.`
-            );
-          }
-        }
+      }
+    };
+    switch (effect.type) {
+      case 'set_state': {
+        checkTargetPath('set_state');
+        checkValuePaths('set_state value', effect.value);
+        return;
+      }
+      case 'append_to_list': {
+        checkTargetPath('append_to_list');
+        checkValuePaths('append_to_list item', effect.item);
+        return;
+      }
+      case 'remove_from_list': {
+        checkTargetPath('remove_from_list');
+        const where = effect.where as { equals?: unknown } | undefined;
+        if (where) checkValuePaths('remove_from_list where.equals', where.equals);
+        if (effect.value !== undefined) checkValuePaths('remove_from_list value', effect.value);
+        return;
+      }
+      case 'update_list_item': {
+        checkTargetPath('update_list_item');
+        const where = effect.where as { equals?: unknown } | undefined;
+        if (where) checkValuePaths('update_list_item where.equals', where.equals);
+        checkValuePaths('update_list_item value', effect.value);
         return;
       }
       case 'emit_event': {

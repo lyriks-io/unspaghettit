@@ -1,4 +1,5 @@
 import type { Feature } from '../entities/Feature';
+import type { Effect } from '../value-objects/Effect';
 import { isExpression, type Expression } from '../value-objects/Expression';
 import {
   flattenLeafConditions,
@@ -100,6 +101,41 @@ const countStateRefsInExpression = (
   }
 };
 
+/**
+ * Count how many times `target` is written or referenced by a single effect.
+ * Covers `set_state` and the three collection mutations, each of which targets
+ * a state `path` and may bury state refs in an Expression-valued slot. Effects
+ * that don't touch state (messages, events, transitions, blocks) contribute 0.
+ */
+const countRefsInEffect = (effect: Effect, target: string): number => {
+  switch (effect.type) {
+    case 'set_state':
+      return (
+        (eq(String(effect.path), target) ? 1 : 0) +
+        countStateRefsInExpression(effect.value, target)
+      );
+    case 'append_to_list':
+      return (
+        (eq(String(effect.path), target) ? 1 : 0) +
+        countStateRefsInExpression(effect.item, target)
+      );
+    case 'remove_from_list':
+      return (
+        (eq(String(effect.path), target) ? 1 : 0) +
+        (effect.where ? countStateRefsInExpression(effect.where.equals, target) : 0) +
+        countStateRefsInExpression(effect.value, target)
+      );
+    case 'update_list_item':
+      return (
+        (eq(String(effect.path), target) ? 1 : 0) +
+        countStateRefsInExpression(effect.where.equals, target) +
+        countStateRefsInExpression(effect.value, target)
+      );
+    default:
+      return 0;
+  }
+};
+
 // Walks a condition tree and counts every leaf `left == target` plus every
 // state ref buried in a `right`-side Expression. Composite combinators
 // (`all`/`any`/`not`) just fan out; an unconditional rule contributes 0.
@@ -138,16 +174,13 @@ export const countStatePathReferences = (
       }
       for (const rule of cap.rules) {
         mut.ruleConditions += countRefsInCondition(rule.condition, target);
-        if (rule.effect.type === 'set_state') {
-          if (eq(String(rule.effect.path), target)) mut.setStateEffects += 1;
-          mut.setStateEffects += countStateRefsInExpression(rule.effect.value, target);
-        }
+        mut.setStateEffects += countRefsInEffect(rule.effect, target);
       }
       for (const effect of cap.effects) {
-        if (effect.type === 'set_state') {
-          if (eq(String(effect.path), target)) mut.setStateEffects += 1;
-          mut.setStateEffects += countStateRefsInExpression(effect.value, target);
-        }
+        mut.setStateEffects += countRefsInEffect(effect, target);
+      }
+      for (const effect of cap.onBlockedEffects ?? []) {
+        mut.setStateEffects += countRefsInEffect(effect, target);
       }
       for (const invariant of cap.invariants) {
         mut.invariantConditions += countRefsInCondition(invariant.condition, target);
@@ -155,10 +188,7 @@ export const countStatePathReferences = (
     }
     for (const rule of surface.rules) {
       mut.ruleConditions += countRefsInCondition(rule.condition, target);
-      if (rule.effect.type === 'set_state') {
-        if (eq(String(rule.effect.path), target)) mut.setStateEffects += 1;
-        mut.setStateEffects += countStateRefsInExpression(rule.effect.value, target);
-      }
+      mut.setStateEffects += countRefsInEffect(rule.effect, target);
     }
     for (const invariant of surface.invariants) {
       mut.invariantConditions += countRefsInCondition(invariant.condition, target);

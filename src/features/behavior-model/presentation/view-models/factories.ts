@@ -115,6 +115,29 @@ export const newEffect = (ids: IdGenerator, type: Effect['type']): Effect => {
         type: 'transition_surface',
         target: asSurfaceId('')
       };
+    case 'append_to_list':
+      return {
+        id: asEffectId(ids()),
+        type: 'append_to_list',
+        path: asStatePath('state.path'),
+        item: ''
+      };
+    case 'remove_from_list':
+      return {
+        id: asEffectId(ids()),
+        type: 'remove_from_list',
+        path: asStatePath('state.path'),
+        where: { field: '', equals: '' }
+      };
+    case 'update_list_item':
+      return {
+        id: asEffectId(ids()),
+        type: 'update_list_item',
+        path: asStatePath('state.path'),
+        where: { field: '', equals: '' },
+        field: '',
+        value: ''
+      };
   }
 };
 

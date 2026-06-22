@@ -111,6 +111,12 @@ const effectLabel = (effect: Effect): string => {
       return 'allow';
     case 'transition_surface':
       return 'transition';
+    case 'append_to_list':
+      return `append ${effect.path}`;
+    case 'remove_from_list':
+      return `remove ${effect.path}`;
+    case 'update_list_item':
+      return `update ${effect.path}`;
   }
 };
 

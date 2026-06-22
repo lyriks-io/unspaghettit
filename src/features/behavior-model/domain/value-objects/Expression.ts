@@ -192,8 +192,9 @@ export const evaluateConditionInternal = (
 
 // Structural equality for two StateValue-shaped values. Inlined here (not
 // imported from RuleEvaluator) so this module stays an evaluator with no
-// upward dependency.
-const deepEqualValue = (a: unknown, b: unknown): boolean => {
+// upward dependency. Exported so collection-mutation effects (remove/update by
+// match) compare element fields with the exact same semantics conditions use.
+export const deepEqualValue = (a: unknown, b: unknown): boolean => {
   if (a === b) return true;
   if (a === null || b === null) return false;
   if (typeof a !== typeof b) return false;

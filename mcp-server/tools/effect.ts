@@ -14,7 +14,7 @@ import {
 import { runMutation, type ToolDeps } from './_shared';
 
 const effectSchemaDescription =
-  'Discriminated by `type`: set_state{path,value,description} | show_message{message,tone?:info|success|warning|error,description} | emit_event{event,description} | block_action{reason,description} | allow_action{description} | transition_surface{target,description}. description is mandatory. set_state.value can be either a raw literal OR a structured Expression { kind:"literal"|"state"|"param"|"add"|"sub"|"mul"|"div"|"mod"|"min"|"max"|"neg", ... }. See add_action_rule description for the full AST. Example: value:{ kind:"add", left:{kind:"state",path:"player.vx"}, right:{kind:"param",name:"ax"} } writes vx+ax. transition_surface accepts `targetRef` in apply_batch to point at a surface created earlier in the same batch (mirrors add_transition).';
+  'Discriminated by `type`: set_state{path,value,description} | show_message{message,tone?:info|success|warning|error,description} | emit_event{event,description} | block_action{reason,description} | allow_action{description} | transition_surface{target,description} | append_to_list{path,item,description} | remove_from_list{path,where?:{field,equals},value?,description} | update_list_item{path,where:{field,equals},field,value,description}. description is mandatory. set_state.value (and append_to_list.item, the *.where.equals comparand, update_list_item.value) can be either a raw literal OR a structured Expression { kind:"literal"|"state"|"param"|"add"|"sub"|"mul"|"div"|"mod"|"min"|"max"|"neg", ... }. See add_action_rule description for the full AST. Example: value:{ kind:"add", left:{kind:"state",path:"player.vx"}, right:{kind:"param",name:"ax"} } writes vx+ax. The collection effects mutate an array-typed state path WITHOUT overwriting it: append_to_list pushes item; remove_from_list drops elements matching where{field,equals} (objects) or value (scalars/whole-object); update_list_item sets `field` to value on every element matching where. Example: append_to_list{path:"cart.lines",item:{kind:"param",name:"line"}} then update_list_item{path:"cart.lines",where:{field:"productId",equals:{kind:"param",name:"productId"}},field:"qty",value:{kind:"param",name:"qty"}}. transition_surface accepts `targetRef` in apply_batch to point at a surface created earlier in the same batch (mirrors add_transition).';
 
 const KNOWN_EFFECT_TYPES = [
   'set_state',
@@ -22,7 +22,10 @@ const KNOWN_EFFECT_TYPES = [
   'emit_event',
   'block_action',
   'allow_action',
-  'transition_surface'
+  'transition_surface',
+  'append_to_list',
+  'remove_from_list',
+  'update_list_item'
 ] as const;
 
 const effectInputSchema = z

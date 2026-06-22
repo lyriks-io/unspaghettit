@@ -56,6 +56,12 @@ const effectSummary = (effect: Effect): string => {
       return 'Allow action';
     case 'transition_surface':
       return 'Transition surface';
+    case 'append_to_list':
+      return `Append to ${effect.path}`;
+    case 'remove_from_list':
+      return `Remove from ${effect.path}`;
+    case 'update_list_item':
+      return `Update ${effect.field} in ${effect.path}`;
   }
 };
 

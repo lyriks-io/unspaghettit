@@ -86,9 +86,27 @@ const collectStatePathsOnSurface = (surface: Surface): Set<string> => {
     }
   };
   const addEffect = (e: Effect) => {
-    if (e.type === 'set_state') {
-      out.add(String(e.path));
-      if (isExpression(e.value)) collectExpr(e.value, out);
+    switch (e.type) {
+      case 'set_state':
+        out.add(String(e.path));
+        if (isExpression(e.value)) collectExpr(e.value, out);
+        return;
+      case 'append_to_list':
+        out.add(String(e.path));
+        if (isExpression(e.item)) collectExpr(e.item, out);
+        return;
+      case 'remove_from_list':
+        out.add(String(e.path));
+        if (e.where && isExpression(e.where.equals)) collectExpr(e.where.equals, out);
+        if (isExpression(e.value)) collectExpr(e.value, out);
+        return;
+      case 'update_list_item':
+        out.add(String(e.path));
+        if (isExpression(e.where.equals)) collectExpr(e.where.equals, out);
+        if (isExpression(e.value)) collectExpr(e.value, out);
+        return;
+      default:
+        return;
     }
   };
   for (const r of surface.rules) {

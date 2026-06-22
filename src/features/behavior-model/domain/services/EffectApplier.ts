@@ -1,5 +1,6 @@
-import type { Effect, SetStateEffect } from '../value-objects/Effect';
+import type { Effect, ListItemMatch, SetStateEffect } from '../value-objects/Effect';
 import {
+  deepEqualValue,
   isExpression,
   resolveValueOrExpression,
   type EvaluationContext,
@@ -8,7 +9,8 @@ import {
 import { humanizeStatePath } from '../value-objects/humanize';
 import type { EffectId, SurfaceId } from '../value-objects/ids';
 import type { EventName } from '../value-objects/EventName';
-import { writePath, type StateSnapshot, type StatePath } from '../value-objects/StatePath';
+import type { StateValue } from '../value-objects/StateValue';
+import { readPath, writePath, type StateSnapshot, type StatePath } from '../value-objects/StatePath';
 
 export type AppliedEffectRecord = {
   readonly effectId: EffectId;
@@ -96,7 +98,36 @@ const summarize = (effect: Effect): string => {
       return 'allow';
     case 'transition_surface':
       return `transition to surface ${effect.target}`;
+    case 'append_to_list':
+      return `append to ${humanizeStatePath(effect.path)}`;
+    case 'remove_from_list':
+      return `remove from ${humanizeStatePath(effect.path)}${effect.where ? ` where ${effect.where.field} matches` : ''}`;
+    case 'update_list_item':
+      return `set ${effect.field} on ${humanizeStatePath(effect.path)} items where ${effect.where.field} matches`;
   }
+};
+
+/** Read the array at `path`, or `null` when the slot is absent or not an array. */
+const readArray = (snapshot: StateSnapshot, path: StatePath): readonly StateValue[] | null => {
+  const current = readPath(snapshot, path);
+  return Array.isArray(current) ? current : null;
+};
+
+/**
+ * True when `element` is an object whose `match.field` deep-equals the
+ * resolved `match.equals`. Non-object elements never match (the predicate is
+ * field-based). The comparand resolves against the running snapshot + params so
+ * "where productId equals the productId param" works.
+ */
+const elementMatches = (
+  element: StateValue,
+  match: ListItemMatch,
+  context: EvaluationContext
+): boolean => {
+  if (!element || typeof element !== 'object' || Array.isArray(element)) return false;
+  const field = (element as { [k: string]: StateValue })[match.field];
+  const target = resolveValueOrExpression(match.equals, context);
+  return deepEqualValue(field, target);
 };
 
 /**
@@ -208,6 +239,70 @@ export const applyEffect = (
         transition: effect.target
       };
     }
+    case 'append_to_list': {
+      // List mutations follow set_state's block discipline: once a rule has
+      // blocked, no state lands.
+      if (current.blocked) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters };
+      const item = resolveValueOrExpression(effect.item, context);
+      // An item that can't be resolved (missing param / non-computable expr)
+      // is skipped rather than pushing `undefined` and poisoning the array.
+      if (item === undefined) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const existing = readArray(current.snapshot, effect.path) ?? [];
+      const nextSnapshot = writePath(current.snapshot, effect.path, [...existing, item]);
+      return { ...current, snapshot: nextSnapshot, applied: [...current.applied, record] };
+    }
+    case 'remove_from_list': {
+      if (current.blocked) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const existing = readArray(current.snapshot, effect.path);
+      // No array → nothing to remove. Record the attempt and move on.
+      if (existing === null) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters };
+      let kept: readonly StateValue[];
+      if (effect.where !== undefined) {
+        kept = existing.filter((el) => !elementMatches(el, effect.where!, context));
+      } else if (effect.value !== undefined) {
+        const target = resolveValueOrExpression(effect.value, context);
+        // Unresolvable comparand removes nothing (safer than removing all).
+        kept =
+          target === undefined ? existing : existing.filter((el) => !deepEqualValue(el, target));
+      } else {
+        // No selector: never implicitly clear the whole list.
+        kept = existing;
+      }
+      const nextSnapshot = writePath(current.snapshot, effect.path, [...kept]);
+      return { ...current, snapshot: nextSnapshot, applied: [...current.applied, record] };
+    }
+    case 'update_list_item': {
+      if (current.blocked) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const existing = readArray(current.snapshot, effect.path);
+      if (existing === null) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters };
+      const value = resolveValueOrExpression(effect.value, context);
+      // Unresolvable value → leave every element untouched (don't write undefined).
+      if (value === undefined) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const nextArray = existing.map((el) =>
+        elementMatches(el, effect.where, context)
+          ? { ...(el as { [k: string]: StateValue }), [effect.field]: value }
+          : el
+      );
+      const nextSnapshot = writePath(current.snapshot, effect.path, nextArray);
+      return { ...current, snapshot: nextSnapshot, applied: [...current.applied, record] };
+    }
     default: {
       // An unrecognized effect type means malformed data slipped past the
       // Zod schema (the only legitimate route into `Effect`). Falling through
@@ -218,7 +313,8 @@ export const applyEffect = (
       const unknown = effect as { type?: string };
       throw new Error(
         `EffectApplier: unknown effect type "${unknown.type ?? '<missing>'}". ` +
-          `Valid types: set_state, show_message, emit_event, block_action, allow_action, transition_surface.`
+          `Valid types: set_state, show_message, emit_event, block_action, allow_action, ` +
+          `transition_surface, append_to_list, remove_from_list, update_list_item.`
       );
     }
   }

@@ -8,6 +8,7 @@ import {
   asEffectId,
   asFeatureId,
   asInvariantId,
+  asParameterId,
   asRuleId,
   asStateDefinitionId,
   asSurfaceId
@@ -632,5 +633,60 @@ describe('simulate', () => {
     });
     expect(result.status).toBe('blocked');
     expect(result.invariantViolations.map((v) => v.invariantName)).toContain('count >= 0');
+  });
+
+  it('flows a collection mutation (append) through a real action with an Expression item', () => {
+    const surface: Surface = {
+      id: asSurfaceId('cart'),
+      name: 'Cart',
+      type: 'screen',
+      stateDefinitions: [
+        {
+          id: asStateDefinitionId('d-lines'),
+          path: asStatePath('cart.lines'),
+          type: 'array',
+          defaultValue: []
+        }
+      ],
+      actions: [],
+      rules: [],
+      invariants: [],
+      transitions: []
+    };
+    const addLine: Action = {
+      id: asActionId('add-line'),
+      name: 'Add line',
+      intent: 'add a product line to the cart',
+      parameters: [
+        {
+          id: asParameterId('p-pid'),
+          name: 'productId',
+          type: 'string',
+          required: true,
+          description: 'product to add'
+        }
+      ],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [
+        {
+          id: asEffectId('e-append'),
+          type: 'append_to_list',
+          path: asStatePath('cart.lines'),
+          item: { kind: 'param', name: 'productId' }
+        }
+      ],
+      emittedEvents: [],
+      transitions: []
+    };
+    const result = simulate({
+      surface,
+      action: addLine,
+      snapshot: { cart: { lines: ['a'] } },
+      parameters: { productId: 'b' }
+    });
+    expect(result.status).toBe('success');
+    expect(result.nextState).toEqual({ cart: { lines: ['a', 'b'] } });
   });
 });

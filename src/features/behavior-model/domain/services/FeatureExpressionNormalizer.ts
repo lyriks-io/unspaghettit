@@ -4,7 +4,13 @@ import type { Invariant } from '../entities/Invariant';
 import type { Rule } from '../entities/Rule';
 import type { Scenario, ScenarioAssertion } from '../entities/Scenario';
 import type { Surface } from '../entities/Surface';
-import type { Effect, SetStateEffect } from '../value-objects/Effect';
+import type {
+  AppendToListEffect,
+  Effect,
+  RemoveFromListEffect,
+  SetStateEffect,
+  UpdateListItemEffect
+} from '../value-objects/Effect';
 import { normalizeExpression } from '../value-objects/Expression';
 import {
   isCompositeCondition,
@@ -77,10 +83,30 @@ const normalizeCondition = (condition: RuleCondition): RuleCondition => {
     : { ...condition, right: normalizeExpression(condition.right) };
 };
 
-const normalizeEffect = (effect: Effect): Effect =>
-  effect.type === 'set_state'
-    ? ({ ...effect, value: normalizeExpression(effect.value) } as SetStateEffect)
-    : effect;
+const normalizeEffect = (effect: Effect): Effect => {
+  switch (effect.type) {
+    case 'set_state':
+      return { ...effect, value: normalizeExpression(effect.value) } as SetStateEffect;
+    case 'append_to_list':
+      return { ...effect, item: normalizeExpression(effect.item) } as AppendToListEffect;
+    case 'remove_from_list':
+      return {
+        ...effect,
+        ...(effect.where !== undefined
+          ? { where: { ...effect.where, equals: normalizeExpression(effect.where.equals) } }
+          : {}),
+        ...(effect.value !== undefined ? { value: normalizeExpression(effect.value) } : {})
+      } as RemoveFromListEffect;
+    case 'update_list_item':
+      return {
+        ...effect,
+        where: { ...effect.where, equals: normalizeExpression(effect.where.equals) },
+        value: normalizeExpression(effect.value)
+      } as UpdateListItemEffect;
+    default:
+      return effect;
+  }
+};
 
 const normalizeScenario = (scenario: Scenario): Scenario =>
   scenario.expectedAssertions
