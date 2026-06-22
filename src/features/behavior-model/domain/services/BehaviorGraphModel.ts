@@ -16,6 +16,7 @@ export type BehaviorGraphNodeType =
   | 'rule'
   | 'effect'
   | 'invariant'
+  | 'goal'
   | 'scenario'
   | 'persona'
   | 'resource'
@@ -281,6 +282,22 @@ export const buildBehaviorGraph = (
       });
       addEdge({ from: featureId, to: id, kind: 'contains' });
       for (const path of leafStatePaths(invariant.condition)) {
+        ensureState(feature, path);
+        addEdge({ from: id, to: stateIdFor(feature, path), kind: 'reads' });
+      }
+    }
+
+    for (const goal of feature.reachabilityGoals ?? []) {
+      const id = `feature:${feature.id}:goal:${goal.id}`;
+      addNode({
+        id,
+        type: 'goal',
+        label: goal.name,
+        detail: goal.description ?? goal.message ?? goal.kind,
+        layer: 6
+      });
+      addEdge({ from: featureId, to: id, kind: 'contains' });
+      for (const path of leafStatePaths(goal.condition)) {
         ensureState(feature, path);
         addEdge({ from: id, to: stateIdFor(feature, path), kind: 'reads' });
       }

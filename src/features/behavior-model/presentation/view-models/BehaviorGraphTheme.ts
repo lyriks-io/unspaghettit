@@ -24,6 +24,7 @@ export const behaviorGraphNodeTheme: Record<BehaviorGraphNodeType, BehaviorGraph
   rule: { label: 'Rule', fill: '#ea580c', stroke: '#c2410c' },
   effect: { label: 'Effect', fill: '#16a34a', stroke: '#15803d' },
   invariant: { label: 'Invariant', fill: '#ca8a04', stroke: '#a16207' },
+  goal: { label: 'Liveness goal', fill: '#65a30d', stroke: '#4d7c0f' },
   scenario: { label: 'Scenario', fill: '#475569', stroke: '#334155' },
   persona: { label: 'Persona', fill: '#0f766e', stroke: '#115e59' },
   resource: { label: 'Resource', fill: '#4f46e5', stroke: '#4338ca' },
