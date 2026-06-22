@@ -34,7 +34,10 @@ const projectConditionFields = (
   c: Rule['condition'] | Invariant['condition']
 ): Record<string, unknown> => {
   if (!c) return { condition: null };
-  if ('kind' in c && (c.kind === 'all' || c.kind === 'any' || c.kind === 'not')) {
+  // Any kinded condition (composite all/any/not OR quantifier all_match/
+  // any_match) lacks the flat left/operator/right shape — project the whole
+  // tree under one key. Only true leaf conditions get the flat fields.
+  if ('kind' in c) {
     return { condition: c };
   }
   return {

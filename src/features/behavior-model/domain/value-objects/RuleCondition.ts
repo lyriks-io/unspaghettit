@@ -76,7 +76,33 @@ export type NotCondition = {
 
 export type CompositeRuleCondition = AllCondition | AnyCondition | NotCondition;
 
-export type RuleCondition = LeafRuleCondition | CompositeRuleCondition;
+/**
+ * Quantifier over the elements of an array-typed state path. `all_match` holds
+ * when EVERY element satisfies `where`; `any_match` holds when AT LEAST ONE
+ * does. This is the per-element guarantee that `count_where` (a count) and the
+ * boolean combinators (over sibling conditions, not elements) could never
+ * express — e.g. the invariant "every order line has qty > 0".
+ *
+ * Evaluation binds each element into the snapshot under the `as` name, then
+ * evaluates `where` as an ordinary condition. So with `as: "item"` over an
+ * array of objects, the body reads `item.qty`; over an array of scalars it
+ * reads `item` directly. The body may also reference outer state paths
+ * (e.g. compare `item.qty` to a threshold elsewhere in state).
+ *
+ * Vacuous truth: `all_match` over a missing/empty array is TRUE, `any_match`
+ * is FALSE — the standard ∀/∃ semantics.
+ */
+export type QuantifierCondition = {
+  readonly kind: 'all_match' | 'any_match';
+  readonly overPath: StatePath;
+  readonly as: string;
+  readonly where: RuleCondition;
+};
+
+export type RuleCondition =
+  | LeafRuleCondition
+  | CompositeRuleCondition
+  | QuantifierCondition;
 
 /**
  * Runtime guard: a composite condition carries a `kind` matching one of
@@ -89,6 +115,20 @@ export const isCompositeCondition = (
   if (!c || typeof c !== 'object') return false;
   const k = (c as { kind?: unknown }).kind;
   return k === 'all' || k === 'any' || k === 'not';
+};
+
+/**
+ * Runtime guard: a quantifier condition (`all_match` / `any_match`). Kept
+ * separate from `isCompositeCondition` because quantifiers introduce a scoped
+ * element binding and so are evaluated/walked differently from the plain
+ * boolean combinators.
+ */
+export const isQuantifierCondition = (
+  c: unknown
+): c is QuantifierCondition => {
+  if (!c || typeof c !== 'object') return false;
+  const k = (c as { kind?: unknown }).kind;
+  return k === 'all_match' || k === 'any_match';
 };
 
 /**
@@ -109,6 +149,17 @@ export const flattenLeafConditions = (
     if (isCompositeCondition(node)) {
       if (node.kind === 'not') walk(node.condition);
       else for (const sub of node.conditions) walk(sub);
+      return;
+    }
+    if (isQuantifierCondition(node)) {
+      // Surface the array source as a synthetic `exists` leaf so every
+      // path-validator / collector that walks leaves sees the quantified
+      // array reference and keeps working unchanged. The body is NOT
+      // descended into: its leaves reference the scoped element binding
+      // (`as`), which isn't a declared outer state path and would be a false
+      // "unknown path" to those consumers. Body evaluation is handled
+      // directly by the condition evaluator, which understands the binding.
+      out.push({ left: node.overPath, operator: 'exists' });
       return;
     }
     out.push(node);

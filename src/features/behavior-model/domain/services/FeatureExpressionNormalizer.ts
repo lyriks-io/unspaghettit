@@ -14,6 +14,7 @@ import type {
 import { normalizeExpression } from '../value-objects/Expression';
 import {
   isCompositeCondition,
+  isQuantifierCondition,
   type RuleCondition
 } from '../value-objects/RuleCondition';
 
@@ -77,6 +78,9 @@ const normalizeCondition = (condition: RuleCondition): RuleCondition => {
       kind: condition.kind,
       conditions: condition.conditions.map(normalizeCondition)
     };
+  }
+  if (isQuantifierCondition(condition)) {
+    return { ...condition, where: normalizeCondition(condition.where) };
   }
   return condition.right === undefined
     ? condition

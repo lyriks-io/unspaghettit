@@ -202,4 +202,42 @@ describe('evaluateCondition', () => {
     };
     expect(evaluateCondition(implication, falsified)).toBe(false);
   });
+
+  it('all_match over a scalar array reads the element via the bound name', () => {
+    // selection.ids = ['a','b']; assert every id is a non-empty string-ish
+    // value by checking it exists.
+    const cond = {
+      kind: 'all_match' as const,
+      overPath: path('selection.ids'),
+      as: 'id',
+      where: { left: path('id'), operator: 'exists' as const }
+    };
+    expect(evaluateCondition(cond, snapshot)).toBe(true);
+  });
+
+  it('quantifier body can compare an element field to an OUTER state path', () => {
+    const snap = {
+      config: { minQty: 2 },
+      cart: { lines: [{ qty: 2 }, { qty: 5 }] }
+    };
+    // every line.qty >= config.minQty (expressed as NOT lower_than)
+    const cond = {
+      kind: 'all_match' as const,
+      overPath: path('cart.lines'),
+      as: 'line',
+      where: {
+        kind: 'not' as const,
+        condition: {
+          left: path('line.qty'),
+          operator: 'lower_than' as const,
+          right: { kind: 'state' as const, path: path('config.minQty') }
+        }
+      }
+    };
+    expect(evaluateCondition(cond, snap)).toBe(true);
+    // Drop one line below the threshold → fails.
+    expect(
+      evaluateCondition(cond, { config: { minQty: 2 }, cart: { lines: [{ qty: 1 }] } })
+    ).toBe(false);
+  });
 });

@@ -4,6 +4,7 @@ import type { StateValue } from './StateValue';
 import {
   isCompositeCondition,
   isParamLeft,
+  isQuantifierCondition,
   type RuleCondition
 } from './RuleCondition';
 import type { Operator } from './Operator';
@@ -167,6 +168,24 @@ export const evaluateConditionInternal = (
   context: EvaluationContext
 ): boolean => {
   if (condition === undefined || condition === null) return true;
+  if (isQuantifierCondition(condition)) {
+    const arr = readPath(context.snapshot, condition.overPath);
+    // Missing / non-array source: ∀ is vacuously true, ∃ is false.
+    if (!Array.isArray(arr)) return condition.kind === 'all_match';
+    for (const element of arr) {
+      // Bind the current element under `as` so the body reads `as` (scalars)
+      // or `as.field` (objects) while still seeing every outer state path.
+      const scoped: StateSnapshot = { ...context.snapshot, [condition.as]: element };
+      const held = evaluateConditionInternal(condition.where, {
+        ...context,
+        snapshot: scoped
+      });
+      if (condition.kind === 'all_match' && !held) return false;
+      if (condition.kind === 'any_match' && held) return true;
+    }
+    // Walked every element: all held ⇒ all_match true; none held ⇒ any_match false.
+    return condition.kind === 'all_match';
+  }
   if (isCompositeCondition(condition)) {
     if (condition.kind === 'not') {
       return !evaluateConditionInternal(condition.condition, context);

@@ -4,6 +4,7 @@ import type { Invariant } from '$features/behavior-model/domain/entities/Invaria
 import type { Rule } from '$features/behavior-model/domain/entities/Rule';
 import {
   isCompositeCondition,
+  isQuantifierCondition,
   type LeafRuleCondition,
   type RuleCondition
 } from '$features/behavior-model/domain/value-objects/RuleCondition';
@@ -91,7 +92,7 @@ const asRuleCategory = (v: unknown): RuleCategory | null =>
 const asLeafCondition = (
   c: RuleCondition | undefined
 ): LeafRuleCondition | null =>
-  c === undefined || isCompositeCondition(c) ? null : c;
+  c === undefined || isCompositeCondition(c) || isQuantifierCondition(c) ? null : c;
 
 const ruleWithFieldSet = (rule: Rule, path: string, value: unknown): Rule | null => {
   switch (path) {
