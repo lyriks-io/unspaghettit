@@ -28,6 +28,7 @@ import { registerInvariantTools } from './tools/invariant';
 import { registerParameterTools } from './tools/parameter';
 import { registerPersonaTools } from './tools/persona';
 import { registerProjectTools } from './tools/project';
+import { registerReachabilityGoalTools } from './tools/reachabilityGoal';
 import { registerQueueTools } from './tools/queue';
 import { registerReadTools } from './tools/read';
 import { registerReorderTools } from './tools/reorder';
@@ -169,6 +170,7 @@ export const buildServer = (
   registerEffectTools(toolDeps);
   registerEventTools(toolDeps);
   registerInvariantTools(toolDeps);
+  registerReachabilityGoalTools(toolDeps);
   registerTransitionTools(toolDeps);
   registerPersonaTools(toolDeps);
   registerValueSetTools(toolDeps);

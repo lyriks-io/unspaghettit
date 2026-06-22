@@ -23,6 +23,7 @@
 import type {
   Invariant
 } from '../../src/features/behavior-model/domain/entities/Invariant';
+import type { ReachabilityGoal } from '../../src/features/behavior-model/domain/entities/ReachabilityGoal';
 import type { Rule } from '../../src/features/behavior-model/domain/entities/Rule';
 import type {
   Scenario,
@@ -35,6 +36,7 @@ import {
   asEffectId,
   asInvariantId,
   asPersonaId,
+  asReachabilityGoalId,
   asRuleId,
   asScenarioId,
   asSurfaceId
@@ -297,6 +299,28 @@ export const buildInvariantPatch = (input: Raw): Partial<Invariant> => ({
   ...(typeof input.name === 'string' ? { name: input.name } : {}),
   ...(input.condition !== undefined
     ? { condition: input.condition as Invariant['condition'] }
+    : {}),
+  ...(typeof input.message === 'string' ? { message: input.message } : {}),
+  ...(typeof input.description === 'string' ? { description: input.description } : {})
+});
+
+// ─── Reachability goal ────────────────────────────────────────────────────────
+
+export const buildReachabilityGoal = (input: Raw, mintId: () => string): ReachabilityGoal => ({
+  id: asReachabilityGoalId(mintId()),
+  name: input.name as string,
+  kind: input.kind as ReachabilityGoal['kind'],
+  condition: input.condition as ReachabilityGoal['condition'],
+  ...(typeof input.message === 'string' ? { message: input.message } : {}),
+  ...(typeof input.description === 'string' ? { description: input.description } : {})
+});
+
+/** Build a ReachabilityGoal patch (id preserved by the caller). */
+export const buildReachabilityGoalPatch = (input: Raw): Partial<ReachabilityGoal> => ({
+  ...(typeof input.name === 'string' ? { name: input.name } : {}),
+  ...(typeof input.kind === 'string' ? { kind: input.kind as ReachabilityGoal['kind'] } : {}),
+  ...(input.condition !== undefined
+    ? { condition: input.condition as ReachabilityGoal['condition'] }
     : {}),
   ...(typeof input.message === 'string' ? { message: input.message } : {}),
   ...(typeof input.description === 'string' ? { description: input.description } : {})

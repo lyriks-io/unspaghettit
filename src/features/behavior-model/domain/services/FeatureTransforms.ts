@@ -5,6 +5,7 @@ import type { Feature } from '../entities/Feature';
 import type { Invariant } from '../entities/Invariant';
 import type { Parameter } from '../entities/Parameter';
 import type { Persona } from '../entities/Persona';
+import type { ReachabilityGoal } from '../entities/ReachabilityGoal';
 import type { Resource } from '../entities/Resource';
 import type { Rule } from '../entities/Rule';
 import type { Scenario } from '../entities/Scenario';
@@ -23,6 +24,7 @@ import type {
   InvariantId,
   ParameterId,
   PersonaId,
+  ReachabilityGoalId,
   ResourceId,
   RuleId,
   ScenarioId,
@@ -849,6 +851,37 @@ export const removeFeatureInvariant = (
   featureInvariants: (feature.featureInvariants ?? []).filter(
     (i) => i.id !== invariantId
   )
+});
+
+// ─── Reachability / liveness goals ─────────────────────────────────────────────
+// Feature-level liveness properties, the complement to featureInvariants. Same
+// add/update/remove shape against `feature.reachabilityGoals`.
+
+export const addReachabilityGoal = (feature: Feature, goal: ReachabilityGoal): Feature => ({
+  ...feature,
+  reachabilityGoals: [...(feature.reachabilityGoals ?? []), goal]
+});
+
+export const updateReachabilityGoal = (
+  feature: Feature,
+  goalId: ReachabilityGoalId,
+  patch: Partial<ReachabilityGoal>
+): Feature => ({
+  ...feature,
+  reachabilityGoals: mustMap(
+    feature.reachabilityGoals ?? [],
+    String(goalId),
+    'reachabilityGoal',
+    (g) => ({ ...g, ...patch })
+  )
+});
+
+export const removeReachabilityGoal = (
+  feature: Feature,
+  goalId: ReachabilityGoalId
+): Feature => ({
+  ...feature,
+  reachabilityGoals: (feature.reachabilityGoals ?? []).filter((g) => g.id !== goalId)
 });
 
 // ─── Transitions ─────────────────────────────────────────────────────────────

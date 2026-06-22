@@ -42,6 +42,7 @@ import {
   asInvariantId,
   asParameterId,
   asPersonaId,
+  asReachabilityGoalId,
   asResourceId,
   asRuleId,
   asScenarioId,
@@ -54,6 +55,8 @@ import { asStatePath } from '../../src/features/behavior-model/domain/value-obje
 import {
   buildInvariant as buildInvariantBody,
   buildInvariantPatch,
+  buildReachabilityGoal,
+  buildReachabilityGoalPatch,
   buildScenario,
   buildScenarioPatch
 } from './_entity_builders';
@@ -778,6 +781,32 @@ const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): 
           exp = T.removeFeatureInvariant(
             exp,
             asInvariantId(op.invariantId as string)
+          );
+          break;
+
+        // ── Reachability / liveness goals ───────────────────────────────
+        // Feature-level liveness: "this target state is reachable" or "stays
+        // reachable from everywhere". The complement to feature invariants.
+        case 'add_reachability_goal': {
+          const goal = buildReachabilityGoal(
+            (op.goal as Record<string, unknown>) ?? op,
+            mintId
+          );
+          exp = T.addReachabilityGoal(exp, goal);
+          remember(op.ref, goal.id);
+          break;
+        }
+        case 'update_reachability_goal':
+          exp = T.updateReachabilityGoal(
+            exp,
+            asReachabilityGoalId(op.goalId as string),
+            buildReachabilityGoalPatch((op.patch as Record<string, unknown>) ?? {})
+          );
+          break;
+        case 'remove_reachability_goal':
+          exp = T.removeReachabilityGoal(
+            exp,
+            asReachabilityGoalId(op.goalId as string)
           );
           break;
 
