@@ -1,5 +1,9 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
+import type {
+  ReachabilityGoal,
+  ReachabilityGoalKind
+} from '$features/behavior-model/domain/entities/ReachabilityGoal';
 import type { Rule } from '$features/behavior-model/domain/entities/Rule';
 import type { StateDefinition } from '$features/behavior-model/domain/entities/StateDefinition';
 import type { Surface, SurfaceType } from '$features/behavior-model/domain/entities/Surface';
@@ -9,6 +13,7 @@ import {
   asActionId,
   asEffectId,
   asInvariantId,
+  asReachabilityGoalId,
   asRuleId,
   asStateDefinitionId,
   asSurfaceId
@@ -157,5 +162,20 @@ export const newInvariant = (
     left: asStatePath(init.left),
     operator: 'exists'
   },
+  message: ''
+});
+
+export const newReachabilityGoal = (
+  ids: IdGenerator,
+  init: { name: string; kind: ReachabilityGoalKind; left: string }
+): ReachabilityGoal => ({
+  id: asReachabilityGoalId(ids()),
+  name: init.name,
+  kind: init.kind,
+  condition: {
+    left: asStatePath(init.left),
+    operator: 'is_true'
+  },
+  description: '',
   message: ''
 });

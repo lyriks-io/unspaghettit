@@ -12,7 +12,8 @@ export type TopLevelTab =
   | 'data'
   | 'events'
   | 'transitions'
-  | 'invariants';
+  | 'invariants'
+  | 'goals';
 export type InsightTab = 'simulator' | 'maturity' | 'implementation';
 
 const RAIL_TAB_KEY = 'unspa:editor:rail-tab';

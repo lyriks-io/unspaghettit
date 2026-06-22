@@ -19,6 +19,7 @@
   import EntityManager from './EntityManager.svelte';
   import EventsManager from './EventsManager.svelte';
   import FeatureInvariantsEditor from './FeatureInvariantsEditor.svelte';
+  import ReachabilityGoalsEditor from './ReachabilityGoalsEditor.svelte';
   import TransitionsManager from './TransitionsManager.svelte';
   import { buildEventCatalog } from '$features/behavior-model/domain/services/EventCatalog';
   import { buildTransitionCatalog } from '$features/behavior-model/domain/services/TransitionCatalog';
@@ -32,7 +33,8 @@
     'data',
     'events',
     'transitions',
-    'invariants'
+    'invariants',
+    'goals'
   ]);
   const VALID_PANEL_TABS = new Set([
     'actions',
@@ -53,7 +55,8 @@
     | 'data'
     | 'events'
     | 'transitions'
-    | 'invariants';
+    | 'invariants'
+    | 'goals';
   // Top-level tab is now in the editor store so deep-link navigation can
   // jump back to "Build" when fixing an issue from elsewhere.
   const activeTab = $derived<TopTab>(editorStore.topLevelTab);
@@ -232,6 +235,11 @@
       key: 'invariants',
       label: 'Invariants',
       count: feature.featureInvariants?.length ?? 0
+    },
+    {
+      key: 'goals',
+      label: 'Reachability goals',
+      count: feature.reachabilityGoals?.length ?? 0
     }
   ]);
 
@@ -368,6 +376,10 @@
       {:else if activeTab === 'invariants'}
         <section class="rounded-lg border border-hairline bg-white p-4">
           <FeatureInvariantsEditor {feature} />
+        </section>
+      {:else if activeTab === 'goals'}
+        <section class="rounded-lg border border-hairline bg-white p-4">
+          <ReachabilityGoalsEditor {feature} />
         </section>
       {:else}
         <section class="rounded-lg border border-hairline bg-white p-4">
