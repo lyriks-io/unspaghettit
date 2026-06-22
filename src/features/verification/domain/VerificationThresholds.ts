@@ -22,6 +22,12 @@ export type VerificationThresholds = {
   readonly allowDrift: boolean;
   /** When true, a feature with zero scenarios fails verification. */
   readonly requireScenarios: boolean;
+  /**
+   * When true, an unmet reachability/liveness goal fails verification. Off by
+   * default: like dead actions, "not reached within bounds" is not a proof, so
+   * it warns unless opted in.
+   */
+  readonly failOnUnmetGoals: boolean;
 };
 
 export const defaultThresholds = (): VerificationThresholds => ({
@@ -30,7 +36,8 @@ export const defaultThresholds = (): VerificationThresholds => ({
   allowInvariantViolations: false,
   failOnDeadActions: false,
   allowDrift: true,
-  requireScenarios: false
+  requireScenarios: false,
+  failOnUnmetGoals: false
 });
 
 export const withThresholdDefaults = (

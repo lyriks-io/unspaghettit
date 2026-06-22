@@ -99,6 +99,32 @@ const reachabilityCheck = (reachability: SurfaceReachabilityReport): VerdictChec
   };
 };
 
+const livenessCheck = (
+  exploration: ExplorationReport,
+  thresholds: VerificationThresholds
+): VerdictCheck => {
+  const unmet = exploration.goalResults.filter((g) => !g.satisfied);
+  if (unmet.length === 0) {
+    return {
+      id: 'liveness',
+      label: 'Liveness',
+      status: 'pass',
+      detail: `${exploration.goalResults.length} reachability goal(s) hold within bounds`
+    };
+  }
+  return {
+    id: 'liveness',
+    label: 'Liveness',
+    status: thresholds.failOnUnmetGoals ? 'fail' : 'warn',
+    detail: `${unmet.length} reachability goal(s) unmet`,
+    items: unmet.map((g) =>
+      g.counterexamplePath && g.counterexamplePath.length > 0
+        ? `${g.goalName} (${g.kind}) — trap via [${g.counterexamplePath.join(' → ')}]`
+        : `${g.goalName} (${g.kind}) — never reached within bounds`
+    )
+  };
+};
+
 const deadActionsCheck = (
   exploration: ExplorationReport,
   thresholds: VerificationThresholds
@@ -121,6 +147,7 @@ const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
 
   if (exploration) {
     checks.push(invariantsCheck(exploration, thresholds));
+    if (exploration.goalResults.length > 0) checks.push(livenessCheck(exploration, thresholds));
     checks.push(deadActionsCheck(exploration, thresholds));
     if (exploration.deadlockStates > 0) {
       checks.push({

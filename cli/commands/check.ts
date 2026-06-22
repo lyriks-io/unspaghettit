@@ -29,6 +29,7 @@ export type CheckOptions = {
   readonly requireScenarios?: boolean;
   readonly failOnDrift?: boolean;
   readonly failOnDeadActions?: boolean;
+  readonly failOnUnmetGoals?: boolean;
   readonly allowInvariantViolations?: boolean;
 };
 
@@ -112,7 +113,8 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
       allowInvariantViolations: options.allowInvariantViolations === true,
       failOnDeadActions: options.failOnDeadActions === true,
       allowDrift: options.failOnDrift !== true,
-      requireScenarios: options.requireScenarios === true
+      requireScenarios: options.requireScenarios === true,
+      failOnUnmetGoals: options.failOnUnmetGoals === true
     },
     modelCheck: options.modelCheck
       ? {

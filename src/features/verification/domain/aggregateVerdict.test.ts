@@ -39,6 +39,7 @@ const exploration = (partial: Partial<ExplorationReport> = {}): ExplorationRepor
   deadActions: [],
   deadlockStates: 0,
   skippedActions: [],
+  goalResults: [],
   ...partial
 });
 
@@ -128,6 +129,36 @@ describe('aggregateFeatureVerdict', () => {
     );
     expect(verdict.passed).toBe(false);
     expect(checkById(verdict, 'maturity')?.detail).toContain('50%');
+  });
+
+  it('treats an unmet reachability goal as a warning by default and a failure when gated', () => {
+    const withUnmetGoal = exploration({
+      goalResults: [
+        {
+          goalId: 'g1',
+          goalName: 'order reaches delivered',
+          kind: 'always_reachable',
+          satisfied: false,
+          counterexamplePath: ['Cancel order']
+        }
+      ]
+    });
+
+    const warned = aggregateFeatureVerdict(base({ exploration: withUnmetGoal }));
+    expect(warned.passed).toBe(true);
+    expect(checkById(warned, 'liveness')?.status).toBe('warn');
+    expect(checkById(warned, 'liveness')?.items?.[0]).toContain('Cancel order');
+
+    const gated = aggregateFeatureVerdict(
+      base({ exploration: withUnmetGoal, thresholds: withThresholdDefaults({ failOnUnmetGoals: true }) })
+    );
+    expect(gated.passed).toBe(false);
+    expect(checkById(gated, 'liveness')?.status).toBe('fail');
+  });
+
+  it('omits the liveness check when no goals are declared', () => {
+    const verdict = aggregateFeatureVerdict(base({ exploration: exploration() }));
+    expect(checkById(verdict, 'liveness')).toBeUndefined();
   });
 
   it('warns (never fails) when the model check was truncated', () => {

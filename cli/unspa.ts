@@ -144,6 +144,7 @@ program
   .option('--require-scenarios', 'Fail a feature that has no scenarios authored.')
   .option('--fail-on-drift', 'Fail when an implementation was audited against an older spec (default: warn only).')
   .option('--fail-on-dead-actions', 'Fail when an action never fires within the model-check bound (default: warn only).')
+  .option('--fail-on-unmet-goals', 'Fail when a reachability/liveness goal is unmet (default: warn only). Requires --model-check.')
   .option('--allow-invariant-violations', 'Downgrade reachable invariant violations from failure to warning.')
   .option('--json', 'Emit the full verification report as JSON instead of the human view.')
   .action(async (featureId, opts) => {
@@ -160,6 +161,7 @@ program
       requireScenarios: opts.requireScenarios === true,
       failOnDrift: opts.failOnDrift === true,
       failOnDeadActions: opts.failOnDeadActions === true,
+      failOnUnmetGoals: opts.failOnUnmetGoals === true,
       allowInvariantViolations: opts.allowInvariantViolations === true
     });
     process.exit(code);

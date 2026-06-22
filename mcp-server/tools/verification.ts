@@ -82,7 +82,8 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
         maxStates: z.number().int().positive().optional(),
         minMaturity: z.number().int().min(0).max(100).optional(),
         requireScenarios: z.boolean().optional(),
-        failOnDrift: z.boolean().optional()
+        failOnDrift: z.boolean().optional(),
+        failOnUnmetGoals: z.boolean().optional()
       }
     },
     async (args) => {
@@ -94,7 +95,8 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
           thresholds: {
             minMaturity: args.minMaturity ?? 0,
             requireScenarios: args.requireScenarios === true,
-            allowDrift: args.failOnDrift !== true
+            allowDrift: args.failOnDrift !== true,
+            failOnUnmetGoals: args.failOnUnmetGoals === true
           },
           modelCheck: args.modelCheck
             ? {
