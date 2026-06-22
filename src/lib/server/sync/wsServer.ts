@@ -14,7 +14,7 @@ import {
 } from '../../sync/protocol';
 import { YDocManager } from './YDocManager';
 import type { HistoryStore } from './historyStore';
-import { currentActiveUser, recordIdentity, releaseIdentity } from './identityRegistry';
+import { recordIdentity, releaseIdentity } from './identityRegistry';
 import {
   checkQueryAuth,
   isAuthEnabled,

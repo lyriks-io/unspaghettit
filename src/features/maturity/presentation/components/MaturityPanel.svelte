@@ -17,8 +17,12 @@
   // Maturity scoring is synchronous, so isScoring is effectively always false
   // from a renderer's perspective. State path exists for the spec; an async
   // variant could flip it. lastScoredAt + the audit event are written from an
-  // $effect because side effects are forbidden inside $derived.
+  // $effect because side effects are forbidden inside $derived. Both mirror
+  // modeled spec state the dashboard dogfoods, so they're kept even though the
+  // renderer doesn't read them yet.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let isScoring = $state<boolean>(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let lastScoredAt = $state<string | null>(null);
 
   const breakdown = $derived(scoreFeatureBreakdown(feature));

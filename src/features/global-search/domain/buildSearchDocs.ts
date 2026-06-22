@@ -1,6 +1,5 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
 import type { EntityField } from '$features/behavior-model/domain/entities/Entity';
-import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Rule } from '$features/behavior-model/domain/entities/Rule';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import { surfaceTypeLabel } from '$features/behavior-model/domain/entities/Surface';

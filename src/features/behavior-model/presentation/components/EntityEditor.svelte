@@ -17,7 +17,6 @@
   import {
     statePathFromName
   } from '$features/behavior-model/domain/value-objects/humanize';
-  import type { StateType } from '$features/behavior-model/domain/value-objects/StateValue';
   import {
     resourceKindLabel,
     sensitivityLabel
@@ -95,12 +94,6 @@
     patch({ fields: data.fields.filter((f) => f.id !== id) });
   }
 
-  function setFieldName(id: EntityFieldId, raw: string) {
-    const cleaned = raw.trim();
-    if (cleaned.length === 0) return;
-    const newPath = asStatePath(`${data.namespace}.${statePathFromName(cleaned)}`);
-    updateField(id, { name: cleaned, path: newPath });
-  }
 
   function setFieldPath(id: EntityFieldId, raw: string) {
     if (!isStatePath(raw)) return;

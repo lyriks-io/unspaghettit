@@ -3,7 +3,6 @@ import type { Entity } from '$features/behavior-model/domain/entities/Entity';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { Rule } from '$features/behavior-model/domain/entities/Rule';
 import type { StateDefinition } from '$features/behavior-model/domain/entities/StateDefinition';
-import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import type { Transition } from '$features/behavior-model/domain/entities/Transition';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { EntityType } from './ImplementationStatus';

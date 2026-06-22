@@ -57,8 +57,12 @@
   // expanded on the page. Toggled by clicking a tool header. State path:
   // mcpPlayground.shownTool. Defaults to "get_feature" so users land on a
   // useful example.
+  // Mirrors the modeled "Show Tool Examples" action / mcpPlayground.shownTool
+  // state; retained as dogfooded spec scaffolding ahead of the template wiring.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let shownTool = $state<string>('get_feature');
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function showToolExamples(tool: string): void {
     shownTool = tool;
   }

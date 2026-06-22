@@ -549,7 +549,7 @@ describe('MCP server', () => {
 
     const persisted = await repo.get(created.id as never);
     expect(persisted?.surfaces).toHaveLength(1);
-    const surface = persisted?.surfaces[0]!;
+    const surface = persisted!.surfaces[0]!;
     expect(surface.name).toBe('Catalog');
     expect(surface.actions).toHaveLength(1);
     expect(surface.actions[0]?.rules).toHaveLength(1);

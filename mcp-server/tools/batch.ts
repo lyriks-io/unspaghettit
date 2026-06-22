@@ -17,15 +17,10 @@ import type {
   EventPayloadField
 } from '../../src/features/behavior-model/domain/entities/EventDefinition';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
-import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
 import type { Parameter } from '../../src/features/behavior-model/domain/entities/Parameter';
 import type { Persona } from '../../src/features/behavior-model/domain/entities/Persona';
 import type { Resource } from '../../src/features/behavior-model/domain/entities/Resource';
 import type { Rule } from '../../src/features/behavior-model/domain/entities/Rule';
-import type {
-  Scenario,
-  ScenarioAssertion
-} from '../../src/features/behavior-model/domain/entities/Scenario';
 import type { StateDefinition } from '../../src/features/behavior-model/domain/entities/StateDefinition';
 import type { Surface } from '../../src/features/behavior-model/domain/entities/Surface';
 import type { Transition } from '../../src/features/behavior-model/domain/entities/Transition';

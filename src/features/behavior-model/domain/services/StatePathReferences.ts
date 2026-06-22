@@ -159,7 +159,7 @@ export const countStatePathReferences = (
 ): StatePathReferences => {
   const target = String(path);
   const refs: StatePathReferences = { ...empty(path) };
-  let mut = refs as { -readonly [K in keyof StatePathReferences]: StatePathReferences[K] };
+  const mut = refs as { -readonly [K in keyof StatePathReferences]: StatePathReferences[K] };
 
   for (const surface of feature.surfaces) {
     for (const def of surface.stateDefinitions) {

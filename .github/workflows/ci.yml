@@ -8,7 +8,7 @@ on:
 
 jobs:
   verify:
-    name: check + test + build
+    name: check + lint + test + build
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -29,6 +29,9 @@ jobs:
 
       - name: Type-check
         run: npm run check
+
+      - name: Lint
+        run: npm run lint
 
       - name: Unit tests
         run: npm test

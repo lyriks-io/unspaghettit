@@ -1,0 +1,16 @@
+# Generated / build output
+build/
+.svelte-kit/
+coverage/
+test-results/
+playwright-report/
+node_modules/
+
+# Vendored & data — not ours to format
+samples/
+static/
+package-lock.json
+*.7z
+
+# Docs keep their own wrapping
+CHANGELOG.md

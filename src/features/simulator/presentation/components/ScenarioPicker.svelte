@@ -13,9 +13,6 @@
   let { feature, surface, action }: Props = $props();
 
   const scenarios = $derived<readonly Scenario[]>(action.scenarios ?? []);
-  const activeScenario = $derived<Scenario | null>(
-    scenarios.find((s) => s.id === simulatorStore.scenarioId) ?? null
-  );
 
   function pick(id: string) {
     if (!id) {

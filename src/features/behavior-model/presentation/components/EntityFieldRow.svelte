@@ -4,7 +4,6 @@
   import { asEntityFieldId } from '$features/behavior-model/domain/value-objects/ids';
   import {
     ALL_DATA_FIELD_TYPES,
-    dataFieldTypeIsContainer,
     dataFieldTypeLabel,
     type EntityFieldType
   } from '$features/behavior-model/domain/value-objects/EntityFieldType';

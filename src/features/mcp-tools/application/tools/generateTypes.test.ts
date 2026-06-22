@@ -45,7 +45,7 @@ describe('generateTypesTool', () => {
   });
 
   it('emits an action parameter shape per action with at least one parameter', () => {
-    const { source, stats } = generateTypesTool(input);
+    const { stats } = generateTypesTool(input);
     const withParams = storefrontFeature.surfaces
       .flatMap((s) => s.actions)
       .filter((c) => c.parameters.length > 0);
