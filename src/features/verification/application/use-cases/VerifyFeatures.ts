@@ -6,6 +6,7 @@ import { runScenariosUseCase } from '$features/simulator/application/use-cases/R
 import { exploreStateSpace, type ExplorerOptions } from '$features/simulator/domain/StateExplorer';
 import { analyzeSurfaceReachability } from '$features/simulator/domain/SurfaceReachability';
 import { aggregateFeatureVerdict } from '../../domain/aggregateVerdict';
+import { analyzeEventCoherence } from '../../domain/analyzeEventCoherence';
 import { detectDrift } from '../../domain/detectDrift';
 import type { VerificationReport } from '../../domain/VerificationReport';
 import {
@@ -64,6 +65,7 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
     }
 
     const drift = detectDrift(loaded, await deps.index.read());
+    const eventCoherence = analyzeEventCoherence(loaded);
 
     const explorerOptions: ExplorerOptions | null =
       input.modelCheck === true
@@ -80,6 +82,9 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
       const exploration =
         explorerOptions !== null ? exploreStateSpace(feature, explorerOptions, siblings) : undefined;
       const featureDrift = drift.stale.filter((d) => d.featureId === String(feature.id));
+      const featureDeadHandlers = eventCoherence.deadHandlers.filter(
+        (h) => h.featureId === String(feature.id)
+      );
 
       const verdict = aggregateFeatureVerdict({
         featureId: String(feature.id),
@@ -89,6 +94,7 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
         reachability,
         ...(exploration ? { exploration } : {}),
         drift: featureDrift,
+        deadHandlers: featureDeadHandlers,
         thresholds
       });
 
@@ -101,6 +107,7 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
       passed: verdicts.every((v) => v.passed),
       features: verdicts,
       drift,
+      eventCoherence,
       summary: {
         featuresChecked: verdicts.length,
         featuresPassed: verdicts.filter((v) => v.passed).length,

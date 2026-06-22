@@ -1,4 +1,5 @@
 import type { DriftReport } from './DriftReport';
+import type { EventCoherenceReport } from './EventCoherenceReport';
 import type { FeatureVerdict } from './VerificationVerdict';
 
 /**
@@ -20,5 +21,6 @@ export type VerificationReport = {
   readonly passed: boolean;
   readonly features: readonly FeatureVerdict[];
   readonly drift: DriftReport;
+  readonly eventCoherence: EventCoherenceReport;
   readonly summary: VerificationSummary;
 };

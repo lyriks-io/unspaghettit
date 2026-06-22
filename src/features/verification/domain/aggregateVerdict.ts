@@ -3,6 +3,7 @@ import type { ExplorationReport } from '$features/simulator/domain/StateExplorer
 import type { SurfaceReachabilityReport } from '$features/simulator/domain/SurfaceReachability';
 import type { RunScenariosOutput } from '$features/simulator/application/use-cases/RunScenarios';
 import type { DriftEntry } from './DriftReport';
+import type { EventHandlerFinding } from './EventCoherenceReport';
 import type { VerificationThresholds } from './VerificationThresholds';
 import { verdictPassed, type FeatureVerdict, type VerdictCheck } from './VerificationVerdict';
 
@@ -20,6 +21,8 @@ export type FeatureVerdictInput = {
   readonly reachability?: SurfaceReachabilityReport;
   /** Drift entries already filtered to this feature. */
   readonly drift: readonly DriftEntry[];
+  /** Dead event handlers in this feature (triggering event emitted by nothing in the project). */
+  readonly deadHandlers?: readonly EventHandlerFinding[];
   readonly thresholds: VerificationThresholds;
 };
 
@@ -142,7 +145,7 @@ const deadActionsCheck = (
 };
 
 const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
-  const { scenarios, maturity, exploration, reachability, drift, thresholds } = input;
+  const { scenarios, maturity, exploration, reachability, drift, deadHandlers, thresholds } = input;
   const checks: VerdictCheck[] = [scenariosCheck(scenarios, thresholds)];
 
   if (exploration) {
@@ -178,6 +181,16 @@ const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
       status: thresholds.allowDrift ? 'warn' : 'fail',
       detail: `${drift.length} implementation(s) audited against an older spec`,
       items: drift.map((d) => `${d.key} (audited ${d.auditedSpecVersion}, now ${d.currentSpecVersion})`)
+    });
+  }
+
+  if (deadHandlers && deadHandlers.length > 0) {
+    checks.push({
+      id: 'events',
+      label: 'Event wiring',
+      status: 'warn',
+      detail: `${deadHandlers.length} handler(s) triggered by an event nothing in the project emits`,
+      items: deadHandlers.map((h) => `${h.actionName} ← "${h.event}"`)
     });
   }
 
