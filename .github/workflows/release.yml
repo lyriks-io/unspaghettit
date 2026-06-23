@@ -19,6 +19,11 @@ name: Publish
 on:
   release:
     types: [published]
+  # Manual fallback: GitHub's `release` event won't fire a workflow that was
+  # added to the default branch after the tag already existed, so a one-off
+  # release can need a hand. Run this from Actions > Publish > "Run workflow"
+  # (on `main`, which carries the version to publish).
+  workflow_dispatch:
 
 permissions:
   contents: read
