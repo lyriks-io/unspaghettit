@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { JsonFolderFeatureRepository } from '../src/features/behavior-model/infrastructure/persistence/JsonFolderFeatureRepository';
 import { discoverSnapshotDirectory } from '../src/features/behavior-model/infrastructure/persistence/snapshot-discovery';
 import { JsonFolderImplementationStatusRepository } from '../src/features/implementation-status/infrastructure/persistence/JsonFolderImplementationStatusRepository';
+import { JsonFolderProvenanceRepository } from '../src/features/source-provenance/infrastructure/persistence/JsonFolderProvenanceRepository';
 import { JsonFolderProjectRepository } from '../src/features/projects/infrastructure/persistence/JsonFolderProjectRepository';
 import { migrateFlatLayoutAndLog } from '../src/shared/infrastructure/persistence/snapshotLayout';
 import { discoverRepoLink } from './repo-link';
@@ -70,6 +71,9 @@ const main = async (): Promise<void> => {
   const projectRepo = new SyncAwareProjectRepository(
     new JsonFolderProjectRepository(directory)
   );
+  // Provenance sidecars are read fresh from disk by the dashboard on each
+  // fetch, so they don't need the Yjs live-broadcast wrapper the others use.
+  const provenanceRepo = new JsonFolderProvenanceRepository(directory);
 
   // Live `.unspa.json` lookup. Tools read `repoContext.link` / `.linkPath`
   // on every invocation, so if the developer runs `unspa link` while the AI
@@ -91,6 +95,7 @@ const main = async (): Promise<void> => {
 
   const server = buildServer(repo, {
     statusRepo,
+    provenanceRepo,
     projectRepo,
     repoContext
   });

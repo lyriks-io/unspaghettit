@@ -129,6 +129,14 @@
       >
         Verify
       </a>
+      <a
+        href={`/features/${feature.id}/provenance`}
+        title="See the analyzed source file with each extracted element highlighted"
+        aria-label="Open source provenance"
+        class="rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+      >
+        Source
+      </a>
       <button
         type="button"
         title={undoTitle}

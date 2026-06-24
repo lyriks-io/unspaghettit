@@ -46,6 +46,7 @@ import { join } from 'node:path';
 export const PROJECT_SUFFIX = '.project.json';
 export const FEATURE_SUFFIX = '.feature.json';
 export const STATUS_SUFFIX = '.implementation-status.json';
+export const PROVENANCE_SUFFIX = '.provenance.json';
 export const DOMAIN_SUFFIX = '.domain.json';
 export const HISTORY_SUFFIX = '.history.json';
 export const UNASSIGNED_FOLDER = '__unassigned';
@@ -76,6 +77,17 @@ export const statusFilePath = (
   projectSlug: string | null,
   featureId: string
 ): string => join(projectDir(root, projectSlug), `${featureId}${STATUS_SUFFIX}`);
+
+/**
+ * Provenance sidecar path. Like the implementation-status sidecar it keys on
+ * the stable featureId (not the human slug) so renames don't orphan it, and it
+ * lives next to its feature in the owning project folder.
+ */
+export const provenanceFilePath = (
+  root: string,
+  projectSlug: string | null,
+  featureId: string
+): string => join(projectDir(root, projectSlug), `${featureId}${PROVENANCE_SUFFIX}`);
 
 export type HistoryKind = 'feature' | 'project' | 'implementation-status';
 
