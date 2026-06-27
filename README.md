@@ -16,7 +16,7 @@
 <p align="center"><strong>Local-first</strong> &nbsp;·&nbsp; <strong>MCP-native</strong> &nbsp;·&nbsp; <strong>AGPL-3.0</strong></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/unspaghettit-demo.gif" alt="Unspaghettit demo: prompt in Claude Code, the runtime builds, the simulator's red line" width="820" />
+  <img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/unspaghettit-demo.gif" alt="Unspaghettit demo: prompt in your AI agent, the runtime builds, the simulator's red line" width="820" />
 </p>
 
 ---
@@ -29,7 +29,7 @@ Prompts become disposable. The specification stays.
 
 ## See it work
 
-You, in Claude Code (or Cursor, Gemini, Windsurf, Codex):
+You, in your AI agent (Claude Code, Cursor, Gemini, Windsurf, Codex):
 
 ```
 Using the Unspaghettit MCP, create a project for a daily-coupon app.
