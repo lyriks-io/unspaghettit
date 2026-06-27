@@ -2,7 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { page } from '$app/stores';
   import { asFeatureId } from '$features/behavior-model/domain/value-objects/ids';
-  import BehaviorGraph from '$features/behavior-model/presentation/components/BehaviorGraph.svelte';
+  import ProjectionViewer from '$features/diagram-projection/presentation/components/ProjectionViewer.svelte';
   import { asProjectId } from '$features/projects/domain/value-objects/ids';
   import { projectFeaturesStore } from '$features/projects/presentation/stores/projectFeaturesStore.svelte';
   import { projectStore } from '$features/projects/presentation/stores/projectStore.svelte';
@@ -73,7 +73,7 @@
     </p>
   </div>
 {:else}
-  <main class="mx-auto max-w-[1800px] px-4 py-6">
-    <BehaviorGraph project={projectStore.project} features={projectFeaturesStore.features} />
+  <main class="w-full px-4 py-6 lg:flex lg:h-[calc(100dvh-4rem)] lg:flex-col lg:overflow-hidden">
+    <ProjectionViewer project={projectStore.project} features={projectFeaturesStore.features} />
   </main>
 {/if}
