@@ -15,8 +15,9 @@
 
 <p align="center"><strong>Local-first</strong> &nbsp;·&nbsp; <strong>MCP-native</strong> &nbsp;·&nbsp; <strong>AGPL-3.0</strong></p>
 
-<!-- A 15s demo GIF belongs right here. It is the single biggest lever on stars.
-     15 seconds: prompt in Claude Code → the runtime builds → the simulator's red line. -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/unspaghettit-demo.gif" alt="Unspaghettit demo: prompt in Claude Code, the runtime builds, the simulator's red line" width="820" />
+</p>
 
 ---
 
