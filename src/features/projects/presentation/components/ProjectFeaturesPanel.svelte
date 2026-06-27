@@ -17,6 +17,7 @@
   import { getBrowserContainer } from "$shared/infrastructure/browserContainer";
   import { tourStore } from "$features/tutorial/presentation/stores/tourStore.svelte";
   import { evaluateTourSubmitGuard } from "$features/tutorial/domain/services/SubmitGuard";
+  import { subscribeSyncEvents } from "$lib/client/sync/syncEvents";
 
   type Props = {
     features: readonly Feature[];
@@ -117,6 +118,34 @@
     return () => {
       cancelled = true;
     };
+  });
+
+  // Re-fetch one feature's implementation status into the cache. The cache
+  // effect above only fills MISSING ids, so an MCP coverage report never
+  // refreshes an already-cached entry on its own.
+  async function refreshImplStatus(featureId: string): Promise<void> {
+    try {
+      const container = await getBrowserContainer();
+      const status = await container.statusRepository.get(featureId as FeatureId);
+      const next = new Map(implByFeatureId);
+      next.set(featureId, status);
+      implByFeatureId = next;
+    } catch {
+      // Best-effort live refresh; a full reload still reconciles.
+    }
+  }
+
+  // Live-refresh the implementation score. An MCP `report_implementation_status`
+  // broadcasts an 'implementation-status' sync event; without this the card kept
+  // showing the old percentage until a full page reload. A 'feature' edit can
+  // also change the expected count, so refetch the status on that kind too.
+  $effect(() => {
+    const unsubscribe = subscribeSyncEvents((evt) => {
+      if (evt.kind !== "implementation-status" && evt.kind !== "feature") return;
+      if (!features.some((f) => String(f.id) === evt.id)) return;
+      void refreshImplStatus(evt.id);
+    });
+    return unsubscribe;
   });
 
   $effect(() => {
