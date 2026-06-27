@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-28
+
+The provenance & projection release. Two ways to *see* the model: where every modeled element came from, and what the model looks like as a diagram.
+
+### Added
+
+- **Source Provenance — store the source a model was extracted from, and trace every element back to it.** When an AI agent analyzes an uploaded file through the MCP, Unspaghettit now stores the original file alongside the model and stamps every extracted element (surface, action, rule, invariant, transition, …) with the exact source span it was derived from. A **Source Capture** workflow on the MCP side (`attach_source_file` → `record_element_span` → `finalize_analysis`, gated so finalize requires every element traced) and a dashboard **Source Viewer** that renders the stored file with each span highlighted and bidirectionally linked to its element — click an element to reveal its span and vice versa, toggle and filter highlights by type.
+
+- **Diagram Projections — project one model into many diagram formats.** Render a single feature or a whole project as a statechart (surfaces + transitions), a sequence diagram (event chains), an ER diagram (entities + fields), a per-action flowchart, or a containment mindmap, alongside the existing free behavior graph. Each format is a pure projector that emits a neutral `DiagramSpec`; a **Projection Viewer** draws it interactively (pick scope + format, drill into elements) and an **Export** panel emits it as copyable **Mermaid** or **Graphviz DOT**, or downloads **SVG/PNG**. Projectors register behind a `Projector` port and exporters behind a `DiagramExporter` port, so the viewer depends on the abstraction, not the concrete formats.
+
+### Fixed
+
+- **Graph view fills the viewport** instead of overflowing into a page scrollbar (the new projection toolbar had pushed the canvas past `100dvh`).
+- **Dragging the behavior graph / diagram canvas no longer selects surrounding page text.**
+- **Feature cards refresh their implementation-coverage score live** when an MCP coverage report arrives, instead of only after a full page reload.
+
+### Changed
+
+- **Documentation restructured** — the README is now a concise overview, with full guides split into `docs/` (getting started, concepts, prompting, collaboration, security, architecture, worlds & quests).
+- The dev server moved off Vite's default `5173` (reserved by WSL2/Hyper-V on Windows) to `8173`.
+
 ## [0.4.0] — 2026-06-23
 
 The verification release. Unspaghettit moves from *describing* behavior to *proving* it. Bounded model checking explores a feature's reachable state space for invariant violations; **liveness / reachability goals** prove "good is reachable", not just "bad never happens"; **project-level invariants** span features; **cross-feature event coherence** catches dead wiring; and spec→code **drift** plus **verified coverage** close the loop so a divergence between model and code fails the build. A headless **`unspa check`** gate, an **`unspa ci`** scaffold, the **`verify` / `get_drift`** MCP tools, and a dashboard **Verify** view (with navigable counterexample traces) make it executable from CLI, chat, and browser. Plus **global search** across the whole model (⌘K / Ctrl+K) and a **reachability-goals editor**. Additive and non-breaking.
