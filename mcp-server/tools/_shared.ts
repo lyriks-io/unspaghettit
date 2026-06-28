@@ -12,6 +12,7 @@ import type {
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import type { getImplementationStatusUseCase } from '../../src/features/implementation-status/application/use-cases/GetImplementationStatus';
 import type { reportImplementationStatusUseCase } from '../../src/features/implementation-status/application/use-cases/ReportImplementationStatus';
+import type { ProvenanceRepository } from '../../src/features/source-provenance/application/ports/ProvenanceRepository';
 import type { ProjectRepository } from '../../src/features/projects/application/ports/ProjectRepository';
 import type { Clock } from '../../src/shared/domain/Clock';
 import type { IdGenerator } from '../../src/shared/domain/IdGenerator';
@@ -28,6 +29,7 @@ export type ToolDeps = {
   readonly mutateFeature: ReturnType<typeof mutateFeatureUseCase>;
   readonly reportImplementationStatus: ReturnType<typeof reportImplementationStatusUseCase>;
   readonly getImplementationStatus: ReturnType<typeof getImplementationStatusUseCase>;
+  readonly provenanceRepo: ProvenanceRepository;
   /** Context the CLI passed about the host repo (link, cwd). */
   readonly repoContext?: RepoContext;
 };

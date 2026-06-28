@@ -6,7 +6,7 @@
   import { implementationStatusStore } from '$features/implementation-status/presentation/stores/implementationStatusStore.svelte';
   import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
   import { setFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
-  import BehaviorGraph from '$features/behavior-model/presentation/components/BehaviorGraph.svelte';
+  import ProjectionViewer from '$features/diagram-projection/presentation/components/ProjectionViewer.svelte';
 
   // Provide the queue context for any editor descendant (e.g. FeatureHeader)
   // rendered under the graph view, mirroring the main feature page.
@@ -33,7 +33,7 @@
     Feature not found. <a href="/features" class="text-brand-700 underline">Back to list</a>.
   </div>
 {:else}
-  <main class="mx-auto max-w-[1600px] px-4 py-6">
-    <BehaviorGraph feature={featureStore.feature} />
+  <main class="w-full px-4 py-6 lg:flex lg:h-[calc(100dvh-4rem)] lg:flex-col lg:overflow-hidden">
+    <ProjectionViewer feature={featureStore.feature} />
   </main>
 {/if}

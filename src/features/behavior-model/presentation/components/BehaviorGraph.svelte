@@ -36,10 +36,7 @@
   let renderer: VisBehaviorGraphRenderer | null = null;
 
   let enabledKinds = $state<Record<BehaviorGraphEdgeKind, boolean>>({
-    // `contains` is the structural skeleton (project → feature → surface →
-    // action) and dominates the canvas; start it OFF so the behavioral edges
-    // (reads/writes/emits/…) read clearly. Users can toggle it back on.
-    contains: false,
+    contains: true,
     reads: true,
     writes: true,
     emits: true,
@@ -181,9 +178,11 @@
   }}
 />
 
-<section class="space-y-4">
-  <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-950/5">
-    <div class="border-b border-slate-200 bg-slate-950 px-4 py-4 text-white">
+<section class="w-full lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+  <div
+    class="select-none overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-950/5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+  >
+    <div class="shrink-0 border-b border-slate-200 bg-slate-950 px-4 py-4 text-white">
       <!-- Back link: top-left, no box — it sits directly on the header so its
            background is the header's own colour (blends in any theme). -->
       <a
@@ -212,12 +211,12 @@
       </div>
     </div>
 
-    <div class="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div class="min-w-0 border-b border-slate-200 lg:border-b-0 lg:border-r">
-        <div class="graph-canvas relative">
+    <div class="grid gap-0 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div class="min-w-0 border-b border-slate-200 lg:min-h-0 lg:border-b-0 lg:border-r">
+        <div class="graph-canvas relative lg:h-full">
           <div
             bind:this={graphContainer}
-            class="h-[76vh] min-h-[720px] w-full"
+            class="h-[76vh] min-h-[32rem] w-full lg:h-full lg:min-h-0"
             aria-label={`Interactive behavior graph for ${graphTitle}`}
           ></div>
 
@@ -244,7 +243,7 @@
                 type="search"
                 bind:value={search}
                 placeholder="Search nodes"
-                class="h-9 w-44 rounded-lg border border-slate-200 bg-white/95 pl-8 pr-3 text-sm shadow-sm outline-none backdrop-blur transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/15 sm:w-60"
+                class="h-9 w-44 select-text rounded-lg border border-slate-200 bg-white/95 pl-8 pr-3 text-sm shadow-sm outline-none backdrop-blur transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/15 sm:w-60"
               />
             </div>
             <div class="relative" bind:this={filtersMenuRef}>
@@ -459,7 +458,7 @@
         </div>
       </div>
 
-      <aside class="space-y-4 p-4">
+      <aside class="space-y-4 p-4 lg:min-h-0 lg:overflow-y-auto">
         <div>
           <h3 class="text-sm font-semibold text-slate-950">Graph Summary</h3>
           <div class="mt-3 grid grid-cols-2 gap-2 text-sm">

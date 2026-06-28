@@ -1,27 +1,24 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { page } from "$app/state";
-  import { fade } from "svelte/transition";
-  import { cubicOut } from "svelte/easing";
-  import AppDialog from "$shared/presentation/dialogs/AppDialog.svelte";
-  import FlyingSpaghettiEasterEgg from "$shared/presentation/easter-eggs/FlyingSpaghettiEasterEgg.svelte";
-  import SyncToast from "$shared/presentation/toast/SyncToast.svelte";
-  import TourOverlay from "$features/tutorial/presentation/components/TourOverlay.svelte";
-  import GlobalSearch from "$features/global-search/presentation/components/GlobalSearch.svelte";
-  import FloatingQueueWidget from "$features/implementation-queue/presentation/components/FloatingQueueWidget.svelte";
-  import { projectsStore } from "$features/projects/presentation/stores/projectsStore.svelte";
-  import { builderModeStore } from "$features/builder-mode/presentation/stores/builderModeStore.svelte";
-  import { enabledViews, isEnabled } from "$lib/views/enabled";
-  import { themeStore } from "$lib/theme/themeStore.svelte";
-  import { ALL_THEMES } from "$lib/theme/registry";
-  import { identityStore } from "$shared/identity/identityStore.svelte";
-  import { authStore } from "$shared/security/authStore.svelte";
-  import { apiFetch } from "$shared/security/apiFetch";
-  import {
-    confirmDialog,
-    promptDialog,
-  } from "$shared/presentation/dialogs/dialogStore.svelte";
-  import "../app.css";
+  import { onMount } from 'svelte';
+  import { page } from '$app/state';
+  import { fade } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
+  import AppDialog from '$shared/presentation/dialogs/AppDialog.svelte';
+  import FlyingSpaghettiEasterEgg from '$shared/presentation/easter-eggs/FlyingSpaghettiEasterEgg.svelte';
+  import SyncToast from '$shared/presentation/toast/SyncToast.svelte';
+  import TourOverlay from '$features/tutorial/presentation/components/TourOverlay.svelte';
+  import GlobalSearch from '$features/global-search/presentation/components/GlobalSearch.svelte';
+  import FloatingQueueWidget from '$features/implementation-queue/presentation/components/FloatingQueueWidget.svelte';
+  import { projectsStore } from '$features/projects/presentation/stores/projectsStore.svelte';
+  import { builderModeStore } from '$features/builder-mode/presentation/stores/builderModeStore.svelte';
+  import { enabledViews, isEnabled } from '$lib/views/enabled';
+  import { themeStore } from '$lib/theme/themeStore.svelte';
+  import { ALL_THEMES } from '$lib/theme/registry';
+  import { identityStore } from '$shared/identity/identityStore.svelte';
+  import { authStore } from '$shared/security/authStore.svelte';
+  import { apiFetch } from '$shared/security/apiFetch';
+  import { confirmDialog, promptDialog } from '$shared/presentation/dialogs/dialogStore.svelte';
+  import '../app.css';
 
   onMount(async () => {
     // Hydrate the display-name store from localStorage before anything
@@ -56,20 +53,20 @@
     try {
       await projectsStore.reconcileOrphanFeatures();
     } catch (e) {
-      console.warn("Orphan reconciliation failed:", e);
+      console.warn('Orphan reconciliation failed:', e);
     }
   });
 
   async function editIdentity() {
     const next = await promptDialog({
-      title: "Your display name",
+      title: 'Your display name',
       message:
-        "Shown on every history entry you create. Stored locally in this browser — never sent off-machine. Leave empty to stay anonymous.",
-      inputLabel: "Display name",
+        'Shown on every history entry you create. Stored locally in this browser — never sent off-machine. Leave empty to stay anonymous.',
+      inputLabel: 'Display name',
       defaultValue: identityStore.name,
-      placeholder: "e.g. John",
-      confirmLabel: "Save",
-      tone: "info",
+      placeholder: 'e.g. John',
+      confirmLabel: 'Save',
+      tone: 'info'
     });
     if (next !== null) identityStore.setName(next);
   }
@@ -85,24 +82,16 @@
   let settingsMenuRef = $state<HTMLDivElement | null>(null);
   let themeMenuOpen = $state(false);
   let themeMenuRef = $state<HTMLDivElement | null>(null);
-  let hubDirectory = $state("");
-  let hubDirectoryError = $state("");
+  let hubDirectory = $state('');
+  let hubDirectoryError = $state('');
   let openingHubDirectory = $state(false);
 
   function handleGlobalMouseDown(event: MouseEvent) {
     const target = event.target as Node;
-    if (
-      identityMenuOpen &&
-      identityMenuRef &&
-      !identityMenuRef.contains(target)
-    ) {
+    if (identityMenuOpen && identityMenuRef && !identityMenuRef.contains(target)) {
       identityMenuOpen = false;
     }
-    if (
-      settingsMenuOpen &&
-      settingsMenuRef &&
-      !settingsMenuRef.contains(target)
-    ) {
+    if (settingsMenuOpen && settingsMenuRef && !settingsMenuRef.contains(target)) {
       settingsMenuOpen = false;
     }
     if (themeMenuOpen && themeMenuRef && !themeMenuRef.contains(target)) {
@@ -122,38 +111,34 @@
 
   async function loadHubDirectory() {
     try {
-      const response = await apiFetch("/api/system/hub-directory");
+      const response = await apiFetch('/api/system/hub-directory');
       if (!response.ok) throw new Error(await response.text());
       const payload = (await response.json()) as { directory?: unknown };
-      if (typeof payload.directory !== "string") {
-        throw new Error("The server returned an invalid directory.");
+      if (typeof payload.directory !== 'string') {
+        throw new Error('The server returned an invalid directory.');
       }
       hubDirectory = payload.directory;
-      hubDirectoryError = "";
+      hubDirectoryError = '';
     } catch (error) {
-      hubDirectoryError =
-        error instanceof Error ? error.message : "Could not locate the hub.";
+      hubDirectoryError = error instanceof Error ? error.message : 'Could not locate the hub.';
     }
   }
 
   async function openHubDirectory() {
     openingHubDirectory = true;
-    hubDirectoryError = "";
+    hubDirectoryError = '';
     try {
-      const response = await apiFetch("/api/system/hub-directory", {
-        method: "POST",
+      const response = await apiFetch('/api/system/hub-directory', {
+        method: 'POST'
       });
       if (!response.ok) throw new Error(await response.text());
       const payload = (await response.json()) as { directory?: unknown };
-      if (typeof payload.directory === "string") {
+      if (typeof payload.directory === 'string') {
         hubDirectory = payload.directory;
       }
       settingsMenuOpen = false;
     } catch (error) {
-      hubDirectoryError =
-        error instanceof Error
-          ? error.message
-          : "Could not open the hub folder.";
+      hubDirectoryError = error instanceof Error ? error.message : 'Could not open the hub folder.';
     } finally {
       openingHubDirectory = false;
     }
@@ -172,12 +157,12 @@
   // state the user can't otherwise reach without devtools.
   async function clearLocalData() {
     const ok = await confirmDialog({
-      title: "Reset local browser data?",
+      title: 'Reset local browser data?',
       message:
         "Clears your display name, the dashboard's local preferences, and any cached per-tab state in this browser. Your projects, features, history, and queue stay on disk untouched. The page will reload to apply a fresh state.",
-      confirmLabel: "Reset everything",
-      cancelLabel: "Cancel",
-      tone: "danger",
+      confirmLabel: 'Reset everything',
+      cancelLabel: 'Cancel',
+      tone: 'danger'
     });
     if (!ok) return;
     try {
@@ -204,13 +189,13 @@
   // the Expert/Builder switcher while that theme is active.
   const showViewSwitcher = $derived(views.length > 1 && !themeStore.isLyriks);
   const builderActive = $derived(
-    isEnabled("builder") && page.url.pathname.startsWith("/builder-mode"),
+    isEnabled('builder') && page.url.pathname.startsWith('/builder-mode')
   );
-  const mcpActive = $derived(page.url.pathname.startsWith("/mcp"));
+  const mcpActive = $derived(page.url.pathname.startsWith('/mcp'));
   // The feature editor + graph use a wider 1600px content column than the rest
   // of the app (max-w-7xl). Match the header container to whichever the current
   // route uses, so the header always spans the same width as the content below.
-  const wideContent = $derived(page.url.pathname.startsWith("/features/"));
+  const wideContent = $derived(page.url.pathname.startsWith('/features/'));
   // The Lyriks theme paints the header with a saturated violet→fuchsia
   // gradient (see below) and the shell with a cool canvas. Cosmetic only.
   const lyriks = $derived(themeStore.isLyriks);
@@ -219,9 +204,7 @@
   // header's foreground (logo, icons, switcher) stays legible on a dark/vivid
   // background. The dropdown panels keep their own white surface regardless.
   const dark = $derived(builderActive || lyriks);
-  const builderProject = $derived(
-    builderActive ? builderModeStore.selectedProject : null,
-  );
+  const builderProject = $derived(builderActive ? builderModeStore.selectedProject : null);
   const builderSearch = $derived(builderModeStore.search);
 
   // The route key drives the transition. Including the dynamic params (e.g.
@@ -233,7 +216,7 @@
 <svelte:window
   onmousedown={handleGlobalMouseDown}
   onkeydown={(e) => {
-    if (e.key === "Escape") {
+    if (e.key === 'Escape') {
       identityMenuOpen = false;
       settingsMenuOpen = false;
       themeMenuOpen = false;
@@ -261,9 +244,9 @@
       <div class="flex min-w-0 items-center gap-3">
         <a href="/" class="flex shrink-0 items-center gap-2.5">
           <img
-            src={lyriks ? "/lyriks_logo.svg" : "/unspaghettit_logo.png"}
-            alt={lyriks ? "Lyriks" : "Unspaghettit"}
-            class={lyriks ? "h-9 w-9 shrink-0" : "h-12 w-auto"}
+            src={lyriks ? '/lyriks_logo.svg' : '/unspaghettit_logo.png'}
+            alt={lyriks ? 'Lyriks' : 'Unspaghettit'}
+            class={lyriks ? 'h-9 w-9 shrink-0' : 'h-12 w-auto'}
           />
           {#if lyriks}
             <!-- Clean stacked lockup: wordmark with an aligned uppercase
@@ -315,7 +298,7 @@
                   : dark
                     ? 'text-slate-400 hover:text-slate-200'
                     : 'text-slate-500 hover:text-slate-800'}"
-                aria-current={active ? "page" : undefined}
+                aria-current={active ? 'page' : undefined}
               >
                 {view.label}
               </a>
@@ -338,9 +321,7 @@
       </div>
       {#if builderActive}
         <div class="mx-3 hidden min-w-0 flex-1 justify-center md:flex">
-          <label for="builder-global-search" class="sr-only"
-            >Search builder</label
-          >
+          <label for="builder-global-search" class="sr-only">Search builder</label>
           <div class="relative w-full max-w-md">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -361,10 +342,7 @@
               type="search"
               placeholder="Search..."
               value={builderSearch}
-              oninput={(e) =>
-                builderModeStore.setSearch(
-                  (e.target as HTMLInputElement).value,
-                )}
+              oninput={(e) => builderModeStore.setSearch((e.target as HTMLInputElement).value)}
               class="h-9 w-full rounded-lg border border-slate-700 bg-slate-900/70 py-1.5 pl-9 pr-9 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
             />
             {#if builderSearch.trim().length > 0}
@@ -465,9 +443,7 @@
                   ></span>
                   <span class="min-w-0 flex-1">
                     <span class="block font-medium">{theme.label}</span>
-                    <span class="block text-[11px] text-slate-500"
-                      >{theme.description}</span
-                    >
+                    <span class="block text-[11px] text-slate-500">{theme.description}</span>
                   </span>
                   {#if active}
                     <svg
@@ -572,7 +548,7 @@
                 role="menuitem"
                 onclick={openHubDirectory}
                 disabled={openingHubDirectory}
-                title={hubDirectory || "Open the active snapshot folder"}
+                title={hubDirectory || 'Open the active snapshot folder'}
                 class="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
               >
                 <svg
@@ -594,13 +570,10 @@
                 </svg>
                 <span class="min-w-0 flex-1">
                   <span class="block font-medium">
-                    {openingHubDirectory ? "Opening hub folder…" : "Open hub folder"}
+                    {openingHubDirectory ? 'Opening hub folder…' : 'Open hub folder'}
                   </span>
-                  <span
-                    class="block truncate text-[11px] text-slate-500"
-                    title={hubDirectory}
-                  >
-                    {hubDirectory || "Folder containing all project snapshots"}
+                  <span class="block truncate text-[11px] text-slate-500" title={hubDirectory}>
+                    {hubDirectory || 'Folder containing all project snapshots'}
                   </span>
                   {#if hubDirectoryError}
                     <span class="mt-0.5 block text-[11px] text-rose-600">
@@ -636,8 +609,7 @@
                 <span class="min-w-0 flex-1">
                   <span class="block font-semibold">Reset local data</span>
                   <span class="block text-[11px] text-rose-600/80">
-                    Wipes display name + browser settings. Projects on disk are
-                    kept.
+                    Wipes display name + browser settings. Projects on disk are kept.
                   </span>
                 </span>
               </button>
@@ -670,10 +642,7 @@
             <line x1="12" y1="17.5" x2="12.01" y2="17.5" />
           </svg>
         </a>
-        <div
-          bind:this={identityMenuRef}
-          class="relative flex items-center gap-1.5"
-        >
+        <div bind:this={identityMenuRef} class="relative flex items-center gap-1.5">
           <button
             type="button"
             onclick={() => {
@@ -684,10 +653,10 @@
             aria-expanded={identityMenuOpen}
             aria-label={identityStore.name
               ? `Signed in as ${identityStore.name}. Open identity menu.`
-              : "Set your display name"}
+              : 'Set your display name'}
             title={identityStore.name
               ? `Signed in as ${identityStore.name}`
-              : "Set a display name so your edits are recognisable in history"}
+              : 'Set a display name so your edits are recognisable in history'}
             class="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold shadow-sm shadow-slate-950/5 ring-1 ring-transparent transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300
               {identityStore.name
               ? 'bg-linear-to-br from-brand-600 to-brand-800 text-white hover:from-brand-500 hover:to-brand-700'
@@ -734,9 +703,7 @@
                 >
                   Signed in as
                 </p>
-                <p
-                  class="truncate px-3 pb-2 text-sm font-medium text-slate-800"
-                >
+                <p class="truncate px-3 pb-2 text-sm font-medium text-slate-800">
                   {identityStore.name}
                 </p>
                 <div class="my-1 h-px bg-slate-100"></div>
@@ -759,15 +726,11 @@
                   aria-hidden="true"
                 >
                   <path d="M12 20h9" />
-                  <path
-                    d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"
-                  />
+                  <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                 </svg>
                 <span class="min-w-0 flex-1">
                   <span class="block font-medium">
-                    {identityStore.name
-                      ? "Change display name"
-                      : "Set display name"}
+                    {identityStore.name ? 'Change display name' : 'Set display name'}
                   </span>
                   <span class="block text-[11px] text-slate-500">
                     Shown on every history entry you create.
@@ -781,9 +744,7 @@
     </div>
     {#if builderActive}
       <div class="mx-auto px-4 pb-3 md:hidden">
-        <label for="builder-global-search-mobile" class="sr-only"
-          >Search builder</label
-        >
+        <label for="builder-global-search-mobile" class="sr-only">Search builder</label>
         <div class="relative">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -804,8 +765,7 @@
             type="search"
             placeholder="Search..."
             value={builderSearch}
-            oninput={(e) =>
-              builderModeStore.setSearch((e.target as HTMLInputElement).value)}
+            oninput={(e) => builderModeStore.setSearch((e.target as HTMLInputElement).value)}
             class="h-9 w-full rounded-lg border border-slate-700 bg-slate-900/70 py-1.5 pl-9 pr-9 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
           />
           {#if builderSearch.trim().length > 0}
@@ -827,7 +787,7 @@
     {#key routeKey}
       <div
         in:fade={{ duration: 160, easing: cubicOut }}
-        class="motion-reduce:animate-none! motion-reduce:opacity-100!"
+        class="motion-reduce:animate-none! motion-reduce:opacity-100! bg-[#152ffd0a]"
       >
         {@render children()}
       </div>

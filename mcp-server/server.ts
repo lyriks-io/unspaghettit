@@ -7,6 +7,8 @@ import { mutateFeatureUseCase } from '../src/features/behavior-model/application
 import { exportFeatureToJson } from '../src/features/behavior-model/infrastructure/io/FeatureJson';
 import type { ImplementationStatusRepository } from '../src/features/implementation-status/application/ports/ImplementationStatusRepository';
 import { InMemoryImplementationStatusRepository } from '../src/features/implementation-status/infrastructure/persistence/InMemoryImplementationStatusRepository';
+import type { ProvenanceRepository } from '../src/features/source-provenance/application/ports/ProvenanceRepository';
+import { InMemoryProvenanceRepository } from '../src/features/source-provenance/infrastructure/persistence/InMemoryProvenanceRepository';
 import { getImplementationStatusUseCase } from '../src/features/implementation-status/application/use-cases/GetImplementationStatus';
 import { reportImplementationStatusUseCase } from '../src/features/implementation-status/application/use-cases/ReportImplementationStatus';
 import type { ProjectRepository } from '../src/features/projects/application/ports/ProjectRepository';
@@ -28,6 +30,7 @@ import { registerInvariantTools } from './tools/invariant';
 import { registerParameterTools } from './tools/parameter';
 import { registerPersonaTools } from './tools/persona';
 import { registerProjectTools } from './tools/project';
+import { registerProvenanceTools } from './tools/provenance';
 import { registerReachabilityGoalTools } from './tools/reachabilityGoal';
 import { registerQueueTools } from './tools/queue';
 import { registerReadTools } from './tools/read';
@@ -79,6 +82,7 @@ export type BuildServerDeps = {
   readonly clock?: Clock;
   readonly ids?: IdGenerator;
   readonly statusRepo?: ImplementationStatusRepository;
+  readonly provenanceRepo?: ProvenanceRepository;
   readonly projectRepo?: ProjectRepository;
   readonly repoContext?: RepoContext;
 };
@@ -130,6 +134,7 @@ export const buildServer = (
   const clock = deps.clock ?? systemClock;
   const ids = deps.ids ?? cryptoIdGenerator;
   const statusRepo = deps.statusRepo ?? new InMemoryImplementationStatusRepository();
+  const provenanceRepo = deps.provenanceRepo ?? new InMemoryProvenanceRepository();
   const projectRepo = deps.projectRepo ?? new InMemoryProjectRepository();
   const mutateFeature = mutateFeatureUseCase({ repository: repo, clock });
   const reportImplementationStatus = reportImplementationStatusUseCase({
@@ -153,6 +158,7 @@ export const buildServer = (
     mutateFeature,
     reportImplementationStatus,
     getImplementationStatus,
+    provenanceRepo,
     repoContext: deps.repoContext
   };
 
@@ -181,6 +187,7 @@ export const buildServer = (
   registerReorderTools(toolDeps);
   registerBatchTool(toolDeps);
   registerImplementationStatusTools(toolDeps);
+  registerProvenanceTools(toolDeps);
   registerProjectTools(toolDeps);
   registerQueueTools(toolDeps);
   registerSpecGapsTool(toolDeps);
