@@ -94,7 +94,7 @@ Setup, run, verify, and codegen.
 | `unspa list`                  | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload. |
 | `unspa link`                  | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding. |
 | `unspa scenarios export`      | **[experimental]** Generate a Vitest spec from a feature's authored scenarios, using the deterministic simulator as the oracle. |
-| `unspa scenarios adapter`     | **[experimental]** Scaffold the `UnspaAdapter` stub the export needs — a case per scenario-bearing action, pre-seeded with `.unspa.json` implementation locations. |
+| `unspa scenarios adapter`     | **[experimental]** Scaffold the `UnspaAdapter` stub the export needs - a case per scenario-bearing action, pre-seeded with `.unspa.json` implementation locations. |
 | `unspa uninstall`             | Reverse `init`: strip the MCP entry from picked clients, remove the unspa blocks from `.gitignore` / `CLAUDE.md` / `AGENTS.md`, uninstall skills, optionally purge `unspa/` and unlink the CLI globally. |
 
 ## Quick start (in any repo)
@@ -141,7 +141,7 @@ unspa init --fun                        # pre-check the opt-in narrative skills 
 
 What it does:
 
-1. **Resolves where the model lives.** By default this is the **shared hub** (`~/.unspa-hub/unspa`) — no folder is scaffolded in the repo and no `UNSPA_SNAPSHOTS` is written, because discovery falls back to the hub automatically. Pass `--local` to scaffold a per-repo `unspa/` (found by walk-up, so the model travels with the repo in git), or `--hub <path>` for a non-default hub location.
+1. **Resolves where the model lives.** By default this is the **shared hub** (`~/.unspa-hub/unspa`) - no folder is scaffolded in the repo and no `UNSPA_SNAPSHOTS` is written, because discovery falls back to the hub automatically. Pass `--local` to scaffold a per-repo `unspa/` (found by walk-up, so the model travels with the repo in git), or `--hub <path>` for a non-default hub location.
 2. **Registers the MCP server** with the AI clients you pick, scoped to the
    current project (`.mcp.json`, `.cursor/mcp.json`, …). Pass `--scope global`
    if you'd rather write to `~/.claude.json` / `~/.cursor/mcp.json` and have
@@ -153,7 +153,7 @@ What it does:
      because AI clients spawn without a shell, and Node refuses to execute
      `.cmd` / `.ps1` shims directly, so we wrap with `cmd /c`.
 
-   For the default hub and per-repo (`--local`) installs the entry carries **no env** — discovery finds the folder. Only `--hub <path>` (a non-default location) adds `env.UNSPA_SNAPSHOTS=<absolute path>`, since walk-up can't reach it.
+   For the default hub and per-repo (`--local`) installs the entry carries **no env** - discovery finds the folder. Only `--hub <path>` (a non-default location) adds `env.UNSPA_SNAPSHOTS=<absolute path>`, since walk-up can't reach it.
 
    Merged into existing `mcpServers.*` entries, your other servers stay intact.
 3. **Adds a `# >>> unspa` block to `.gitignore`** for hot-reload artefacts.
@@ -162,13 +162,13 @@ What it does:
    - That an Unspaghettit MCP server is available
    - When to use it instead of regenerating JSON
    - How to record implementations in the `.unspa.json` behavioral index
-5. **Installs the three core skills under `.claude/skills/`** (see [Skills](#skills)). Two opt-in narrative skills (`unspa-worldbuild`, `unspa-worldplay`) also ship with the package and land when fun mode is on — invoke the CLI as `unspaghettit init`, pass `--fun`, or tick the box in the interactive prompt.
+5. **Installs the three core skills under `.claude/skills/`** (see [Skills](#skills)). Two opt-in narrative skills (`unspa-worldbuild`, `unspa-worldplay`) also ship with the package and land when fun mode is on - invoke the CLI as `unspaghettit init`, pass `--fun`, or tick the box in the interactive prompt.
 
 #### Where the model lives
 
 Discovery order, shared by the MCP server and `unspa dashboard`:
 
-1. Explicit override — `UNSPA_SNAPSHOTS` env var, the MCP's `--snapshots` flag, or `unspa dashboard --snapshots <dir>`.
+1. Explicit override - `UNSPA_SNAPSHOTS` env var, the MCP's `--snapshots` flag, or `unspa dashboard --snapshots <dir>`.
 2. A per-repo `unspa/` folder found by **walking up** from the launch directory.
 3. The **shared hub** at `~/.unspa-hub/unspa` (the default fallback).
 
@@ -183,7 +183,7 @@ unspa init --hub /abs/path/to/hub    # absolute non-default hub path
 unspa init --custom                  # interactive: choose hub / per-repo / custom path
 ```
 
-- A **per-repo `unspa/`** (`--local`) writes no env var — the model travels with the repo and wins via walk-up whenever a client launches inside it.
+- A **per-repo `unspa/`** (`--local`) writes no env var - the model travels with the repo and wins via walk-up whenever a client launches inside it.
 - A **non-default hub path** (`--hub <path>`) does write `env.UNSPA_SNAPSHOTS=<resolved path>`, because walk-up can't reach it.
 - Repo-level binding still works in any mode: run `unspa link` inside a repo to write `.unspa.json` and scope that repo's MCP queries to one project.
 - Switch later with a re-run (`unspa init`, `unspa init --local`, `unspa init --hub <path>`), or take a one-off look at any folder with `unspa dashboard --snapshots <dir>`.
@@ -262,7 +262,7 @@ the init prompt), or for a single run with `unspa dashboard --view builder`.
 
 ### `unspa check [featureId]`
 
-Runs the whole verification spine over a project and **exits non-zero on failure**, so the spec can break a build instead of staying advisory. Per feature it runs every scenario as an executable spec test, scores maturity, analyses surface (navigation) reachability, optionally model-checks the reachable state space, and folds in spec→code drift and cross-feature event coherence. Each check is `pass` / `warn` / `fail`; the run fails only on genuine failures (a failing scenario, a reachable invariant violation, or — when explicitly gated — the others).
+Runs the whole verification spine over a project and **exits non-zero on failure**, so the spec can break a build instead of staying advisory. Per feature it runs every scenario as an executable spec test, scores maturity, analyses surface (navigation) reachability, optionally model-checks the reachable state space, and folds in spec→code drift and cross-feature event coherence. Each check is `pass` / `warn` / `fail`; the run fails only on genuine failures (a failing scenario, a reachable invariant violation, or - when explicitly gated - the others).
 
 ```bash
 unspa check                          # verify the repo's linked project (or all features)
@@ -326,7 +326,7 @@ Then `npx vitest run` against the generated file.
 
 **Drift reporting**: if the simulator's prediction disagrees with a scenario's
 authored `expectedStatus`, the CLI prints the disagreement and the generated
-test embeds a comment showing both. Tests still emit as authored — the human
+test embeds a comment showing both. Tests still emit as authored - the human
 picks which oracle is right.
 
 **Status: preview.** The adapter contract (`UnspaAdapter`, `AdapterInvocation`,
@@ -338,7 +338,7 @@ Pin the `unspaghettit` dependency if CI depends on these tests.
 Scaffolds the adapter that `scenarios export` calls, so you don't write it from
 scratch. It emits one `case` per scenario-bearing action (exactly the actions the
 export tests cover), pre-seeded with the implementation location recorded in
-`.unspa.json` (`file:line — signature`) as a comment, plus a `TODO` body.
+`.unspa.json` (`file:line - signature`) as a comment, plus a `TODO` body.
 
 ```bash
 unspa scenarios adapter <featureId>            # writes ./unspa.adapter.ts
@@ -356,19 +356,19 @@ then fails CI. Same experimental status as `export`.
 Closes the proof loop: turns a real `vitest` run into **verified** coverage in
 `.unspa.json`. The generated spec tags each test with a token
 (`[unspa:surface:action:scenario]`), so a standard Vitest JSON report maps back
-to the spec — no custom reporter needed.
+to the spec - no custom reporter needed.
 
 ```bash
 # 1. generate the spec + adapter, fill the adapter, then run vitest with the JSON reporter:
 vitest run my-feature.scenarios.spec.ts --reporter=json --outputFile=unspa-results.json
-# 2. ingest the report — stamps verifiedAt on each action whose scenarios all passed:
+# 2. ingest the report - stamps verifiedAt on each action whose scenarios all passed:
 unspa coverage ingest unspa-results.json
 unspa coverage ingest unspa-results.json --dry-run   # preview, don't write
 ```
 
 An action whose scenarios all pass is stamped `verifiedAt` (promoted from
 "claimed implemented" to "proven"); one that regresses has the stamp cleared.
-Recording only — gate on it with `unspa check --min-verified <pct>`. The
+Recording only - gate on it with `unspa check --min-verified <pct>`. The
 adapter/report contract is preview, same as `scenarios export`.
 
 ## Skills
@@ -392,7 +392,7 @@ JSON, record implementations in the `.unspa.json` behavioral index rather
 than annotating source code, and call `sync_from_index` so the dashboard
 sees new coverage. The narrative pair maps locations to surfaces, world
 state to shared state, and "what the player can do here" to actions with
-preconditions — see the closing section of the project README for the
+preconditions - see the closing section of the project README for the
 full pitch. Skills live in the project so they version with the codebase.
 
 ## AI client support

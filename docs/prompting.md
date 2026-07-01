@@ -113,7 +113,7 @@ Use the current app stack. If the spec is missing something needed for implement
 update the spec first, then write the code.
 ```
 
-## Workflows — recipes by where you start
+## Workflows - recipes by where you start
 
 The LLM does the reading and writing through the MCP in every direction; Unspaghettit gives it a structured target, a deterministic simulator, and a verification gate. Pick the recipe that matches where you're starting.
 
@@ -123,9 +123,9 @@ You have an idea and an AI assistant, and you want a spec you can trust *before 
 
 1. **Set up.** `unspa init` wires the MCP into your AI client; `unspa dashboard` lets you watch the model take shape.
 2. **Model it.** Tell the assistant what you're building and to use the Unspaghettit MCP at 100% maturity. It calls `create_project`, then `create_feature` / `apply_batch` to build surfaces, actions, state, rules, effects, events, invariants, and scenarios. Validation errors come back inline, so the model converges instead of drifting.
-3. **Prove the spec is sound — before a line of code.** `run_all_scenarios` runs every scenario as a deterministic test; `model_check` explores the reachable state space for invariant counterexamples, dead actions, and soft-locks; `score_feature` / `get_spec_gaps` flag shallow modelling. Or one call: **`verify`**.
+3. **Prove the spec is sound - before a line of code.** `run_all_scenarios` runs every scenario as a deterministic test; `model_check` explores the reachable state space for invariant counterexamples, dead actions, and soft-locks; `score_feature` / `get_spec_gaps` flag shallow modelling. Or one call: **`verify`**.
 4. **Generate contracts.** `generate_types` writes TypeScript types for state shapes, event names, and parameters. Your code imports them, so TypeScript catches drift the moment the spec changes.
-5. **Implement.** The assistant writes the code against those types, using the scenario results as the oracle, and records each entity's location in `.unspa.json` (`{file, line, signature}`) — never annotating source.
+5. **Implement.** The assistant writes the code against those types, using the scenario results as the oracle, and records each entity's location in `.unspa.json` (`{file, line, signature}`) - never annotating source.
 6. **Prove the code matches the spec.** `unspa scenarios adapter <id>` + `unspa scenarios export <id>` generate a Vitest suite from the scenarios; run it (`vitest --reporter=json`) and `unspa coverage ingest` marks each passing action **verified** (proven, not just claimed).
 7. **Gate it.** `unspa ci` drops a GitHub Actions workflow running `unspa check --model-check --min-verified 80` on every push.
 
@@ -133,7 +133,7 @@ You have an idea and an AI assistant, and you want a spec you can trust *before 
 
 You have a project (yours, or one of the samples) and want to add one capability without boiling the ocean.
 
-1. Ask for the feature by name, scoped tight and implementation-ready — e.g. *"add a refund-approval flow for the support agent; reuse existing billing concepts; 100% maturity."* A Feature is one LLM-sized slice (1–15 surfaces); keep it that size and split if it grows.
+1. Ask for the feature by name, scoped tight and implementation-ready - e.g. *"add a refund-approval flow for the support agent; reuse existing billing concepts; 100% maturity."* A Feature is one LLM-sized slice (1–15 surfaces); keep it that size and split if it grows.
 2. The assistant adds it with `add_feature_to_project` + `apply_batch`, reusing existing events / entities / resources where they fit.
 3. `verify <featureId>` (or the dashboard's **Verify** tab) confirms scenarios pass, invariants hold, and nothing's unreachable. Implement, then `coverage ingest` to prove it.
 
@@ -142,16 +142,16 @@ You have a project (yours, or one of the samples) and want to add one capability
 You have a product whose behavior lives only in the code (and stale docs), and you want it made explicit and machine-checkable.
 
 1. Point the assistant at the repo: *"read this repository and model the behavior already implemented; start with the most important user-facing flows."*
-2. It reads the code and builds the model batch by batch — one Feature per coherent flow.
+2. It reads the code and builds the model batch by batch - one Feature per coherent flow.
 3. **Map it back.** For each spec entity it writes a `.unspa.json` entry pointing at the implementing `{file, line, signature}`, then `sync_from_index` reconciles the two and reports coverage + gaps.
 4. **Find what's shallow or missing.** `score_feature`, `get_spec_gaps`, and `get_implementation_gaps` show where the model under-describes the code (or the code is unindexed). Iterate until it audits clean.
-5. You now have a legible, machine-checkable map of what your product does, wired to the source — so future drift is visible.
+5. You now have a legible, machine-checkable map of what your product does, wired to the source - so future drift is visible.
 
 ### 4. Keep spec and code in sync (audit & drift)
 
 The model exists and the code exists; you want to know, at any moment, whether they still agree.
 
-1. **Did the spec change under the code?** `get_drift` lists every implementation audited against an older spec than the one now on disk — re-audit those.
+1. **Did the spec change under the code?** `get_drift` lists every implementation audited against an older spec than the one now on disk - re-audit those.
 2. **Does the code still do what the spec says?** Re-run the scenario suite and `unspa coverage ingest`; a regression clears the `verifiedAt` stamp, so the proven share drops and the gate notices.
 3. **One verdict.** `verify` (or `unspa check` in CI) folds scenarios + maturity + reachability + model checking + drift + cross-feature event coherence + verified coverage into a single pass/warn/fail.
 

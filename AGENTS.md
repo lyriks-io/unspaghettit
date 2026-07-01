@@ -2,7 +2,7 @@
 ## Unspaghettit (auto-managed by `unspa` CLI)
 
 This repo models its software as executable behavior with [Unspaghettit](https://unspaghettit.dev).
-The model lives in your Unspaghettit snapshots folder — the shared hub
+The model lives in your Unspaghettit snapshots folder - the shared hub
 (`~/.unspa-hub/unspa`) by default, or this repo's `unspa/` folder for a
 per-repo install (`unspa init --local`). Open the dashboard with
 `unspa dashboard` (http://localhost:3000) to see surfaces, actions, simulator,
@@ -27,10 +27,10 @@ and produce smaller diffs. Workflow:
    save. Add ops can capture their new id under `op.ref` so later ops in the same
    batch reference it via `*Ref` (e.g. `surfaceRef:"shop"`).
 4. Validate before committing: `dry_run_simulate` (pure, no persist),
-   `run_all_scenarios`, `model_check` (bounded state-space exploration —
+   `run_all_scenarios`, `model_check` (bounded state-space exploration -
    invariant counterexamples with the action path, dead actions, deadlocks,
    reachability, reachability-goal results), and `score_feature` (maturity).
-   Gate the whole feature/project in one call with `verify` — the in-chat form
+   Gate the whole feature/project in one call with `verify` - the in-chat form
    of the `unspa check` CI command. `get_drift` finds code audited against an
    older spec than the one now on disk.
 5. Run `find_state_references` before renaming or removing a state path.
@@ -38,7 +38,7 @@ and produce smaller diffs. Workflow:
 ### `.unspa.json`. Record implementations in the index
 
 When you implement an entity in code, add or update its entry in the
-`.unspa.json` behavioral index — **do not** annotate source code. The index
+`.unspa.json` behavioral index - **do not** annotate source code. The index
 is the only mapping between code and spec. Keys follow
 `<entityType>:<id-name-or-path>`:
 

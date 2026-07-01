@@ -1,6 +1,6 @@
 # Contributing to Unspaghettit
 
-Thanks for considering a contribution. Unspaghettit is early but functional — bug reports, fixes, and small feature PRs are all welcome.
+Thanks for considering a contribution. Unspaghettit is early but functional - bug reports, fixes, and small feature PRs are all welcome.
 
 ## Code of Conduct
 
@@ -33,7 +33,7 @@ The MCP server runs via `npm run mcp` (stdio). The CLI runs via `npm link` once,
 
 - Bug fixes in the runtime, MCP tools, simulator, dashboard.
 - Skill / docs improvements (CLAUDE.md / AGENTS.md template, SKILL.md prose).
-- New AI client adapters under [cli/clients/](cli/clients/) — see existing ones for the pattern.
+- New AI client adapters under [cli/clients/](cli/clients/) - see existing ones for the pattern.
 - Performance / token-size improvements to MCP responses.
 - Sample feature snapshots under [samples/](samples/) that exercise an MCP surface not yet covered.
 
