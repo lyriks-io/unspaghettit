@@ -39,7 +39,7 @@
     <div class="py-10 text-sm text-red-600">{featureStore.error}</div>
   {:else if !featureStore.feature}
     <div class="py-10 text-sm text-slate-500">
-      Feature not found. <a href="/features" class="text-brand-700 underline">Back to list</a>.
+      Feature not found. <a href="/projects" class="text-brand-700 underline">Back to projects</a>.
     </div>
   {:else}
     <SourceViewer

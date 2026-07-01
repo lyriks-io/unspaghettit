@@ -2,6 +2,7 @@ import type { TourDefinition } from '$features/tutorial/domain/entities/TourDefi
 import type { TourStep } from '$features/tutorial/domain/entities/TourStep';
 import type { SpecEventBus } from '$features/tutorial/application/ports/SpecEventBus';
 import { SharedSpecEventBusAdapter } from '$features/tutorial/infrastructure/adapters/SharedSpecEventBusAdapter';
+import { onboardingStore } from './onboardingStore.svelte';
 
 /**
  * Reactive runtime for a single-at-a-time tour.
@@ -78,6 +79,10 @@ class TourStore {
   }
 
   complete(): void {
+    // Reaching the end of a tour permanently retires the getting-started
+    // banner; exiting mid-way (cancel) leaves it up so the tour can be
+    // retried from anywhere.
+    onboardingStore.markCompleted();
     this.teardown();
   }
 
@@ -112,7 +117,7 @@ class TourStore {
 
 /**
  * Singleton instance wired to the shared in-process event bus.
- * Components import this and never the class — keeps the store's
+ * Components import this and never the class - keeps the store's
  * dependencies pinned in one place.
  */
 export const tourStore = new TourStore(new SharedSpecEventBusAdapter());

@@ -249,7 +249,8 @@
         <p class="text-xs font-semibold uppercase tracking-wide text-brand-700">Behavior models</p>
         <h1 class="mt-2 text-4xl font-semibold tracking-tight text-slate-950">Features</h1>
         <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Describe what software does as surfaces, actions, states, rules, effects, and events.
+          Every feature from every project, in one list. A feature is one slice of behavior,
+          modeled as surfaces, actions, state, and rules you can simulate and verify.
         </p>
       </div>
     </div>

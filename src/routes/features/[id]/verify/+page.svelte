@@ -37,7 +37,7 @@
       <h1 class="text-lg font-semibold text-slate-800">Verify</h1>
       <p class="text-xs text-slate-500">
         Scenarios, maturity, navigation reachability, bounded model checking, drift, and
-        cross-feature event wiring — the spec broken loudly.
+        cross-feature event wiring - the spec broken loudly.
       </p>
     </div>
     <div class="flex items-center gap-3 text-xs">
@@ -65,7 +65,7 @@
     <div class="py-10 text-sm text-red-600">{verificationStore.error}</div>
   {:else if !verdict}
     <div class="py-10 text-sm text-slate-500">
-      Nothing to verify. <a href="/features" class="text-brand-700 underline">Back to list</a>.
+      Nothing to verify. <a href="/projects" class="text-brand-700 underline">Back to projects</a>.
     </div>
   {:else}
     <div class="space-y-4">
@@ -74,7 +74,7 @@
       {#if siblings.length > 0}
         <details class="rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-950/5">
           <summary class="cursor-pointer px-4 py-3 text-xs font-medium text-slate-600">
-            Project context — {siblings.length} sibling feature{siblings.length === 1 ? '' : 's'}
+            Project context - {siblings.length} sibling feature{siblings.length === 1 ? '' : 's'}
             verified alongside (cross-feature checks span all of them)
           </summary>
           <div class="space-y-3 px-4 pb-4">

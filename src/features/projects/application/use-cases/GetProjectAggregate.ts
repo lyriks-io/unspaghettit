@@ -59,10 +59,15 @@ export const getProjectAggregateUseCase = (deps: {
     const project = await deps.projects.get(projectId);
     if (!project) return null;
 
+    // Load all features concurrently: over HTTP (dashboard) each get() is a
+    // full round trip, so a sequential loop makes the aggregate cost scale
+    // linearly with project size. Promise.all keeps featureIds order.
+    const fetched = await Promise.all(
+      project.featureIds.map(async (id) => ({ id, exp: await deps.features.get(id) }))
+    );
     const loaded: Feature[] = [];
     const missingFeatureIds: FeatureId[] = [];
-    for (const id of project.featureIds) {
-      const exp = await deps.features.get(id);
+    for (const { id, exp } of fetched) {
       if (exp) loaded.push(exp);
       else missingFeatureIds.push(id);
     }

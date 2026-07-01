@@ -7,6 +7,8 @@
   import FlyingSpaghettiEasterEgg from '$shared/presentation/easter-eggs/FlyingSpaghettiEasterEgg.svelte';
   import SyncToast from '$shared/presentation/toast/SyncToast.svelte';
   import TourOverlay from '$features/tutorial/presentation/components/TourOverlay.svelte';
+  import GettingStartedBanner from '$features/tutorial/presentation/components/GettingStartedBanner.svelte';
+  import { onboardingStore } from '$features/tutorial/presentation/stores/onboardingStore.svelte';
   import GlobalSearch from '$features/global-search/presentation/components/GlobalSearch.svelte';
   import FloatingQueueWidget from '$features/implementation-queue/presentation/components/FloatingQueueWidget.svelte';
   import { projectsStore } from '$features/projects/presentation/stores/projectsStore.svelte';
@@ -34,6 +36,11 @@
     // first 401 from the server triggers `apiFetch`'s prompt-and-retry
     // path which fills this store and persists the value.
     authStore.init();
+    // Getting-started banner state (open / completed / dismissed). Must
+    // hydrate before first paint decisions: until init the status is
+    // 'unknown' and the banner stays hidden, so returning users never
+    // see it flash.
+    onboardingStore.init();
     void loadHubDirectory();
     // First visit only: auto-prompt for a name. Once the user has been
     // asked (even if they dismissed without setting one), the flag in
@@ -61,7 +68,7 @@
     const next = await promptDialog({
       title: 'Your display name',
       message:
-        'Shown on every history entry you create. Stored locally in this browser — never sent off-machine. Leave empty to stay anonymous.',
+        'Shown on every history entry you create. Stored locally in this browser - never sent off-machine. Leave empty to stay anonymous.',
       inputLabel: 'Display name',
       defaultValue: identityStore.name,
       placeholder: 'e.g. John',
@@ -147,13 +154,13 @@
   // Wipe every browser-side persistence surface the dashboard uses:
   // localStorage (identity, "asked" flag, anything we add later) and
   // sessionStorage (transient per-tab state). IndexedDB / Cache API are
-  // not currently used by the dashboard — if either gets adopted later,
+  // not currently used by the dashboard - if either gets adopted later,
   // add them to this list. The page reloads after so in-memory Svelte
   // stores, the YDocClient subscriptions, and the SSE stream all
   // re-initialize from a blank slate.
   //
   // Server-side data (project files, feature JSONs, history under
-  // unspa/) is untouched — this is strictly about the browser-local
+  // unspa/) is untouched - this is strictly about the browser-local
   // state the user can't otherwise reach without devtools.
   async function clearLocalData() {
     const ok = await confirmDialog({
@@ -168,7 +175,7 @@
     try {
       localStorage.clear();
     } catch {
-      // Storage blocked (private browsing on some browsers) — nothing to clear.
+      // Storage blocked (private browsing on some browsers) - nothing to clear.
     }
     try {
       sessionStorage.clear();
@@ -182,7 +189,7 @@
 
   // Views are registry-driven (Expert is the always-on default; others like
   // Builder are opt-in via PUBLIC_UNSPA_VIEWS). The header shows a switcher
-  // only when more than one view is active — a toggle between one thing is
+  // only when more than one view is active - a toggle between one thing is
   // meaningless. Builder is only "active" when it's both enabled and routed to.
   const views = $derived(enabledViews());
   // The Lyriks community edition presents a single, unswitched view, so hide
@@ -191,7 +198,27 @@
   const builderActive = $derived(
     isEnabled('builder') && page.url.pathname.startsWith('/builder-mode')
   );
-  const mcpActive = $derived(page.url.pathname.startsWith('/mcp'));
+  // Primary navigation. Deliberately a single entry: Projects is the
+  // hierarchy's only entry point. Features live INSIDE a project and the
+  // MCP playground is project-scoped (/projects/[id]/mcp), so neither
+  // gets a global link. Feature editors count as Projects territory:
+  // they are always a drill-down from a project, so the link stays lit
+  // there.
+  const primaryNav: ReadonlyArray<{
+    label: string;
+    href: string;
+    isActive: (path: string) => boolean;
+  }> = [
+    {
+      label: 'Projects',
+      href: '/projects',
+      isActive: (path) =>
+        path === '/' ||
+        path.startsWith('/projects') ||
+        path.startsWith('/domains') ||
+        path.startsWith('/features')
+    }
+  ];
   // The feature editor + graph use a wider 1600px content column than the rest
   // of the app (max-w-7xl). Match the header container to whichever the current
   // route uses, so the header always spans the same width as the content below.
@@ -304,6 +331,30 @@
               </a>
             {/each}
           </div>
+        {/if}
+        {#if !builderActive}
+          <nav aria-label="Primary" class="hidden shrink-0 items-center gap-0.5 md:flex">
+            {#each primaryNav as item (item.href)}
+              {@const active = item.isActive(page.url.pathname)}
+              <a
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                class="rounded-md px-2.5 py-1.5 text-sm font-medium transition {active
+                  ? lyriks
+                    ? 'bg-white/25 text-white'
+                    : dark
+                      ? 'bg-slate-800 text-white'
+                      : 'bg-slate-100 text-slate-950'
+                  : lyriks
+                    ? 'text-white/80 hover:bg-white/15 hover:text-white'
+                    : dark
+                      ? 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}"
+              >
+                {item.label}
+              </a>
+            {/each}
+          </nav>
         {/if}
         {#if builderProject}
           <div class="hidden min-w-0 items-center gap-2 sm:flex">
@@ -476,8 +527,7 @@
             aria-expanded={settingsMenuOpen}
             aria-label="Open app menu"
             title="App menu"
-            class="grid h-9 w-9 place-items-center rounded-md transition {settingsMenuOpen ||
-            mcpActive
+            class="grid h-9 w-9 place-items-center rounded-md transition {settingsMenuOpen
               ? lyriks
                 ? 'bg-white/30 text-white'
                 : dark
@@ -511,38 +561,6 @@
               role="menu"
               class="absolute right-0 top-12 z-40 w-60 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg shadow-slate-950/10"
             >
-              <a
-                href="/mcp"
-                role="menuitem"
-                onclick={() => (settingsMenuOpen = false)}
-                class="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left text-sm {mcpActive
-                  ? 'bg-slate-100 text-slate-950'
-                  : 'text-slate-700 hover:bg-slate-50'}"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.6"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
-                  aria-hidden="true"
-                >
-                  <path d="M12 3v18" />
-                  <path d="M3 12h18" />
-                  <path d="M5 5l14 14" />
-                  <path d="M19 5L5 19" />
-                </svg>
-                <span class="min-w-0 flex-1">
-                  <span class="block font-medium">MCP</span>
-                  <span class="block text-[11px] text-slate-500"
-                    >Tools, setup, and integration help.</span
-                  >
-                </span>
-              </a>
-              <div class="my-1 h-px bg-slate-100"></div>
               <button
                 type="button"
                 role="menuitem"
@@ -783,11 +801,15 @@
       </div>
     {/if}
   </header>
-  <main class="flex-1">
+  <!-- First-run onboarding strip. Sits outside the route transition so it
+       doesn't re-fade on every navigation; hides itself permanently once
+       the tour is completed or the user dismisses it. -->
+  <GettingStartedBanner />
+  <main class="flex-1 bg-[#152ffd0a]">
     {#key routeKey}
       <div
         in:fade={{ duration: 160, easing: cubicOut }}
-        class="motion-reduce:animate-none! motion-reduce:opacity-100! bg-[#152ffd0a]"
+        class="motion-reduce:animate-none! motion-reduce:opacity-100!"
       >
         {@render children()}
       </div>
