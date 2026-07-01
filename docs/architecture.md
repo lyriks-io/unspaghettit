@@ -4,9 +4,9 @@
 
 ```
                          ┌──────────────────────────┐
-  AI client              │  MCP server (stdio)      │
-  (Claude / Cursor / ───→│  - typed tool surface    │←─── your code
-  Gemini / ...)          │  - validation + simulator│     (via .unspa.json
+  any MCP client         │  MCP server (stdio)      │
+  (your AI agent)    ───→│  - typed tool surface    │←─── your code
+                         │  - validation + simulator│     (via .unspa.json
                          └────────────┬─────────────┘      behavioral index)
                                       │
                                       ▼

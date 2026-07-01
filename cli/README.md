@@ -25,7 +25,7 @@ To remove later: see [Uninstall](#uninstall).
 extensionless POSIX form (e.g. `unspa`) plus `.cmd` and `.ps1` siblings.
 PowerShell and CMD resolve all three; `unspa init` automatically wraps
 the MCP entry with `cmd /c` so AI clients that `spawn()` without a shell
-(Claude Code, Cursor, ...) can find the `.cmd` shim. No extra setup
+can find the `.cmd` shim. No extra setup
 needed: just install and `unspa init`.
 
 ### Developing on the CLI itself
@@ -105,16 +105,16 @@ unspa init           # interactive: scaffold + register MCP + context + skills
 unspa dashboard      # open the dashboard at http://localhost:3000
 ```
 
-That's it. Your AI client (Claude Code, Cursor, Codex, Gemini, …) spawns
+That's it. Your AI client spawns
 `unspa-mcp` on demand via the entry written to its MCP config, reads
 the Unspaghettit instructions from `CLAUDE.md` / `AGENTS.md`, and can invoke
 the bundled `/unspa-edit`, `/unspa-implement`, `/unspa-audit` skills.
 
-If you are new to MCP and already have Claude Code open in the repo, you can
-also ask the agent to perform the setup:
+If you are new to MCP and already have an AI agent open in the repo, you can
+also ask it to perform the setup:
 
 ```text
-Install Unspaghettit in this repo. Run unspa init, register the MCP server for Claude Code, keep the generated CLAUDE.md/AGENTS.md guidance, then verify the unspa MCP tools are available.
+Install Unspaghettit in this repo. Run unspa init, register the MCP server for my client, keep the generated CLAUDE.md/AGENTS.md guidance, then verify the unspa MCP tools are available.
 ```
 
 After setup, restart the AI client if its MCP server list does not refresh
@@ -172,7 +172,7 @@ Discovery order, shared by the MCP server and `unspa dashboard`:
 2. A per-repo `unspa/` folder found by **walking up** from the launch directory.
 3. The **shared hub** at `~/.unspa-hub/unspa` (the default fallback).
 
-So the **default install needs zero configuration**: nothing is scaffolded, no env var is written, and both the MCP and the dashboard land on the hub the first time. One source of truth across every repo and client — including **Claude Desktop**, which has no per-project MCP config and no useful launch cwd, and now finds the hub without any absolute path baked in.
+So the **default install needs zero configuration**: nothing is scaffolded, no env var is written, and both the MCP and the dashboard land on the hub the first time. One source of truth across every repo and client, including clients with no per-project MCP config and no useful launch cwd, which now find the hub without any absolute path baked in.
 
 Pick a different location explicitly:
 

@@ -48,7 +48,7 @@ Boot `unspa dashboard`, then:
 
 ## Where the model lives (shared hub by default)
 
-`unspa init` needs no decision about storage. The behavior model lives in a **shared hub** at `~/.unspa-hub/unspa`, and both the MCP server and `unspa dashboard` discover it automatically on first run — no `UNSPA_SNAPSHOTS`, no special launch directory. One source of truth across every repo and every client (including **Claude Desktop**, which has no project scope), and one `unspa dashboard` run from anywhere serves it.
+`unspa init` needs no decision about storage. The behavior model lives in a **shared hub** at `~/.unspa-hub/unspa`, and both the MCP server and `unspa dashboard` discover it automatically on first run — no `UNSPA_SNAPSHOTS`, no special launch directory. One source of truth across every repo and every client (including clients with no per-project scope), and one `unspa dashboard` run from anywhere serves it.
 
 Want the model versioned **inside a specific repo** instead — travelling in git and PRs? Opt into a per-repo install:
 
@@ -62,7 +62,7 @@ Discovery order, used by both the MCP and the dashboard: explicit `UNSPA_SNAPSHO
 
 Switching later is just a re-run: `unspa init` for the hub, `unspa init --local` for per-repo, or `unspa dashboard --snapshots <path>` for a one-off look at any folder. All loopback / single-machine; the hub is not a network service.
 
-A typical end state: Claude Desktop for cross-project querying, per-repo Claude Code instances pointed at the same hub (each bound to one project with `unspa link`), and one live dashboard reflecting every change.
+A typical end state: a global-scope MCP client for cross-project querying, per-repo agent instances pointed at the same hub (each bound to one project with `unspa link`), and one live dashboard reflecting every change.
 
 ## Two views over the model
 

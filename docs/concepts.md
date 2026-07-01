@@ -1,6 +1,6 @@
 # Core concepts
 
-Unspaghettit gives humans and LLMs a shared, executable specification: a local, machine-checkable software design document that agents read and update through MCP (the Model Context Protocol — how AI tools like Claude, Cursor, and Gemini talk to local programs).
+Unspaghettit gives humans and LLMs a shared, executable specification: a local, machine-checkable software design document that agents read and update through MCP (the Model Context Protocol, the open standard AI agents use to talk to local programs).
 
 Instead of keeping product intent in long prompts or markdown that slowly goes stale, you model behavior as structured pieces. The MCP server exposes that model to your AI coding tool, so the LLM can inspect, simulate, edit, and audit it through typed tool calls instead of guessing from prose.
 
