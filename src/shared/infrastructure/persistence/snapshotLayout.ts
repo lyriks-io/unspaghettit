@@ -52,31 +52,81 @@ export const HISTORY_SUFFIX = '.history.json';
 export const UNASSIGNED_FOLDER = '__unassigned';
 export const HISTORY_SUBFOLDER = 'history';
 
+/**
+ * Every dynamic path component (project/feature slug, feature id, history
+ * key) is validated here before it reaches `path.join`. Ids are 8-char hex or
+ * legacy v4 UUIDs and slugs are `slugify`'d to `[a-z0-9-]`, so the charset
+ * below accepts every legitimate value while rejecting the path-traversal
+ * bytes — `/`, `\`, `..`, `:`, leading dots, null — that would otherwise let
+ * an attacker-supplied id escape the snapshot tree and write JSON anywhere on
+ * disk.
+ *
+ * This mirrors the charset `roomId.ts` already enforces on the WebSocket /
+ * `sync/reload` entry points. Centralising it at the path-builder layer closes
+ * the callers those guards miss — most importantly the `.unspa` bundle import
+ * (`POST /api/projects/import`), whose `statuses[].featureId` /
+ * `features[].id` reach `statusFilePath` / `provenanceFilePath` directly, and
+ * the MCP standalone write path.
+ */
+const SAFE_SEGMENT = /^[A-Za-z0-9_-]+$/;
+const MAX_SEGMENT_LEN = 128;
+
+export class UnsafePathSegmentError extends Error {
+  constructor(
+    readonly segment: string,
+    readonly label: string
+  ) {
+    super(`Unsafe ${label}: "${segment}" is not a valid path-safe identifier`);
+    this.name = 'UnsafePathSegmentError';
+  }
+}
+
+/** True when a value is safe to use as a single on-disk path component. */
+export const isSafeSegment = (segment: unknown): segment is string =>
+  typeof segment === 'string' &&
+  segment.length > 0 &&
+  segment.length <= MAX_SEGMENT_LEN &&
+  SAFE_SEGMENT.test(segment);
+
+/** Assert-and-return guard for a dynamic path component. Throws on traversal. */
+export const assertSafeSegment = (segment: string, label = 'path segment'): string => {
+  if (!isSafeSegment(segment)) throw new UnsafePathSegmentError(String(segment), label);
+  return segment;
+};
+
 const ensureDir = (path: string): void => {
   if (!existsSync(path)) mkdirSync(path, { recursive: true });
 };
 
 /** Folder name for a project (its slug) or the orphan bucket for null. */
 export const projectFolder = (projectSlug: string | null): string =>
-  projectSlug ?? UNASSIGNED_FOLDER;
+  assertSafeSegment(projectSlug ?? UNASSIGNED_FOLDER, 'project folder');
 
 export const projectDir = (root: string, projectSlug: string | null): string =>
   join(root, projectFolder(projectSlug));
 
 export const projectFilePath = (root: string, slug: string): string =>
-  join(projectDir(root, slug), `${slug}${PROJECT_SUFFIX}`);
+  join(projectDir(root, slug), `${assertSafeSegment(slug, 'project slug')}${PROJECT_SUFFIX}`);
 
 export const featureFilePath = (
   root: string,
   projectSlug: string | null,
   featureSlug: string
-): string => join(projectDir(root, projectSlug), `${featureSlug}${FEATURE_SUFFIX}`);
+): string =>
+  join(
+    projectDir(root, projectSlug),
+    `${assertSafeSegment(featureSlug, 'feature slug')}${FEATURE_SUFFIX}`
+  );
 
 export const statusFilePath = (
   root: string,
   projectSlug: string | null,
   featureId: string
-): string => join(projectDir(root, projectSlug), `${featureId}${STATUS_SUFFIX}`);
+): string =>
+  join(
+    projectDir(root, projectSlug),
+    `${assertSafeSegment(featureId, 'feature id')}${STATUS_SUFFIX}`
+  );
 
 /**
  * Provenance sidecar path. Like the implementation-status sidecar it keys on
@@ -87,7 +137,11 @@ export const provenanceFilePath = (
   root: string,
   projectSlug: string | null,
   featureId: string
-): string => join(projectDir(root, projectSlug), `${featureId}${PROVENANCE_SUFFIX}`);
+): string =>
+  join(
+    projectDir(root, projectSlug),
+    `${assertSafeSegment(featureId, 'feature id')}${PROVENANCE_SUFFIX}`
+  );
 
 export type HistoryKind = 'feature' | 'project' | 'implementation-status';
 
@@ -103,7 +157,11 @@ export const historyFilePath = (
   projectSlug: string | null,
   kind: HistoryKind,
   slugOrId: string
-): string => join(historyDir(root, projectSlug), `${slugOrId}${historySuffix(kind)}`);
+): string =>
+  join(
+    historyDir(root, projectSlug),
+    `${assertSafeSegment(slugOrId, 'history key')}${historySuffix(kind)}`
+  );
 
 /** Ensure the project folder exists before a write. */
 export const ensureProjectDir = (root: string, projectSlug: string | null): string => {

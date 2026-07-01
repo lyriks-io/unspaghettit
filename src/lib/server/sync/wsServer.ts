@@ -20,6 +20,7 @@ import {
   isAuthEnabled,
   isOriginCheckEnabled
 } from '../security/auth';
+import { checkLocalUpgrade } from '../security/localGuard';
 
 export const SYNC_WS_PATH = '/sync';
 
@@ -203,6 +204,16 @@ export const attachSyncWebSocket = (
 
   httpServer.on('upgrade', (req: IncomingMessage, socket, head) => {
     if (!req.url || !req.url.startsWith(SYNC_WS_PATH + '/')) return;
+
+    // Default-on loopback guard: reject a DNS-rebinding page opening a Yjs
+    // socket to the local dashboard. The Host header carries the attacker's
+    // domain, not `localhost`, so the check fails closed. Mirrors the HTTP
+    // guard in hooks.server.ts; self-disables on a wildcard bind.
+    if (!checkLocalUpgrade(req.headers.host, req.headers.origin)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
 
     // Optional shared-token gate. Browsers can't set headers on the WS
     // upgrade so the token rides as `?token=...`. When auth is off the

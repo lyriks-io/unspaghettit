@@ -6,7 +6,10 @@ import {
   createSyncAwareFeatureRepository,
   createSyncAwareProjectRepository
 } from '$lib/server/syncAwareRepositories';
-import { importProjectBundleUseCase } from '$features/projects/application/use-cases/ImportProjectBundle';
+import {
+  BundleValidationError,
+  importProjectBundleUseCase
+} from '$features/projects/application/use-cases/ImportProjectBundle';
 
 export const prerender = false;
 
@@ -41,6 +44,11 @@ export const POST: RequestHandler = async ({ request }) => {
     projects: createSyncAwareProjectRepository(projectRepo),
     statuses: statusRepo
   });
-  const result = await importBundle(bundle);
-  return json({ ok: true, ...result });
+  try {
+    const result = await importBundle(bundle);
+    return json({ ok: true, ...result });
+  } catch (e) {
+    if (e instanceof BundleValidationError) throw error(400, e.message);
+    throw e;
+  }
 };

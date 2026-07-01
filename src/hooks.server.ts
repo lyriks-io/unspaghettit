@@ -6,6 +6,7 @@ import {
   isAuthEnabled,
   isOriginCheckEnabled
 } from '$lib/server/security/auth';
+import { checkLocalHost, checkLocalOrigin } from '$lib/server/security/localGuard';
 import { parseThemeId } from '$lib/theme/registry';
 
 /**
@@ -21,12 +22,21 @@ import { parseThemeId } from '$lib/theme/registry';
  * incorrectly-configured client surfaces the auth failure clearly
  * instead of getting a vague 401 on every navigation.
  *
- * Default install (neither env set) is unchanged from before: no
- * checks fire and the handle pass-through is essentially free.
+ * On top of those opt-in checks, a default-on loopback guard validates the
+ * `Host` header (and the `Origin` on writes) so a DNS-rebinding page can't
+ * drive the local API even when no env is set. It self-disables on a wildcard
+ * (`--host 0.0.0.0`) bind, where the token is the intended gate. See
+ * {@link checkLocalHost}.
  */
 export const handle: Handle = async ({ event, resolve }) => {
   const path = event.url.pathname;
   if (path.startsWith('/api/')) {
+    if (!checkLocalHost(event.request)) {
+      return new Response('Forbidden: host not allowed', { status: 403 });
+    }
+    if (!checkLocalOrigin(event.request)) {
+      return new Response('Forbidden: cross-site request blocked', { status: 403 });
+    }
     if (isOriginCheckEnabled() && !checkOrigin(event.request)) {
       return new Response('Forbidden: origin not allowed', { status: 403 });
     }

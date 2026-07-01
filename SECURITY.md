@@ -44,6 +44,8 @@ This is what you get from a fresh `npm install -g unspaghettit && unspa dashboar
 - **Bind**: `127.0.0.1:3000`. The dashboard is only reachable from the same machine.
 - **No telemetry**: zero outbound network calls. The only egress is `POST` to `UNSPA_SYNC_URL` (default `http://127.0.0.1:3000/api/sync/reload`); non-loopback overrides are rejected at runtime.
 - **No accounts, no auth**: the REST sync routes and the Yjs WebSocket have no authentication. This is intentional — single-machine + loopback means the user IS the trust boundary.
+- **DNS-rebinding / CSRF hardening (always on)**: a loopback bind is *not* on its own enough to keep a browser out — a page you visit can rebind its own hostname to `127.0.0.1` and issue same-origin requests at the dashboard. So every `/api/*` request and every WebSocket upgrade must carry a loopback `Host` header (`localhost` / `127.0.0.1` / `[::1]`), and state-changing requests must carry a same-origin (or absent) `Origin`. A rebinding page sends its *own* hostname, so it fails closed with `403`. This guard needs no configuration; add extra hostnames with `UNSPA_ALLOWED_HOSTS=host1,host2` and it steps aside entirely on a wildcard (`--host 0.0.0.0`) bind, where the token below is the intended gate.
+- **No path traversal from imports**: every id that becomes an on-disk filename (feature/status/provenance sidecars) is charset-validated, so a hand-crafted `.unspa` bundle can't write outside the snapshot tree.
 - **No code execution from snapshots**: feature snapshots are inert data, not executable code.
 
 This tier is appropriate for solo development on a trusted workstation.
