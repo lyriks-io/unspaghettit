@@ -18,7 +18,7 @@ labels: bug
 - Unspaghettit version / commit:
 - Node version (`node -v`):
 - OS:
-- AI client (Claude Code, Cursor, Codex, …):
+- AI client (name + version):
 
 **Logs / output**
 <!-- Paste the failing output here. Trim to the relevant chunk. -->

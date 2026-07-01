@@ -1,6 +1,6 @@
 # Core concepts
 
-Unspaghettit gives humans and LLMs a shared, executable specification: a local, machine-checkable software design document that agents read and update through MCP (the Model Context Protocol — how AI tools like Claude, Cursor, and Gemini talk to local programs).
+Unspaghettit gives humans and LLMs a shared, executable specification: a local, machine-checkable software design document that agents read and update through MCP (the Model Context Protocol, the open standard AI agents use to talk to local programs).
 
 Instead of keeping product intent in long prompts or markdown that slowly goes stale, you model behavior as structured pieces. The MCP server exposes that model to your AI coding tool, so the LLM can inspect, simulate, edit, and audit it through typed tool calls instead of guessing from prose.
 
@@ -20,15 +20,15 @@ A project is built from a small set of entities:
 
 You don't author these by hand. You describe the product in plain language and the LLM builds the runtime through the MCP (`create_feature`, `apply_batch`, `add_action`, and so on). Validation errors come back inline, so the runtime converges instead of drifting.
 
-A Feature is one coherent slice of behavior (a flow, a screen, a capability), sized so you can hold it in your head — roughly 1–15 surfaces. A whole product is a Project made of many Features.
+A Feature is one coherent slice of behavior (a flow, a screen, a capability), sized so you can hold it in your head - roughly 1–15 surfaces. A whole product is a Project made of many Features.
 
 ## Scenarios are spec tests
 
 This is the core idea. Every scenario you author is an executable assertion about behavior.
 
-`run_all_scenarios` runs them through the deterministic simulator and reports pass or fail per assertion — a unit test suite for your spec, before any implementation exists.
+`run_all_scenarios` runs them through the deterministic simulator and reports pass or fail per assertion - a unit test suite for your spec, before any implementation exists.
 
-Scenarios can be multi-step. A scenario's `steps[]` replays preceding actions (each through the simulator, threading state forward) before the action under test. So `run_all_scenarios` verifies whole flows — add to cart → apply coupon → checkout — not just single transitions.
+Scenarios can be multi-step. A scenario's `steps[]` replays preceding actions (each through the simulator, threading state forward) before the action under test. So `run_all_scenarios` verifies whole flows - add to cart → apply coupon → checkout - not just single transitions.
 
 `dry_run_simulate` runs a single action against a state snapshot when you want to probe one transition.
 
@@ -40,9 +40,9 @@ Scenarios test the paths you thought of. `model_check` exhaustively explores the
 
 - **Invariant counterexamples** with the shortest action path that reaches them.
 - **Dead actions** that can never fire, **deadlocks**, and unreachable or terminal surfaces.
-- **Reachability goals** — the liveness complement to invariants: `reachable` (a target state is achievable) and `always_reachable` (it stays reachable from everywhere, with a counterexample path to any trap).
+- **Reachability goals** - the liveness complement to invariants: `reachable` (a target state is achievable) and `always_reachable` (it stays reachable from everywhere, with a counterexample path to any trap).
 
-Invariants come at three scopes: per-surface, feature-wide, and **cross-feature at the project level** (`projectInvariants`, e.g. "the orders feature's open count equals the billing feature's unpaid count" — something a feature invariant can't reference).
+Invariants come at three scopes: per-surface, feature-wide, and **cross-feature at the project level** (`projectInvariants`, e.g. "the orders feature's open count equals the billing feature's unpaid count" - something a feature invariant can't reference).
 
 ## Maturity scoring
 
@@ -62,7 +62,7 @@ This is what makes drift visible. The spec knows where it lives in the code, so 
 
 ## Verified coverage (preview)
 
-Coverage in the index is a *claim* — "this entity is implemented here." To turn it into proof, run the feature's scenarios against the real code:
+Coverage in the index is a *claim* - "this entity is implemented here." To turn it into proof, run the feature's scenarios against the real code:
 
 ```bash
 unspa scenarios adapter <featureId>   # scaffold a thin adapter, one case per scenario-bearing action
@@ -71,11 +71,11 @@ vitest run --reporter=json            # run it against your implementation
 unspa coverage ingest <report>        # stamp verifiedAt on actions whose scenarios all passed
 ```
 
-The simulator's predictions are the oracle; a regression clears the stamp. `unspa check --min-verified <pct>` then gates the build on the proven share. Experimental — the adapter contract may shift between minor versions.
+The simulator's predictions are the oracle; a regression clears the stamp. `unspa check --min-verified <pct>` then gates the build on the proven share. Experimental - the adapter contract may shift between minor versions.
 
 ## One-command verification
 
-`unspa check` runs the whole spine headlessly and exits non-zero on failure — scenarios + maturity + reachability + model checking + spec→code drift + cross-feature event coherence + verified coverage — so the spec becomes a CI gate, not a document (`--json` for dashboards). `unspa ci` scaffolds a GitHub Actions workflow that runs it on every push/PR. `verify` and `get_drift` are the in-chat MCP forms; the dashboard's **Verify** tab renders the verdict with navigable counterexample traces that deep-link to the violating action.
+`unspa check` runs the whole spine headlessly and exits non-zero on failure - scenarios + maturity + reachability + model checking + spec→code drift + cross-feature event coherence + verified coverage - so the spec becomes a CI gate, not a document (`--json` for dashboards). `unspa ci` scaffolds a GitHub Actions workflow that runs it on every push/PR. `verify` and `get_drift` are the in-chat MCP forms; the dashboard's **Verify** tab renders the verdict with navigable counterexample traces that deep-link to the violating action.
 
 ## The implementation queue
 
@@ -83,19 +83,19 @@ A per-project "implement next" list of Feature, Surface, and Action items. Reord
 
 ## Capabilities at a glance
 
-- **Structured behavior specification** — features, surfaces, actions, states, rules, invariants, transitions, scenarios, personas, resources, entities, events.
-- **Code → spec mapping** — an LLM reads an existing repo, models its behavior, and wires the spec back to source through the behavioral index.
-- **MCP-native** — every entity is created, read, edited, and validated through MCP tool calls. Works with any MCP-compatible IDE.
-- **Deterministic simulator & bounded model checking** — single transitions, whole-flow scenarios, and exhaustive state-space exploration.
-- **Safety + liveness properties** — invariants per-surface / feature / project, plus reachability goals.
-- **One-command verification gate** — `unspa check` / `verify` fold the whole spine into a single pass/warn/fail.
-- **Maturity scoring** — per-area scores with critical and recommended issues.
-- **Generated TypeScript contracts** — types for state, events, and parameters.
-- **Implementation audit** — `.unspa.json` records where each entity lives and reports coverage + gaps.
-- **Implementation queue** — per-project "implement next" list.
-- **Local-first** — everything lives in your repo. No telemetry, no hosted servers. Snapshots are plain JSON.
-- **Multi-agent ready** — Yjs WebSocket server for real-time multi-human / multi-agent editing, with `AI · for John` attribution.
-- **Encrypted backup / share** — passphrase-encrypted project bundles.
+- **Structured behavior specification** - features, surfaces, actions, states, rules, invariants, transitions, scenarios, personas, resources, entities, events.
+- **Code → spec mapping** - an LLM reads an existing repo, models its behavior, and wires the spec back to source through the behavioral index.
+- **MCP-native** - every entity is created, read, edited, and validated through MCP tool calls. Works with any MCP-compatible IDE.
+- **Deterministic simulator & bounded model checking** - single transitions, whole-flow scenarios, and exhaustive state-space exploration.
+- **Safety + liveness properties** - invariants per-surface / feature / project, plus reachability goals.
+- **One-command verification gate** - `unspa check` / `verify` fold the whole spine into a single pass/warn/fail.
+- **Maturity scoring** - per-area scores with critical and recommended issues.
+- **Generated TypeScript contracts** - types for state, events, and parameters.
+- **Implementation audit** - `.unspa.json` records where each entity lives and reports coverage + gaps.
+- **Implementation queue** - per-project "implement next" list.
+- **Local-first** - everything lives in your repo. No telemetry, no hosted servers. Snapshots are plain JSON.
+- **Multi-agent ready** - Yjs WebSocket server for real-time multi-human / multi-agent editing, with `AI · for John` attribution.
+- **Encrypted backup / share** - passphrase-encrypted project bundles.
 
 ## Philosophy
 

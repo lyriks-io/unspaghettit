@@ -23,13 +23,35 @@
 
 When you build with AI, the model never sees your system. It sees a fragment of context and guesses the rest from patterns. It doesn't understand. It infers.
 
-Unspaghettit replaces the guessing with a runtime: a structured, executable model of what your product is supposed to do, that humans and AI agents read and edit through MCP. Every scenario you write runs through a deterministic simulator and reports pass or fail, **before a line of code exists**.
+Unspaghettit replaces the guessing with a runtime: a structured, executable model of what your product is supposed to do. Humans and AI agents read and edit it through MCP, and every scenario you write runs through a deterministic simulator and reports pass or fail, **before a line of code exists**.
 
 Prompts become disposable. The specification stays.
 
+## What it is and isn't
+
+Unspaghettit is a local, executable specification layer: durable project memory the LLM can validate, simulate, score, and map back to source code. Concretely:
+
+| It **is** | It **is not** |
+| --- | --- |
+| An executable specification runtime | A code generator |
+| A typed MCP interface for humans and AI agents | A no-code / low-code platform |
+| A deterministic simulator that passes or fails scenarios | An autonomous agent framework |
+| Durable memory shared between you and the LLM | A hosted service that owns your source of truth |
+| A two-way map between spec and code | A replacement for your stack (your team still writes the code) |
+
+It runs *alongside* your AI coding tools: it defines and validates the contract they build against.
+
+## The problem it kills
+
+AI coding workflows go sideways fast. Specs drift. Prompts pile up. Generated systems lose coherence as they grow. Most tools answer this with markdown specs: documents the AI reads to generate code.
+
+A document can't tell you it contradicts itself. Markdown drifts in silence. You find out when the code breaks.
+
+Unspaghettit takes the other path. Your spec isn't a document. It runs.
+
 ## See it work
 
-You, in your AI agent (Claude Code, Cursor, Gemini, Windsurf, Codex):
+You, in your AI agent:
 
 ```
 Using the Unspaghettit MCP, create a project for a daily-coupon app.
@@ -53,25 +75,24 @@ Then runs every scenario through the simulator:
 
 No code has been written yet. The spec already fails loudly exactly where it should. That red line is a contradiction caught at design time instead of in production.
 
-## The problem it kills
+And it keeps failing loudly after the code exists: every spec entity maps to its implementation, drift is detected when either side changes alone, and `unspa check` runs it all as a CI gate. The spec doesn't just describe the build. It can fail it.
 
-AI coding workflows go sideways fast. Specs drift. Prompts pile up. Generated systems lose coherence as they grow. Most tools answer this with markdown specs: documents the AI reads to generate code.
+## Start from anything
 
-A document can't tell you it contradicts itself. Markdown drifts in silence. You find out when the code breaks.
+Point your AI agent at whatever you already have: a design screenshot, a product brief, a Jira backlog, an existing codebase. It reads that and builds the executable model through MCP. From there Unspaghettit runs both directions. Drive **spec → code**: design the behavior, watch it pass or fail, then implement against a spec that already holds together. Or go **code → spec**: turn existing behavior into a runtime map that's explicit and auditable.
 
-Unspaghettit takes the other path. Your spec isn't a document. It runs.
+## What you get
 
-## What makes it different
-
-Unspaghettit is a local, executable specification layer. It gives the LLM durable project memory that can be validated, simulated, scored, and mapped back to source code. That sets it apart from:
-
-- **Markdown prompt workflows**, which are easy to write but cannot execute or report drift.
-- **Autonomous agent frameworks**, which decide how work gets done but rarely model product behavior as a contract.
-- **Hosted AI wrappers**, which add a service boundary instead of keeping the source of truth in your repo.
-- **No-code platforms**, which own the implementation path.
-- **Code generators**, because Unspaghettit produces contracts and audit data while your LLM or team writes the actual code.
-
-It works in both directions. Start from an idea and drive spec → code, or point an LLM at an existing codebase and build a code → spec map that makes current behavior explicit.
+- **Scenarios as spec tests**: the deterministic simulator runs every scenario, whole multi-step flows included, and reports pass or fail per assertion.
+- **Bounded model checking**: explores the reachable state space for the paths you *didn't* write scenarios for: invariant counterexamples with the action path that reaches them, dead actions, deadlocks, and liveness goals ("done stays reachable").
+- **Maturity scoring**: per-area scores with critical issues, so shallow modeling gets caught before it ships.
+- **Spec ↔ code audit**: every entity records where it lives in code; coverage, gaps, and drift are reported, and generated scenario tests can *prove* the implementation matches, not just claim it.
+- **A CI gate**: `unspa check` runs the whole verification spine and exits non-zero on failure; `unspa ci` scaffolds the GitHub Actions workflow.
+- **Generated TypeScript contracts**: state, event, and parameter types your implementation imports, so the compiler catches divergence first.
+- **Diagrams & provenance**: project the model as a statechart, sequence, ER, flowchart, or mindmap (export Mermaid, DOT, SVG/PNG), and trace every element back to the exact source span it was extracted from.
+- **A live dashboard**: editor, simulator, behavior graph, verify view with navigable counterexample traces, implementation coverage, global search (⌘K).
+- **Multi-agent ready**: real-time sync for several humans and AI agents editing at once, with per-agent attribution.
+- **Local-first**: plain JSON on your disk. No accounts, no telemetry, no hosted service.
 
 ## Quickstart
 

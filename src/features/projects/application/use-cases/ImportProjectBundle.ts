@@ -1,6 +1,7 @@
 import type { FeatureRepository } from '$features/behavior-model/application/ports/FeatureRepository';
 import type { ImplementationStatusRepository } from '$features/implementation-status/application/ports/ImplementationStatusRepository';
 import type { ProjectBundleV1 } from '$features/projects/domain/entities/ProjectBundle';
+import { isSafeSegment } from '$shared/infrastructure/persistence/snapshotLayout';
 import type { ProjectRepository } from '../ports/ProjectRepository';
 
 export interface ImportProjectBundleResult {
@@ -8,6 +9,38 @@ export interface ImportProjectBundleResult {
   readonly featuresImported: number;
   readonly statusesImported: number;
 }
+
+/**
+ * A bundle carried an id that is not a path-safe identifier. Every id in a
+ * legitimate bundle is 8-char hex or a v4 UUID; a `../`-laden id can only come
+ * from a hand-crafted (malicious) `.unspa` file trying to make a sidecar write
+ * escape the snapshot tree. Rejected up front so nothing is persisted — the
+ * write path also guards each filename as defence-in-depth.
+ */
+export class BundleValidationError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid project bundle: ${reason}`);
+    this.name = 'BundleValidationError';
+  }
+}
+
+const assertBundleIdsSafe = (bundle: ProjectBundleV1): void => {
+  if (!isSafeSegment(bundle.project.id)) {
+    throw new BundleValidationError(`project id "${bundle.project.id}" is not a valid id`);
+  }
+  for (const feature of bundle.features) {
+    if (!isSafeSegment(feature.id)) {
+      throw new BundleValidationError(`feature id "${feature.id}" is not a valid id`);
+    }
+  }
+  for (const status of bundle.statuses) {
+    if (!isSafeSegment(String(status.featureId))) {
+      throw new BundleValidationError(
+        `status featureId "${status.featureId}" is not a valid id`
+      );
+    }
+  }
+};
 
 /**
  * Restore a ProjectBundleV1 onto the snapshot repositories. The write ORDER is
@@ -29,6 +62,10 @@ export const importProjectBundleUseCase = (deps: {
   statuses: ImplementationStatusRepository;
 }) => {
   return async (bundle: ProjectBundleV1): Promise<ImportProjectBundleResult> => {
+    // Fail closed BEFORE the first write: features are persisted ahead of the
+    // project + statuses, so a bad id caught mid-loop would otherwise leave a
+    // partial import behind.
+    assertBundleIdsSafe(bundle);
     for (const feature of bundle.features) {
       await deps.features.save(feature);
     }

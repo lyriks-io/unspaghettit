@@ -32,6 +32,9 @@
     type TagFilterValue
   } from '$features/tag-palette/presentation/components/TagFilterSelect.svelte';
   import ManageTagsDialog from '$features/tag-palette/presentation/components/ManageTagsDialog.svelte';
+  import { tourStore } from '$features/tutorial/presentation/stores/tourStore.svelte';
+  import { firstFeatureTour } from '$features/tutorial/infrastructure/tours/firstFeatureTour';
+  import { runLoadSamplesFlow } from '$features/behavior-model/presentation/loadSamplesFlow';
 
   type TaggedProject = {
     readonly tags?: readonly Tag[];
@@ -44,6 +47,17 @@
   let createOpen = $state(false);
   let manageTagsOpen = $state(false);
   let sortBy = $state<'updated' | 'name' | 'count'>('updated');
+  let loadingSamples = $state(false);
+
+  async function loadSamplesFromEmptyState() {
+    if (loadingSamples) return;
+    loadingSamples = true;
+    try {
+      await runLoadSamplesFlow();
+    } finally {
+      loadingSamples = false;
+    }
+  }
 
   onMount(() => {
     projectsStore.refresh();
@@ -84,7 +98,7 @@
   // Import flow: hidden <input type="file"> kicks the picker, then we
   // parse the envelope, prompt for the passphrase, and POST the
   // decrypted bundle to /api/projects/import. The passphrase is
-  // verified by the AES-GCM auth tag — a wrong one surfaces as
+  // verified by the AES-GCM auth tag - a wrong one surfaces as
   // WrongPassphraseError and we re-prompt.
   function openImportPicker() {
     if (importing) return;
@@ -109,7 +123,7 @@
         title: `Import .unspa file`,
         message:
           `Enter the passphrase used when "${file.name}" was exported. ` +
-          `A wrong passphrase will not corrupt anything — the file just stays encrypted.`,
+          `A wrong passphrase will not corrupt anything - the file just stays encrypted.`,
         inputLabel: 'Passphrase',
         password: true,
         confirmLabel: 'Import',
@@ -139,7 +153,7 @@
 
   let exporting = $state(false);
 
-  // Export from the card's ⋮ menu — no need to open the project first. Same
+  // Export from the card's ⋮ menu - no need to open the project first. Same
   // flow as the detail page: prompt for a passphrase, fetch the bundle,
   // encrypt client-side, download the `.unspa`. The passphrase never reaches
   // the server. Only the project id + name are needed, both on the summary.
@@ -354,7 +368,8 @@
     <div class="mt-2 max-w-3xl">
       <h1 class="text-4xl font-semibold tracking-tight text-slate-950">Projects</h1>
       <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-        Group related behavior models and inspect their resources, data, events, and transitions together.
+        One project per product or codebase. Each groups the features that describe what
+        that product does. Open one to model, simulate, and verify its behavior.
       </p>
     </div>
     <div class="mt-6 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-950/5 lg:flex-row lg:items-center lg:justify-between">
@@ -427,15 +442,39 @@
     {:else if filtered.length === 0}
       <div class="rounded-lg border border-dashed border-hairline bg-white p-8 text-center text-sm text-slate-500">
         {#if projectsStore.summaries.length === 0}
-          <div class="space-y-3">
-            <p>No projects yet.</p>
-            <button
-              type="button"
-              class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-              onclick={() => (createOpen = true)}
-            >
-              Create first project
-            </button>
+          <div class="mx-auto max-w-md space-y-4 py-4">
+            <div class="space-y-1.5">
+              <p class="text-base font-semibold text-slate-900">Nothing modeled yet</p>
+              <p class="text-sm leading-6 text-slate-600">
+                A <strong>project</strong> holds the features of one product. A
+                <strong>feature</strong> describes one slice of what that product does
+                (its screens, actions, state, and rules) precisely enough to simulate.
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                onclick={() => (createOpen = true)}
+              >
+                Create first project
+              </button>
+              <button
+                type="button"
+                class="rounded-md border border-brand-300 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-800 hover:bg-brand-100"
+                onclick={() => tourStore.start(firstFeatureTour)}
+              >
+                Take the 3-minute tour
+              </button>
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-70"
+                onclick={loadSamplesFromEmptyState}
+                disabled={loadingSamples}
+              >
+                {loadingSamples ? 'Loading...' : 'Explore the sample project'}
+              </button>
+            </div>
           </div>
         {:else}
           No projects match your search.

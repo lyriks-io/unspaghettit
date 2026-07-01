@@ -17,6 +17,7 @@ import {
   exportDomainToJson,
   importDomainFromJson
 } from '$features/domains/infrastructure/io/DomainJson';
+import { assertSafeSegment } from '$shared/infrastructure/persistence/snapshotLayout';
 
 const DOMAIN_SUFFIX = '.domain.json';
 
@@ -72,9 +73,10 @@ export class JsonFolderDomainRepository implements DomainRepository {
       .filter((s) => s.domain.id !== domain.id)
       .map((s) => s.slug);
     const target = slugify(domain.name);
-    const finalSlug = taken.includes(target)
-      ? `${target}-${domain.id.slice(0, 8)}`
-      : target;
+    const finalSlug = assertSafeSegment(
+      taken.includes(target) ? `${target}-${domain.id.slice(0, 8)}` : target,
+      'domain slug'
+    );
 
     if (previous && previous.slug !== finalSlug) {
       const oldPath = join(this.directory, `${previous.slug}${DOMAIN_SUFFIX}`);

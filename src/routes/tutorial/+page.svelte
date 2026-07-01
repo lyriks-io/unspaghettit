@@ -2,13 +2,7 @@
   import TutorialSection from "$features/tutorial/presentation/components/TutorialSection.svelte";
   import CodeBlock from "$features/tutorial/presentation/components/CodeBlock.svelte";
   import Callout from "$features/tutorial/presentation/components/Callout.svelte";
-  import { goto } from "$app/navigation";
-  import { featuresStore } from "$features/behavior-model/presentation/stores/featuresStore.svelte";
-  import {
-    alertDialog,
-    chooseDialog,
-  } from "$shared/presentation/dialogs/dialogStore.svelte";
-  import { formatSampleSummary } from "$features/behavior-model/presentation/loadSamplesMessage";
+  import { runLoadSamplesFlow } from "$features/behavior-model/presentation/loadSamplesFlow";
   import { tourStore } from "$features/tutorial/presentation/stores/tourStore.svelte";
   import { firstFeatureTour } from "$features/tutorial/infrastructure/tours/firstFeatureTour";
 
@@ -39,69 +33,16 @@
     if (busyLoadingSamples) return;
     busyLoadingSamples = true;
     try {
-      const result = await featuresStore.loadSamples();
-      const addedAny =
-        result.addedProjects.length + result.addedFeatures.length > 0;
-      const skippedAny =
-        result.skippedProjects.length + result.skippedFeatures.length > 0;
-      if (!addedAny && !skippedAny) {
-        await alertDialog({
-          title: "Nothing to load",
-          message: "No samples are bundled in this build.",
-          tone: "warning",
-        });
-      } else if (!addedAny) {
-        await alertDialog({
-          title: "Already available",
-          message:
-            formatSampleSummary(result, "skipped") +
-            "\n\nDelete them and load again to restore from the sample.",
-          tone: "info",
-        });
-      } else {
-        if (result.addedProjects.length > 0) {
-          const projectCount = result.addedProjects.length;
-          const featureCount = result.addedFeatures.length;
-          const projectNoun = projectCount === 1 ? "project" : "projects";
-          const featureNoun = featureCount === 1 ? "feature" : "features";
-          const summary =
-            featureCount > 0
-              ? `Added ${projectCount} ${projectNoun} and ${featureCount} ${featureNoun}.`
-              : `Added ${projectCount} ${projectNoun}.`;
-          const featureLine = result.addedFeatures
-            .map((f) => f.name)
-            .join(" · ");
-          const chosenId = await chooseDialog({
-            title: "Samples loaded",
-            message: summary,
-            options: result.addedProjects.map((p) => ({
-              id: p.id,
-              label: `Open ${p.name}`,
-              description: featureLine || undefined,
-            })),
-            cancelLabel: "Close",
-            tone: "success",
-          });
-          if (chosenId) {
-            await goto(`/projects/${chosenId}`);
-          }
-        } else {
-          await alertDialog({
-            title: "Samples loaded",
-            message:
-              formatSampleSummary(result, "added") +
-              (skippedAny
-                ? `\n\nAlready present:\n${formatSampleSummary(result, "skipped")}`
-                : ""),
-            tone: "success",
-          });
-        }
-      }
+      await runLoadSamplesFlow();
     } finally {
       busyLoadingSamples = false;
     }
   }
 </script>
+
+<svelte:head>
+  <title>Help &amp; Tutorial / Unspaghettit</title>
+</svelte:head>
 
 <div class="mx-auto grid max-w-7xl grid-cols-12 gap-8 px-4 py-8 sm:px-6">
   <aside class="col-span-12 lg:col-span-3">
@@ -141,10 +82,10 @@
           &rarr; Run interactive tutorial
         </button>
         <a
-          href="/features"
+          href="/projects"
           class="block w-full rounded-md bg-slate-900 px-3 py-2 text-center text-xs font-medium text-white"
         >
-          Back to features
+          Back to projects
         </a>
       </div>
     </nav>
@@ -174,10 +115,43 @@
           >.
         </p>
       </div>
-      <div class="mt-6">
+      <!-- The fastest way to understand the app is to do, not read. The
+           interactive tour is the hero action; the prose below is the
+           reference for whoever wants the full story. -->
+      <div
+        class="mt-6 rounded-xl border border-brand-200 bg-brand-50/70 p-4 sm:flex sm:items-center sm:justify-between sm:gap-6"
+      >
+        <div class="min-w-0">
+          <p class="text-sm font-semibold text-slate-900">
+            New to Unspaghettit? Start with the interactive tutorial.
+          </p>
+          <p class="mt-1 text-sm leading-6 text-slate-600">
+            A guided panel walks you through building a tiny feature and running
+            it in the simulator, in about 3 minutes, right in this app.
+          </p>
+        </div>
+        <div class="mt-3 flex shrink-0 flex-wrap items-center gap-2 sm:mt-0">
+          <button
+            type="button"
+            onclick={startInteractiveTour}
+            class="rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-slate-950/10 transition hover:bg-brand-800"
+          >
+            Start the tour
+          </button>
+          <button
+            type="button"
+            onclick={ensureSamples}
+            disabled={busyLoadingSamples}
+            class="rounded-md border border-brand-300 bg-white px-4 py-2 text-sm font-medium text-brand-800 transition hover:bg-brand-100 disabled:cursor-wait disabled:opacity-70"
+          >
+            {busyLoadingSamples ? "Loading..." : "Load sample project"}
+          </button>
+        </div>
+      </div>
+      <div class="mt-4">
         <Callout tone="info" title="Tip">
-          Click <span class="mono">Load sample project</span> on the left to make
-          sure the seeded eShop example is available.
+          The sample eShop project seeds every example used in the sections
+          below, so you can click along instead of imagining the screens.
         </Callout>
       </div>
     </header>
@@ -841,7 +815,7 @@ THEN show_message "You qualify for free shipping."`}
       {#snippet children()}
         <p>
           The <strong>Implementation Queue</strong> rides along in a floating panel
-          pinned to the bottom-right corner, visible from every page — an ordered
+          pinned to the bottom-right corner, visible from every page - an ordered
           "implement next" list of Features, Surfaces, or Actions you (or the LLM)
           plan to build. The point: a dev can say "implement the next thing in the
           queue" and the LLM picks it up via the MCP without you naming the entity.
@@ -884,7 +858,7 @@ THEN show_message "You qualify for free shipping."`}
                 (drives "implement next").
               </li>
               <li>
-                <span class="mono">set_queue_target</span>: pin a per-item goal —
+                <span class="mono">set_queue_target</span>: pin a per-item goal -
                 how far to take it (maturity %, implementation %, and/or "report
                 it's in the code"). Returned on
                 <span class="mono">list_queue</span> /
@@ -1324,8 +1298,8 @@ unspa dashboard --host 0.0.0.0`}
       {#snippet children()}
         <ul class="ml-5 list-disc space-y-1">
           <li>
-            Open the <a href="/features" class="text-brand-700 underline"
-              >features list</a
+            Open <a href="/projects" class="text-brand-700 underline"
+              >your projects</a
             > and remix the e-commerce sample. Try modeling a returns/refunds surface.
           </li>
           <li>

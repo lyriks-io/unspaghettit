@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Security
+
+- **DNS-rebinding / CSRF hardening on the default loopback dashboard (always on).** A loopback bind alone doesn't keep a browser out: a page you visit can rebind its own hostname to `127.0.0.1` and issue *same-origin* requests to the dashboard, bypassing CORS to read, delete, or import over your local models. Every `/api/*` request and Yjs WebSocket upgrade now must carry a loopback `Host` header, and state-changing requests a same-origin (or absent) `Origin` — a rebinding page sends its own hostname and fails closed with `403`. Needs no configuration; add hostnames with `UNSPA_ALLOWED_HOSTS`, and it steps aside on a wildcard (`--host 0.0.0.0`) bind where `UNSPA_AUTH_TOKEN` is the intended gate.
+- **Path-traversal fix on bundle import.** A hand-crafted `.unspa` bundle whose `statuses[].featureId` / `features[].id` contained `../` could make the implementation-status / provenance sidecar write escape the snapshot tree (arbitrary JSON file write). Every id that becomes a filename is now charset-validated at the path-builder layer, and a malformed bundle is rejected with `400` before anything is persisted.
+
 ## [0.5.0] — 2026-06-28
 
 The provenance & projection release. Two ways to *see* the model: where every modeled element came from, and what the model looks like as a diagram.

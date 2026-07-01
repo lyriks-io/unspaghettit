@@ -20,7 +20,7 @@ unspa dashboard   # opens http://localhost:3000
 
 Re-running `unspa init` is safe. Every step is idempotent: existing entries are preserved, managed blocks refresh in place.
 
-You normally don't run the MCP server by hand — your AI client spawns `unspa-mcp` on demand. `unspa serve` exists as a debugging hatch if you ever need to test the stdio interface yourself.
+You normally don't run the MCP server by hand - your AI client spawns `unspa-mcp` on demand. `unspa serve` exists as a debugging hatch if you ever need to test the stdio interface yourself.
 
 ## Supported clients
 
@@ -42,15 +42,15 @@ For any client without an automated config write (Codex and friends), `unspa ini
 
 Boot `unspa dashboard`, then:
 
-- Click **Load samples** to install the bundled **eShop** project: four LLM-sized features (Account & auth, Catalog & reviews, Cart & checkout, Order fulfillment) that exercise the full capability surface — composite and Expression conditions, feature invariants, event cascades, `bypassInvariants`, action invariants, scenarios, persona overrides, and entity/resource mapping. Every feature scores 100% maturity, so it works as a clean reference model.
+- Click **Load samples** to install the bundled **eShop** project: four LLM-sized features (Account & auth, Catalog & reviews, Cart & checkout, Order fulfillment) that exercise the full capability surface - composite and Expression conditions, feature invariants, event cascades, `bypassInvariants`, action invariants, scenarios, persona overrides, and entity/resource mapping. Every feature scores 100% maturity, so it works as a clean reference model.
 - To see maturity gaps in action, create a tiny scratch feature with an empty surface or an action without effects or scenarios. The dashboard shows the missing pieces.
 - Open the **Tutorial** page (`/tutorial`) for a 14-section walkthrough, and hit **Run interactive tutorial** for a guided spotlight tour from project to feature to surface to action to parameter to rule to simulator, prefilling fields and gating each step on the right thing being typed or clicked.
 
 ## Where the model lives (shared hub by default)
 
-`unspa init` needs no decision about storage. The behavior model lives in a **shared hub** at `~/.unspa-hub/unspa`, and both the MCP server and `unspa dashboard` discover it automatically on first run — no `UNSPA_SNAPSHOTS`, no special launch directory. One source of truth across every repo and every client (including **Claude Desktop**, which has no project scope), and one `unspa dashboard` run from anywhere serves it.
+`unspa init` needs no decision about storage. The behavior model lives in a **shared hub** at `~/.unspa-hub/unspa`, and both the MCP server and `unspa dashboard` discover it automatically on first run - no `UNSPA_SNAPSHOTS`, no special launch directory. One source of truth across every repo and every client (including clients with no per-project scope), and one `unspa dashboard` run from anywhere serves it.
 
-Want the model versioned **inside a specific repo** instead — travelling in git and PRs? Opt into a per-repo install:
+Want the model versioned **inside a specific repo** instead - travelling in git and PRs? Opt into a per-repo install:
 
 ```bash
 unspa init --local            # scaffold this repo's unspa/ folder (found by walk-up)
@@ -62,14 +62,14 @@ Discovery order, used by both the MCP and the dashboard: explicit `UNSPA_SNAPSHO
 
 Switching later is just a re-run: `unspa init` for the hub, `unspa init --local` for per-repo, or `unspa dashboard --snapshots <path>` for a one-off look at any folder. All loopback / single-machine; the hub is not a network service.
 
-A typical end state: Claude Desktop for cross-project querying, per-repo Claude Code instances pointed at the same hub (each bound to one project with `unspa link`), and one live dashboard reflecting every change.
+A typical end state: a global-scope MCP client for cross-project querying, per-repo agent instances pointed at the same hub (each bound to one project with `unspa link`), and one live dashboard reflecting every change.
 
 ## Two views over the model
 
 The dashboard ships two views over the same model:
 
-- **Expert** (default) — the full control surface: projects, features, surfaces, actions, the simulator, maturity, and implementation coverage.
-- **Builder** (opt-in) — a simpler, guided view: browse projects → core features → features with Maturity / Built dials, accept AI-proposed improvements, and fill a per-project build queue where each item carries its own maturity / implementation goal.
+- **Expert** (default) - the full control surface: projects, features, surfaces, actions, the simulator, maturity, and implementation coverage.
+- **Builder** (opt-in) - a simpler, guided view: browse projects → core features → features with Maturity / Built dials, accept AI-proposed improvements, and fill a per-project build queue where each item carries its own maturity / implementation goal.
 
 ```bash
 unspa init --with builder        # at setup (or just answer the init prompt)

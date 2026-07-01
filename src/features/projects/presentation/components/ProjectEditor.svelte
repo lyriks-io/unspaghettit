@@ -175,6 +175,13 @@
         >
           Graph
         </a>
+        <a
+          href={`/projects/${project.id}/mcp`}
+          class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
+          title="Connect AI agents to this project's features via MCP"
+        >
+          MCP
+        </a>
         <KebabMenu align="right" placement="down" label="Project actions">
           {#snippet children(close)}
             <MenuItem

@@ -34,9 +34,12 @@ const isLoopback = (host: string): boolean =>
  * wherever the user ran the CLI from. An explicit `--snapshots` overrides both.
  *
  * Defaults to binding 127.0.0.1: the REST sync routes and Yjs WebSocket
- * have no auth, no CSRF, no Origin allowlist, so a 0.0.0.0 bind would let
- * anyone on the LAN mutate every feature. Users who want LAN exposure pass
- * `--host 0.0.0.0` explicitly and we print a loud warning.
+ * have no token auth, so a 0.0.0.0 bind would let anyone on the LAN mutate
+ * every feature. (The loopback tier is still hardened against DNS-rebinding /
+ * CSRF via the always-on Host/Origin guard in hooks.server.ts + wsServer.ts;
+ * that guard self-disables on a wildcard bind, which is why token auth matters
+ * there.) Users who want LAN exposure pass `--host 0.0.0.0` explicitly and we
+ * print a loud warning.
  *
  * Returns the child's exit code; throws when the build artefact is missing
  * (e.g. shipped clone without `npm run build`) so the user gets a clear hint.

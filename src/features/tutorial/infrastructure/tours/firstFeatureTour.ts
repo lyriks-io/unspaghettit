@@ -57,7 +57,7 @@ const actionHasTwoParameterRules = (): boolean => countParameterShowMessageRules
  *   - `click` for steps where the next action is a single button press
  *   - `event` for steps where a submit can come from Enter or click and
  *     a domain event fires either way
- *   - `manual` for narrative framing — gated by `canAdvance` when the
+ *   - `manual` for narrative framing - gated by `canAdvance` when the
  *     user is expected to have configured something first
  *
  * Fixed names ("Hello World", "Greeting", …) make screenshots, support,
@@ -295,11 +295,9 @@ export const firstFeatureTour: TourDefinition = {
       id: 'mcp-tour',
       title: 'Hook up your AI agent',
       body:
-        "The MCP tab walks you through registering this dashboard as an MCP server for Claude Code / Cursor / Claude Desktop. " +
+        "Every project page has an MCP button (next to Graph) that registers this dashboard as an MCP server for your AI coding agent, scoped to that project's features. " +
         "Once connected, the agent can list features, add actions, run scenarios, score maturity, and report implementation - all through typed tool calls instead of pasting prose. " +
         "That's the loop: you sketch behaviour, the agent fills it in, the spec stays the source of truth.",
-      target: '[data-tour="nav-mcp"]',
-      panelPosition: 'below-target',
       advance: { kind: 'manual' }
     },
     {
