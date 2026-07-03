@@ -64,12 +64,14 @@
   {:else}
     <div class="space-y-2">
       {#each surface.invariants as invariant (invariant.id)}
-        <InvariantEditor
-          {invariant}
-          {availablePaths}
-          onChange={(next) => update(next)}
-          onRemove={() => remove(invariant)}
-        />
+        <div data-focus-target={`invariant:${invariant.id}`} class="scroll-mt-24 rounded-lg">
+          <InvariantEditor
+            {invariant}
+            {availablePaths}
+            onChange={(next) => update(next)}
+            onRemove={() => remove(invariant)}
+          />
+        </div>
       {/each}
     </div>
   {/if}

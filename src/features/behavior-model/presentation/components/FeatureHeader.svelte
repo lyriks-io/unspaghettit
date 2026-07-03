@@ -114,6 +114,14 @@
   <div class="flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm shadow-slate-950/5">
     <div class="flex rounded-lg border border-hairline bg-white p-1">
       <a
+        href={`/features/${feature.id}/digest`}
+        title="Read a plain-language summary of this feature"
+        aria-label="Open behavioral digest"
+        class="rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+      >
+        Summary
+      </a>
+      <a
         href={`/features/${feature.id}/graph`}
         title="Open behavior graph"
         aria-label="Open behavior graph"

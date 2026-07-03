@@ -169,6 +169,13 @@
           Back to projects
         </a>
         <a
+          href={`/projects/${project.id}/digest`}
+          class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
+          title="Read a plain-language summary of the whole project"
+        >
+          Summary
+        </a>
+        <a
           href={`/projects/${project.id}/graph`}
           class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
           title="Open the whole project behavior graph"
