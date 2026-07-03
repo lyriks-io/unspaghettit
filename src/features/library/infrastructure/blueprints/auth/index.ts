@@ -1,4 +1,5 @@
 import type { SurfaceBlueprint } from '../../../domain/entities/SurfaceBlueprint';
+import { authExtraBlueprints } from './extras';
 import { resetPasswordBlueprint } from './ResetPasswordBlueprint';
 import { signInBlueprint } from './SignInBlueprint';
 import { signUpBlueprint } from './SignUpBlueprint';
@@ -13,5 +14,6 @@ export const authBlueprints: readonly SurfaceBlueprint[] = [
   signInBlueprint,
   signUpBlueprint,
   verifyEmailBlueprint,
-  resetPasswordBlueprint
+  resetPasswordBlueprint,
+  ...authExtraBlueprints
 ];

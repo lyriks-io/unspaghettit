@@ -6,17 +6,36 @@
     blueprint: SurfaceBlueprint;
     selected: boolean;
     onToggle: () => void;
+    /** Names of currently-selected surfaces this card would wire up to. */
+    connectsTo?: readonly string[];
+    /** True when a selection exists and this card neither is selected nor links
+     *  to it - dimmed so the connectable cards stand out. */
+    dimmed?: boolean;
   };
-  let { blueprint, selected, onToggle }: Props = $props();
+  let { blueprint, selected, onToggle, connectsTo = [], dimmed = false }: Props = $props();
+
+  const connectable = $derived(!selected && connectsTo.length > 0);
+  const linkLabel = $derived(
+    connectsTo.length === 0
+      ? ''
+      : connectsTo.length === 1
+        ? `Links to ${connectsTo[0]}`
+        : `Links to ${connectsTo[0]} +${connectsTo.length - 1}`
+  );
 </script>
 
 <button
   type="button"
   onclick={onToggle}
   aria-pressed={selected}
+  title={connectable ? `Wires up to ${connectsTo.join(', ')} when both are added` : undefined}
   class="flex w-full flex-col gap-2 rounded-lg border bg-white p-3 text-left transition {selected
     ? 'border-brand-600 ring-2 ring-brand-100'
-    : 'border-hairline hover:border-slate-300'}"
+    : connectable
+      ? 'border-emerald-400 ring-2 ring-emerald-100'
+      : 'border-hairline hover:border-slate-300'} {dimmed
+    ? 'opacity-55 hover:opacity-100'
+    : ''}"
 >
   <header class="flex flex-wrap items-center gap-2">
     <h3 class="text-sm font-semibold text-slate-950">{blueprint.name}</h3>
@@ -40,6 +59,15 @@
       </span>
     {/if}
   </header>
+
+  {#if connectable}
+    <span
+      class="inline-flex w-fit items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-200"
+    >
+      <span aria-hidden="true">&rarr;</span>
+      {linkLabel}
+    </span>
+  {/if}
 
   <p class="text-xs leading-relaxed text-slate-600">{blueprint.summary}</p>
 

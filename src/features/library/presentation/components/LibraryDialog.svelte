@@ -26,6 +26,7 @@
     type BlueprintFilter,
     type BlueprintSort
   } from '$features/library/domain/services/BlueprintFilter';
+  import { connectableToSelection } from '$features/library/domain/services/BlueprintConnections';
   import type { BlueprintId } from '$features/library/domain/value-objects/BlueprintId';
   import type { SurfaceBlueprint } from '$features/library/domain/entities/SurfaceBlueprint';
   import BlueprintCard from './BlueprintCard.svelte';
@@ -127,6 +128,13 @@
     return list;
   });
 
+  // Which unselected blueprints would wire up to the current picks, and the
+  // names they'd link to. Computed against the full library (not just the
+  // filtered view) so connectability is stable while the user searches.
+  const connectableMap = $derived(
+    connectableToSelection(inMemoryBlueprintRepository.list(), selected)
+  );
+
   const connections = $derived(previewConnections(selectedBlueprints));
 
   type ConnectionGroup = { readonly from: string; readonly targets: readonly string[] };
@@ -216,7 +224,7 @@
     ? 'w-[min(560px,95vw)]'
     : step === 'blank'
       ? 'w-[min(560px,95vw)]'
-      : 'w-[min(960px,95vw)]'} -translate-x-1/2 -translate-y-1/2 rounded-xl border border-hairline bg-white p-0 shadow-xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-sm"
+      : 'w-[min(960px,95vw)]'} -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl border border-hairline bg-white p-0 shadow-xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-sm"
 >
   <div class="flex h-full max-h-[85vh] flex-col">
     <header class="flex items-center justify-between border-b border-hairline px-5 py-4">
@@ -257,9 +265,23 @@
         type="button"
         onclick={close}
         aria-label="Close"
-        class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100 hover:text-slate-950"
+        title="Close"
+        class="ml-2 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-brand-400"
       >
-        x
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="h-4 w-4"
+          aria-hidden="true"
+        >
+          <path d="M18 6 6 18" />
+          <path d="m6 6 12 12" />
+        </svg>
       </button>
     </header>
 
@@ -361,15 +383,44 @@
         </div>
       </form>
     {:else}
-      <div class="flex flex-wrap items-center gap-2 border-b border-hairline bg-slate-50/70 px-5 py-3">
-        <input
-          type="search"
-          placeholder="Search by name, summary, or tag..."
-          value={filter.query}
-          oninput={(e) => setQuery((e.target as HTMLInputElement).value)}
-          class="min-w-55 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-slate-900"
-        />
-        <div class="flex items-center gap-1 text-xs">
+      <div class="flex flex-col gap-2 border-b border-hairline bg-slate-50/70 px-5 py-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            placeholder="Search by name, summary, or tag..."
+            value={filter.query}
+            oninput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            class="min-w-55 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-slate-900"
+          />
+          <label class="flex items-center gap-1 text-xs text-slate-600">
+            Type
+            <select
+              value={filter.surfaceType}
+              onchange={(e) =>
+                setSurfaceType((e.target as HTMLSelectElement).value as SurfaceTypeOrAll)}
+              class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+            >
+              <option value="all">All types</option>
+              {#each ALL_SURFACE_TYPES as t (t)}
+                <option value={t}>{surfaceTypeLabel(t)}</option>
+              {/each}
+            </select>
+          </label>
+          <label class="flex items-center gap-1 text-xs text-slate-600">
+            Sort
+            <select
+              value={filter.sort}
+              onchange={(e) => setSort((e.target as HTMLSelectElement).value as BlueprintSort)}
+              class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+            >
+              <option value="name">Name</option>
+              <option value="category">Category</option>
+            </select>
+          </label>
+        </div>
+        <!-- Category pills get their own scroll-capped, wrapping row so the
+             growing set of categories never overflows the dialog. -->
+        <div class="flex max-h-16 flex-wrap items-center gap-1 overflow-y-auto text-xs">
           <button
             type="button"
             class="rounded-full px-2 py-1 transition {filter.category === 'all'
@@ -391,34 +442,19 @@
             </button>
           {/each}
         </div>
-        <label class="flex items-center gap-1 text-xs text-slate-600">
-          Type
-          <select
-            value={filter.surfaceType}
-            onchange={(e) =>
-              setSurfaceType((e.target as HTMLSelectElement).value as SurfaceTypeOrAll)}
-            class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
-          >
-            <option value="all">All types</option>
-            {#each ALL_SURFACE_TYPES as t (t)}
-              <option value={t}>{surfaceTypeLabel(t)}</option>
-            {/each}
-          </select>
-        </label>
-        <label class="flex items-center gap-1 text-xs text-slate-600">
-          Sort
-          <select
-            value={filter.sort}
-            onchange={(e) => setSort((e.target as HTMLSelectElement).value as BlueprintSort)}
-            class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
-          >
-            <option value="name">Name</option>
-            <option value="category">Category</option>
-          </select>
-        </label>
       </div>
 
-      <div class="flex-1 overflow-y-auto px-5 py-4">
+      {#if connectableMap.size > 0}
+        <div
+          class="flex items-center gap-2 border-b border-hairline bg-emerald-50/40 px-5 py-1.5 text-[11px] text-emerald-800"
+        >
+          <span class="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-400" aria-hidden="true"
+          ></span>
+          <span>Green cards link to your selection - add them to wire the surfaces together.</span>
+        </div>
+      {/if}
+
+      <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {#if blueprints.length === 0}
           <p class="text-center text-sm italic text-slate-500">
             No blueprint matches this filter.
@@ -431,6 +467,10 @@
                   {blueprint}
                   selected={selected.has(blueprint.id)}
                   onToggle={() => toggle(blueprint.id)}
+                  connectsTo={connectableMap.get(blueprint.id) ?? []}
+                  dimmed={selectedCount > 0 &&
+                    !selected.has(blueprint.id) &&
+                    !connectableMap.has(blueprint.id)}
                 />
               </li>
             {/each}

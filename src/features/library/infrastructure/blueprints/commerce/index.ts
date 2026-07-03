@@ -2,6 +2,7 @@ import type { SurfaceBlueprint } from '../../../domain/entities/SurfaceBlueprint
 import { cartBlueprint } from './CartBlueprint';
 import { catalogBlueprint } from './CatalogBlueprint';
 import { checkoutBlueprint } from './CheckoutBlueprint';
+import { commerceExtraBlueprints } from './extras';
 import { orderConfirmationBlueprint } from './OrderConfirmationBlueprint';
 import { productDetailsBlueprint } from './ProductDetailsBlueprint';
 
@@ -10,5 +11,6 @@ export const commerceBlueprints: readonly SurfaceBlueprint[] = [
   productDetailsBlueprint,
   cartBlueprint,
   checkoutBlueprint,
-  orderConfirmationBlueprint
+  orderConfirmationBlueprint,
+  ...commerceExtraBlueprints
 ];
