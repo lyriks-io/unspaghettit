@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-Make setup one step for everyone, whether or not they know a terminal.
+Widen the on-ramp and the toolbox: one-step setup for everyone, a much larger surface library, and a plain-language digest of any scope.
 
 ### Added
 
@@ -14,6 +14,8 @@ Make setup one step for everyone, whether or not they know a terminal.
   - macOS / Linux: `curl -fsSL https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.sh | sh`
   - Windows: `irm https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.ps1 | iex`
 - **Codex is now auto-configured (CLI + VS Code).** A real Codex adapter writes the `[mcp_servers.unspa]` table into `~/.codex/config.toml` (global) or `.codex/config.toml` (project), replacing the old paste-this-snippet stub. The Codex CLI and the VS Code extension share that file, so one write wires up both. Merges into your existing `[mcp_servers.*]` tables without disturbing them; `unspa uninstall` strips it back out.
+- **A much larger surface library.** The "Add a surface" template library grew from a handful of blueprints to 100 ready-made, 100%-mature surfaces across 28 categories (auth, commerce, messaging, dashboard, scheduling, billing, search, maps, finance, media, learning, CRM, productivity, developer, AI, community, and more). Selecting a template now highlights the sibling surfaces it will connect to and dims the rest, so the transitions you are about to create are visible before you click Add.
+- **Behavioral Digest.** Turn any scope, a single feature or a whole project, into a plain-language "what happens" summary, reached from a Summary link on the feature header and the project toolbar. Every sentence deep-links back to the surface, action, or invariant it came from, and the whole digest exports to Markdown.
 
 ### Changed
 
@@ -23,6 +25,7 @@ Make setup one step for everyone, whether or not they know a terminal.
 
 - **Claude Desktop on macOS now works out of the box.** GUI apps on macOS launch with a minimal PATH (no `/usr/local/bin`, Homebrew, or nvm), so the old bare `unspa-mcp` command failed to spawn with `ENOENT`. On macOS / Linux `unspa init` now writes an absolute node + script entry (`command: <node>, args: [<.../mcp-server/bin.cjs>]`) that depends on nothing in PATH. Windows keeps `cmd /c unspa-mcp` (GUI apps inherit the user PATH); Claude Code in a terminal was never affected. A node version change can stale the pinned path; re-run `unspa init` to refresh.
 - **Detection catches installed-but-unlaunched clients.** The old check only saw a client after its config directory existed (i.e. after first launch), so installing a client and then running setup wired up nothing. Each CLI client is now also detected by its executable on PATH, and Claude Desktop (no CLI) by its install directory, so a fresh install is recognized immediately.
+- **Template library dialog polish.** The surface picker gained a real close button and no longer shows a second, outer scrollbar, so only the surface list scrolls.
 
 ## [0.5.1] - 2026-07-02
 
