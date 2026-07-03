@@ -521,6 +521,19 @@ copied into npm's global tree and no symlink is involved.
 **`Dashboard build missing`**. Run `npm run build` in the Unspaghettit repo
 once. The CLI re-uses the resulting `build/` folder.
 
+**Claude Desktop on macOS shows no Unspaghettit tools** (`spawn unspa-mcp
+ENOENT` in `~/Library/Logs/Claude/mcp-server-unspa.log`). GUI apps on macOS
+launch with a **minimal PATH** (`/usr/bin:/bin:/usr/sbin:/sbin`) that excludes
+the npm global bin and often node itself, so a bare `unspa-mcp` command can't be
+found. `unspa init` handles this: on macOS / Linux it writes an **absolute**
+node + script entry (`"command": "/path/to/node", "args":
+["/path/to/mcp-server/bin.cjs"]`) that needs nothing on PATH. If you hit this,
+re-run `unspa init` (0.6+) and restart Claude Desktop. Claude Code in a terminal
+is unaffected (it inherits your shell PATH); Windows is unaffected (GUI apps
+inherit the user PATH, and the entry routes through `cmd /c`). After a **node
+version change** (e.g. via nvm), the pinned absolute path can go stale - re-run
+`unspa init` to refresh it.
+
 **MCP server never attaches** (AI client shows no Unspaghettit tools).
 Affects users on **0.1.0 and 0.1.1** who installed via `npm install -g`.
 The MCP entry written by those versions of `unspa init` spawns
@@ -531,14 +544,19 @@ before MCP can speak a byte and the AI client silently drops it.
 Two fixes, in order of preference:
 
 1. **Upgrade to 0.1.2+** and re-run `unspa init`. The init writer now
-   emits an entry targeting `unspa-mcp` directly (faster startup, no
-   subprocess hop, dodges the bug). On Windows the entry is wrapped in
-   `cmd /c` because AI clients `spawn()` without a shell.
-2. **Hand-edit your `.mcp.json`** (or equivalent) to the same shape:
-   - macOS / Linux:
+   emits an entry that runs the MCP bin directly (faster startup, no
+   subprocess hop, dodges the bug). On Windows it wraps `unspa-mcp` in
+   `cmd /c`; on macOS / Linux (0.6+) it pins an absolute node + script so
+   minimal-PATH GUI hosts can spawn it. Both because AI clients `spawn()`
+   without a shell.
+2. **Hand-edit your `.mcp.json`** (or equivalent) to an equivalent shape:
+   - macOS / Linux (absolute paths; find node with `which node`, and the
+     script at `$(npm root -g)/unspaghettit/mcp-server/bin.cjs`):
      ```json
-     { "mcpServers": { "unspa": { "type": "stdio", "command": "unspa-mcp" } } }
+     { "mcpServers": { "unspa": { "type": "stdio", "command": "/usr/local/bin/node", "args": ["/usr/local/lib/node_modules/unspaghettit/mcp-server/bin.cjs"] } } }
      ```
+     A bare `"command": "unspa-mcp"` also works for Claude Code in a terminal
+     (it has your shell PATH), but not for a minimal-PATH GUI like Claude Desktop.
    - Windows:
      ```json
      { "mcpServers": { "unspa": { "type": "stdio", "command": "cmd", "args": ["/c", "unspa-mcp"] } } }

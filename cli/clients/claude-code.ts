@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isCommandOnPath } from '../util/detect';
 import { mergeMcpServerEntry } from '../util/json';
 import { SERVER_NAME } from './constants';
@@ -37,31 +38,65 @@ export const claudeCodeClient: ClientAdapter = {
 };
 
 /**
- * Build the MCP server entry that `unspa init` writes into every AI client's
- * config (Claude Code, Cursor, Gemini, ...). Target `unspa-mcp`, the dedicated
- * bin, rather than `unspa serve`: it runs the MCP server in-process via the
- * shim instead of spawning a tsx subprocess, so it's faster to start and has
- * a smaller blast radius (no `unspa serve` subprocess wiring to misconfigure).
+ * Absolute path to the packaged MCP bin shim (`mcp-server/bin.cjs`), resolved
+ * relative to this module, or null when it can't be found (an unusual install
+ * layout). `bin.cjs` is self-contained - it registers tsx and the runtime path
+ * aliases itself, then loads `bin.ts` - so `node <abs bin.cjs>` behaves exactly
+ * like invoking the `unspa-mcp` shim, minus any PATH dependency.
+ */
+const resolveMcpServerScript = (): string | null => {
+  try {
+    const p = fileURLToPath(new URL('../../mcp-server/bin.cjs', import.meta.url));
+    return existsSync(p) ? p : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Compose the stdio MCP entry `unspa init` writes into every AI client's config.
+ * Pure and injectable so both platform branches are testable off their host OS.
  *
- * On Windows, `npm install -g` installs three shims for every bin:
- * `unspa-mcp` (POSIX), `unspa-mcp.cmd` (CMD), `unspa-mcp.ps1` (PowerShell).
- * AI-client MCP launchers `spawn()` the command without a shell, and Node's
- * spawn refuses to execute `.cmd` / `.ps1` shims directly (since Node 22 it
- * raises EINVAL). Wrapping the call in `cmd /c` lets CMD resolve the
- * `.cmd` shim itself. macOS and Linux can invoke the POSIX shim directly.
+ * The spawn command has to survive the least-friendly host: an MCP launcher that
+ * `spawn()`s WITHOUT a shell, sometimes with a minimal PATH.
+ *
+ * - Windows: `cmd /c unspa-mcp`. Node's spawn refuses to exec `.cmd` / `.ps1`
+ *   shims directly (EINVAL since Node 22), so we route through cmd, which
+ *   resolves the shim via PATH + PATHEXT. Windows GUI hosts (Claude Desktop)
+ *   inherit the user PATH, so npm's global bin is visible. `cmd` itself lives in
+ *   System32, always on PATH.
+ * - macOS / Linux: pin `<node> <abs bin.cjs>` when the script resolves. GUI
+ *   hosts on macOS (Claude Desktop) launch with a MINIMAL PATH - typically
+ *   `/usr/bin:/bin:/usr/sbin:/sbin`, excluding `/usr/local/bin`, Homebrew, and
+ *   nvm - so a bare `unspa-mcp` (shebang `env node`) dies with ENOENT before MCP
+ *   speaks a byte. An absolute node + absolute script depends on nothing in PATH.
+ *   Falls back to the bare shim when the script can't be resolved; that still
+ *   works from a shell (Claude Code in a terminal), just not a minimal-PATH GUI.
  *
  * `env` lets a NON-default snapshot location inject `UNSPA_SNAPSHOTS=<absolute
- * path>` so the MCP reads it regardless of where the AI client launches. The
- * default hub and per-repo (`--local`) installs need no env — discovery's
- * walk-up / hub fallback finds the folder on its own — so this stays empty for
- * them and is only populated by `--hub <path>`.
+ * path>`; the default hub and `--local` installs leave it empty because
+ * discovery's walk-up / hub fallback finds the folder on its own.
  */
-export const buildUnspaMcpEntry = (opts: { env?: Record<string, string> } = {}): McpServerEntry => {
+export const composeMcpEntry = (params: {
+  platform: NodeJS.Platform;
+  nodePath: string;
+  scriptPath: string | null;
+  env?: Record<string, string>;
+}): McpServerEntry => {
   const base: McpServerEntry =
-    process.platform === 'win32'
+    params.platform === 'win32'
       ? { type: 'stdio', command: 'cmd', args: ['/c', 'unspa-mcp'] }
-      : { type: 'stdio', command: 'unspa-mcp', args: [] };
-  const env = opts.env;
-  if (env && Object.keys(env).length > 0) return { ...base, env };
+      : params.scriptPath
+        ? { type: 'stdio', command: params.nodePath, args: [params.scriptPath] }
+        : { type: 'stdio', command: 'unspa-mcp', args: [] };
+  if (params.env && Object.keys(params.env).length > 0) return { ...base, env: params.env };
   return base;
 };
+
+export const buildUnspaMcpEntry = (opts: { env?: Record<string, string> } = {}): McpServerEntry =>
+  composeMcpEntry({
+    platform: process.platform,
+    nodePath: process.execPath,
+    scriptPath: resolveMcpServerScript(),
+    env: opts.env
+  });

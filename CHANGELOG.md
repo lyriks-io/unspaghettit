@@ -19,6 +19,11 @@ Make setup one step for everyone, whether or not they know a terminal.
 
 - **`unspa init` registers the MCP globally by default.** The behavior model already lives in the shared hub (one machine-wide source of truth), so the matching default is a machine-wide MCP registration: the tools attach in *every* repo after one install, including clients with no per-project scope (Claude Desktop, Windsurf). A per-repo `.mcp.json` pointing at hub data was the odd combination. Use `--scope project` (pairs with `--local`) for an entry that travels with the repo in git. Per-repo context blocks (`CLAUDE.md` / `AGENTS.md`) and skills still land in the current repo regardless of MCP scope, because they document the repo, not the machine.
 
+### Fixed
+
+- **Claude Desktop on macOS now works out of the box.** GUI apps on macOS launch with a minimal PATH (no `/usr/local/bin`, Homebrew, or nvm), so the old bare `unspa-mcp` command failed to spawn with `ENOENT`. On macOS / Linux `unspa init` now writes an absolute node + script entry (`command: <node>, args: [<.../mcp-server/bin.cjs>]`) that depends on nothing in PATH. Windows keeps `cmd /c unspa-mcp` (GUI apps inherit the user PATH); Claude Code in a terminal was never affected. A node version change can stale the pinned path; re-run `unspa init` to refresh.
+- **Detection catches installed-but-unlaunched clients.** The old check only saw a client after its config directory existed (i.e. after first launch), so installing a client and then running setup wired up nothing. Each CLI client is now also detected by its executable on PATH, and Claude Desktop (no CLI) by its install directory, so a fresh install is recognized immediately.
+
 ## [0.5.1] - 2026-07-02
 
 A usability and hardening pass: make the dashboard legible on first run, scope MCP setup to the project it belongs to, and close two local-attack surfaces.
