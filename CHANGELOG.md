@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+Make setup one step for everyone, whether or not they know a terminal.
+
+### Added
+
+- **Zero-setup bootstrap scripts.** `install.ps1` (Windows) and `install.sh` (macOS/Linux) take a machine from nothing to a working MCP: they check for Node.js and install it (winget / Homebrew) when missing or too old, install the CLI, then register the MCP globally with whatever AI clients they detect. One line, no terminal knowledge required:
+  - macOS / Linux: `curl -fsSL https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.sh | sh`
+  - Windows: `irm https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.ps1 | iex`
+- **Codex is now auto-configured (CLI + VS Code).** A real Codex adapter writes the `[mcp_servers.unspa]` table into `~/.codex/config.toml` (global) or `.codex/config.toml` (project), replacing the old paste-this-snippet stub. The Codex CLI and the VS Code extension share that file, so one write wires up both. Merges into your existing `[mcp_servers.*]` tables without disturbing them; `unspa uninstall` strips it back out.
+
+### Changed
+
+- **`unspa init` registers the MCP globally by default.** The behavior model already lives in the shared hub (one machine-wide source of truth), so the matching default is a machine-wide MCP registration: the tools attach in *every* repo after one install, including clients with no per-project scope (Claude Desktop, Windsurf). A per-repo `.mcp.json` pointing at hub data was the odd combination. Use `--scope project` (pairs with `--local`) for an entry that travels with the repo in git. Per-repo context blocks (`CLAUDE.md` / `AGENTS.md`) and skills still land in the current repo regardless of MCP scope, because they document the repo, not the machine.
+
 ## [0.5.1] - 2026-07-02
 
 A usability and hardening pass: make the dashboard legible on first run, scope MCP setup to the project it belongs to, and close two local-attack surfaces.

@@ -135,17 +135,24 @@ export const runUninstallCommand = async (options: UninstallOptions = {}): Promi
 
   log.step(`Uninstalling Unspaghettit from ${pc.cyan(cwd)}`);
 
-  // 1. Strip MCP server entries from every selected client Ã- scope.
+  // 1. Strip MCP server entries from every selected client x scope. Clients
+  //    with a non-JSON config (Codex's TOML) expose `removeEntry`; everyone
+  //    else falls back to the shared `mcpServers` JSON removal.
   const clients = resolveClients(options.clients);
   for (const client of clients) {
     for (const scope of ALL_SCOPES) {
       if (!client.scopes.includes(scope)) continue;
-      const path = client.resolvePath(scope, { cwd, home });
-      if (!path) continue;
       try {
-        const changed = await removeMcpServerEntry(path, SERVER_NAME);
-        if (changed) log.ok(`${client.label} (${scope}): removed entry from ${path}`);
-        else log.dim(`${client.label} (${scope}): nothing to remove (${path})`);
+        const result = client.removeEntry
+          ? await client.removeEntry(scope, { cwd, home })
+          : await (async () => {
+              const path = client.resolvePath(scope, { cwd, home });
+              if (!path) return { path: null, changed: false };
+              return { path, changed: await removeMcpServerEntry(path, SERVER_NAME) };
+            })();
+        if (result.path === null) continue;
+        if (result.changed) log.ok(`${client.label} (${scope}): removed entry from ${result.path}`);
+        else log.dim(`${client.label} (${scope}): nothing to remove (${result.path})`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         log.warn(`${client.label} (${scope}): ${message}`);

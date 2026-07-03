@@ -1,8 +1,27 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathExistsAny } from '../util/detect';
 import { mergeMcpServerEntry } from '../util/json';
 import { SERVER_NAME } from './constants';
 import type { ApplyResult, ClientAdapter, ConfigScope } from './types';
+
+/**
+ * Claude Desktop's install directory per platform. It ships no CLI, so unlike
+ * the other clients it can't be detected via a command on PATH. These are the
+ * app install locations, true from install time (before the app is ever
+ * launched and writes its config). Best-effort: a miss just falls back to the
+ * config-file check, and the user can still opt in manually.
+ */
+const appInstallDirs = (home: string): string[] => {
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA ?? join(home, 'AppData', 'Local');
+    return [join(local, 'AnthropicClaude'), join(local, 'Programs', 'claude')];
+  }
+  if (process.platform === 'darwin') {
+    return ['/Applications/Claude.app', join(home, 'Applications', 'Claude.app')];
+  }
+  return [];
+};
 
 /**
  * Resolve Claude Desktop's config file path per platform. Claude Desktop has
@@ -46,7 +65,7 @@ export const claudeDesktopClient: ClientAdapter = {
     return null;
   },
   detect(params): boolean {
-    return existsSync(resolveConfigPath(params.home));
+    return existsSync(resolveConfigPath(params.home)) || pathExistsAny(appInstallDirs(params.home));
   },
   async apply(scope, params): Promise<ApplyResult> {
     const path = this.resolvePath(scope, params);

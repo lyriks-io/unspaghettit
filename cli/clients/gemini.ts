@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { isCommandOnPath } from '../util/detect';
 import { mergeMcpServerEntry } from '../util/json';
 import { SERVER_NAME } from './constants';
 import type { ApplyResult, ClientAdapter, ConfigScope } from './types';
@@ -25,7 +26,11 @@ export const geminiClient: ClientAdapter = {
     return null;
   },
   detect(params): boolean {
-    return existsSync(join(params.home, '.gemini')) || existsSync(join(params.cwd, '.gemini'));
+    return (
+      existsSync(join(params.home, '.gemini')) ||
+      existsSync(join(params.cwd, '.gemini')) ||
+      isCommandOnPath('gemini')
+    );
   },
   async apply(scope, params): Promise<ApplyResult> {
     const path = this.resolvePath(scope, params);

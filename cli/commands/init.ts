@@ -65,11 +65,13 @@ export type InitOptions = {
   /** Comma list of client ids, or 'all', or undefined to prompt. */
   readonly clients?: string;
   /**
-   * Where to write the MCP server entry. Defaults to 'project' (per-repo
-   * `.mcp.json`). Pass `'global'` to write to `~/.claude.json` / `~/.cursor/`
-   * etc. for advanced workflows where the MCP should attach to every project.
-   * Most users never set this - the default pairs with the per-project
-   * `unspa/` folder, skills, and CLAUDE.md block that this command also writes.
+   * Where to write the MCP server entry. Defaults to `'global'`: each client's
+   * user-level config (`~/.claude.json`, `~/.cursor/mcp.json`,
+   * `~/.codex/config.toml`, ...), so the MCP attaches in every repo after one
+   * install. Pass `'project'` to write a per-repo config file instead (e.g.
+   * `.mcp.json`), for when the entry should travel with the repo in git — it
+   * pairs naturally with `--local` (model-in-repo). Global is the only scope
+   * some clients support at all (Claude Desktop, Windsurf).
    */
   readonly scope?: ConfigScope;
   /** When set, skip prompts and use sensible defaults (CI / scripts). */
@@ -179,14 +181,18 @@ const resolveClientsArg = async (
   return ids.map((id) => clientById(id)).filter((c): c is ClientAdapter => c !== null);
 };
 
-// Always project unless the user explicitly opts into global. The two scopes
-// are not symmetric in practice: project scope pairs naturally with the
-// per-project `unspa/` folder + skills + CLAUDE.md block that `init` writes
-// in the same run, while global scope is for advanced workflows that want the
-// MCP attached to every Claude Code / Cursor session by default. Surfacing it
-// as a prompt added friction for no benefit on the happy path; keeping it as
-// an opt-in flag preserves the capability without bothering anyone.
-const resolveScope = (opt: ConfigScope | undefined): ConfigScope => opt ?? 'project';
+// Global by default. The behavior model already lives in the shared hub (one
+// machine-wide source of truth), so registering the MCP globally — into each
+// client's user-level config (`~/.claude.json`, `~/.cursor/mcp.json`,
+// `~/.codex/config.toml`, ...) — is the matching default: install once and the
+// tools are attached in every repo, for every client, including the ones with
+// no per-project scope (Claude Desktop, Windsurf). A per-repo `.mcp.json`
+// pointing at hub data was the odd combination; `--scope project` (or the
+// `--local` model-in-repo install it pairs with) is the opt-out for people who
+// want the entry to travel with the repo in git. The per-repo context blocks
+// (CLAUDE.md / AGENTS.md) and skills are scoped by nature and still land in the
+// cwd regardless of MCP scope — they document the repo, not the machine.
+const resolveScope = (opt: ConfigScope | undefined): ConfigScope => opt ?? 'global';
 
 /**
  * Render the MCP server entry the user must paste into a client that has no

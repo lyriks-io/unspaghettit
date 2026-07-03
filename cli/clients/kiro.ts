@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { isCommandOnPath } from '../util/detect';
 import { mergeMcpServerEntry } from '../util/json';
 import { SERVER_NAME } from './constants';
 import type { ApplyResult, ClientAdapter, ConfigScope } from './types';
@@ -19,7 +20,11 @@ export const kiroClient: ClientAdapter = {
     return null;
   },
   detect(params): boolean {
-    return existsSync(join(params.home, '.kiro')) || existsSync(join(params.cwd, '.kiro'));
+    return (
+      existsSync(join(params.home, '.kiro')) ||
+      existsSync(join(params.cwd, '.kiro')) ||
+      isCommandOnPath('kiro')
+    );
   },
   async apply(scope, params): Promise<ApplyResult> {
     const path = this.resolvePath(scope, params);

@@ -62,9 +62,9 @@ program
 
 program
   .command('init')
-  .description('Register the MCP server with picked AI clients, seed CLAUDE.md/AGENTS.md, install bundled skills. By default the behavior model lives in the shared hub (~/.unspa-hub/unspa) - no config needed. Safe to re-run.')
+  .description('Register the MCP server with your AI clients (globally by default, so it attaches in every repo), seed CLAUDE.md/AGENTS.md, install bundled skills. The behavior model lives in the shared hub (~/.unspa-hub/unspa) - no config needed. Safe to re-run; use --scope project for a per-repo entry.')
   .option('--clients <ids>', 'Comma list of client ids (e.g. claude-code,cursor,gemini) or "all".')
-  .option('--scope <scope>', 'Where to register the MCP: "project" (default) or "global". Global writes to ~/.claude.json etc. for power users who want the MCP attached in every project.', 'project')
+  .option('--scope <scope>', 'Where to register the MCP: "global" (default) writes each client\'s user config (~/.claude.json, ~/.cursor/mcp.json, ~/.codex/config.toml, ...) so the tools attach in every repo after one install. "project" writes a per-repo config (e.g. .mcp.json) that travels with the repo in git; pairs with --local.', 'global')
   .option('--custom', 'Open the interactive custom-install wizard: choose the shared hub, a per-repo unspa/ folder, or a custom hub path.')
   .option('--local', 'Per-repo install: scaffold a local unspa/ folder found by walk-up, so the model travels with the repo in git (the pre-hub behavior). No UNSPA_SNAPSHOTS is written.')
   .option('--hub [path]', 'Pin a hub location. Bare --hub is the default hub (same as no flag). --hub <path> points at a custom folder and writes UNSPA_SNAPSHOTS=<resolved-path> into each MCP entry. Re-run anytime to repoint.')

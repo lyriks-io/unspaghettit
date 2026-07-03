@@ -5,6 +5,20 @@ runs the bundled MCP server, and boots the dashboard.
 
 ## Install
 
+Zero-setup bootstrap (checks/installs Node, installs the CLI, registers the MCP globally with detected clients):
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.ps1 | iex
+```
+
+Or, if you already have Node.js 20.10+:
+
 ```bash
 npm install -g unspaghettit
 ```
@@ -128,10 +142,10 @@ Bootstraps an Unspaghettit project in the current repo. Every step is idempotent
 re-running updates managed blocks in place, never duplicates.
 
 ```bash
-unspa init                              # default: shared hub, picks clients interactively
-unspa init --yes                        # non-interactive, accept all defaults (shared hub)
+unspa init                              # default: shared hub, GLOBAL MCP registration, picks clients interactively
+unspa init --yes                        # non-interactive; wires only the clients detected on this machine
 unspa init --clients claude-code,cursor # only register specific clients
-unspa init --scope global               # write to ~/.claude.json etc. instead of per-project
+unspa init --scope project              # write a per-repo entry (.mcp.json etc.) instead of the global user config
 unspa init --local                      # per-repo install: scaffold this repo's unspa/ folder
 unspa init --custom                     # interactive picker: hub vs per-repo vs custom path
 unspa init --hub /custom/path           # a non-default hub location (pins UNSPA_SNAPSHOTS)
@@ -142,11 +156,13 @@ unspa init --fun                        # pre-check the opt-in narrative skills 
 What it does:
 
 1. **Resolves where the model lives.** By default this is the **shared hub** (`~/.unspa-hub/unspa`) - no folder is scaffolded in the repo and no `UNSPA_SNAPSHOTS` is written, because discovery falls back to the hub automatically. Pass `--local` to scaffold a per-repo `unspa/` (found by walk-up, so the model travels with the repo in git), or `--hub <path>` for a non-default hub location.
-2. **Registers the MCP server** with the AI clients you pick, scoped to the
-   current project (`.mcp.json`, `.cursor/mcp.json`, …). Pass `--scope global`
-   if you'd rather write to `~/.claude.json` / `~/.cursor/mcp.json` and have
-   the MCP attached in every project automatically. The entry targets
-   `unspa-mcp` (the dedicated MCP bin, faster startup than going through
+2. **Registers the MCP server** with the AI clients you pick, **globally by
+   default**: it writes each client's user-level config (`~/.claude.json`,
+   `~/.cursor/mcp.json`, `~/.codex/config.toml`, …), so the MCP attaches in
+   every repo after one install, including clients with no per-project scope.
+   Pass `--scope project` to write a per-repo entry (`.mcp.json`,
+   `.cursor/mcp.json`, …) that travels with the repo in git instead. The entry
+   targets `unspa-mcp` (the dedicated MCP bin, faster startup than going through
    `unspa serve`):
    - macOS / Linux: `{ "type": "stdio", "command": "unspa-mcp", "args": [] }`
    - Windows: `{ "type": "stdio", "command": "cmd", "args": ["/c", "unspa-mcp"] }`
@@ -155,7 +171,8 @@ What it does:
 
    For the default hub and per-repo (`--local`) installs the entry carries **no env** - discovery finds the folder. Only `--hub <path>` (a non-default location) adds `env.UNSPA_SNAPSHOTS=<absolute path>`, since walk-up can't reach it.
 
-   Merged into existing `mcpServers.*` entries, your other servers stay intact.
+   Merged into existing entries, your other servers stay intact: a `mcpServers.*`
+   JSON block for every client, or a `[mcp_servers.unspa]` TOML table for Codex.
 3. **Adds a `# >>> unspa` block to `.gitignore`** for hot-reload artefacts.
 4. **Inserts a `<!-- >>> unspa -->` block into `CLAUDE.md` and `AGENTS.md`**
    so any AI assistant working in the repo learns:
@@ -397,21 +414,25 @@ full pitch. Skills live in the project so they version with the codebase.
 
 ## AI client support
 
-`unspa init` registers the MCP server with these clients:
+`unspa init` registers the MCP server with these clients. **Global scope is the
+default** (one install, attached in every repo); `--scope project` writes the
+per-repo entry instead.
 
-| Client                   | Project scope                  | Global scope                                    |
-| ------------------------ | ------------------------------ | ----------------------------------------------- |
-| Claude Code (CLI + VSC)  | `.mcp.json`                    | `~/.claude.json`                                |
-| Claude Desktop           | n/a *(no per-project config)*  | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) |
-| Cursor                   | `.cursor/mcp.json`             | `~/.cursor/mcp.json`                            |
-| Gemini Code Assist / CLI | `.gemini/settings.json`        | `~/.gemini/settings.json`                       |
-| Windsurf                 |                                | `~/.codeium/windsurf/mcp_config.json`           |
-| Kiro                     | `.kiro/settings/mcp.json`      | `~/.kiro/settings/mcp.json`                     |
-| Codex (VS Code)          | manual *(prints the snippet)*  | manual *(prints the snippet)*                   |
+| Client                   | Global scope (default)                          | Project scope (`--scope project`) |
+| ------------------------ | ----------------------------------------------- | --------------------------------- |
+| Claude Code (CLI + VSC)  | `~/.claude.json`                                | `.mcp.json`                       |
+| Claude Desktop           | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) | n/a *(no per-project config)* |
+| Cursor                   | `~/.cursor/mcp.json`                            | `.cursor/mcp.json`                |
+| Gemini Code Assist / CLI | `~/.gemini/settings.json`                       | `.gemini/settings.json`           |
+| Windsurf                 | `~/.codeium/windsurf/mcp_config.json`           | n/a                               |
+| Kiro                     | `~/.kiro/settings/mcp.json`                     | `.kiro/settings/mcp.json`         |
+| Codex (CLI + VS Code)    | `~/.codex/config.toml`                          | `.codex/config.toml` *(trusted projects only)* |
 
-For the manual entries (Codex VS Code), `unspa init` prints the MCP JSON
-snippet so you can copy it into the client's MCP settings. All file-based
-writes are **merging**, your existing `mcpServers.*` entries are preserved.
+The Codex CLI and VS Code extension share `~/.codex/config.toml`, so one write
+covers both. All writes are **merging**: your existing `mcpServers.*` JSON
+entries (and, for Codex, other `[mcp_servers.*]` TOML tables) are preserved.
+`unspa init --yes` and the bootstrap scripts only touch clients already present
+on the machine, so no config folders are created for tools you don't use.
 
 ## Context files (`CLAUDE.md` / `AGENTS.md`)
 

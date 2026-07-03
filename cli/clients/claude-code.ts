@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { isCommandOnPath } from '../util/detect';
 import { mergeMcpServerEntry } from '../util/json';
 import { SERVER_NAME } from './constants';
 import type { ApplyResult, ClientAdapter, ConfigScope, McpServerEntry } from './types';
@@ -21,7 +22,11 @@ export const claudeCodeClient: ClientAdapter = {
     return null;
   },
   detect(params): boolean {
-    return existsSync(join(params.home, '.claude.json')) || existsSync(join(params.home, '.claude'));
+    return (
+      existsSync(join(params.home, '.claude.json')) ||
+      existsSync(join(params.home, '.claude')) ||
+      isCommandOnPath('claude')
+    );
   },
   async apply(scope, params): Promise<ApplyResult> {
     const path = this.resolvePath(scope, params);

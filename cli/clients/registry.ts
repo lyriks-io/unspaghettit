@@ -1,6 +1,6 @@
 import { claudeCodeClient } from './claude-code';
 import { claudeDesktopClient } from './claude-desktop';
-import { codexVscodeClient } from './codex-vscode';
+import { codexClient } from './codex';
 import { cursorClient } from './cursor';
 import { geminiClient } from './gemini';
 import { kiroClient } from './kiro';
@@ -17,7 +17,7 @@ export const ALL_CLIENTS: readonly ClientAdapter[] = [
   windsurfClient,
   geminiClient,
   kiroClient,
-  codexVscodeClient
+  codexClient
 ];
 
 export const clientById = (id: string): ClientAdapter | null =>

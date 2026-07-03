@@ -2,21 +2,40 @@
 
 ## Install
 
+### One line (checks Node, installs everything)
+
+For a fresh machine, the bootstrap script checks for Node.js (installs it via winget/Homebrew if missing), installs the CLI, and registers the MCP **globally** with the AI clients it finds:
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.ps1 | iex
+```
+
+The script never writes into a repo (no `CLAUDE.md`, `.gitignore`, or skills); it only installs the CLI and wires the MCP globally. Re-running is safe.
+
+### With npm
+
 ```bash
 npm install -g unspaghettit
 ```
 
 Requires Node.js 20.10 or newer.
 
-## Wire up a project
+## Wire up your machine (and, optionally, a project)
 
 ```bash
-cd path/to/your-app
-unspa init        # register the MCP with your AI clients + seed CLAUDE.md/AGENTS.md + install skills
+unspa init        # register the MCP GLOBALLY with your detected AI clients
 unspa dashboard   # opens http://localhost:3000
 ```
 
-`unspa init` registers the MCP server with the AI clients you select, then **restart your IDE** so the client picks up the new tools. Your LLM now has the runtime's full tool surface.
+`unspa init` registers the MCP server **globally by default**: it writes each client's user-level config (`~/.claude.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, ...), so the tools attach in **every** repo after a single install, including clients with no per-project scope (Claude Desktop, Windsurf). Then **restart your IDE** so the client picks up the new tools. Your LLM now has the runtime's full tool surface.
+
+Run it from inside a project and it also seeds `CLAUDE.md`/`AGENTS.md` and installs skills for that repo. Prefer the MCP entry to travel with the repo in git instead of your user config? Use `unspa init --scope project` (a good match for `--local`, below).
 
 Re-running `unspa init` is safe. Every step is idempotent: existing entries are preserved, managed blocks refresh in place.
 
@@ -26,17 +45,19 @@ You normally don't run the MCP server by hand - your AI client spawns `unspa-mcp
 
 `unspa init` registers the MCP server with the clients you pick. Supported out of the box:
 
-| Client | Project config | Global config |
-| --- | --- | --- |
-| Claude Code (CLI + VSC) | `.mcp.json` | `~/.claude.json` |
-| Claude Desktop | n/a (no project scope) | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/...` (macOS) |
-| Cursor | `.cursor/mcp.json` | `~/.cursor/mcp.json` |
-| Gemini Code Assist / CLI | `.gemini/settings.json` | `~/.gemini/settings.json` |
-| Windsurf | n/a | `~/.codeium/windsurf/mcp_config.json` |
-| Kiro | `.kiro/settings/mcp.json` | `~/.kiro/settings/mcp.json` |
-| Codex (VS Code) | prints snippet to paste manually | same |
+Global config (the default) is bolded; a per-repo entry needs `--scope project`.
 
-For any client without an automated config write (Codex and friends), `unspa init` prints the MCP JSON snippet to copy into the client's MCP settings.
+| Client | Global config (default) | Project config (`--scope project`) |
+| --- | --- | --- |
+| Claude Code (CLI + VSC) | `~/.claude.json` | `.mcp.json` |
+| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/...` (macOS) | n/a (no project scope) |
+| Cursor | `~/.cursor/mcp.json` | `.cursor/mcp.json` |
+| Gemini Code Assist / CLI | `~/.gemini/settings.json` | `.gemini/settings.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | n/a |
+| Kiro | `~/.kiro/settings/mcp.json` | `.kiro/settings/mcp.json` |
+| Codex (CLI + VS Code) | `~/.codex/config.toml` | `.codex/config.toml` (trusted projects only) |
+
+Codex uses TOML (`[mcp_servers.unspa]`); every other client uses a JSON `mcpServers` block. `unspa init` merges into each without disturbing servers you already configured. `unspa init --yes` (and the bootstrap scripts) only touch clients already present on the machine, so it never creates config folders for tools you don't use.
 
 ## Explore the dashboard
 

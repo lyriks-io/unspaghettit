@@ -55,6 +55,19 @@ export type ClientAdapter = {
     scope: ConfigScope,
     params: { cwd: string; home: string; serverEntry: McpServerEntry }
   ): Promise<ApplyResult>;
+  /**
+   * Remove the unspa entry from the resolved config for a scope. Optional:
+   * when omitted, `unspa uninstall` falls back to the shared JSON removal
+   * (`removeMcpServerEntry`), which covers every client whose config is a
+   * `mcpServers` JSON object. Clients with a non-JSON config (Codex's TOML)
+   * implement this so uninstall can strip their entry too. Returns the file
+   * path touched and whether a write happened; a null path means the scope has
+   * no config file to clean.
+   */
+  removeEntry?(
+    scope: ConfigScope,
+    params: { cwd: string; home: string }
+  ): Promise<{ path: string | null; changed: boolean }>;
 };
 
 export type McpServerEntry = {

@@ -96,15 +96,33 @@ Point your AI agent at whatever you already have: a design screenshot, a product
 
 ## Quickstart
 
+### One line (no setup)
+
+Don't want to touch a terminal more than once? This checks for Node.js (installs it if missing), installs the CLI, and registers the MCP **globally** with every AI client on your machine (Claude Code, Claude Desktop, Cursor, Codex, ...):
+
+**macOS / Linux**
 ```bash
-npm install -g unspaghettit
+curl -fsSL https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.sh | sh
 ```
 
+**Windows (PowerShell)**
+```powershell
+irm https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.ps1 | iex
+```
+
+Then restart your AI client and run `unspa dashboard`.
+
+### With npm
+
+If you already have Node.js 20.10+:
+
 ```bash
-cd path/to/your-app
-unspa init        # scaffold + register the MCP with your AI clients
+npm install -g unspaghettit
+unspa init        # registers the MCP globally with your detected AI clients
 unspa dashboard   # http://localhost:3000
 ```
+
+`unspa init` registers the MCP **globally by default**, so the tools attach in every repo after one install. Inside a project it also seeds `CLAUDE.md`/`AGENTS.md` and skills. Want the entry to live in the repo instead? `unspa init --scope project` (pairs with `--local`).
 
 Restart your IDE. Your LLM now has the full runtime as typed MCP tools. Open the dashboard and click **Load samples** to explore a complete eShop project, or **Run interactive tutorial** for a guided tour.
 
