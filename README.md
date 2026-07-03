@@ -36,7 +36,7 @@ Unspaghettit is a local, executable specification layer: durable project memory 
 | An executable specification runtime | A code generator |
 | A typed MCP interface for humans and AI agents | A no-code / low-code platform |
 | A deterministic simulator that passes or fails scenarios | An autonomous agent framework |
-| Durable memory shared between you and the LLM | A hosted service that owns your source of truth |
+| Durable memory shared between you and the LLM, the source of truth for your behavior | A hosted service that owns your data |
 | A two-way map between spec and code | A replacement for your stack (your team still writes the code) |
 
 It runs *alongside* your AI coding tools: it defines and validates the contract they build against.
