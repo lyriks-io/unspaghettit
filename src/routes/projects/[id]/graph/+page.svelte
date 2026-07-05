@@ -58,7 +58,9 @@
   <p class="mx-auto max-w-7xl px-4 py-10 text-sm text-red-600">{projectStore.error}</p>
 {:else if !projectStore.project}
   <p class="mx-auto max-w-7xl px-4 py-10 text-sm text-neutral-500">
-    Project not found. <a href="/projects" class="text-brand-700 hover:underline">Back to projects</a>
+    Project not found. <a href="/projects" class="text-brand-700 hover:underline"
+      >Back to projects</a
+    >
   </p>
 {:else if projectFeaturesStore.loading || !graphDataReady}
   <p class="mx-auto max-w-7xl px-4 py-10 text-sm text-neutral-500">Loading project features...</p>
@@ -68,12 +70,19 @@
   <div class="mx-auto max-w-7xl px-4 py-10">
     <p class="text-sm font-medium text-slate-900">No feature snapshots loaded for this project.</p>
     <p class="mt-2 text-sm text-slate-600">
-      The project lists {projectStore.project.featureIds.length} feature{projectStore.project.featureIds.length === 1 ? '' : 's'},
-      but the graph could not load their behavior models from the shared hub.
+      The project lists {projectStore.project.featureIds.length} feature{projectStore.project
+        .featureIds.length === 1
+        ? ''
+        : 's'}, but the graph could not load their behavior models from the shared hub.
     </p>
   </div>
 {:else}
-  <main class="w-full px-4 py-6 lg:flex lg:h-[calc(100dvh-4rem)] lg:flex-col lg:overflow-hidden">
+  <!-- Fill exactly the space under the sticky header (h-16 + its 1px border-b);
+       anything less precise leaves a 1px window scrollbar on an otherwise
+       fixed-height page. -->
+  <main
+    class="w-full px-4 py-6 lg:flex lg:h-[calc(100dvh-4rem-1px)] lg:flex-col lg:overflow-hidden"
+  >
     <ProjectionViewer project={projectStore.project} features={projectFeaturesStore.features} />
   </main>
 {/if}

@@ -33,7 +33,12 @@
     Feature not found. <a href="/projects" class="text-brand-700 underline">Back to projects</a>.
   </div>
 {:else}
-  <main class="w-full px-4 py-6 lg:flex lg:h-[calc(100dvh-4rem)] lg:flex-col lg:overflow-hidden">
+  <!-- Fill exactly the space under the sticky header (h-16 + its 1px border-b);
+       anything less precise leaves a 1px window scrollbar on an otherwise
+       fixed-height page. -->
+  <main
+    class="w-full px-4 py-6 lg:flex lg:h-[calc(100dvh-4rem-1px)] lg:flex-col lg:overflow-hidden"
+  >
     <ProjectionViewer feature={featureStore.feature} />
   </main>
 {/if}
