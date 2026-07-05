@@ -33,7 +33,7 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
     'get_behavioral_index',
     {
       description:
-        'Returns entries from the behavioral index in .unspa.json. The index maps every spec entity (action, surface, state, rule, event, transition, invariant, surface_rule, surface_invariant) to its resolved file + line + signature in the codebase. Defaults to a paginated slice of entries plus stats so the response never exceeds an LLM-friendly size; pass filters to narrow scope. Filter params: `key` (exact match, e.g. "action:abc-123"); `entityTypes` (subset of [action, surface, state, rule, event, transition, invariant, surface_rule, surface_invariant]); `status` (implemented | partial | missing). Pagination: `offset` + `limit` (default 50, max 200). Set `statsOnly: true` to return just the implemented/partial/missing tallies.',
+        'Returns entries from the behavioral index in .unspa.json. The index maps every spec entity (action, surface, state, rule, event, transition, invariant, surface_rule, surface_invariant, entity) to its resolved file + line + signature in the codebase. Defaults to a paginated slice of entries plus stats so the response never exceeds an LLM-friendly size; pass filters to narrow scope. Filter params: `key` (exact match, e.g. "action:abc-123"); `entityTypes` (subset of [action, surface, state, rule, event, transition, invariant, surface_rule, surface_invariant]); `status` (implemented | partial | missing). Pagination: `offset` + `limit` (default 50, max 200). Set `statsOnly: true` to return just the implemented/partial/missing tallies.',
       inputSchema: {
         key: z.string().optional(),
         entityTypes: z.array(z.string()).optional(),

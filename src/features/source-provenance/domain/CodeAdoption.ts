@@ -10,11 +10,14 @@ import type { SourceKind } from '$features/source-provenance/domain/ProjectSourc
  *
  * Pure module (no I/O): the MCP `seed_index_from_analysis` tool loads the
  * feature, spans, and sources, calls `buildAdoptionEntries`, and persists
- * the merge. Keys and entry shape follow the `.unspa.json` contract that
- * `sync_from_index` consumes; anything that contract cannot express
- * (feature-level invariants, entities, surface-declared transitions, events
- * no action emits) is returned as `skipped` with the reason, never silently
- * dropped.
+ * the merge. Keys and entry shape follow the documented `.unspa.json`
+ * contract (the same universe `sync_from_index`'s orphan check and
+ * `detectDrift` accept): every traced element gets an entry, including
+ * entities, feature-level invariants, surface-declared transitions, and
+ * declared-but-unemitted events. Those extra kinds don't surface in the
+ * per-action coverage report, but they document where the thing lives and
+ * arm drift detection. Only an element that no longer resolves in the
+ * feature is returned as `skipped`, never silently dropped.
  */
 
 /** The `.unspa.json` entry shape this module emits (mirrors IndexEntry). */
@@ -105,8 +108,8 @@ type KeyResult =
  * Map one traced element to its `.unspa.json` key. Provenance identifies
  * every element by id, but the index contract is scope-sensitive: an action
  * rule is `rule:<id>` while a surface rule is `surface_rule:<id>`, a state
- * is keyed by its dotted path, an event by its name. Elements the coverage
- * sync cannot consume are refused with the reason.
+ * is keyed by its dotted path, an event by its name. Only an element that
+ * no longer resolves in the feature is refused, with the reason.
  */
 export const deriveIndexKey = (
   feature: Feature,
@@ -128,15 +131,6 @@ export const deriveIndexKey = (
     case 'event': {
       const event = (feature.events ?? []).find((e) => String(e.id) === elementId);
       if (!event) return { ok: false, reason: 'Event not found in the feature.' };
-      const emitted = feature.surfaces.some((s) =>
-        s.actions.some((a) => a.emittedEvents.some((n) => String(n) === String(event.name)))
-      );
-      if (!emitted) {
-        return {
-          ok: false,
-          reason: `Event "${String(event.name)}" is emitted by no action; coverage sync only tracks emitted events.`
-        };
-      }
       return { ok: true, key: `event:${String(event.name)}` };
     }
     case 'rule': {
@@ -164,11 +158,7 @@ export const deriveIndexKey = (
         }
       }
       if ((feature.featureInvariants ?? []).some((i) => String(i.id) === elementId)) {
-        return {
-          ok: false,
-          reason:
-            'Feature-level invariants have no per-file coverage slot in the behavioral index; only action and surface invariants are tracked.'
-        };
+        return { ok: true, key: `invariant:${elementId}` };
       }
       return { ok: false, reason: 'Invariant not found in the feature.' };
     }
@@ -182,21 +172,17 @@ export const deriveIndexKey = (
       }
       for (const surface of feature.surfaces) {
         if (surface.transitions.some((t) => String(t.id) === elementId)) {
-          return {
-            ok: false,
-            reason:
-              'Surface-declared transitions have no coverage slot in the behavioral index; only action transitions are tracked.'
-          };
+          return { ok: true, key: `transition:${elementId}` };
         }
       }
       return { ok: false, reason: 'Transition not found in the feature.' };
     }
-    case 'entity':
-      return {
-        ok: false,
-        reason:
-          'Entities have no per-file coverage slot in the behavioral index; coverage sync tracks surfaces, actions, and their children.'
-      };
+    case 'entity': {
+      if (feature.entities.some((e) => String(e.id) === elementId)) {
+        return { ok: true, key: `entity:${elementId}` };
+      }
+      return { ok: false, reason: 'Entity not found in the feature.' };
+    }
     default:
       return { ok: false, reason: `Unsupported element type "${elementType}".` };
   }
@@ -221,8 +207,8 @@ export type BuildAdoptionInput = {
 /**
  * Turn every span recorded against a `code`-kind source into a ready-to-merge
  * `.unspa.json` entry. Spans against pasted/file sources are counted but not
- * seeded (they trace to prose, not code); elements the index contract cannot
- * express land in `skipped` with the reason.
+ * seeded (they trace to prose, not code); an element that no longer resolves
+ * in the feature lands in `skipped` with the reason.
  */
 export const buildAdoptionEntries = (input: BuildAdoptionInput): AdoptionResult => {
   const entries: AdoptionEntry[] = [];

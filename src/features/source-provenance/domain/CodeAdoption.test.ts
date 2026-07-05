@@ -188,13 +188,25 @@ describe('deriveIndexKey', () => {
     });
   });
 
-  it('refuses elements the coverage contract has no slot for, with the reason', () => {
-    expect(deriveIndexKey(feature, 'ev2', 'event')).toMatchObject({ ok: false });
-    expect(deriveIndexKey(feature, 'fi1', 'invariant')).toMatchObject({ ok: false });
-    expect(deriveIndexKey(feature, 'st1', 'transition')).toMatchObject({ ok: false });
-    expect(deriveIndexKey(feature, 'en1', 'entity')).toMatchObject({ ok: false });
-    expect(deriveIndexKey(feature, 'ghost', 'action')).toEqual({ ok: true, key: 'action:ghost' });
+  it('covers the full documented contract: entities, feature invariants, surface transitions, declared events', () => {
+    expect(deriveIndexKey(feature, 'ev2', 'event')).toEqual({
+      ok: true,
+      key: 'event:never.emitted'
+    });
+    expect(deriveIndexKey(feature, 'fi1', 'invariant')).toEqual({ ok: true, key: 'invariant:fi1' });
+    expect(deriveIndexKey(feature, 'st1', 'transition')).toEqual({
+      ok: true,
+      key: 'transition:st1'
+    });
+    expect(deriveIndexKey(feature, 'en1', 'entity')).toEqual({ ok: true, key: 'entity:en1' });
+  });
+
+  it('refuses only elements that no longer resolve in the feature', () => {
     expect(deriveIndexKey(feature, 'ghost', 'state')).toMatchObject({ ok: false });
+    expect(deriveIndexKey(feature, 'ghost', 'event')).toMatchObject({ ok: false });
+    expect(deriveIndexKey(feature, 'ghost', 'entity')).toMatchObject({ ok: false });
+    expect(deriveIndexKey(feature, 'ghost', 'invariant')).toMatchObject({ ok: false });
+    expect(deriveIndexKey(feature, 'ghost', 'transition')).toMatchObject({ ok: false });
   });
 });
 
@@ -219,11 +231,13 @@ describe('buildAdoptionEntries', () => {
 
     expect(result.entries.map((e) => e.key).sort()).toEqual([
       'action:a1',
+      'entity:en1',
       'event:cart.updated',
+      'invariant:fi1',
       'state:cart.itemCount'
     ]);
     expect(result.nonCodeSpanCount).toBe(2);
-    expect(result.skipped.map((s) => s.elementId).sort()).toEqual(['en1', 'fi1']);
+    expect(result.skipped).toEqual([]);
 
     const action = result.entries.find((e) => e.key === 'action:a1')!;
     expect(action.entry).toEqual({

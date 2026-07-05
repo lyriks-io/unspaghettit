@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { findOrphanKeys, healIndexLines } from './implementationStatus';
+import { buildExpectedIndexKeys, findOrphanKeys, healIndexLines } from './implementationStatus';
 import type { BehavioralIndex } from '../repo-link';
 
 const writeFixture = (root: string, relPath: string, content: string): void => {
@@ -205,5 +205,65 @@ describe('findOrphanKeys', () => {
     };
     const expected = new Set(['event:UserSignedIn']);
     expect(findOrphanKeys(index, expected)).toEqual([]);
+  });
+});
+
+describe('buildExpectedIndexKeys', () => {
+  it('accepts every documented key form, not just what coverage reports consume', () => {
+    const feature = {
+      id: 'f1',
+      name: 'Cart',
+      surfaces: [
+        {
+          id: 'surf1',
+          name: 'Checkout',
+          type: 'screen',
+          stateDefinitions: [{ id: 'sd1', path: 'cart.itemCount', type: 'number', defaultValue: 0 }],
+          rules: [{ id: 'sr1' }],
+          invariants: [{ id: 'si1' }],
+          transitions: [{ id: 'st1', target: 'surf1' }],
+          actions: [
+            {
+              id: 'act1',
+              name: 'Add To Cart',
+              rules: [{ id: 'ar1' }],
+              invariants: [{ id: 'ai1' }],
+              transitions: [{ id: 'at1', target: 'surf1' }],
+              emittedEvents: ['cart.updated']
+            }
+          ]
+        }
+      ],
+      entities: [{ id: 'en1', namespace: 'cart', fields: [] }],
+      events: [
+        { id: 'ev1', name: 'cart.updated' },
+        { id: 'ev2', name: 'never.emitted' }
+      ],
+      featureInvariants: [{ id: 'fi1' }]
+    } as never;
+
+    const keys = buildExpectedIndexKeys([feature]);
+
+    // The forms the coverage reports consume.
+    for (const key of [
+      'surface:surf1',
+      'action:act1',
+      'state:cart.itemCount',
+      'surface_rule:sr1',
+      'surface_invariant:si1',
+      'rule:ar1',
+      'invariant:ai1',
+      'transition:at1',
+      'event:cart.updated'
+    ]) {
+      expect(keys.has(key), key).toBe(true);
+    }
+
+    // The documented forms that were previously flagged as orphans.
+    for (const key of ['entity:en1', 'invariant:fi1', 'transition:st1', 'event:never.emitted']) {
+      expect(keys.has(key), key).toBe(true);
+    }
+
+    expect(keys.has('action:ghost')).toBe(false);
   });
 });

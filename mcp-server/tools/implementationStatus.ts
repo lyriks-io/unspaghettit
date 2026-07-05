@@ -280,6 +280,39 @@ const ID_KEYED_TYPES = new Set([
 const HEX_ID_RE = /^[a-f0-9]{8}$|^[a-f0-9-]{36}$/i;
 
 /**
+ * Every `.unspa.json` key the spec can legitimately mint for these features:
+ * the universe `findOrphanKeys` validates against. Deliberately WIDER than
+ * the set the per-action/per-surface coverage reports consume, because the
+ * documented index contract (and `detectDrift`'s resolver) also accepts
+ * `entity:<id>`, feature-level `invariant:<id>`, surface-declared
+ * `transition:<id>`, and declared-but-not-yet-emitted `event:<name>`.
+ * Flagging those as orphans would punish users for following the docs.
+ */
+export const buildExpectedIndexKeys = (features: readonly Feature[]): Set<string> => {
+  const expectedKeys = new Set<string>();
+  for (const exp of features) {
+    for (const inv of exp.featureInvariants ?? []) expectedKeys.add(`invariant:${String(inv.id)}`);
+    for (const ev of exp.events ?? []) expectedKeys.add(`event:${String(ev.name)}`);
+    for (const entity of exp.entities ?? []) expectedKeys.add(`entity:${String(entity.id)}`);
+    for (const surface of exp.surfaces) {
+      expectedKeys.add(`surface:${String(surface.id)}`);
+      for (const sd of surface.stateDefinitions) expectedKeys.add(`state:${String(sd.path)}`);
+      for (const r of surface.rules) expectedKeys.add(`surface_rule:${String(r.id)}`);
+      for (const inv of surface.invariants) expectedKeys.add(`surface_invariant:${String(inv.id)}`);
+      for (const t of surface.transitions) expectedKeys.add(`transition:${String(t.id)}`);
+      for (const action of surface.actions) {
+        expectedKeys.add(`action:${String(action.id)}`);
+        for (const ev of action.emittedEvents) expectedKeys.add(`event:${String(ev)}`);
+        for (const r of action.rules) expectedKeys.add(`rule:${String(r.id)}`);
+        for (const inv of action.invariants) expectedKeys.add(`invariant:${String(inv.id)}`);
+        for (const t of action.transitions) expectedKeys.add(`transition:${String(t.id)}`);
+      }
+    }
+  }
+  return expectedKeys;
+};
+
+/**
  * Compare the user's `.unspa.json` keys against every key the spec actually
  * expects, and return entries that point at nothing. Without this report
  * a typo'd or wrong-format key (e.g. `action:add-to-cart` when the spec
@@ -681,22 +714,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       // Build the universe of keys the spec expects to find in the index.
       // Used after the loop to detect orphan entries in `.unspa.json` -
       // keys the user wrote that don't correspond to any spec entity.
-      const expectedKeys = new Set<string>();
-      for (const exp of features) {
-        for (const surface of exp.surfaces) {
-          expectedKeys.add(`surface:${String(surface.id)}`);
-          for (const sd of surface.stateDefinitions) expectedKeys.add(`state:${String(sd.path)}`);
-          for (const r of surface.rules) expectedKeys.add(`surface_rule:${String(r.id)}`);
-          for (const inv of surface.invariants) expectedKeys.add(`surface_invariant:${String(inv.id)}`);
-          for (const action of surface.actions) {
-            expectedKeys.add(`action:${String(action.id)}`);
-            for (const ev of action.emittedEvents) expectedKeys.add(`event:${String(ev)}`);
-            for (const r of action.rules) expectedKeys.add(`rule:${String(r.id)}`);
-            for (const inv of action.invariants) expectedKeys.add(`invariant:${String(inv.id)}`);
-            for (const t of action.transitions) expectedKeys.add(`transition:${String(t.id)}`);
-          }
-        }
-      }
+      const expectedKeys = buildExpectedIndexKeys(features);
 
       for (const exp of features) {
         const featureId = exp.id;

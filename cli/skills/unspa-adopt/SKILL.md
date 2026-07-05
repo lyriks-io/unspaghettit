@@ -82,14 +82,15 @@ copy. Enum unions in the code become value sets.
   several files, and put the rest in the index entry's `relatedFiles` later if
   needed.
 
-## What seeding skips (expected, not an error)
+## What seeding writes (and what stays provenance-only)
 
-`seed_index_from_analysis` reports `skipped` for elements the coverage
-contract has no per-file slot for: feature-level invariants, entities,
-surface-declared transitions, and events no action emits. Their provenance
-spans still exist and still render in the Source Viewer; they just do not
-become index entries. Spans recorded against pasted/document sources are
-counted as `nonCodeSpans` and stay provenance-only.
+`seed_index_from_analysis` seeds an entry for EVERY element traced to a code
+source, including entities, feature-level invariants, surface-declared
+transitions, and declared events. Those kinds do not appear in the
+per-action coverage report, but their entries document where the thing
+lives and arm drift detection. Spans recorded against pasted/document
+sources are counted as `nonCodeSpans` and stay provenance-only; `skipped`
+only lists elements that no longer resolve in the feature (stale analysis).
 
 Existing `.unspa.json` entries are never overwritten unless you pass
 `overwrite:true`; hand-audited entries win by default.
