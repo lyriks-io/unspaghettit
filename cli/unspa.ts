@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
+import { runAdoptCommand } from './commands/adopt';
 import { runCheckCommand } from './commands/check';
 import { runCiCommand } from './commands/ci';
 import { runCoverageIngestCommand } from './commands/coverage-ingest';
@@ -186,6 +187,15 @@ program
       dryRun: opts.dryRun === true,
       force: opts.force === true
     });
+    process.exit(code);
+  });
+
+program
+  .command('adopt')
+  .description('Adopt an existing codebase into Unspaghettit (code -> spec): prints the paste-ready agent prompt that models the code through the MCP with full provenance, then seeds .unspa.json implementation coverage from the recorded code spans (seed_index_from_analysis). Pairs with the bundled unspa-adopt skill.')
+  .option('--prompt-only', 'Print only the agent prompt (no status banner), for piping into a clipboard or file.')
+  .action(async (opts) => {
+    const code = await runAdoptCommand({ promptOnly: opts.promptOnly === true });
     process.exit(code);
   });
 

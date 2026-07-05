@@ -14,8 +14,14 @@ import { DEFAULT_MAX_BYTES, byteLengthOf, hashContent } from './Provenance';
  * browser panel, mirroring how Provenance.ts is shared.
  */
 
-/** How the document arrived: pasted in the dashboard, or attached by an agent. */
-export const SOURCE_KINDS = ['pasted', 'file'] as const;
+/**
+ * What the source is and how it arrived: pasted in the dashboard, attached as
+ * a document by an agent, or attached as a snapshot of a source-code file
+ * during codebase adoption. A `code` source's `name` IS its repo-relative
+ * file path (e.g. `src/lib/cart.ts`), which is what lets a span recorded
+ * against it double as an implementation location in `.unspa.json`.
+ */
+export const SOURCE_KINDS = ['pasted', 'file', 'code'] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
 export type ProjectSource = {

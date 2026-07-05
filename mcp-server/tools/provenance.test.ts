@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -277,6 +280,39 @@ describe('source provenance tools', () => {
     await server.close();
   });
 
+  it('attach kind:"code" normalizes the path and rejects non-repo-relative ones', async () => {
+    const { client, server } = await setup();
+
+    const attached = parse<{ ok: boolean; fileName: string; kind: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: {
+          featureId: 'feat-prov',
+          fileName: 'src\\lib\\cart.ts',
+          content: 'export const x = 1;',
+          kind: 'code'
+        }
+      })
+    );
+    expect(attached.ok).toBe(true);
+    expect(attached.kind).toBe('code');
+    expect(attached.fileName).toBe('src/lib/cart.ts');
+
+    const absolute = await client.callTool({
+      name: 'attach_source_file',
+      arguments: {
+        featureId: 'feat-prov',
+        fileName: 'C:\\repo\\src\\cart.ts',
+        content: 'export const x = 1;',
+        kind: 'code'
+      }
+    });
+    expect(isErr(absolute)).toBe(true);
+    expect(rawText(absolute)).toMatch(/repo-relative/i);
+
+    await server.close();
+  });
+
   it('rejects a span past the end of the file and an unknown element', async () => {
     const { client, server } = await setup();
     await client.callTool({
@@ -299,5 +335,176 @@ describe('source provenance tools', () => {
     expect(rawText(unknown)).toMatch(/no element/i);
 
     await server.close();
+  });
+});
+
+describe('seed_index_from_analysis (codebase adoption)', () => {
+  const CODE = 'const a = 1;\nexport const addToCart = () => {};\n';
+
+  const setupLinked = async () => {
+    nextId = 0;
+    const repoRoot = mkdtempSync(join(tmpdir(), 'unspa-adopt-'));
+    const linkPath = join(repoRoot, '.unspa.json');
+    writeFileSync(linkPath, JSON.stringify({ projectId: 'proj-x', index: {} }), 'utf8');
+    mkdirSync(join(repoRoot, 'src'), { recursive: true });
+    writeFileSync(join(repoRoot, 'src', 'cart.ts'), CODE, 'utf8');
+
+    const repo = new InMemoryFeatureRepository();
+    await repo.save(tinyFeature);
+    const server = buildServer(repo, {
+      ids: fixedIds,
+      clock: fixedClock('2026-05-09T00:00:00.000Z'),
+      repoContext: { cwd: repoRoot, linkPath, link: { projectId: 'proj-x' } }
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test-client', version: '0.0.0' });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    return { client, server, linkPath };
+  };
+
+  it('turns code-source spans into .unspa.json entries; doc spans stay provenance-only', async () => {
+    const { client, server, linkPath } = await setupLinked();
+
+    const code = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'src/cart.ts', content: CODE, kind: 'code' }
+      })
+    );
+    const doc = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'notes.md', content: 'the surface is home' }
+      })
+    );
+
+    // Action traced to line 2 of the code file; surface traced to the doc.
+    await client.callTool({
+      name: 'record_element_span',
+      arguments: {
+        featureId: 'feat-prov',
+        elementId: 'act-1',
+        startOffset: 13,
+        endOffset: 48,
+        sourceId: code.sourceId
+      }
+    });
+    await client.callTool({
+      name: 'record_element_span',
+      arguments: {
+        featureId: 'feat-prov',
+        elementId: 'surf-1',
+        startOffset: 0,
+        endOffset: 19,
+        sourceId: doc.sourceId
+      }
+    });
+
+    const seeded = parse<{
+      ok: boolean;
+      written: number;
+      writtenKeys: readonly string[];
+      nonCodeSpans: number;
+      missingFiles: readonly string[];
+    }>(
+      await client.callTool({
+        name: 'seed_index_from_analysis',
+        arguments: { featureId: 'feat-prov' }
+      })
+    );
+    expect(seeded.ok).toBe(true);
+    expect(seeded.written).toBe(1);
+    expect(seeded.writtenKeys).toEqual(['action:act-1']);
+    expect(seeded.nonCodeSpans).toBe(1);
+    expect(seeded.missingFiles).toEqual([]);
+
+    const link = JSON.parse(readFileSync(linkPath, 'utf8')) as {
+      projectId: string;
+      index: Record<string, { status: string; file: string; line: number; signature: string; specVersion: string }>;
+    };
+    expect(link.projectId).toBe('proj-x');
+    expect(link.index['action:act-1']).toEqual({
+      status: 'implemented',
+      file: 'src/cart.ts',
+      line: 2,
+      signature: 'export const addToCart = () => {};',
+      auditedAt: '2026-05-09T00:00:00.000Z',
+      specVersion: tinyFeature.updatedAt
+    });
+
+    // Re-seeding never clobbers an existing entry unless overwrite:true.
+    const again = parse<{ written: number; keptExisting: readonly string[] }>(
+      await client.callTool({
+        name: 'seed_index_from_analysis',
+        arguments: { featureId: 'feat-prov' }
+      })
+    );
+    expect(again.written).toBe(0);
+    expect(again.keptExisting).toEqual(['action:act-1']);
+
+    const forced = parse<{ written: number }>(
+      await client.callTool({
+        name: 'seed_index_from_analysis',
+        arguments: { featureId: 'feat-prov', overwrite: true }
+      })
+    );
+    expect(forced.written).toBe(1);
+
+    await server.close();
+  });
+
+  it('dryRun previews without touching .unspa.json', async () => {
+    const { client, server, linkPath } = await setupLinked();
+    const code = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'src/cart.ts', content: CODE, kind: 'code' }
+      })
+    );
+    await client.callTool({
+      name: 'record_element_span',
+      arguments: {
+        featureId: 'feat-prov',
+        elementId: 'act-1',
+        startOffset: 13,
+        endOffset: 48,
+        sourceId: code.sourceId
+      }
+    });
+
+    const preview = parse<{ ok: boolean; dryRun: boolean; written: number }>(
+      await client.callTool({
+        name: 'seed_index_from_analysis',
+        arguments: { featureId: 'feat-prov', dryRun: true }
+      })
+    );
+    expect(preview.dryRun).toBe(true);
+    expect(preview.written).toBe(1);
+
+    const link = JSON.parse(readFileSync(linkPath, 'utf8')) as { index: Record<string, unknown> };
+    expect(link.index).toEqual({});
+    await server.close();
+  });
+
+  it('errors without a repo link and without recorded spans', async () => {
+    // No repoContext at all → actionable error.
+    const bare = await setup();
+    const noLink = await bare.client.callTool({
+      name: 'seed_index_from_analysis',
+      arguments: { featureId: 'feat-prov' }
+    });
+    expect(isErr(noLink)).toBe(true);
+    expect(rawText(noLink)).toMatch(/unspa link/i);
+    await bare.server.close();
+
+    // Linked but nothing recorded → actionable error.
+    const linked = await setupLinked();
+    const noSpans = await linked.client.callTool({
+      name: 'seed_index_from_analysis',
+      arguments: { featureId: 'feat-prov' }
+    });
+    expect(isErr(noSpans)).toBe(true);
+    expect(rawText(noSpans)).toMatch(/no spans recorded/i);
+    await linked.server.close();
   });
 });

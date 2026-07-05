@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..', '..');
 const SHARED = [
+  'unspa-adopt',
   'unspa-audit',
   'unspa-edit',
   'unspa-implement',

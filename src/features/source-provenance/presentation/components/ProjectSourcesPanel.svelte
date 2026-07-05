@@ -164,9 +164,13 @@
         <tbody>
           {#each filtered as source (source.id)}
             <tr class="border-t border-slate-100">
-              <td class="px-3 py-2 font-medium text-slate-950">{source.name}</td>
+              <td
+                class="px-3 py-2 font-medium text-slate-950"
+                class:font-mono={source.kind === 'code'}
+                class:text-xs={source.kind === 'code'}>{source.name}</td
+              >
               <td class="px-3 py-2 text-slate-600">
-                {source.kind === 'pasted' ? 'Pasted' : 'File'}
+                {source.kind === 'pasted' ? 'Pasted' : source.kind === 'code' ? 'Code' : 'File'}
               </td>
               <td class="px-3 py-2 text-slate-600">{formatBytes(source.byteLength)}</td>
               <td class="px-3 py-2 font-mono text-xs text-slate-400">{source.contentHash}</td>

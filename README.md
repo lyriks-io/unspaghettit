@@ -79,7 +79,7 @@ And it keeps failing loudly after the code exists: every spec entity maps to its
 
 ## Start from anything
 
-Point your AI agent at whatever you already have: a design screenshot, a product brief, a Jira backlog, an existing codebase. It reads that and builds the executable model through MCP. From there Unspaghettit runs both directions. Drive **spec → code**: design the behavior, watch it pass or fail, then implement against a spec that already holds together. Or go **code → spec**: turn existing behavior into a runtime map that's explicit and auditable.
+Point your AI agent at whatever you already have: a design screenshot, a product brief, a Jira backlog, an existing codebase. It reads that and builds the executable model through MCP. From there Unspaghettit runs both directions. Drive **spec → code**: design the behavior, watch it pass or fail, then implement against a spec that already holds together. Or go **code → spec**: run `unspa adopt` and the agent turns existing behavior into a runtime map where every extracted element is traced to the exact code span it came from, and the spec-to-code coverage index is seeded automatically from those spans.
 
 ## What you get
 

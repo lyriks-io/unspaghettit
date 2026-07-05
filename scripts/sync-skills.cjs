@@ -24,6 +24,7 @@ const SRC = path.join(ROOT, 'cli', 'skills');
 const DEST = path.join(ROOT, '.claude', 'skills');
 
 const SHARED = [
+  'unspa-adopt',
   'unspa-audit',
   'unspa-edit',
   'unspa-implement',

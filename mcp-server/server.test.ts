@@ -134,6 +134,7 @@ describe('MCP server', () => {
       'run_all_scenarios',
       'save_feature',
       'score_feature',
+      'seed_index_from_analysis',
       'set_expected_actions',
       'set_non_goals',
       'set_queue_target',

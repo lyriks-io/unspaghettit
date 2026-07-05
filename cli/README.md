@@ -107,6 +107,7 @@ Setup, run, verify, and codegen.
 | `unspa view`                  | Manage opt-in dashboard views (Expert is always on): `view list`, `view add <id>` (e.g. `builder`), `view remove <id>`. Persists in `<snapshots>/views.json`. |
 | `unspa list`                  | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload. |
 | `unspa link`                  | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding. |
+| `unspa adopt`                 | **Code → spec on-ramp.** Print the paste-ready agent prompt that models an existing codebase through the MCP with full provenance (code sources + spans), then seeds `.unspa.json` coverage from the spans (`seed_index_from_analysis`). `--prompt-only` for piping. |
 | `unspa scenarios export`      | **[experimental]** Generate a Vitest spec from a feature's authored scenarios, using the deterministic simulator as the oracle. |
 | `unspa scenarios adapter`     | **[experimental]** Scaffold the `UnspaAdapter` stub the export needs - a case per scenario-bearing action, pre-seeded with `.unspa.json` implementation locations. |
 | `unspa uninstall`             | Reverse `init`: strip the MCP entry from picked clients, remove the unspa blocks from `.gitignore` / `CLAUDE.md` / `AGENTS.md`, uninstall skills, optionally purge `unspa/` and unlink the CLI globally. |
@@ -392,7 +393,7 @@ adapter/report contract is preview, same as `scenarios export`.
 
 `unspa init` installs Claude-format skills under `<cwd>/.claude/skills/`.
 Each is a self-contained `SKILL.md` that an MCP-aware AI client invokes
-when its description matches the user's task. Three skills are core and
+when its description matches the user's task. Four skills are core and
 install by default; two are opt-in and only land when fun mode is on
 (invoke as `unspaghettit init`, pass `--fun`, or tick the box).
 
@@ -401,6 +402,7 @@ install by default; two are opt-in and only land when fun mode is on
 | `unspa-edit`         | ✓       | User wants to edit the model (add/change action, etc.)     |
 | `unspa-implement`    | ✓       | User is writing code that backs an Unspaghettit entity     |
 | `unspa-audit`        | ✓       | User asks "what's implemented" / "what's missing"          |
+| `unspa-adopt`        | ✓       | User wants an existing codebase turned into a model (code → spec, with provenance + seeded coverage) |
 | `unspa-worldbuild`   | opt-in  | Modeling a fictional/interactive world (text adventure, RPG quest, narrative environment) |
 | `unspa-worldplay`    | opt-in  | Walking a player through a world built with `unspa-worldbuild` |
 

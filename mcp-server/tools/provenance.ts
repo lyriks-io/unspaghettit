@@ -1,5 +1,12 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
+import {
+  buildAdoptionEntries,
+  normalizeRepoPath,
+  type AdoptionSourceMeta
+} from '../../src/features/source-provenance/domain/CodeAdoption';
 import {
   emptyProvenance,
   finalizeProvenance,
@@ -10,6 +17,7 @@ import {
   createProjectSource,
   toSourceMeta
 } from '../../src/features/source-provenance/domain/ProjectSource';
+import { writeRepoLink, type BehavioralIndex, type RepoLink } from '../repo-link';
 import {
   enumerateFeatureElements,
   type FeatureElement
@@ -61,21 +69,22 @@ const DEFAULT_READ_CHARS = 100_000;
  * and persist.
  */
 export const registerProvenanceTools = (deps: ToolDeps): void => {
-  const { server, repo, projectRepo, provenanceRepo, sourceRepo, clock, ids } = deps;
+  const { server, repo, projectRepo, provenanceRepo, sourceRepo, clock, ids, repoContext } = deps;
 
   server.registerTool(
     'attach_source_file',
     {
       description:
-        "Store the document you analyzed as a project-level source (in the owning project's sources/ folder) and link it to this feature's analysis. Identical content is deduplicated: re-attaching the same text links the existing source instead of storing a copy. Prefer pulling a source the user already pasted in the dashboard (list_sources + get_source) over pushing content here. Blocked if the analysis is finalized or the content exceeds the storage cap (default 1 MiB).",
+        "Store the document you analyzed as a project-level source (in the owning project's sources/ folder) and link it to this feature's analysis. Identical content is deduplicated: re-attaching the same text links the existing source instead of storing a copy. Prefer pulling a source the user already pasted in the dashboard (list_sources + get_source) over pushing content here. Pass kind:'code' when the source is a source-code file you are adopting into the model; fileName must then be the file's repo-relative path (e.g. src/lib/cart.ts), because spans recorded against a code source can be turned into .unspa.json implementation entries by seed_index_from_analysis. Blocked if the analysis is finalized or the content exceeds the storage cap (default 1 MiB).",
       inputSchema: {
         featureId: z.string(),
         fileName: z.string().min(1),
         content: z.string(),
+        kind: z.enum(['file', 'code']).optional(),
         maxBytes: z.number().int().positive().optional()
       }
     },
-    async ({ featureId, fileName, content, maxBytes }) => {
+    async ({ featureId, fileName, content, kind, maxBytes }) => {
       try {
         const fid = asFeatureId(await expandFeatureId(repo, featureId));
         const feature = await repo.get(fid);
@@ -88,19 +97,36 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
           );
         }
 
+        // A code source's name doubles as its implementation path in
+        // `.unspa.json`, so it must be a clean repo-relative path.
+        let sourceName = fileName;
+        if (kind === 'code') {
+          const normalized = normalizeRepoPath(fileName);
+          if (!normalized.ok) return errorText(normalized.reason);
+          sourceName = normalized.path;
+        }
+
         const projectId = await findOwningProjectId(projectRepo, String(fid));
         const existing = await sourceRepo.listForProject(projectId);
+        // For code sources the path is part of the identity: identical
+        // content at two paths stays two sources, and a pasted document with
+        // the same text must not swallow a code attach (its kind is what
+        // makes spans seedable into .unspa.json).
+        const dedupePool =
+          kind === 'code'
+            ? existing.filter((s) => s.kind === 'code' && s.name === sourceName)
+            : existing.filter((s) => s.kind !== 'code');
         const created = createProjectSource(
           {
             id: ids(),
             projectId,
-            name: fileName,
-            kind: 'file',
+            name: sourceName,
+            kind: kind ?? 'file',
             content,
             attachedAt: clock(),
             ...(maxBytes !== undefined ? { maxBytes } : {})
           },
-          existing
+          dedupePool
         );
         if (!created.ok) return errorText(created.reason);
         if (!created.deduped) await sourceRepo.save(created.source);
@@ -114,6 +140,7 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
           featureId: String(fid),
           sourceId: created.source.id,
           fileName: created.source.name,
+          kind: created.source.kind,
           byteLength: created.source.byteLength,
           contentHash: created.source.contentHash,
           deduped: created.deduped,
@@ -233,6 +260,104 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         });
       } catch (e) {
         return errorText(`finalize_analysis failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'seed_index_from_analysis',
+    {
+      description:
+        "Turn a codebase-adoption analysis into implementation coverage: every span recorded against a kind:'code' source becomes a .unspa.json behavioral-index entry ({file, line, signature}, status implemented, specVersion stamped so drift detection starts armed). This is the code-to-spec bridge: one analysis pass yields the model, its provenance, AND the spec-to-code mapping. Existing index entries are never overwritten unless overwrite:true. Spans against pasted/file sources are counted but not seeded; elements the index contract has no coverage slot for (feature invariants, entities, surface-declared transitions, never-emitted events) are returned in `skipped` with the reason. Requires the repo to be linked (.unspa.json via `unspa link`). Run sync_from_index afterwards to push the coverage report to the dashboard. Pass dryRun:true to preview without writing.",
+      inputSchema: {
+        featureId: z.string(),
+        overwrite: z.boolean().optional(),
+        dryRun: z.boolean().optional()
+      }
+    },
+    async ({ featureId, overwrite, dryRun }) => {
+      try {
+        if (!repoContext?.linkPath) {
+          return errorText(
+            'No .unspa.json found. Run `unspa link` first so there is a behavioral index to seed.'
+          );
+        }
+        const fid = asFeatureId(await expandFeatureId(repo, featureId));
+        const feature = await repo.get(fid);
+        if (!feature) return errorText(`Feature ${String(fid)} not found`);
+
+        const prov = await provenanceRepo.get(fid);
+        if (!prov || prov.spans.length === 0) {
+          return errorText(
+            'No spans recorded for this feature. Attach code sources (attach_source_file kind:"code") and record_element_span first.'
+          );
+        }
+
+        const sources = new Map<string, AdoptionSourceMeta>();
+        for (const id of prov.sourceIds) {
+          const source = await sourceRepo.find(id);
+          if (source) sources.set(id, { kind: source.kind, name: source.name });
+        }
+
+        const built = buildAdoptionEntries({
+          feature,
+          spans: prov.spans,
+          sources,
+          auditedAt: clock(),
+          specVersion: feature.updatedAt
+        });
+        if (built.entries.length === 0) {
+          return errorText(
+            `No seedable spans: ${built.nonCodeSpanCount} span(s) trace to non-code sources and ${built.skipped.length} element(s) have no coverage slot. Attach the source files with kind:'code' if this analysis came from a codebase.`
+          );
+        }
+
+        let rawLink: RepoLink;
+        try {
+          rawLink = JSON.parse(readFileSync(repoContext.linkPath, 'utf8')) as RepoLink;
+        } catch {
+          return errorText(`Could not read ${repoContext.linkPath}`);
+        }
+
+        const repoRoot = dirname(repoContext.linkPath);
+        const index: BehavioralIndex = { ...(rawLink.index ?? {}) };
+        const written: string[] = [];
+        const kept: string[] = [];
+        const missingFiles = new Set<string>();
+        for (const e of built.entries) {
+          if (index[e.key] && overwrite !== true) {
+            kept.push(e.key);
+            continue;
+          }
+          if (!existsSync(resolve(repoRoot, e.entry.file))) missingFiles.add(e.entry.file);
+          index[e.key] = e.entry;
+          written.push(e.key);
+        }
+
+        if (dryRun !== true && written.length > 0) {
+          writeRepoLink(repoContext.linkPath, { ...rawLink, index });
+        }
+
+        return text({
+          ok: true,
+          featureId: String(fid),
+          dryRun: dryRun === true,
+          written: written.length,
+          writtenKeys: written,
+          keptExisting: kept,
+          skipped: built.skipped,
+          nonCodeSpans: built.nonCodeSpanCount,
+          // Files referenced by seeded entries that don't exist on disk here:
+          // usually means the analysis ran against another checkout or paths
+          // were recorded wrong. The entries are still written.
+          missingFiles: [...missingFiles],
+          hint:
+            written.length > 0
+              ? 'Call sync_from_index to auto-heal lines and push the coverage report to the dashboard.'
+              : 'Nothing written; pass overwrite:true to replace existing entries.'
+        });
+      } catch (e) {
+        return errorText(`seed_index_from_analysis failed: ${(e as Error).message}`);
       }
     }
   );
