@@ -5,12 +5,15 @@
     Provenance,
     SourceSpan
   } from '$features/source-provenance/domain/Provenance';
+  import type { ProjectSource } from '$features/source-provenance/domain/ProjectSource';
   import { enumerateFeatureElements } from '$features/source-provenance/domain/FeatureElements';
   import { toHighlightedLines } from '$features/source-provenance/domain/Highlighting';
 
   type Props = {
     feature: Feature;
     provenance: Provenance | null;
+    /** Linked project-level documents, resolved to full content by the API. */
+    sources?: readonly ProjectSource[];
     loading?: boolean;
     refreshing?: boolean;
     error?: string | null;
@@ -20,6 +23,7 @@
   let {
     feature,
     provenance,
+    sources = [],
     loading = false,
     refreshing = false,
     error = null,
@@ -37,17 +41,69 @@
     action: { chip: 'bg-cyan-100 text-cyan-800', mark: 'bg-cyan-100', dot: 'bg-cyan-400' },
     rule: { chip: 'bg-amber-100 text-amber-800', mark: 'bg-amber-100', dot: 'bg-amber-400' },
     invariant: { chip: 'bg-rose-100 text-rose-800', mark: 'bg-rose-100', dot: 'bg-rose-400' },
-    transition: { chip: 'bg-violet-100 text-violet-800', mark: 'bg-violet-100', dot: 'bg-violet-400' },
-    state: { chip: 'bg-emerald-100 text-emerald-800', mark: 'bg-emerald-100', dot: 'bg-emerald-400' },
+    transition: {
+      chip: 'bg-violet-100 text-violet-800',
+      mark: 'bg-violet-100',
+      dot: 'bg-violet-400'
+    },
+    state: {
+      chip: 'bg-emerald-100 text-emerald-800',
+      mark: 'bg-emerald-100',
+      dot: 'bg-emerald-400'
+    },
     event: { chip: 'bg-sky-100 text-sky-800', mark: 'bg-sky-100', dot: 'bg-sky-400' },
     entity: { chip: 'bg-slate-200 text-slate-800', mark: 'bg-slate-200', dot: 'bg-slate-400' },
-    effect: { chip: 'bg-neutral-200 text-neutral-800', mark: 'bg-neutral-200', dot: 'bg-neutral-400' }
+    effect: {
+      chip: 'bg-neutral-200 text-neutral-800',
+      mark: 'bg-neutral-200',
+      dot: 'bg-neutral-400'
+    }
   };
 
   const elements = $derived(enumerateFeatureElements(feature));
   const labelById = $derived(new Map(elements.map((e) => [e.id, e.label])));
-  const file = $derived(provenance?.file ?? null);
-  const allSpans = $derived(file ? provenance!.spans : []);
+
+  /**
+   * The analysis can span several documents: the linked project-level sources
+   * (spans carry their sourceId) plus, on unmigrated legacy sidecars, the
+   * document embedded in the sidecar itself (spans without a sourceId).
+   * Each becomes one selectable document with its own span subset.
+   */
+  type ViewerDocument = {
+    readonly id: string;
+    readonly name: string;
+    readonly content: string;
+    readonly byteLength: number;
+    readonly contentHash: string;
+    readonly spans: readonly SourceSpan[];
+  };
+  const documents = $derived.by<readonly ViewerDocument[]>(() => {
+    if (!provenance) return [];
+    const out: ViewerDocument[] = sources.map((source) => ({
+      id: source.id,
+      name: source.name,
+      content: source.content,
+      byteLength: source.byteLength,
+      contentHash: source.contentHash,
+      spans: provenance.spans.filter((s) => s.sourceId === source.id)
+    }));
+    const legacy = provenance.file;
+    if (legacy) {
+      out.unshift({
+        id: '__legacy',
+        name: legacy.fileName,
+        content: legacy.content,
+        byteLength: legacy.byteLength,
+        contentHash: legacy.contentHash,
+        spans: provenance.spans.filter((s) => !s.sourceId)
+      });
+    }
+    return out;
+  });
+
+  let selectedDocumentId = $state('');
+  const file = $derived(documents.find((d) => d.id === selectedDocumentId) ?? documents[0] ?? null);
+  const allSpans = $derived(file?.spans ?? []);
   const sortedSpans = $derived([...allSpans].sort((a, b) => a.startOffset - b.startOffset));
 
   const presentTypes = $derived(
@@ -59,13 +115,17 @@
   const visibleSpans = $derived(highlightsVisible ? activeSpans : []);
   const lines = $derived(file ? toHighlightedLines(file.content, visibleSpans) : []);
 
-  const tracedCount = $derived(allSpans.length);
+  const tracedCount = $derived(provenance?.spans.length ?? 0);
   const totalCount = $derived(elements.length);
 
   const labelFor = (span: SourceSpan): string => labelById.get(span.elementId) ?? span.elementId;
 
   const formatBytes = (n: number): string =>
-    n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+    n < 1024
+      ? `${n} B`
+      : n < 1048576
+        ? `${(n / 1024).toFixed(1)} KB`
+        : `${(n / 1048576).toFixed(1)} MB`;
 
   function selectElement(id: string): void {
     selectedElementId = id;
@@ -84,11 +144,12 @@
   <div class="mx-auto max-w-3xl px-4 py-12 text-sm text-red-600">{error}</div>
 {:else if !file}
   <div class="mx-auto max-w-2xl px-4 py-12 text-center">
-    <p class="text-sm font-medium text-slate-700">No source file stored for this feature yet.</p>
+    <p class="text-sm font-medium text-slate-700">No source document linked to this feature yet.</p>
     <p class="mt-2 text-sm text-slate-500">
-      When an agent analyzes a file, it stores it with the
-      <code class="rounded bg-slate-100 px-1 py-0.5 text-xs">attach_source_file</code> MCP tool and
-      stamps each extracted element with
+      Paste a document in the project's <span class="font-medium">Sources</span> panel (or let an
+      agent store one with
+      <code class="rounded bg-slate-100 px-1 py-0.5 text-xs">attach_source_file</code>), then have
+      the agent stamp each extracted element with
       <code class="rounded bg-slate-100 px-1 py-0.5 text-xs">record_element_span</code>. The
       highlighted source then appears here.
     </p>
@@ -109,9 +170,11 @@
     >
       <div class="min-w-0">
         <div class="flex items-center gap-2">
-          <h2 class="truncate font-mono text-sm font-semibold text-slate-900">{file.fileName}</h2>
+          <h2 class="truncate font-mono text-sm font-semibold text-slate-900">{file.name}</h2>
           {#if provenance?.finalized}
-            <span class="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+            <span
+              class="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800"
+            >
               Finalized
             </span>
           {/if}
@@ -121,6 +184,18 @@
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        {#if documents.length > 1}
+          <select
+            value={file.id}
+            onchange={(e) => (selectedDocumentId = e.currentTarget.value)}
+            class="max-w-52 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+            aria-label="Select source document"
+          >
+            {#each documents as doc (doc.id)}
+              <option value={doc.id}>{doc.name} ({doc.spans.length})</option>
+            {/each}
+          </select>
+        {/if}
         <label class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
           <input type="checkbox" bind:checked={highlightsVisible} class="accent-brand-700" />
           Highlights
@@ -176,8 +251,8 @@
                             : 'hover:brightness-95'
                         }`}
                         title={`${token.span.elementType}: ${labelFor(token.span)}`}
-                        onclick={() => selectElement(token.span!.elementId)}
-                      >{token.text}</button>
+                        onclick={() => selectElement(token.span!.elementId)}>{token.text}</button
+                      >
                     {:else}{token.text}{/if}
                   {/each}
                 {/if}
@@ -207,11 +282,16 @@
               }`}
               onclick={() => selectElement(span.elementId)}
             >
-              <span class={`mt-1 h-2 w-2 shrink-0 rounded-full ${TYPE_STYLE[span.elementType].dot}`}></span>
+              <span class={`mt-1 h-2 w-2 shrink-0 rounded-full ${TYPE_STYLE[span.elementType].dot}`}
+              ></span>
               <span class="min-w-0">
-                <span class="block truncate text-xs font-medium text-slate-800">{labelFor(span)}</span>
+                <span class="block truncate text-xs font-medium text-slate-800"
+                  >{labelFor(span)}</span
+                >
                 <span class="mt-0.5 flex items-center gap-1.5">
-                  <span class={`rounded px-1 py-0.5 text-[10px] font-medium ${TYPE_STYLE[span.elementType].chip}`}>
+                  <span
+                    class={`rounded px-1 py-0.5 text-[10px] font-medium ${TYPE_STYLE[span.elementType].chip}`}
+                  >
                     {span.elementType}
                   </span>
                   <span class="text-[10px] text-slate-400">

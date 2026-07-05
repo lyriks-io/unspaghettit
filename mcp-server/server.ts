@@ -9,6 +9,8 @@ import type { ImplementationStatusRepository } from '../src/features/implementat
 import { InMemoryImplementationStatusRepository } from '../src/features/implementation-status/infrastructure/persistence/InMemoryImplementationStatusRepository';
 import type { ProvenanceRepository } from '../src/features/source-provenance/application/ports/ProvenanceRepository';
 import { InMemoryProvenanceRepository } from '../src/features/source-provenance/infrastructure/persistence/InMemoryProvenanceRepository';
+import type { ProjectSourceRepository } from '../src/features/source-provenance/application/ports/ProjectSourceRepository';
+import { InMemoryProjectSourceRepository } from '../src/features/source-provenance/infrastructure/persistence/InMemoryProjectSourceRepository';
 import { getImplementationStatusUseCase } from '../src/features/implementation-status/application/use-cases/GetImplementationStatus';
 import { reportImplementationStatusUseCase } from '../src/features/implementation-status/application/use-cases/ReportImplementationStatus';
 import type { ProjectRepository } from '../src/features/projects/application/ports/ProjectRepository';
@@ -83,6 +85,7 @@ export type BuildServerDeps = {
   readonly ids?: IdGenerator;
   readonly statusRepo?: ImplementationStatusRepository;
   readonly provenanceRepo?: ProvenanceRepository;
+  readonly sourceRepo?: ProjectSourceRepository;
   readonly projectRepo?: ProjectRepository;
   readonly repoContext?: RepoContext;
 };
@@ -127,14 +130,12 @@ Never invent domain logic. A vague description is a prompt to ask, not a license
 
 Implementation quality. The spec is WHAT; the host repo is HOW. Probe before writing: sample a few existing files (one piece of logic, one I/O path, one UI surface, one test) and produce code indistinguishable in quality and style from what's already there. Match the test framework, naming, layout, and level of layering even where you'd have chosen differently - consistency beats local optimization. If the repo is greenfield/empty, scale structure to the work: one file for a script, flat module for a small feature (~3 actions), folders separating logic/IO/UI for a medium feature (~5-15 actions), formal ports+adapters only when the feature is big enough that "where does this go" becomes a recurring question. Three principles always hold regardless of layering: (1) pure logic doesn't import I/O - time, IDs, network, file system are passed in, not reached for; (2) UI doesn't contain business logic - conditions and transforms belong in a function the UI calls; (3) external dependencies are substitutable - storage, time, network, randomness are injected so tests can fake them. The bar is "a senior reviewer would accept without rewriting from scratch", not perfection - the user will refactor further. Full checklist in unspa://guide § Implementation quality.`;
 
-export const buildServer = (
-  repo: FeatureRepository,
-  deps: BuildServerDeps = {}
-): McpServer => {
+export const buildServer = (repo: FeatureRepository, deps: BuildServerDeps = {}): McpServer => {
   const clock = deps.clock ?? systemClock;
   const ids = deps.ids ?? cryptoIdGenerator;
   const statusRepo = deps.statusRepo ?? new InMemoryImplementationStatusRepository();
   const provenanceRepo = deps.provenanceRepo ?? new InMemoryProvenanceRepository();
+  const sourceRepo = deps.sourceRepo ?? new InMemoryProjectSourceRepository();
   const projectRepo = deps.projectRepo ?? new InMemoryProjectRepository();
   const mutateFeature = mutateFeatureUseCase({ repository: repo, clock });
   const reportImplementationStatus = reportImplementationStatusUseCase({
@@ -159,6 +160,7 @@ export const buildServer = (
     reportImplementationStatus,
     getImplementationStatus,
     provenanceRepo,
+    sourceRepo,
     repoContext: deps.repoContext
   };
 

@@ -13,6 +13,7 @@ import type {
 import type { getImplementationStatusUseCase } from '../../src/features/implementation-status/application/use-cases/GetImplementationStatus';
 import type { reportImplementationStatusUseCase } from '../../src/features/implementation-status/application/use-cases/ReportImplementationStatus';
 import type { ProvenanceRepository } from '../../src/features/source-provenance/application/ports/ProvenanceRepository';
+import type { ProjectSourceRepository } from '../../src/features/source-provenance/application/ports/ProjectSourceRepository';
 import type { ProjectRepository } from '../../src/features/projects/application/ports/ProjectRepository';
 import type { Clock } from '../../src/shared/domain/Clock';
 import type { IdGenerator } from '../../src/shared/domain/IdGenerator';
@@ -30,6 +31,7 @@ export type ToolDeps = {
   readonly reportImplementationStatus: ReturnType<typeof reportImplementationStatusUseCase>;
   readonly getImplementationStatus: ReturnType<typeof getImplementationStatusUseCase>;
   readonly provenanceRepo: ProvenanceRepository;
+  readonly sourceRepo: ProjectSourceRepository;
   /** Context the CLI passed about the host repo (link, cwd). */
   readonly repoContext?: RepoContext;
 };
@@ -73,11 +75,7 @@ export type MutationAck = {
   readonly id?: string;
 };
 
-export const ack = (
-  featureId: string,
-  updatedAt: string,
-  createdId?: string
-): MutationAck =>
+export const ack = (featureId: string, updatedAt: string, createdId?: string): MutationAck =>
   createdId !== undefined
     ? { ok: true, featureId, updatedAt, id: createdId }
     : { ok: true, featureId, updatedAt };
@@ -143,14 +141,16 @@ const runScenarios = runScenariosUseCase();
 const scenarioImpact = (
   result: Awaited<ReturnType<ToolDeps['mutateFeature']>>,
   scope: { readonly surfaceId?: SurfaceId; readonly actionId?: ActionId }
-):
-  | {
-      readonly total: number;
-      readonly passed: number;
-      readonly failed: number;
-      readonly breaking: readonly { readonly id: string; readonly name: string; readonly summary: string }[];
-    }
-  | null => {
+): {
+  readonly total: number;
+  readonly passed: number;
+  readonly failed: number;
+  readonly breaking: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly summary: string;
+  }[];
+} | null => {
   const out = runScenarios({
     feature: result,
     ...(scope.surfaceId ? { surfaceId: scope.surfaceId } : {}),

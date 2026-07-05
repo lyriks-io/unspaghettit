@@ -1,6 +1,9 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { projectStore, type ProjectPanel } from '$features/projects/presentation/stores/projectStore.svelte';
+  import {
+    projectStore,
+    type ProjectPanel
+  } from '$features/projects/presentation/stores/projectStore.svelte';
   import { projectFeaturesStore } from '$features/projects/presentation/stores/projectFeaturesStore.svelte';
   import { featuresStore } from '$features/behavior-model/presentation/stores/featuresStore.svelte';
   import ProjectFeaturesPanel from './ProjectFeaturesPanel.svelte';
@@ -9,11 +12,10 @@
   import ProjectEventsPanel from './ProjectEventsPanel.svelte';
   import ProjectTransitionsPanel from './ProjectTransitionsPanel.svelte';
   import ProjectHistoryPanel from './ProjectHistoryPanel.svelte';
+  import ProjectSourcesPanel from '$features/source-provenance/presentation/components/ProjectSourcesPanel.svelte';
+  import { projectSourcesStore } from '$features/source-provenance/presentation/stores/projectSourcesStore.svelte';
   import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
-  import {
-    alertDialog,
-    promptDialog
-  } from '$shared/presentation/dialogs/dialogStore.svelte';
+  import { alertDialog, promptDialog } from '$shared/presentation/dialogs/dialogStore.svelte';
   import {
     downloadEnvelopeAs,
     exportProjectBundle,
@@ -35,6 +37,7 @@
 
   const PANELS: { id: ProjectPanel; label: string }[] = [
     { id: 'features', label: 'Features' },
+    { id: 'sources', label: 'Sources' },
     { id: 'resources', label: 'Resources' },
     { id: 'data', label: 'Entity' },
     { id: 'events', label: 'Events' },
@@ -70,6 +73,8 @@
     switch (panel) {
       case 'features':
         return exps.length;
+      case 'sources':
+        return projectSourcesStore.sources.length;
       case 'resources':
         return groupResources(exps).length;
       case 'data':
@@ -82,6 +87,14 @@
         return projectStore.historyEntries.length;
     }
   }
+
+  // The source store follows the open project. Loading here (not in the page)
+  // keeps the panel counter live even before the tab is opened.
+  $effect(() => {
+    const id = projectStore.project ? String(projectStore.project.id) : null;
+    if (id) void projectSourcesStore.load(id);
+    return () => projectSourcesStore.reset();
+  });
 
   async function saveProjectMetadata() {
     if (!projectStore.project) return;
@@ -164,7 +177,10 @@
   <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
     <header class="mb-6 border-b border-slate-200 pb-6">
       <div class="flex items-center justify-between gap-3">
-        <a href="/projects" class="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-brand-700 hover:underline">
+        <a
+          href="/projects"
+          class="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-brand-700 hover:underline"
+        >
           <span aria-hidden="true">←</span>
           Back to projects
         </a>
@@ -230,7 +246,9 @@
                   type="button"
                   class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                   onclick={saveProjectMetadata}
-                  disabled={projectStore.saving || nameDraft.trim().length === 0 || descriptionDraft.trim().length === 0}
+                  disabled={projectStore.saving ||
+                    nameDraft.trim().length === 0 ||
+                    descriptionDraft.trim().length === 0}
                 >
                   {projectStore.saving ? 'Saving...' : 'Save project'}
                 </button>
@@ -244,7 +262,9 @@
               </div>
             </div>
           {:else}
-            <h1 class="truncate text-4xl font-semibold tracking-tight text-slate-950">{project.name}</h1>
+            <h1 class="truncate text-4xl font-semibold tracking-tight text-slate-950">
+              {project.name}
+            </h1>
             {#if project.description}
               <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{project.description}</p>
             {:else}
@@ -258,7 +278,10 @@
               </div>
             {/if}
             <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
-              <button class="font-medium text-brand-700 hover:underline" onclick={() => (editingProject = true)}>
+              <button
+                class="font-medium text-brand-700 hover:underline"
+                onclick={() => (editingProject = true)}
+              >
                 Edit project
               </button>
               <span>Updated {new Date(project.updatedAt).toLocaleString()}</span>
@@ -270,7 +293,11 @@
       {#if projectStore.saveError}
         <p class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {projectStore.saveError}
-          <button type="button" class="ml-2 underline" onclick={() => projectStore.dismissSaveError()}>
+          <button
+            type="button"
+            class="ml-2 underline"
+            onclick={() => projectStore.dismissSaveError()}
+          >
             dismiss
           </button>
         </p>
@@ -282,13 +309,19 @@
         {#each PANELS as panel (panel.id)}
           <button
             type="button"
-            class="rounded-md px-3 py-1.5 text-sm font-medium transition {projectStore.activePanel === panel.id
+            class="rounded-md px-3 py-1.5 text-sm font-medium transition {projectStore.activePanel ===
+            panel.id
               ? 'bg-slate-900 text-white shadow-sm'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}"
             onclick={() => projectStore.setActivePanel(panel.id)}
           >
             {panel.label}
-            <span class="ml-1 rounded bg-white/80 px-1.5 py-0.5 text-xs {projectStore.activePanel === panel.id ? 'text-brand-900' : 'text-slate-600'}">
+            <span
+              class="ml-1 rounded bg-white/80 px-1.5 py-0.5 text-xs {projectStore.activePanel ===
+              panel.id
+                ? 'text-brand-900'
+                : 'text-slate-600'}"
+            >
               {panelCount(panel.id)}
             </span>
           </button>
@@ -306,7 +339,8 @@
           class="h-10 w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-100"
         />
         <p class="text-xs text-slate-500">
-          {panelCount(projectStore.activePanel)} {projectStore.activePanel} in this project
+          {panelCount(projectStore.activePanel)}
+          {projectStore.activePanel} in this project
         </p>
       </div>
     {/if}
@@ -315,7 +349,10 @@
       <p class="text-sm text-slate-500">Loading features...</p>
     {:else}
       {#key projectStore.activePanel}
-        <div in:fade={{ duration: 140, easing: cubicOut }} class="motion-reduce:animate-none! motion-reduce:opacity-100!">
+        <div
+          in:fade={{ duration: 140, easing: cubicOut }}
+          class="motion-reduce:animate-none! motion-reduce:opacity-100!"
+        >
           {#if projectStore.activePanel === 'features'}
             <ProjectFeaturesPanel
               features={projectFeaturesStore.features}
@@ -326,14 +363,28 @@
               onRemoveTag={handleRemoveFeatureTag}
               onRemove={handleRemoveFeature}
             />
+          {:else if projectStore.activePanel === 'sources'}
+            <ProjectSourcesPanel search={projectStore.search} />
           {:else if projectStore.activePanel === 'resources'}
-            <ProjectResourcesPanel features={projectFeaturesStore.features} search={projectStore.search} />
+            <ProjectResourcesPanel
+              features={projectFeaturesStore.features}
+              search={projectStore.search}
+            />
           {:else if projectStore.activePanel === 'data'}
-            <ProjectEntitiesPanel features={projectFeaturesStore.features} search={projectStore.search} />
+            <ProjectEntitiesPanel
+              features={projectFeaturesStore.features}
+              search={projectStore.search}
+            />
           {:else if projectStore.activePanel === 'events'}
-            <ProjectEventsPanel features={projectFeaturesStore.features} search={projectStore.search} />
+            <ProjectEventsPanel
+              features={projectFeaturesStore.features}
+              search={projectStore.search}
+            />
           {:else if projectStore.activePanel === 'transitions'}
-            <ProjectTransitionsPanel features={projectFeaturesStore.features} search={projectStore.search} />
+            <ProjectTransitionsPanel
+              features={projectFeaturesStore.features}
+              search={projectStore.search}
+            />
           {:else if projectStore.activePanel === 'history'}
             <ProjectHistoryPanel />
           {/if}

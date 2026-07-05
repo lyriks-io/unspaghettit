@@ -29,7 +29,8 @@
       </p>
     </div>
     {#if featureId}
-      <a href={`/features/${featureId}`} class="text-xs text-brand-700 underline">Back to feature</a>
+      <a href={`/features/${featureId}`} class="text-xs text-brand-700 underline">Back to feature</a
+      >
     {/if}
   </div>
 
@@ -45,6 +46,7 @@
     <SourceViewer
       feature={featureStore.feature}
       provenance={provenanceStore.provenance}
+      sources={provenanceStore.sources}
       loading={provenanceStore.loading}
       refreshing={provenanceStore.refreshing}
       error={provenanceStore.error}

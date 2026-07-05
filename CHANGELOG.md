@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Project source store + paste-to-analyze.** Documents an AI analyzes for provenance now live as immutable, content-hash deduplicated files in the owning project's `sources/` folder (next to the feature files), instead of being embedded one-per-feature inside the provenance sidecar. A new **Sources** tab on the project page lets you paste a document (PRD, spec, notes) straight into the dashboard; agents pull it through the new `list_sources` / `get_source` MCP tools instead of receiving it pushed through chat, and `remove_source` / `reset_analysis` finally give both stores a way out (the old sidecars were attach-once and permanently locked). One document can feed several features with zero duplication, an analysis can link several documents (`record_element_span` takes an optional `sourceId`), and the provenance viewer grew a document picker for multi-source analyses.
+
+### Changed
+
+- **Provenance sidecar format v2.** `<featureId>.provenance.json` now stores span-to-source links instead of the whole document (`sourceIds` + per-span `sourceId`). Existing v1 sidecars are migrated automatically at startup: the embedded document is extracted into the project's `sources/` folder and every span is stamped, idempotently and with identical documents shared rather than duplicated. Older dashboards cannot read v2 sidecars, so update dashboard and MCP together.
+
+### Fixed
+
+- **The graph page fits the viewport exactly.** The behavior-graph pages reserved `100dvh - 4rem` under a sticky header that is actually 4rem + 1px (its bottom border), leaving a permanent 1px overflow and a window scrollbar on an otherwise fixed-height page.
+
 ## [0.6.0] - 2026-07-04
 
 Widen the on-ramp and the toolbox: one-step setup for everyone, a much larger surface library, and a plain-language digest of any scope.

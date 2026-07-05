@@ -5,6 +5,7 @@ import {
   computeSpanLines,
   emptyProvenance,
   finalizeProvenance,
+  linkSource,
   recordSpan,
   type Provenance
 } from './Provenance';
@@ -140,7 +141,11 @@ describe('recordSpan', () => {
   });
 
   it('computes the line for an offset on a later line', () => {
-    const lines = computeSpanLines(CONTENT, CONTENT.indexOf('return'), CONTENT.indexOf('return') + 6);
+    const lines = computeSpanLines(
+      CONTENT,
+      CONTENT.indexOf('return'),
+      CONTENT.indexOf('return') + 6
+    );
     expect(lines.startLine).toBe(2);
     expect(lines.endLine).toBe(2);
   });
@@ -170,6 +175,70 @@ describe('finalizeProvenance', () => {
   });
 });
 
+describe('project-source analyses', () => {
+  const DOC = { id: 'src-1', content: CONTENT };
+
+  it('links a source idempotently and blocks linking once finalized', () => {
+    const linked = linkSource(emptyProvenance(asFeatureId('feat'), 't0'), 'src-1', 't1');
+    expect(linked.ok).toBe(true);
+    if (!linked.ok) return;
+    expect(linked.provenance.sourceIds).toEqual(['src-1']);
+
+    const again = linkSource(linked.provenance, 'src-1', 't2');
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.provenance.sourceIds).toEqual(['src-1']);
+
+    const finalized: Provenance = { ...again.provenance, finalized: true };
+    expect(linkSource(finalized, 'src-2', 't3').ok).toBe(false);
+  });
+
+  it('records a span against a resolved source and auto-links it', () => {
+    const r = recordSpan(emptyProvenance(asFeatureId('feat'), 't0'), {
+      id: 'span-1',
+      elementId: 'el-1',
+      elementType: 'action',
+      startOffset: 0,
+      endOffset: 8,
+      recordedAt: 't1',
+      source: DOC
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.provenance.spans[0]?.sourceId).toBe('src-1');
+    expect(r.provenance.spans[0]?.snippet).toBe('function');
+    expect(r.provenance.sourceIds).toEqual(['src-1']);
+  });
+
+  it('validates offsets against the source content, not the legacy file', () => {
+    const r = recordSpan(emptyProvenance(asFeatureId('feat'), 't0'), {
+      id: 'span-1',
+      elementId: 'el-1',
+      elementType: 'action',
+      startOffset: 0,
+      endOffset: CONTENT.length + 1,
+      recordedAt: 't1',
+      source: DOC
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('finalizes an analysis whose document is a linked source (no embedded file)', () => {
+    const span = recordSpan(emptyProvenance(asFeatureId('feat'), 't0'), {
+      id: 'span-1',
+      elementId: 'el-1',
+      elementType: 'action',
+      startOffset: 0,
+      endOffset: 8,
+      recordedAt: 't1',
+      source: DOC
+    });
+    if (!span.ok) throw new Error(span.reason);
+    const r = finalizeProvenance(span.provenance, 1, 't9');
+    expect(r.ok).toBe(true);
+  });
+});
+
 describe('JSON round-trip', () => {
   it('exports and re-imports a provenance sidecar losslessly', () => {
     const span = recordSpan(stored(), {
@@ -187,6 +256,46 @@ describe('JSON round-trip', () => {
     expect(back.spans).toHaveLength(1);
     expect(back.spans[0]?.snippet).toBe('function');
     expect(back.spans[0]?.elementType).toBe('rule');
+  });
+
+  it('round-trips sourceIds and per-span sourceId', () => {
+    const span = recordSpan(emptyProvenance(asFeatureId('feat'), 't0'), {
+      id: 'span-1',
+      elementId: 'el-1',
+      elementType: 'rule',
+      startOffset: 0,
+      endOffset: 8,
+      recordedAt: 't1',
+      source: { id: 'src-9', content: CONTENT }
+    });
+    if (!span.ok) throw new Error(span.reason);
+    const back = importProvenanceFromJson(exportProvenanceToJson(span.provenance));
+    expect(back.sourceIds).toEqual(['src-9']);
+    expect(back.spans[0]?.sourceId).toBe('src-9');
+  });
+
+  it('imports a version-1 sidecar (no sourceIds field)', () => {
+    const v1 = JSON.stringify({
+      format: 'unspaghettit-provenance',
+      version: 1,
+      provenance: {
+        featureId: 'feat',
+        file: {
+          id: 'file-1',
+          fileName: 'math.ts',
+          content: CONTENT,
+          byteLength: CONTENT.length,
+          contentHash: 'deadbeef',
+          attachedAt: 't0'
+        },
+        spans: [],
+        finalized: false,
+        updatedAt: 't0'
+      }
+    });
+    const back = importProvenanceFromJson(v1);
+    expect(back.file?.fileName).toBe('math.ts');
+    expect(back.sourceIds).toEqual([]);
   });
 
   it('rejects a non-provenance envelope', () => {

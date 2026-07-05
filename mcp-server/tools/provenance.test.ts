@@ -138,14 +138,142 @@ describe('source provenance tools', () => {
     await server.close();
   });
 
-  it('blocks recording a span before a file is stored', async () => {
+  it('blocks recording a span before a source is stored', async () => {
     const { client, server } = await setup();
     const result = await client.callTool({
       name: 'record_element_span',
       arguments: { featureId: 'feat-prov', elementId: 'surf-1', startOffset: 0, endOffset: 2 }
     });
     expect(isErr(result)).toBe(true);
-    expect(rawText(result)).toMatch(/store the source file/i);
+    expect(rawText(result)).toMatch(/no source stored/i);
+    await server.close();
+  });
+
+  it('stores attaches as deduplicated project sources and reads them back', async () => {
+    const { client, server } = await setup();
+
+    const first = parse<{ ok: boolean; sourceId: string; deduped: boolean }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'home.ts', content: 'AB\nCD' }
+      })
+    );
+    expect(first.ok).toBe(true);
+    expect(first.deduped).toBe(false);
+
+    // Same content again → same source, no duplicate stored.
+    const again = parse<{ sourceId: string; deduped: boolean }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'copy.ts', content: 'AB\nCD' }
+      })
+    );
+    expect(again.deduped).toBe(true);
+    expect(again.sourceId).toBe(first.sourceId);
+
+    // The feature is unassigned, so the source lists under the null project bucket
+    // only; get_source reads it back by id with paging metadata.
+    const got = parse<{ content: string; totalChars: number; truncated: boolean }>(
+      await client.callTool({ name: 'get_source', arguments: { sourceId: first.sourceId } })
+    );
+    expect(got.content).toBe('AB\nCD');
+    expect(got.totalChars).toBe(5);
+    expect(got.truncated).toBe(false);
+
+    const provenance = parse<{ sources: readonly { id: string }[] }>(
+      await client.callTool({ name: 'get_provenance', arguments: { featureId: 'feat-prov' } })
+    );
+    expect(provenance.sources.map((s) => s.id)).toEqual([first.sourceId]);
+
+    await server.close();
+  });
+
+  it('requires an explicit sourceId when several sources are linked', async () => {
+    const { client, server } = await setup();
+    const a = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'a.md', content: 'first doc' }
+      })
+    );
+    await client.callTool({
+      name: 'attach_source_file',
+      arguments: { featureId: 'feat-prov', fileName: 'b.md', content: 'second doc' }
+    });
+
+    const ambiguous = await client.callTool({
+      name: 'record_element_span',
+      arguments: { featureId: 'feat-prov', elementId: 'surf-1', startOffset: 0, endOffset: 5 }
+    });
+    expect(isErr(ambiguous)).toBe(true);
+    expect(rawText(ambiguous)).toMatch(/pass sourceId/i);
+
+    const explicit = parse<{ ok: boolean; sourceId: string }>(
+      await client.callTool({
+        name: 'record_element_span',
+        arguments: {
+          featureId: 'feat-prov',
+          elementId: 'surf-1',
+          startOffset: 0,
+          endOffset: 5,
+          sourceId: a.sourceId
+        }
+      })
+    );
+    expect(explicit.ok).toBe(true);
+    expect(explicit.sourceId).toBe(a.sourceId);
+
+    await server.close();
+  });
+
+  it('reset_analysis discards spans (with confirm) and remove_source deletes the doc', async () => {
+    const { client, server } = await setup();
+    const attached = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'a.md', content: 'first doc' }
+      })
+    );
+    await client.callTool({
+      name: 'record_element_span',
+      arguments: { featureId: 'feat-prov', elementId: 'surf-1', startOffset: 0, endOffset: 5 }
+    });
+
+    const unconfirmed = await client.callTool({
+      name: 'reset_analysis',
+      arguments: { featureId: 'feat-prov', confirm: false }
+    });
+    expect(isErr(unconfirmed)).toBe(true);
+
+    const reset = parse<{ ok: boolean; discardedSpans: number }>(
+      await client.callTool({
+        name: 'reset_analysis',
+        arguments: { featureId: 'feat-prov', confirm: true }
+      })
+    );
+    expect(reset.ok).toBe(true);
+    expect(reset.discardedSpans).toBe(1);
+
+    // The stored document survives a reset; remove_source deletes it for real.
+    const stillThere = parse<{ content: string }>(
+      await client.callTool({ name: 'get_source', arguments: { sourceId: attached.sourceId } })
+    );
+    expect(stillThere.content).toBe('first doc');
+
+    const removed = parse<{ ok: boolean }>(
+      await client.callTool({
+        name: 'remove_source',
+        arguments: { sourceId: attached.sourceId, confirm: true }
+      })
+    );
+    expect(removed.ok).toBe(true);
+
+    const gone = await client.callTool({
+      name: 'get_source',
+      arguments: { sourceId: attached.sourceId }
+    });
+    expect(isErr(gone)).toBe(true);
+
     await server.close();
   });
 

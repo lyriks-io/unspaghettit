@@ -1,11 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmdirSync
-} from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -47,10 +40,12 @@ export const PROJECT_SUFFIX = '.project.json';
 export const FEATURE_SUFFIX = '.feature.json';
 export const STATUS_SUFFIX = '.implementation-status.json';
 export const PROVENANCE_SUFFIX = '.provenance.json';
+export const SOURCE_SUFFIX = '.source.json';
 export const DOMAIN_SUFFIX = '.domain.json';
 export const HISTORY_SUFFIX = '.history.json';
 export const UNASSIGNED_FOLDER = '__unassigned';
 export const HISTORY_SUBFOLDER = 'history';
+export const SOURCES_SUBFOLDER = 'sources';
 
 /**
  * Every dynamic path component (project/feature slug, feature id, history
@@ -145,8 +140,7 @@ export const provenanceFilePath = (
 
 export type HistoryKind = 'feature' | 'project' | 'implementation-status';
 
-export const historySuffix = (kind: HistoryKind): string =>
-  `.${kind}${HISTORY_SUFFIX}`;
+export const historySuffix = (kind: HistoryKind): string => `.${kind}${HISTORY_SUFFIX}`;
 
 /** Directory that holds the time-travel logs for one project / __unassigned. */
 export const historyDir = (root: string, projectSlug: string | null): string =>
@@ -236,10 +230,7 @@ export const walkBySuffix = (root: string, suffix: string): readonly Walked[] =>
  * This reads from disk — caller should call it on writes, not on every read.
  * Cached lookups would invalidate the moment another process moves files.
  */
-export const findProjectSlugForFeature = (
-  root: string,
-  featureId: string
-): string | null => {
+export const findProjectSlugForFeature = (root: string, featureId: string): string | null => {
   for (const { folder, path } of walkBySuffix(root, PROJECT_SUFFIX)) {
     try {
       const raw = readFileSync(path, 'utf8');
@@ -251,6 +242,67 @@ export const findProjectSlugForFeature = (
       if (featureIds.includes(featureId)) return folder;
     } catch {
       // Malformed project file — skip; the next read or the validator surfaces it.
+    }
+  }
+  return null;
+};
+
+/** Directory that holds the stored source documents for one project / __unassigned. */
+export const sourcesDir = (root: string, projectSlug: string | null): string =>
+  join(projectDir(root, projectSlug), SOURCES_SUBFOLDER);
+
+/**
+ * Stored source document path. Sources are project-level (one document can
+ * feed several features), immutable, and keyed on their server-minted id.
+ * They live in a `sources/` subfolder so the project folder root stays
+ * reserved for the spec snapshots themselves.
+ */
+export const sourceFilePath = (
+  root: string,
+  projectSlug: string | null,
+  sourceId: string
+): string =>
+  join(
+    sourcesDir(root, projectSlug),
+    `${assertSafeSegment(sourceId, 'source id')}${SOURCE_SUFFIX}`
+  );
+
+/** Ensure the project folder's sources/ subdir exists before a source write. */
+export const ensureSourcesDir = (root: string, projectSlug: string | null): string => {
+  ensureProjectDir(root, projectSlug);
+  const dir = sourcesDir(root, projectSlug);
+  ensureDir(dir);
+  return dir;
+};
+
+/** Walk every stored source document across all snapshot folders. */
+export const walkSources = (root: string): readonly Walked[] => {
+  const out: Walked[] = [];
+  for (const folder of listAllSnapshotFolders(root)) {
+    const subdir = join(root, folder, SOURCES_SUBFOLDER);
+    if (!existsSync(subdir)) continue;
+    for (const file of readdirSync(subdir)) {
+      if (file.endsWith(SOURCE_SUFFIX)) {
+        out.push({ folder, file, path: join(subdir, file) });
+      }
+    }
+  }
+  return out;
+};
+
+/**
+ * Find the folder slug for a projectId by scanning every `*.project.json`.
+ * Returns `null` when no project file carries this id. Same disk-scan
+ * trade-off as `findProjectSlugForFeature`: call on writes, not per read.
+ */
+export const findProjectSlugById = (root: string, projectId: string): string | null => {
+  for (const { folder, path } of walkBySuffix(root, PROJECT_SUFFIX)) {
+    try {
+      const raw = readFileSync(path, 'utf8');
+      const data = JSON.parse(raw) as { project?: { id?: string }; id?: string };
+      if ((data.project?.id ?? data.id) === projectId) return folder;
+    } catch {
+      // Malformed project file: skip, the next read or the validator surfaces it.
     }
   }
   return null;
@@ -359,7 +411,7 @@ export const migrateFlatLayout = (root: string): MigrationReport => {
     } catch {
       continue;
     }
-    const owner = featureId ? ownerByFeatureId.get(featureId) ?? null : null;
+    const owner = featureId ? (ownerByFeatureId.get(featureId) ?? null) : null;
     ensureProjectDir(root, owner);
     const destPath = featureFilePath(root, owner, featureSlug);
     renameSync(srcPath, destPath);
@@ -472,10 +524,7 @@ export const migrateFlatLayoutAndLog = (root: string, label: string): boolean =>
  * and no features remain. Best-effort: an EEXIST/EBUSY means another writer
  * already raced us; safe to ignore.
  */
-export const removeEmptyProjectFolder = (
-  root: string,
-  projectSlug: string | null
-): void => {
+export const removeEmptyProjectFolder = (root: string, projectSlug: string | null): void => {
   const dir = projectDir(root, projectSlug);
   if (!existsSync(dir)) return;
   try {

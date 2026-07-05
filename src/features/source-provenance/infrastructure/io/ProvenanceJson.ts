@@ -7,14 +7,21 @@ import {
   type SourceSpan
 } from '$features/source-provenance/domain/Provenance';
 
+/**
+ * Version history:
+ *  - 1: the analyzed document embedded in the sidecar (`provenance.file`).
+ *  - 2: adds `provenance.sourceIds` + per-span `sourceId`, pointing at
+ *       project-level documents in the owning project's `sources/` folder.
+ * Reads accept both; writes always emit version 2.
+ */
 type Envelope = {
   readonly format: 'unspaghettit-provenance';
-  readonly version: 1;
+  readonly version: 2;
   readonly provenance: Provenance;
 };
 
 export const exportProvenanceToJson = (provenance: Provenance): string => {
-  const envelope: Envelope = { format: 'unspaghettit-provenance', version: 1, provenance };
+  const envelope: Envelope = { format: 'unspaghettit-provenance', version: 2, provenance };
   return JSON.stringify(envelope, null, 2);
 };
 
@@ -23,8 +30,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 
 const ELEMENT_TYPE_SET: ReadonlySet<ElementType> = new Set(ELEMENT_TYPES);
 
-const num = (v: unknown): number | null =>
-  typeof v === 'number' && Number.isFinite(v) ? v : null;
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 const parseFile = (raw: unknown): SourceFile | null => {
   if (!isObject(raw)) return null;
@@ -48,7 +54,10 @@ const parseSpan = (raw: unknown): SourceSpan | null => {
   if (!isObject(raw)) return null;
   if (typeof raw.id !== 'string') return null;
   if (typeof raw.elementId !== 'string') return null;
-  if (typeof raw.elementType !== 'string' || !ELEMENT_TYPE_SET.has(raw.elementType as ElementType)) {
+  if (
+    typeof raw.elementType !== 'string' ||
+    !ELEMENT_TYPE_SET.has(raw.elementType as ElementType)
+  ) {
     return null;
   }
   const startOffset = num(raw.startOffset);
@@ -59,6 +68,7 @@ const parseSpan = (raw: unknown): SourceSpan | null => {
     id: raw.id,
     elementId: raw.elementId,
     elementType: raw.elementType as ElementType,
+    ...(typeof raw.sourceId === 'string' ? { sourceId: raw.sourceId } : {}),
     startOffset,
     endOffset,
     startLine: num(raw.startLine) ?? 1,
@@ -78,7 +88,7 @@ export const importProvenanceFromJson = (raw: string): Provenance => {
   if (parsed.format !== 'unspaghettit-provenance') {
     throw new Error('Not an Unspaghettit provenance export (format mismatch)');
   }
-  if (parsed.version !== 1) {
+  if (parsed.version !== 1 && parsed.version !== 2) {
     throw new Error(`Unsupported provenance version: ${String(parsed.version)}`);
   }
   const prov = parsed.provenance;
@@ -88,9 +98,13 @@ export const importProvenanceFromJson = (raw: string): Provenance => {
   const spans = Array.isArray(prov.spans)
     ? prov.spans.map(parseSpan).filter((s): s is SourceSpan => s !== null)
     : [];
+  const sourceIds = Array.isArray(prov.sourceIds)
+    ? prov.sourceIds.filter((s): s is string => typeof s === 'string')
+    : [];
   return {
     featureId: prov.featureId as FeatureId,
     file: parseFile(prov.file),
+    sourceIds,
     spans,
     finalized: prov.finalized === true,
     updatedAt: prov.updatedAt

@@ -85,6 +85,7 @@ describe('MCP server', () => {
       'get_project_aggregate',
       'get_provenance',
       'get_repo_context',
+      'get_source',
       'get_spec_gaps',
       'get_surface',
       'list_actions',
@@ -92,6 +93,7 @@ describe('MCP server', () => {
       'list_features',
       'list_projects',
       'list_queue',
+      'list_sources',
       'model_check',
       'move_action',
       'move_feature_in_project',
@@ -117,6 +119,7 @@ describe('MCP server', () => {
       'remove_reachability_goal',
       'remove_resource',
       'remove_scenario',
+      'remove_source',
       'remove_state_definition',
       'remove_surface',
       'remove_surface_invariant',
@@ -127,6 +130,7 @@ describe('MCP server', () => {
       'replace_project',
       'report_implementation_status',
       'report_implementation_status_batch',
+      'reset_analysis',
       'run_all_scenarios',
       'save_feature',
       'score_feature',
@@ -202,9 +206,7 @@ describe('MCP server', () => {
     expect(payload.linked).toBe(true);
     expect(payload.linkedProjectId).toBe('proj-storefront');
     expect(payload.linkedProjectName).toBe('Storefront');
-    expect(payload.features).toEqual([
-      { id: storefrontFeature.id, name: storefrontFeature.name }
-    ]);
+    expect(payload.features).toEqual([{ id: storefrontFeature.id, name: storefrontFeature.name }]);
     await server.close();
   });
 
@@ -243,8 +245,8 @@ describe('MCP server', () => {
       name: 'get_feature',
       arguments: { featureId: storefrontFeature.id, verbose: true }
     });
-    const focusedText = ((focusedResult as { content: { text: string }[] }).content[0]?.text ?? '');
-    const fullText = ((fullResult as { content: { text: string }[] }).content[0]?.text ?? '');
+    const focusedText = (focusedResult as { content: { text: string }[] }).content[0]?.text ?? '';
+    const fullText = (fullResult as { content: { text: string }[] }).content[0]?.text ?? '';
     expect(focusedText.length).toBeGreaterThan(0);
     expect(focusedText.length).toBeLessThan(fullText.length / 4);
     await server.close();
@@ -260,8 +262,8 @@ describe('MCP server', () => {
       name: 'get_feature',
       arguments: { featureId: storefrontFeature.id, verbose: true }
     });
-    const indexText = ((indexResult as { content: { text: string }[] }).content[0]?.text ?? '');
-    const verboseText = ((verboseResult as { content: { text: string }[] }).content[0]?.text ?? '');
+    const indexText = (indexResult as { content: { text: string }[] }).content[0]?.text ?? '';
+    const verboseText = (verboseResult as { content: { text: string }[] }).content[0]?.text ?? '';
     expect(indexText.length).toBeGreaterThan(0);
     // Index drops every body field. Must be substantially smaller.
     expect(indexText.length).toBeLessThan(verboseText.length / 3);
@@ -349,9 +351,7 @@ describe('MCP server', () => {
 
     const findAction = async () => {
       const feat = await repo.get(storefrontFeature.id);
-      return feat?.surfaces
-        .flatMap((s) => s.actions)
-        .find((a) => String(a.id) === ack.id);
+      return feat?.surfaces.flatMap((s) => s.actions).find((a) => String(a.id) === ack.id);
     };
 
     const created = await findAction();
@@ -889,10 +889,7 @@ describe('MCP server', () => {
       suggestedFix: string;
     };
 
-    const callGaps = async (
-      client: Client,
-      featureId: string
-    ): Promise<readonly Gap[]> => {
+    const callGaps = async (client: Client, featureId: string): Promise<readonly Gap[]> => {
       const result = await client.callTool({
         name: 'get_spec_gaps',
         arguments: { featureId }
@@ -958,9 +955,7 @@ describe('MCP server', () => {
       const gaps = await callGaps(client, created.id);
       const surfaceGaps = gaps.filter(
         (g) =>
-          g.severity === 'critical' &&
-          g.entityType === 'surface' &&
-          g.entityId === addedSurface.id
+          g.severity === 'critical' && g.entityType === 'surface' && g.entityId === addedSurface.id
       );
       expect(surfaceGaps).toHaveLength(1);
       expect(surfaceGaps[0]!.suggestedFix).toMatch(/state path/i);
@@ -1057,9 +1052,7 @@ describe('MCP server', () => {
       const after = await callGaps(client, created.id);
       const destructiveAfter = after.filter(
         (g) =>
-          g.entityType === 'action' &&
-          g.entityId === action.id &&
-          /destructive/i.test(g.reason)
+          g.entityType === 'action' && g.entityId === action.id && /destructive/i.test(g.reason)
       );
       expect(destructiveAfter).toHaveLength(0);
       await server.close();
@@ -1420,9 +1413,7 @@ describe('MCP server', () => {
     // Validation errors are op-attributed: each error referencing a freshly-
     // minted entity id gets prefixed with `op[N] (kind):` so the agent knows
     // exactly which op to fix on retry. The bad rule landed on op index 2.
-    expect(
-      ack.validation.errors?.some((e) => e.startsWith('op[2] (add_action_rule):'))
-    ).toBe(true);
+    expect(ack.validation.errors?.some((e) => e.startsWith('op[2] (add_action_rule):'))).toBe(true);
     // Repository state is unchanged: the failed batch was rolled back.
     const persisted = await repo.get(created.id as never);
     expect(persisted?.surfaces).toEqual([]);

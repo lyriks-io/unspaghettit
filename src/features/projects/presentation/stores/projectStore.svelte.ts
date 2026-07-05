@@ -9,6 +9,7 @@ import type { HistoryEntry } from '$lib/sync/protocol';
 
 export type ProjectPanel =
   | 'features'
+  | 'sources'
   | 'resources'
   | 'data'
   | 'events'
@@ -26,9 +27,7 @@ class ProjectStore {
    */
   id = $derived<string>(this.project ? String(this.project.id) : '');
   name = $derived<string>(this.project?.name ?? '');
-  featureIds = $derived<readonly string[]>(
-    this.project ? this.project.featureIds.map(String) : []
-  );
+  featureIds = $derived<readonly string[]>(this.project ? this.project.featureIds.map(String) : []);
   error = $state<string | null>(null);
   saveError = $state<string | null>(null);
   saving = $state(false);
@@ -90,10 +89,7 @@ class ProjectStore {
     this.saveError = null;
     try {
       const container = await getBrowserContainer();
-      const next = await container.useCases.addFeatureToProject(
-        this.currentId,
-        featureId
-      );
+      const next = await container.useCases.addFeatureToProject(this.currentId, featureId);
       this.applyProject(next);
       emit('project.feature_added', {
         projectId: String(this.currentId),
@@ -112,10 +108,7 @@ class ProjectStore {
     this.saveError = null;
     try {
       const container = await getBrowserContainer();
-      const next = await container.useCases.removeFeatureFromProject(
-        this.currentId,
-        featureId
-      );
+      const next = await container.useCases.removeFeatureFromProject(this.currentId, featureId);
       this.applyProject(next);
       emit('project.feature_removed', {
         projectId: String(this.currentId),

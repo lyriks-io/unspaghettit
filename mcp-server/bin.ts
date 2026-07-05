@@ -4,6 +4,8 @@ import { JsonFolderFeatureRepository } from '../src/features/behavior-model/infr
 import { discoverSnapshotDirectory } from '../src/features/behavior-model/infrastructure/persistence/snapshot-discovery';
 import { JsonFolderImplementationStatusRepository } from '../src/features/implementation-status/infrastructure/persistence/JsonFolderImplementationStatusRepository';
 import { JsonFolderProvenanceRepository } from '../src/features/source-provenance/infrastructure/persistence/JsonFolderProvenanceRepository';
+import { JsonFolderProjectSourceRepository } from '../src/features/source-provenance/infrastructure/persistence/JsonFolderProjectSourceRepository';
+import { migrateEmbeddedSourceDocsAndLog } from '../src/features/source-provenance/infrastructure/persistence/migrateEmbeddedSourceDocs';
 import { JsonFolderProjectRepository } from '../src/features/projects/infrastructure/persistence/JsonFolderProjectRepository';
 import { migrateFlatLayoutAndLog } from '../src/shared/infrastructure/persistence/snapshotLayout';
 import { discoverRepoLink } from './repo-link';
@@ -58,6 +60,7 @@ const main = async (): Promise<void> => {
   // Diagnostics go to stderr. Stdout is reserved for the JSON-RPC stream.
   process.stderr.write(`[unspa-mcp] snapshots: ${directory} (${source})\n`);
   migrateFlatLayoutAndLog(directory, 'unspa-mcp');
+  migrateEmbeddedSourceDocsAndLog(directory, 'unspa-mcp');
   if (initialLink.link) {
     process.stderr.write(
       `[unspa-mcp] repo linked to project: ${initialLink.link.projectName ?? '(unknown)'} (${initialLink.link.projectId})\n`
@@ -68,12 +71,12 @@ const main = async (): Promise<void> => {
   const statusRepo = new SyncAwareImplementationStatusRepository(
     new JsonFolderImplementationStatusRepository(directory)
   );
-  const projectRepo = new SyncAwareProjectRepository(
-    new JsonFolderProjectRepository(directory)
-  );
-  // Provenance sidecars are read fresh from disk by the dashboard on each
-  // fetch, so they don't need the Yjs live-broadcast wrapper the others use.
+  const projectRepo = new SyncAwareProjectRepository(new JsonFolderProjectRepository(directory));
+  // Provenance sidecars and source documents are read fresh from disk by the
+  // dashboard on each fetch, so they don't need the Yjs live-broadcast
+  // wrapper the others use.
   const provenanceRepo = new JsonFolderProvenanceRepository(directory);
+  const sourceRepo = new JsonFolderProjectSourceRepository(directory);
 
   // Live `.unspa.json` lookup. Tools read `repoContext.link` / `.linkPath`
   // on every invocation, so if the developer runs `unspa link` while the AI
@@ -96,6 +99,7 @@ const main = async (): Promise<void> => {
   const server = buildServer(repo, {
     statusRepo,
     provenanceRepo,
+    sourceRepo,
     projectRepo,
     repoContext
   });

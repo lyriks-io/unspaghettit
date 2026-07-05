@@ -2,6 +2,8 @@ import { JsonFolderFeatureRepository } from '$features/behavior-model/infrastruc
 import { discoverSnapshotDirectory } from '$features/behavior-model/infrastructure/persistence/snapshot-discovery';
 import { JsonFolderImplementationStatusRepository } from '$features/implementation-status/infrastructure/persistence/JsonFolderImplementationStatusRepository';
 import { JsonFolderProvenanceRepository } from '$features/source-provenance/infrastructure/persistence/JsonFolderProvenanceRepository';
+import { JsonFolderProjectSourceRepository } from '$features/source-provenance/infrastructure/persistence/JsonFolderProjectSourceRepository';
+import { migrateEmbeddedSourceDocsAndLog } from '$features/source-provenance/infrastructure/persistence/migrateEmbeddedSourceDocs';
 import { JsonFolderProjectRepository } from '$features/projects/infrastructure/persistence/JsonFolderProjectRepository';
 import { JsonFolderDomainRepository } from '$features/domains/infrastructure/persistence/JsonFolderDomainRepository';
 import { JsonFileTagPaletteRepository } from '$features/tag-palette/infrastructure/persistence/JsonFileTagPaletteRepository';
@@ -11,6 +13,7 @@ let cached: {
   repo: JsonFolderFeatureRepository;
   statusRepo: JsonFolderImplementationStatusRepository;
   provenanceRepo: JsonFolderProvenanceRepository;
+  sourceRepo: JsonFolderProjectSourceRepository;
   projectRepo: JsonFolderProjectRepository;
   domainRepo: JsonFolderDomainRepository;
   tagPaletteRepo: JsonFileTagPaletteRepository;
@@ -21,6 +24,7 @@ export const getSnapshotRepository = (): {
   repo: JsonFolderFeatureRepository;
   statusRepo: JsonFolderImplementationStatusRepository;
   provenanceRepo: JsonFolderProvenanceRepository;
+  sourceRepo: JsonFolderProjectSourceRepository;
   projectRepo: JsonFolderProjectRepository;
   domainRepo: JsonFolderDomainRepository;
   tagPaletteRepo: JsonFileTagPaletteRepository;
@@ -30,12 +34,23 @@ export const getSnapshotRepository = (): {
   const override = process.env.UNSPA_SNAPSHOTS;
   const { directory } = discoverSnapshotDirectory({ override });
   migrateFlatLayoutAndLog(directory, 'unspa-sveltekit');
+  migrateEmbeddedSourceDocsAndLog(directory, 'unspa-sveltekit');
   const repo = new JsonFolderFeatureRepository(directory);
   const statusRepo = new JsonFolderImplementationStatusRepository(directory);
   const provenanceRepo = new JsonFolderProvenanceRepository(directory);
+  const sourceRepo = new JsonFolderProjectSourceRepository(directory);
   const projectRepo = new JsonFolderProjectRepository(directory);
   const domainRepo = new JsonFolderDomainRepository(directory);
   const tagPaletteRepo = new JsonFileTagPaletteRepository(directory);
-  cached = { repo, statusRepo, provenanceRepo, projectRepo, domainRepo, tagPaletteRepo, directory };
+  cached = {
+    repo,
+    statusRepo,
+    provenanceRepo,
+    sourceRepo,
+    projectRepo,
+    domainRepo,
+    tagPaletteRepo,
+    directory
+  };
   return cached;
 };

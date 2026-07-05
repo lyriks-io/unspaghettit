@@ -45,7 +45,12 @@ export type SourceSpan = {
   readonly id: string;
   readonly elementId: string;
   readonly elementType: ElementType;
-  /** Character offset where the span starts (inclusive), into SourceFile.content. */
+  /**
+   * Id of the project-level source this span points into. Absent on legacy
+   * spans recorded against the embedded `Provenance.file` document.
+   */
+  readonly sourceId?: string;
+  /** Character offset where the span starts (inclusive), into the document. */
   readonly startOffset: number;
   /** Character offset where the span ends (exclusive). */
   readonly endOffset: number;
@@ -57,10 +62,17 @@ export type SourceSpan = {
   readonly snippet: string;
 };
 
-/** The provenance sidecar for one feature: the stored file plus its spans. */
+/**
+ * The provenance sidecar for one feature: its recorded spans plus the
+ * documents behind them. New analyses link project-level sources by id
+ * (`sourceIds`); `file` only survives on legacy sidecars whose document was
+ * embedded before the project source store existed.
+ */
 export type Provenance = {
   readonly featureId: FeatureId;
   readonly file: SourceFile | null;
+  /** Project-level sources linked to this analysis. */
+  readonly sourceIds: readonly string[];
   readonly spans: readonly SourceSpan[];
   /** Locked once every extracted element has a span (the finalize gate). */
   readonly finalized: boolean;
@@ -78,6 +90,7 @@ export const DEFAULT_MAX_BYTES = 1_048_576;
 export const emptyProvenance = (featureId: FeatureId, at: string): Provenance => ({
   featureId,
   file: null,
+  sourceIds: [],
   spans: [],
   finalized: false,
   updatedAt: at
@@ -128,10 +141,17 @@ export type AttachInput = {
   readonly maxBytes?: number;
 };
 
-/** Store the uploaded file. Mirrors the spec's "Attach Source File" rules. */
+/**
+ * LEGACY: store the uploaded file embedded in the sidecar (pre source-store
+ * format). New attaches go through `createProjectSource` + `linkSource`; this
+ * stays so v1 sidecars keep their exact semantics and for the migration tests.
+ */
 export const attachSourceFile = (p: Provenance, input: AttachInput): ProvenanceResult => {
   if (p.finalized) {
-    return { ok: false, reason: 'This analysis is finalized; start a new one to attach a different file.' };
+    return {
+      ok: false,
+      reason: 'This analysis is finalized; start a new one to attach a different file.'
+    };
   }
   if (p.file) {
     return { ok: false, reason: 'A source file is already stored for this analysis.' };
@@ -154,6 +174,24 @@ export const attachSourceFile = (p: Provenance, input: AttachInput): ProvenanceR
   return { ok: true, provenance: { ...p, file, updatedAt: input.attachedAt } };
 };
 
+/**
+ * Link a project-level source to this feature's analysis. Idempotent when the
+ * source is already linked; blocked once the analysis is finalized.
+ */
+export const linkSource = (p: Provenance, sourceId: string, linkedAt: string): ProvenanceResult => {
+  if (p.finalized) {
+    return {
+      ok: false,
+      reason: 'This analysis is finalized; start a new one to link another source.'
+    };
+  }
+  if (p.sourceIds.includes(sourceId)) return { ok: true, provenance: p };
+  return {
+    ok: true,
+    provenance: { ...p, sourceIds: [...p.sourceIds, sourceId], updatedAt: linkedAt }
+  };
+};
+
 export type RecordSpanInput = {
   readonly id: string;
   readonly elementId: string;
@@ -161,11 +199,19 @@ export type RecordSpanInput = {
   readonly startOffset: number;
   readonly endOffset: number;
   readonly recordedAt: string;
+  /**
+   * The resolved project source the span points into. When absent, the span
+   * is validated against the legacy embedded `Provenance.file` document.
+   */
+  readonly source?: { readonly id: string; readonly content: string };
 };
 
 /** Stamp one extracted element with its source span. Mirrors "Record Element Span". */
 export const recordSpan = (p: Provenance, input: RecordSpanInput): ProvenanceResult => {
-  if (!p.file) return { ok: false, reason: 'Store the source file before recording spans.' };
+  const content = input.source?.content ?? p.file?.content;
+  if (content === undefined) {
+    return { ok: false, reason: 'Store a source document before recording spans.' };
+  }
   if (p.finalized) return { ok: false, reason: 'Analysis is finalized; spans are locked.' };
   if (!isElementType(input.elementType)) {
     return { ok: false, reason: `Unknown element type: ${String(input.elementType)}.` };
@@ -177,24 +223,34 @@ export const recordSpan = (p: Provenance, input: RecordSpanInput): ProvenanceRes
   if (startOffset >= endOffset) {
     return { ok: false, reason: 'Span start must come before its end.' };
   }
-  if (endOffset > p.file.content.length) {
-    return { ok: false, reason: 'Span end is past the end of the stored file.' };
+  if (endOffset > content.length) {
+    return { ok: false, reason: 'Span end is past the end of the stored document.' };
   }
   if (p.spans.some((s) => s.elementId === input.elementId)) {
     return { ok: false, reason: 'This element already has a recorded span.' };
   }
-  const { startLine, endLine } = computeSpanLines(p.file.content, startOffset, endOffset);
+  const { startLine, endLine } = computeSpanLines(content, startOffset, endOffset);
   const span: SourceSpan = {
     id: input.id,
     elementId: input.elementId,
     elementType: input.elementType,
+    ...(input.source ? { sourceId: input.source.id } : {}),
     startOffset,
     endOffset,
     startLine,
     endLine,
-    snippet: p.file.content.slice(startOffset, endOffset)
+    snippet: content.slice(startOffset, endOffset)
   };
-  return { ok: true, provenance: { ...p, spans: [...p.spans, span], updatedAt: input.recordedAt } };
+  // Recording against a source implicitly links it, so a span can never
+  // reference a document the analysis doesn't know about.
+  const sourceIds =
+    input.source && !p.sourceIds.includes(input.source.id)
+      ? [...p.sourceIds, input.source.id]
+      : p.sourceIds;
+  return {
+    ok: true,
+    provenance: { ...p, sourceIds, spans: [...p.spans, span], updatedAt: input.recordedAt }
+  };
 };
 
 /**
@@ -207,7 +263,9 @@ export const finalizeProvenance = (
   expectedElementCount: number,
   finalizedAt: string
 ): ProvenanceResult => {
-  if (!p.file) return { ok: false, reason: 'Store and analyze a file before finalizing.' };
+  if (!p.file && p.sourceIds.length === 0) {
+    return { ok: false, reason: 'Store and analyze a source document before finalizing.' };
+  }
   if (p.finalized) return { ok: false, reason: 'Analysis is already finalized.' };
   if (p.spans.length !== expectedElementCount) {
     const untraced = expectedElementCount - p.spans.length;
