@@ -13,6 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- **Docs and agent guidance caught up with codebase adoption.** The `unspa init` context template (`CLAUDE.md`/`AGENTS.md` block) gains an "Adopting an existing codebase" section and drops its em dashes; the `unspa://guide` MCP resource documents the adoption flow, adds the missing `entity:<id>` key to the index contract, and fixes its stale `.unspa.json` shape (the link is `projectId`/`projectName` since the project-link change, not `featureId`/`featureName`); the server instructions, core concepts (new "Source provenance & codebase adoption" section), getting-started, and CLI README all reference `unspa adopt` and the `unspa-adopt` skill.
+
 - **Provenance sidecar format v2.** `<featureId>.provenance.json` now stores span-to-source links instead of the whole document (`sourceIds` + per-span `sourceId`). Existing v1 sidecars are migrated automatically at startup: the embedded document is extracted into the project's `sources/` folder and every span is stamped, idempotently and with identical documents shared rather than duplicated. Older dashboards cannot read v2 sidecars, so update dashboard and MCP together.
 
 ### Fixed

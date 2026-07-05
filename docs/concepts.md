@@ -60,6 +60,12 @@ Each implementation is recorded in a `.unspa.json` behavioral index: a `{ file, 
 
 This is what makes drift visible. The spec knows where it lives in the code, so the moment the two disagree, you can see it. `get_drift` lists every implementation audited against an older spec than the one now on disk.
 
+## Source provenance & codebase adoption
+
+Provenance answers "where did this element come from?". When an agent extracts behavior from a document (a PRD, a brief, pasted notes), the original text is stored as an immutable, content-hash-deduplicated source in the project, and every extracted element is stamped with the exact span it was derived from. The dashboard's Source Viewer renders the text with each span highlighted and linked to its element, and `finalize_analysis` refuses to lock an analysis while any element is untraced, so the model cannot contain invented behavior.
+
+Codebase adoption is the same discipline pointed at code (the code → spec direction). The agent attaches each source file it analyzed with `attach_source_file kind:"code"` (the file's repo-relative path is its name), models what the code actually does, and records a span for every element. Then `seed_index_from_analysis` turns every code span into a `.unspa.json` entry ({file, line, signature}, spec version stamped), so one analysis pass yields the model, its provenance, and non-zero implementation coverage with drift detection armed. `unspa adopt` prints the paste-ready prompt for this flow; the bundled `unspa-adopt` skill runs it directly.
+
 ## Verified coverage (preview)
 
 Coverage in the index is a *claim* - "this entity is implemented here." To turn it into proof, run the feature's scenarios against the real code:
@@ -84,7 +90,8 @@ A per-project "implement next" list of Feature, Surface, and Action items. Reord
 ## Capabilities at a glance
 
 - **Structured behavior specification** - features, surfaces, actions, states, rules, invariants, transitions, scenarios, personas, resources, entities, events.
-- **Code → spec mapping** - an LLM reads an existing repo, models its behavior, and wires the spec back to source through the behavioral index.
+- **Code → spec adoption** - an LLM reads an existing repo, models its behavior with every element traced to the exact code span it came from, and `seed_index_from_analysis` wires the spec back to source automatically (`unspa adopt` / the `unspa-adopt` skill).
+- **Source provenance** - documents and code files are stored immutably per project; every extracted element links back to the span it was derived from, browsable in the Source Viewer.
 - **MCP-native** - every entity is created, read, edited, and validated through MCP tool calls. Works with any MCP-compatible IDE.
 - **Deterministic simulator & bounded model checking** - single transitions, whole-flow scenarios, and exhaustive state-space exploration.
 - **Safety + liveness properties** - invariants per-surface / feature / project, plus reachability goals.

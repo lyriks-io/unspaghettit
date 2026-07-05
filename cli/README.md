@@ -123,7 +123,7 @@ unspa dashboard      # open the dashboard at http://localhost:3000
 That's it. Your AI client spawns
 `unspa-mcp` on demand via the entry written to its MCP config, reads
 the Unspaghettit instructions from `CLAUDE.md` / `AGENTS.md`, and can invoke
-the bundled `/unspa-edit`, `/unspa-implement`, `/unspa-audit` skills.
+the bundled `/unspa-edit`, `/unspa-implement`, `/unspa-audit`, `/unspa-adopt` skills.
 
 If you are new to MCP and already have an AI agent open in the repo, you can
 also ask it to perform the setup:
@@ -470,6 +470,7 @@ your-app/
 │       ├── unspa-edit/SKILL.md      ← installed by `unspa init`
 │       ├── unspa-implement/SKILL.md
 │       ├── unspa-audit/SKILL.md
+│       ├── unspa-adopt/SKILL.md
 │       ├── unspa-worldbuild/SKILL.md  ← opt-in (fun mode)
 │       └── unspa-worldplay/SKILL.md   ← opt-in (fun mode)
 ├── .mcp.json                        ← MCP registration (Claude Code)

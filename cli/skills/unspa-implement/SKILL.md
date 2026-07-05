@@ -27,6 +27,11 @@ the code*, and it can only do that from the index. "I'll index it later" is
 how coverage silently rots. If you touched code for it, it gets an entry in the
 same change.
 
+Note: in a repo that was adopted from existing code (the `unspa-adopt` flow),
+many entries already exist, seeded from provenance spans by
+`seed_index_from_analysis`. Update those in place as the code moves; don't
+duplicate them.
+
 ## Build targets (how far to take it)
 
 A queued item can carry one or more independent **goals**. `get_next_queued`

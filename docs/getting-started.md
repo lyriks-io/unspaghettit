@@ -41,6 +41,8 @@ Re-running `unspa init` is safe. Every step is idempotent: existing entries are 
 
 You normally don't run the MCP server by hand - your AI client spawns `unspa-mcp` on demand. `unspa serve` exists as a debugging hatch if you ever need to test the stdio interface yourself.
 
+Starting from an **existing codebase** rather than a blank page? Run `unspa adopt`: it prints the paste-ready prompt that has your agent model the code with every element traced to its source span, then seed the spec-to-code coverage index automatically. See [Working with AI](prompting.md) for the full code → spec flow.
+
 ## Supported clients
 
 `unspa init` registers the MCP server with the clients you pick. Supported out of the box:

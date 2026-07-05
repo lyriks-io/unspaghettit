@@ -453,11 +453,10 @@ implementation tracking.
 ## Behavioral index
 
 The behavioral index is a persistent map from every Unspaghettit entity to its exact location
-in the codebase. It lives in .unspa.json alongside the feature link, inside whichever
-folder the human or AI has chosen to associate with that feature.
-
-A repo can have multiple .unspa.json files in different folders. Each folder owns one
-feature, and the MCP server picks up the closest one to where it was started.
+in the codebase. It lives in .unspa.json alongside the project link (written by
+\`unspa link\`), and the MCP server picks up the closest one above where it was started.
+The linked project owns one or more features; a single flat index covers them all
+(ids are unique system-wide).
 
 ### Entity key format
 
@@ -465,7 +464,7 @@ feature, and the MCP server picks up the closest one to where it was started.
   state:<dotted.path>           rule:<ruleId>
   invariant:<invariantId>       event:<eventName>
   transition:<transitionId>     surface_rule:<ruleId>
-  surface_invariant:<invariantId>
+  surface_invariant:<invariantId>       entity:<entityId>
 
 Every entity must have its own key. A rule, event, invariant, or transition
 attached to an action does not inherit the action's file:line. The
@@ -477,8 +476,8 @@ transition trigger lives in code.
 ### .unspa.json shape
 
 {
-  "featureId": "<id>",
-  "featureName": "<name>",
+  "projectId": "<id>",
+  "projectName": "<name>",
   "index": {
     "action:<id>": {
       "status": "implemented" | "partial" | "missing",
@@ -533,6 +532,25 @@ entries to re-audit:
 
 This avoids re-auditing the entire codebase every session. A 50-entity index with
 20 unchanged files needs only 20 git log calls to confirm they are clean.
+
+### Codebase adoption (code -> spec): seed the index instead of hand-writing it
+
+When you are modeling an EXISTING codebase, do not hand-author the index at all.
+Use the evidence-gated adoption flow; the index falls out of the provenance spans:
+
+1. attach_source_file kind:"code" for each source file you analyzed
+   (fileName = the file's repo-relative path, content = the exact text you read).
+2. Model what the code actually does via apply_batch.
+3. record_element_span for EVERY element, offsets pointing at the code it came from.
+4. finalize_analysis (blocked until every element is traced, so nothing is invented).
+5. seed_index_from_analysis: every code span becomes an index entry
+   ({file, line, signature}, specVersion stamped). Existing entries are never
+   overwritten without overwrite:true.
+6. sync_from_index to push the coverage report.
+
+One pass yields the model, its provenance (Source Viewer), and implementation
+coverage with drift detection armed. The manual workflow below remains the right
+tool for ongoing implementation work after adoption.
 
 ### Indexing workflow
 
