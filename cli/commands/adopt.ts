@@ -3,7 +3,7 @@ import { log } from '../util/log';
 import { readRepoLink, type RepoLink } from '../util/link';
 
 /**
- * `unspa adopt` — the code → spec on-ramp. The heavy lifting is done by the
+ * `unspa adopt`: the code → spec on-ramp. The heavy lifting is done by the
  * AI agent through the MCP (it reads the code; the MCP never does), so this
  * command's job is to check the two prerequisites and hand the user a
  * paste-ready prompt that drives the whole adoption workflow:
