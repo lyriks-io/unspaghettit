@@ -280,6 +280,48 @@ describe('source provenance tools', () => {
     await server.close();
   });
 
+  it('record_element_spans applies a batch in one save and reports per-item failures', async () => {
+    const { client, server } = await setup();
+    await client.callTool({
+      name: 'attach_source_file',
+      arguments: { featureId: 'feat-prov', fileName: 'home.ts', content: 'AB\nCD' }
+    });
+
+    const batch = parse<{
+      ok: boolean;
+      recorded: number;
+      failed: number;
+      results: readonly { elementId: string; ok: boolean; error?: string }[];
+      spanCount: number;
+      remaining: number;
+    }>(
+      await client.callTool({
+        name: 'record_element_spans',
+        arguments: {
+          featureId: 'feat-prov',
+          spans: [
+            { elementId: 'surf-1', startOffset: 0, endOffset: 2 },
+            { elementId: 'act-1', startOffset: 3, endOffset: 5 },
+            { elementId: 'nope-9', startOffset: 0, endOffset: 1 }
+          ]
+        }
+      })
+    );
+    expect(batch.ok).toBe(false);
+    expect(batch.recorded).toBe(2);
+    expect(batch.failed).toBe(1);
+    expect(batch.results[2]?.error).toMatch(/no element/i);
+    expect(batch.spanCount).toBe(2);
+    expect(batch.remaining).toBe(0);
+
+    // The two good spans persisted, so finalize goes through.
+    const finalized = parse<{ ok: boolean }>(
+      await client.callTool({ name: 'finalize_analysis', arguments: { featureId: 'feat-prov' } })
+    );
+    expect(finalized.ok).toBe(true);
+    await server.close();
+  });
+
   it('attach kind:"code" normalizes the path and rejects non-repo-relative ones', async () => {
     const { client, server } = await setup();
 
@@ -359,8 +401,77 @@ describe('seed_index_from_analysis (codebase adoption)', () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: 'test-client', version: '0.0.0' });
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
-    return { client, server, linkPath };
+    return { client, server, linkPath, repoRoot };
   };
+
+  it('attach_source_path reads the file server-side, normalizes path and EOL', async () => {
+    const { client, server, repoRoot } = await setupLinked();
+
+    const attached = parse<{
+      ok: boolean;
+      fileName: string;
+      kind: string;
+      totalChars: number;
+      normalizedEol: boolean;
+      contentHash: string;
+    }>(
+      await client.callTool({
+        name: 'attach_source_path',
+        arguments: { featureId: 'feat-prov', path: 'src\\cart.ts' }
+      })
+    );
+    expect(attached.ok).toBe(true);
+    expect(attached.fileName).toBe('src/cart.ts');
+    expect(attached.kind).toBe('code');
+    expect(attached.totalChars).toBe(CODE.length);
+    expect(attached.normalizedEol).toBe(false);
+
+    // A CRLF file is stored LF so span offsets are OS-independent.
+    writeFileSync(join(repoRoot, 'src', 'win.ts'), 'const a = 1;\r\nconst b = 2;\r\n', 'utf8');
+    const win = parse<{ sourceId: string; totalChars: number; normalizedEol: boolean }>(
+      await client.callTool({
+        name: 'attach_source_path',
+        arguments: { featureId: 'feat-prov', path: 'src/win.ts' }
+      })
+    );
+    expect(win.normalizedEol).toBe(true);
+    expect(win.totalChars).toBe('const a = 1;\nconst b = 2;\n'.length);
+    const stored = parse<{ content: string }>(
+      await client.callTool({ name: 'get_source', arguments: { sourceId: win.sourceId } })
+    );
+    expect(stored.content).not.toContain('\r');
+
+    await server.close();
+  });
+
+  it('attach_source_path refuses escapes, missing files, and a server with no repo context', async () => {
+    const linked = await setupLinked();
+
+    const escape = await linked.client.callTool({
+      name: 'attach_source_path',
+      arguments: { featureId: 'feat-prov', path: '../outside.ts' }
+    });
+    expect(isErr(escape)).toBe(true);
+    expect(rawText(escape)).toMatch(/must not contain/i);
+
+    const missing = await linked.client.callTool({
+      name: 'attach_source_path',
+      arguments: { featureId: 'feat-prov', path: 'src/ghost.ts' }
+    });
+    expect(isErr(missing)).toBe(true);
+    expect(rawText(missing)).toMatch(/no file at/i);
+    await linked.server.close();
+
+    // No repoContext at all: actionable fallback pointing at attach_source_file.
+    const bare = await setup();
+    const noContext = await bare.client.callTool({
+      name: 'attach_source_path',
+      arguments: { featureId: 'feat-prov', path: 'src/cart.ts' }
+    });
+    expect(isErr(noContext)).toBe(true);
+    expect(rawText(noContext)).toMatch(/attach_source_file instead/i);
+    await bare.server.close();
+  });
 
   it('turns code-source spans into .unspa.json entries; doc spans stay provenance-only', async () => {
     const { client, server, linkPath } = await setupLinked();

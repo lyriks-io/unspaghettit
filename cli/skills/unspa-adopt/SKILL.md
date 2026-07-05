@@ -42,12 +42,18 @@ a recorded span, so nothing can be invented without a source.
    1-15 surfaces each. Confirm the split with the user when it is not obvious.
 3. **Per feature, per surface:**
    a. Read the source files that implement the surface.
-   b. `attach_source_file` with `kind:"code"`, `fileName` = repo-relative
-      path, `content` = the exact file text (1 MiB cap per source; attach the
-      files that carry behavior, not the whole tree).
+   b. `attach_source_path` with the file's repo-relative path: the server
+      reads the file from disk itself, so you never re-emit the content
+      (roughly half the token cost per file). CRLF is normalized to LF;
+      verify the ack's `totalChars`/`contentHash` against what you read.
+      Fallback when the server has no repo context: `attach_source_file`
+      with `kind:"code"` and the exact file text. Either way, attach the
+      files that carry behavior, not the whole tree (1 MiB cap per source).
    c. Model through `apply_batch`, capturing ids with `ref`.
-   d. `record_element_span` for **every** element, offsets pointing at the
-      code it came from. Pass `sourceId` (several sources will be linked).
+   d. `record_element_spans` with ALL of a source's spans in one call
+      (per-item `{elementId, startOffset, endOffset}`, call-level
+      `sourceId`); failures come back per item without aborting the rest.
+      The single `record_element_span` remains for one-off fixes.
    e. `finalize_analysis` once tracing is complete.
    f. `seed_index_from_analysis`, then `sync_from_index`.
 4. **Prove.** `verify` + `score_feature`; close reported gaps until clean.

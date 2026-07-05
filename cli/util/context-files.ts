@@ -89,8 +89,9 @@ proven share.
 
 To model code that already exists, use the evidence-gated adoption flow
 instead of hand-writing the index: attach each source file you analyzed with
-\`attach_source_file kind:"code"\` (fileName = repo-relative path), model what
-the code actually does, \`record_element_span\` for every element, then
+\`attach_source_path\` (repo-relative path; the server reads the file itself,
+so the content is never re-emitted), model what the code actually does,
+\`record_element_spans\` (batch) for every element, then
 \`finalize_analysis\` (blocked until everything is traced). After that,
 \`seed_index_from_analysis\` turns every code span into a \`.unspa.json\` entry
 automatically (model, provenance, and coverage from one pass), then

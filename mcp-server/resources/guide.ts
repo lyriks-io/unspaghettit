@@ -538,10 +538,12 @@ This avoids re-auditing the entire codebase every session. A 50-entity index wit
 When you are modeling an EXISTING codebase, do not hand-author the index at all.
 Use the evidence-gated adoption flow; the index falls out of the provenance spans:
 
-1. attach_source_file kind:"code" for each source file you analyzed
-   (fileName = the file's repo-relative path, content = the exact text you read).
+1. attach_source_path for each source file you analyzed (repo-relative path;
+   the server reads the file itself, so the content is never re-emitted).
+   Fallback without repo context: attach_source_file kind:"code" with the exact text.
 2. Model what the code actually does via apply_batch.
-3. record_element_span for EVERY element, offsets pointing at the code it came from.
+3. record_element_spans with all of a source's spans in one call,
+   offsets pointing at the code each element came from.
 4. finalize_analysis (blocked until every element is traced, so nothing is invented).
 5. seed_index_from_analysis: every code span becomes an index entry
    ({file, line, signature}, specVersion stamped). Existing entries are never

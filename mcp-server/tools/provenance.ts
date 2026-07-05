@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
-import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
+import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
+import {
+  asFeatureId,
+  type FeatureId
+} from '../../src/features/behavior-model/domain/value-objects/ids';
 import {
   buildAdoptionEntries,
   normalizeRepoPath,
@@ -71,6 +75,67 @@ const DEFAULT_READ_CHARS = 100_000;
 export const registerProvenanceTools = (deps: ToolDeps): void => {
   const { server, repo, projectRepo, provenanceRepo, sourceRepo, clock, ids, repoContext } = deps;
 
+  /**
+   * Shared core of the two attach tools: refuse a finalized analysis, dedupe
+   * against the project store (path-aware for code sources, so identical
+   * content at two paths stays two sources and a pasted document never
+   * swallows a code attach), persist, and link the source to the analysis.
+   * `extra` is merged into the ack for tool-specific fields.
+   */
+  const storeAndLinkSource = async (args: {
+    readonly fid: FeatureId;
+    readonly feature: Feature;
+    readonly name: string;
+    readonly kind: 'file' | 'code';
+    readonly content: string;
+    readonly maxBytes?: number;
+    readonly extra?: Record<string, unknown>;
+  }) => {
+    const current = (await provenanceRepo.get(args.fid)) ?? emptyProvenance(args.fid, clock());
+    if (current.finalized) {
+      return errorText('This analysis is finalized; reset_analysis before attaching another source.');
+    }
+
+    const projectId = await findOwningProjectId(projectRepo, String(args.fid));
+    const existing = await sourceRepo.listForProject(projectId);
+    const dedupePool =
+      args.kind === 'code'
+        ? existing.filter((s) => s.kind === 'code' && s.name === args.name)
+        : existing.filter((s) => s.kind !== 'code');
+    const created = createProjectSource(
+      {
+        id: ids(),
+        projectId,
+        name: args.name,
+        kind: args.kind,
+        content: args.content,
+        attachedAt: clock(),
+        ...(args.maxBytes !== undefined ? { maxBytes: args.maxBytes } : {})
+      },
+      dedupePool
+    );
+    if (!created.ok) return errorText(created.reason);
+    if (!created.deduped) await sourceRepo.save(created.source);
+
+    const linked = linkSource(current, created.source.id, clock());
+    if (!linked.ok) return errorText(linked.reason);
+    await provenanceRepo.save(linked.provenance);
+
+    return text({
+      ok: true,
+      featureId: String(args.fid),
+      sourceId: created.source.id,
+      fileName: created.source.name,
+      kind: created.source.kind,
+      byteLength: created.source.byteLength,
+      contentHash: created.source.contentHash,
+      deduped: created.deduped,
+      elementCount: enumerateFeatureElements(args.feature).length,
+      spanCount: linked.provenance.spans.length,
+      ...(args.extra ?? {})
+    });
+  };
+
   server.registerTool(
     'attach_source_file',
     {
@@ -90,13 +155,6 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         const feature = await repo.get(fid);
         if (!feature) return errorText(`Feature ${String(fid)} not found`);
 
-        const current = (await provenanceRepo.get(fid)) ?? emptyProvenance(fid, clock());
-        if (current.finalized) {
-          return errorText(
-            'This analysis is finalized; reset_analysis before attaching another source.'
-          );
-        }
-
         // A code source's name doubles as its implementation path in
         // `.unspa.json`, so it must be a clean repo-relative path.
         let sourceName = fileName;
@@ -106,49 +164,71 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
           sourceName = normalized.path;
         }
 
-        const projectId = await findOwningProjectId(projectRepo, String(fid));
-        const existing = await sourceRepo.listForProject(projectId);
-        // For code sources the path is part of the identity: identical
-        // content at two paths stays two sources, and a pasted document with
-        // the same text must not swallow a code attach (its kind is what
-        // makes spans seedable into .unspa.json).
-        const dedupePool =
-          kind === 'code'
-            ? existing.filter((s) => s.kind === 'code' && s.name === sourceName)
-            : existing.filter((s) => s.kind !== 'code');
-        const created = createProjectSource(
-          {
-            id: ids(),
-            projectId,
-            name: sourceName,
-            kind: kind ?? 'file',
-            content,
-            attachedAt: clock(),
-            ...(maxBytes !== undefined ? { maxBytes } : {})
-          },
-          dedupePool
-        );
-        if (!created.ok) return errorText(created.reason);
-        if (!created.deduped) await sourceRepo.save(created.source);
-
-        const linked = linkSource(current, created.source.id, clock());
-        if (!linked.ok) return errorText(linked.reason);
-        await provenanceRepo.save(linked.provenance);
-
-        return text({
-          ok: true,
-          featureId: String(fid),
-          sourceId: created.source.id,
-          fileName: created.source.name,
-          kind: created.source.kind,
-          byteLength: created.source.byteLength,
-          contentHash: created.source.contentHash,
-          deduped: created.deduped,
-          elementCount: enumerateFeatureElements(feature).length,
-          spanCount: linked.provenance.spans.length
+        return await storeAndLinkSource({
+          fid,
+          feature,
+          name: sourceName,
+          kind: kind ?? 'file',
+          content,
+          ...(maxBytes !== undefined ? { maxBytes } : {})
         });
       } catch (e) {
         return errorText(`attach_source_file failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'attach_source_path',
+    {
+      description:
+        "Token-saving attach for codebase adoption: pass a repo-relative path and the server reads the file from disk itself, so the content never has to be re-emitted through the conversation (roughly halves the cost of adopting a file). This is the one deliberate, opt-in exception to 'the MCP never reads source files': the path is validated (repo-relative only, no absolute paths or dot-walks), resolved against the linked repo root (the .unspa.json folder; the server's working directory when not linked yet), and size-capped. CRLF line endings are normalized to LF so span offsets are OS-independent (line numbers unchanged); the ack's contentHash + totalChars let you verify the stored text against the version you read. Defaults to kind:'code'; pass kind:'file' for a document that happens to live in the repo. Blocked if the analysis is finalized.",
+      inputSchema: {
+        featureId: z.string(),
+        path: z.string().min(1),
+        kind: z.enum(['file', 'code']).optional(),
+        maxBytes: z.number().int().positive().optional()
+      }
+    },
+    async ({ featureId, path, kind, maxBytes }) => {
+      try {
+        const fid = asFeatureId(await expandFeatureId(repo, featureId));
+        const feature = await repo.get(fid);
+        if (!feature) return errorText(`Feature ${String(fid)} not found`);
+
+        const normalized = normalizeRepoPath(path);
+        if (!normalized.ok) return errorText(normalized.reason);
+
+        const repoRoot = repoContext?.linkPath ? dirname(repoContext.linkPath) : repoContext?.cwd;
+        if (!repoRoot) {
+          return errorText(
+            'No repo context available to resolve the path against; pass the content via attach_source_file instead.'
+          );
+        }
+        const abs = resolve(repoRoot, normalized.path);
+        if (!existsSync(abs)) {
+          return errorText(`No file at ${normalized.path} (resolved against ${repoRoot}).`);
+        }
+        let content: string;
+        try {
+          content = readFileSync(abs, 'utf8');
+        } catch (e) {
+          return errorText(`Could not read ${normalized.path}: ${(e as Error).message}`);
+        }
+        const normalizedEol = content.includes('\r\n');
+        if (normalizedEol) content = content.replace(/\r\n/g, '\n');
+
+        return await storeAndLinkSource({
+          fid,
+          feature,
+          name: normalized.path,
+          kind: kind ?? 'code',
+          content,
+          ...(maxBytes !== undefined ? { maxBytes } : {}),
+          extra: { totalChars: content.length, normalizedEol }
+        });
+      } catch (e) {
+        return errorText(`attach_source_path failed: ${(e as Error).message}`);
       }
     }
   );
@@ -260,6 +340,135 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         });
       } catch (e) {
         return errorText(`finalize_analysis failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'record_element_spans',
+    {
+      description:
+        'Batch form of record_element_span: stamp MANY extracted elements with their source spans in one call (one load, one save), cutting the per-span round-trip cost that dominates codebase adoption. Each item: { elementId, startOffset, endOffset, sourceId? }. A call-level sourceId is the default for items that omit their own; with a single linked source both can be omitted. Items are applied in order; a failing item is reported in `results` with its reason and does NOT abort the rest. Nothing is persisted when every item fails. Same validation as the single tool: offsets are character offsets into the stored source (end exclusive), one span per element.',
+      inputSchema: {
+        featureId: z.string(),
+        sourceId: z.string().optional(),
+        spans: z
+          .array(
+            z.object({
+              elementId: z.string().min(1),
+              startOffset: z.number().int().nonnegative(),
+              endOffset: z.number().int().positive(),
+              sourceId: z.string().optional()
+            })
+          )
+          .min(1)
+      }
+    },
+    async ({ featureId, sourceId, spans }) => {
+      try {
+        const fid = asFeatureId(await expandFeatureId(repo, featureId));
+        const feature = await repo.get(fid);
+        if (!feature) return errorText(`Feature ${String(fid)} not found`);
+
+        const elements = enumerateFeatureElements(feature);
+        let current = (await provenanceRepo.get(fid)) ?? emptyProvenance(fid, clock());
+
+        const sourceCache = new Map<string, { readonly id: string; readonly content: string }>();
+        const loadSource = async (id: string) => {
+          const cached = sourceCache.get(id);
+          if (cached) return cached;
+          const found = await sourceRepo.find(id);
+          if (!found) return undefined;
+          const slim = { id: found.id, content: found.content };
+          sourceCache.set(id, slim);
+          return slim;
+        };
+
+        const results: Array<Record<string, unknown>> = [];
+        let recorded = 0;
+
+        for (const item of spans) {
+          const match = matchElement(elements, item.elementId);
+          if ('error' in match) {
+            results.push({ elementId: item.elementId, ok: false, error: match.error });
+            continue;
+          }
+
+          // Resolve the document this item's offsets point into: its own
+          // sourceId, the call-level default, the single linked source, or
+          // the legacy embedded file (source stays undefined).
+          let source: { readonly id: string; readonly content: string } | undefined;
+          const wanted = item.sourceId ?? sourceId;
+          if (wanted) {
+            source = await loadSource(wanted);
+            if (!source) {
+              results.push({
+                elementId: match.el.id,
+                ok: false,
+                error: `No stored source "${wanted}". Call list_sources.`
+              });
+              continue;
+            }
+          } else if (!current.file) {
+            if (current.sourceIds.length === 0) {
+              results.push({
+                elementId: match.el.id,
+                ok: false,
+                error: 'No source stored for this analysis. Attach one first.'
+              });
+              continue;
+            }
+            if (current.sourceIds.length > 1) {
+              results.push({
+                elementId: match.el.id,
+                ok: false,
+                error: `Several sources are linked (${current.sourceIds.join(', ')}); pass sourceId on the item or the call.`
+              });
+              continue;
+            }
+            source = await loadSource(current.sourceIds[0]!);
+            if (!source) {
+              results.push({
+                elementId: match.el.id,
+                ok: false,
+                error: `Linked source "${current.sourceIds[0]}" is missing from the store.`
+              });
+              continue;
+            }
+          }
+
+          const result = recordSpan(current, {
+            id: ids(),
+            elementId: match.el.id,
+            elementType: match.el.type,
+            startOffset: item.startOffset,
+            endOffset: item.endOffset,
+            recordedAt: clock(),
+            ...(source ? { source } : {})
+          });
+          if (!result.ok) {
+            results.push({ elementId: match.el.id, ok: false, error: result.reason });
+            continue;
+          }
+          current = result.provenance;
+          recorded += 1;
+          results.push({ elementId: match.el.id, elementType: match.el.type, ok: true });
+        }
+
+        if (recorded > 0) await provenanceRepo.save(current);
+
+        const failed = results.filter((r) => r.ok !== true).length;
+        return text({
+          ok: failed === 0,
+          featureId: String(fid),
+          recorded,
+          failed,
+          results,
+          spanCount: current.spans.length,
+          remaining: elements.length - current.spans.length
+        });
+      } catch (e) {
+        return errorText(`record_element_spans failed: ${(e as Error).message}`);
       }
     }
   );
