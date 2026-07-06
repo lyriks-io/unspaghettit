@@ -77,6 +77,15 @@ export type RepoLinkLookup = {
   readonly link: RepoLink | null;
   readonly path: string | null;
   readonly cwd: string;
+  /**
+   * Git repository root at which the upward walk stopped WITHOUT finding a
+   * `.unspa.json`. Null when a link was found, when discovery used an
+   * explicit path, or when `cwd` is not inside a git repository. Lets
+   * `get_repo_context` explain that this repo simply isn't linked instead of
+   * silently binding to a `.unspa.json` that belongs to a parent or sibling
+   * checkout.
+   */
+  readonly repoBoundary: string | null;
 };
 
 const readLinkFile = (candidate: string): RepoLink | null => {
@@ -98,6 +107,13 @@ const readLinkFile = (candidate: string): RepoLink | null => {
  * so a repo is detected the same way regardless of which sub-dir the MCP
  * server was started from.
  *
+ * The walk never crosses a git repository boundary: once a directory with a
+ * `.git` marker has been checked (the root of the repo containing `cwd`),
+ * anything above it belongs to a DIFFERENT checkout, so a `.unspa.json`
+ * found there would bind this session to a sibling or parent repo's
+ * project. In that case the lookup reports "not linked" plus the boundary
+ * it stopped at, instead of silently returning the foreign link.
+ *
  * When `explicitPath` is provided (via --link flag or UNSPA_LINK env var),
  * discovery is skipped and that file is used directly. The path may point
  * at a `.unspa.json` file or a directory containing one.
@@ -114,7 +130,7 @@ export const discoverRepoLink = (
     }
     const link = readLinkFile(candidate);
     if (!link) throw new Error(`Malformed .unspa.json at ${candidate}`);
-    return { link, path: candidate, cwd };
+    return { link, path: candidate, cwd, repoBoundary: null };
   }
 
   let current = resolve(cwd);
@@ -123,14 +139,19 @@ export const discoverRepoLink = (
     const candidate = join(current, LINK_FILENAME);
     if (existsSync(candidate)) {
       const link = readLinkFile(candidate);
-      if (link) return { link, path: candidate, cwd };
+      if (link) return { link, path: candidate, cwd, repoBoundary: null };
+    }
+    // `.git` is a directory in normal checkouts and a file in worktrees and
+    // submodules; existsSync covers both.
+    if (existsSync(join(current, '.git'))) {
+      return { link: null, path: null, cwd, repoBoundary: current };
     }
     if (current === root) break;
     const parent = resolve(current, '..');
     if (parent === current) break;
     current = parent;
   }
-  return { link: null, path: null, cwd };
+  return { link: null, path: null, cwd, repoBoundary: null };
 };
 
 /**

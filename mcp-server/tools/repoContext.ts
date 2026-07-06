@@ -63,12 +63,25 @@ export const registerRepoContextTool = ({
         }
       }
 
+      // When the walk stopped at a git boundary without a link, say so
+      // explicitly: the alternative (binding to whatever .unspa.json sits
+      // above or beside this repo) is how sessions end up scoped to the
+      // wrong sibling project.
+      const repoBoundary = repoContext.repoBoundary ?? null;
+      const hint =
+        !linked && repoBoundary
+          ? `No .unspa.json between ${repoContext.cwd} and the repository root ${repoBoundary}. ` +
+            `This repo is not linked to a project; run \`unspa link\` at the repo root. ` +
+            `Discovery stops at the repo boundary on purpose so a parent or sibling checkout's link is never picked up by accident.`
+          : null;
+
       const payload = {
         cwd: repoContext.cwd,
         linkPath: repoContext.linkPath,
         linked,
         linkedProjectId,
         linkedProjectName: repoContext.link?.projectName ?? null,
+        ...(hint ? { hint } : {}),
         features,
         behavioralIndex
       };

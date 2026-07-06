@@ -78,6 +78,11 @@ export type RepoContext = {
   readonly cwd: string;
   readonly link: RepoLink | null;
   readonly linkPath: string | null;
+  /**
+   * Git root the `.unspa.json` walk stopped at without finding a link (see
+   * discoverRepoLink). Optional so hand-built test contexts stay terse.
+   */
+  readonly repoBoundary?: string | null;
 };
 
 export type BuildServerDeps = {

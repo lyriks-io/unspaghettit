@@ -65,6 +65,10 @@ const main = async (): Promise<void> => {
     process.stderr.write(
       `[unspa-mcp] repo linked to project: ${initialLink.link.projectName ?? '(unknown)'} (${initialLink.link.projectId})\n`
     );
+  } else if (initialLink.repoBoundary) {
+    process.stderr.write(
+      `[unspa-mcp] repo not linked: no .unspa.json between ${process.cwd()} and repo root ${initialLink.repoBoundary} (run \`unspa link\` there)\n`
+    );
   }
 
   const repo = new SyncAwareFeatureRepository(new JsonFolderFeatureRepository(directory));
@@ -93,6 +97,9 @@ const main = async (): Promise<void> => {
     },
     get linkPath() {
       return discoverRepoLink(cwd, linkOverride).path;
+    },
+    get repoBoundary() {
+      return discoverRepoLink(cwd, linkOverride).repoBoundary;
     }
   };
 
