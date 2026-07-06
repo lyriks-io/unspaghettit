@@ -124,7 +124,7 @@ export type InitOptions = {
    */
   readonly withViews?: string;
   /**
-   * Dashboard colour theme to persist at setup (e.g. "lyriks"). Cosmetic only;
+   * Dashboard colour theme to persist at setup (e.g. "classic"). Cosmetic only;
    * written to `<snapshots>/theme.json`, same as `unspa theme set`, so
    * `unspa dashboard` boots with it. The in-app header switcher can change it
    * live later. Unknown ids fall back to the default with a warning.
@@ -359,15 +359,13 @@ export const runInitCommand = async (options: InitOptions = {}): Promise<number>
   //     fail. Switchable later via `unspa theme set` or the in-app switcher.
   if (options.theme !== undefined) {
     const raw = options.theme.trim().toLowerCase();
-    if (raw && raw !== 'default' && !isThemeId(raw)) {
+    if (raw && !isThemeId(raw)) {
       log.warn(`Unknown theme "${raw}" — keeping the default theme.`);
     }
     const id = parseThemeId(options.theme);
     writeSelectedTheme(target.dir, id);
-    if (id !== 'default') {
-      log.ok(`Dashboard theme set to ${pc.cyan(id)}.`);
-      log.dim('Cosmetic skin. Change it with `unspa theme set <id>` or the dashboard header switcher.');
-    }
+    log.ok(`Dashboard theme set to ${pc.cyan(id)}.`);
+    log.dim('Cosmetic skin. Change it with `unspa theme set <id>` or the dashboard header switcher.');
   }
 
   // 2. Pick clients, write MCP server entry. `mergeMcpServerEntry` compares

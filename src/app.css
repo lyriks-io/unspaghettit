@@ -41,7 +41,8 @@ body {
 
 /*
  * ============================================================================
- * Lyriks theme — opt-in cosmetic skin (gated by data-theme="lyriks" on <html>)
+ * Lyriks theme — the DEFAULT cosmetic skin (gated by data-theme="lyriks" on
+ * <html>, which the server stamps for every unset/unknown theme value)
  * ============================================================================
  *
  * Purely a re-colour of the design system: it overrides the `@theme` token
@@ -50,7 +51,8 @@ body {
  * focus rings, chips, ...) adopts the Lyriks violet identity without touching a
  * single component. The header/shell *chrome* (the signature gradient bar) is
  * applied in +layout.svelte via the same theme flag. Inert unless the attribute
- * is present, so the default install is unaffected.
+ * is present, so the opt-in "classic" theme (data-theme="classic") simply
+ * renders the base teal `@theme` tokens above.
  *
  * `:root[data-theme='lyriks']` (specificity 0,2,0) wins over Tailwind's
  * `@theme`-emitted `:root` (0,1,0), and custom properties inherit, so the

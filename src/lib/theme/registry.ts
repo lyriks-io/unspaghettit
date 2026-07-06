@@ -7,16 +7,18 @@
  * moves a feature: every surface, action, and control is identical between
  * themes; only the colours change.
  *
- * Default is the always-present base look (the teal/cyan brand). Every other
- * theme is opt-in, chosen at runtime by `PUBLIC_UNSPA_THEME` (the CLI default,
- * via `unspa theme set` / `unspa dashboard --theme`) and overridable live in
- * the browser by the header switcher (persisted in localStorage).
+ * Default is the Lyriks.io brand skin (violet→fuchsia). The original
+ * teal/cyan look remains available as the opt-in "classic" theme, chosen at
+ * runtime by `PUBLIC_UNSPA_THEME` (the CLI default, via `unspa theme set` /
+ * `unspa dashboard --theme`) and overridable live in the browser by the
+ * header switcher (persisted in localStorage). The literal id "default" is
+ * accepted everywhere as an explicit revert to the default theme.
  *
  * This module is pure (no `$env`, no Svelte, no DOM) so it's unit-testable; the
  * runtime wiring lives in `themeStore.svelte.ts` (browser) and `hooks.server.ts`
  * (initial server-rendered attribute).
  */
-export type DashboardThemeId = 'default' | 'lyriks';
+export type DashboardThemeId = 'lyriks' | 'classic';
 
 export interface DashboardTheme {
   readonly id: DashboardThemeId;
@@ -26,21 +28,24 @@ export interface DashboardTheme {
   readonly swatch: string;
 }
 
-/** The base theme. Always available; the look you get with no theme set. */
+/** The id every unset / unknown / literal-"default" value resolves to. */
+export const DEFAULT_THEME_ID: DashboardThemeId = 'lyriks';
+
+/** The default theme. Always available; the look you get with no theme set. */
 const DEFAULT: DashboardTheme = {
-  id: 'default',
-  label: 'Default',
-  description: 'The standard Unspaghettit look — teal/cyan brand on a soft canvas.',
-  swatch: 'linear-gradient(135deg,#22d3ee,#06b6d4,#0e7490)'
+  id: 'lyriks',
+  label: 'Lyriks',
+  description: 'The default look: the Lyriks.io violet-to-fuchsia brand over a cool canvas.',
+  swatch: 'linear-gradient(90deg,#6d28d9,#a21caf,#db2777)'
 };
 
 /** Opt-in themes, keyed by the id used in `PUBLIC_UNSPA_THEME`. */
 const OPTIONAL_THEMES: Readonly<Record<string, DashboardTheme>> = {
-  lyriks: {
-    id: 'lyriks',
-    label: 'Lyriks',
-    description: 'Lyriks.io brand skin — a violet→fuchsia gradient header over a cool canvas.',
-    swatch: 'linear-gradient(90deg,#6d28d9,#a21caf,#db2777)'
+  classic: {
+    id: 'classic',
+    label: 'Classic',
+    description: 'The original Unspaghettit look: teal/cyan brand on a soft canvas.',
+    swatch: 'linear-gradient(135deg,#22d3ee,#06b6d4,#0e7490)'
   }
 };
 
@@ -50,21 +55,22 @@ export const ALL_THEMES: readonly DashboardTheme[] = [DEFAULT, ...Object.values(
 /**
  * Parse a raw `PUBLIC_UNSPA_THEME` (or localStorage / CLI) value into a known
  * theme id. Trims + lowercases; anything unrecognised (including the literal
- * "default" and the unreplaced `%unspa.theme%` placeholder) falls back to the
- * default theme, so a bad value never blanks the UI.
+ * "default", the unreplaced `%unspa.theme%` placeholder, and pre-rename
+ * values) falls back to the default theme, so a bad value never blanks the UI.
  */
 export const parseThemeId = (raw: string | undefined): DashboardThemeId => {
   const id = (raw ?? '').trim().toLowerCase();
-  return id in OPTIONAL_THEMES ? (id as DashboardThemeId) : 'default';
+  if (id === DEFAULT.id) return DEFAULT.id;
+  return id in OPTIONAL_THEMES ? (OPTIONAL_THEMES[id]!.id) : DEFAULT_THEME_ID;
 };
 
 /** Resolve a raw value into its full theme definition. */
 export const resolveTheme = (raw: string | undefined): DashboardTheme => {
   const id = parseThemeId(raw);
-  return id === 'default' ? DEFAULT : OPTIONAL_THEMES[id]!;
+  return id === DEFAULT.id ? DEFAULT : OPTIONAL_THEMES[id]!;
 };
 
-/** The opt-in themes (everything except the always-on default base). */
+/** The opt-in themes (everything except the always-on default). */
 export const optionalThemes = (): readonly DashboardTheme[] => Object.values(OPTIONAL_THEMES);
 
 /**
@@ -73,5 +79,9 @@ export const optionalThemes = (): readonly DashboardTheme[] => Object.values(OPT
  */
 export const isThemeId = (id: string): boolean => {
   const normalized = id.trim().toLowerCase();
-  return normalized === 'default' || Object.prototype.hasOwnProperty.call(OPTIONAL_THEMES, normalized);
+  return (
+    normalized === 'default' ||
+    normalized === DEFAULT.id ||
+    Object.prototype.hasOwnProperty.call(OPTIONAL_THEMES, normalized)
+  );
 };

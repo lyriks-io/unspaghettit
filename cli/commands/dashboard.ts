@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverSnapshotDirectory } from '../../src/features/behavior-model/infrastructure/persistence/snapshot-discovery';
-import { parseThemeId } from '../../src/lib/theme/registry';
+import { DEFAULT_THEME_ID, parseThemeId } from '../../src/lib/theme/registry';
 import { readEnabledViews } from '../util/views';
 import { readSelectedTheme } from '../util/theme';
 import { log } from '../util/log';
@@ -138,7 +138,7 @@ export const runDashboardCommand = async (
   // switcher can still change it live in the browser. Unknown ids fall back to
   // the default, so a typo never blanks the UI.
   const theme = parseThemeId(args.theme ?? readSelectedTheme(directory));
-  if (theme !== 'default') {
+  if (theme !== DEFAULT_THEME_ID) {
     env.PUBLIC_UNSPA_THEME = theme;
     log.dim(`Theme: ${theme}`);
   }

@@ -74,7 +74,7 @@ program
   .option('--no-skills', 'Skip installing the bundled unspa skills under .claude/skills/.')
   .option('--fun', 'Pre-check the opt-in narrative skills (worldbuild + worldplay) in the skill picker. Also implicitly on when the CLI is invoked as `unspaghettit`.')
   .option('--with <views>', 'Comma list of opt-in dashboard views to enable (e.g. "builder"). Expert is always on. Without it, interactive init offers the Builder view.')
-  .option('--theme <id>', 'Set the dashboard colour theme at install (e.g. "lyriks"). Cosmetic only; persists so `unspa dashboard` boots with it. Switchable later via `unspa theme set` or the in-app header switcher.')
+  .option('--theme <id>', 'Set the dashboard colour theme at install (e.g. "classic"). Cosmetic only; persists so `unspa dashboard` boots with it. Switchable later via `unspa theme set` or the in-app header switcher.')
   .option('-y, --yes', 'Accept defaults. Non-interactive (CI / scripts).')
   .action(async (opts) => {
     if (opts.scope !== 'project' && opts.scope !== 'global') {
@@ -116,7 +116,7 @@ program
   .option('-h, --host <host>', 'Host to bind (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN; the dashboard has no auth, so do this only on trusted networks.')
   .option('-s, --snapshots <dir>', 'Point the dashboard at a specific snapshots folder (sets UNSPA_SNAPSHOTS for this run). Handy for a one-off look at a custom hub or another repo.')
   .option('--view <ids>', 'Comma list of optional views to enable beyond Expert (e.g. "builder"). Expert is always on and is the default; with no extra views the header shows no switcher.')
-  .option('--theme <id>', 'Colour theme to boot with (e.g. "lyriks"). Cosmetic only; overrides the persisted `unspa theme set` choice for this run. The in-app header switcher can still change it live.')
+  .option('--theme <id>', 'Colour theme to boot with (e.g. "classic"). Cosmetic only; overrides the persisted `unspa theme set` choice for this run. The in-app header switcher can still change it live.')
   .action(async (opts) => {
     const code = await runDashboardCommand({ port: opts.port, host: opts.host, snapshots: opts.snapshots, views: opts.view, theme: opts.theme });
     process.exit(code);
@@ -283,7 +283,7 @@ theme
 
 theme
   .command('set <id>')
-  .description('Set the dashboard theme (e.g. "lyriks"). Persists so `unspa dashboard` uses it.')
+  .description('Set the dashboard theme (e.g. "classic"). Persists so `unspa dashboard` uses it.')
   .option('-s, --snapshots <dir>', 'Target a specific snapshots folder.')
   .action(async (id, opts) => {
     process.exit(await runThemeCommand({ action: 'set', id, snapshots: opts.snapshots }));

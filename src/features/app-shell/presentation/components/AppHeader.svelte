@@ -45,7 +45,7 @@
       : 'max-w-7xl'}"
   >
     <div class="flex min-w-0 items-center gap-3">
-      <HeaderBrand {lyriks} {dark} />
+      <HeaderBrand {dark} />
       <ViewSwitcher {dark} />
       {#if !builderActive}
         <PrimaryNav {dark} {lyriks} />

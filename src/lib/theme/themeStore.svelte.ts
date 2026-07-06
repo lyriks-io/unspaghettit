@@ -49,10 +49,10 @@ class ThemeStore {
       document.documentElement.dataset.theme = id;
     }
     if (typeof localStorage === 'undefined') return;
-    // Only persist a non-default choice; clearing the key lets the CLI default
-    // (PUBLIC_UNSPA_THEME) win again on the next load.
-    if (id === 'default') localStorage.removeItem(STORAGE_KEY);
-    else localStorage.setItem(STORAGE_KEY, id);
+    // Persist every explicit choice. The CLI default (PUBLIC_UNSPA_THEME) may
+    // itself be a non-default theme, so even picking the default theme here is
+    // a real preference that must survive reloads.
+    localStorage.setItem(STORAGE_KEY, id);
   }
 
   /** Convenience flag for the layout's chrome conditionals. */
