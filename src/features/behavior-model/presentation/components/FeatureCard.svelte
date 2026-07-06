@@ -81,12 +81,15 @@
   <div class="absolute inset-x-0 top-0 h-1 bg-linear-to-r {cardAccent}"></div>
   <div class="space-y-4">
     <div class="flex items-start justify-between gap-3">
-      <a href={`/features/${summary.id}`} class="block min-w-0 flex-1">
+      <!-- Stretched link: the ::after overlay makes the WHOLE card open the
+           feature. Interactive elements inside the card opt out by sitting
+           above it with `relative z-10`. -->
+      <a href={`/features/${summary.id}`} class="block min-w-0 flex-1 after:absolute after:inset-0">
         <h3 class="truncate text-base font-semibold text-slate-950 group-hover:text-brand-800">
           {summary.name}
         </h3>
       </a>
-      <div class="flex shrink-0 flex-col items-end gap-1">
+      <div class="relative z-10 flex shrink-0 flex-col items-end gap-1">
         <span
           class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium {maturityBadgeColor}"
           title="Maturity score: how complete this feature's behavior model is ({summary.maturityPercentage}% of spec quality checks pass)"
@@ -105,16 +108,16 @@
     </div>
 
     {#if summary.description}
-      <a href={`/features/${summary.id}`} class="block">
-        <p class="line-clamp-3 text-sm leading-6 text-slate-600">{summary.description}</p>
-      </a>
+      <p class="line-clamp-3 text-sm leading-6 text-slate-600">{summary.description}</p>
     {:else}
       <p class="text-sm leading-6 text-slate-500">
         No description yet. Open this feature to shape its behavior model.
       </p>
     {/if}
 
-    <TagDotStrip tags={summary.tags} {onAddTag} {onRemoveTag} typeOptions={tagTypeOptions} />
+    <div class="relative z-10">
+      <TagDotStrip tags={summary.tags} {onAddTag} {onRemoveTag} typeOptions={tagTypeOptions} />
+    </div>
 
     <div class="space-y-2">
       <ProgressBar
@@ -142,7 +145,7 @@
       {summary.surfaceCount} surface{summary.surfaceCount === 1 ? '' : 's'} / {summary.actionCount}
       action{summary.actionCount === 1 ? '' : 's'} / Updated {new Date(summary.updatedAt).toLocaleDateString()}
     </span>
-    <div class="flex shrink-0 items-center gap-1">
+    <div class="relative z-10 flex shrink-0 items-center gap-1">
       {#if onAddToQueue || onRemoveFromQueue}
         <button
           type="button"

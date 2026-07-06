@@ -37,13 +37,20 @@
   <div class="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-brand-500 via-brand-mint to-violet-400"></div>
   <div class="space-y-3">
     <div class="flex items-start justify-between gap-3">
-      <a href={`/projects/${summary.id}`} class="block min-w-0 flex-1" onclick={markOpened}>
+      <!-- Stretched link: the ::after overlay makes the WHOLE card open the
+           project. Interactive elements inside the card opt out by sitting
+           above it with `relative z-10`. -->
+      <a
+        href={`/projects/${summary.id}`}
+        class="block min-w-0 flex-1 after:absolute after:inset-0"
+        onclick={markOpened}
+      >
         <h3 class="truncate text-base font-semibold text-slate-950 group-hover:text-brand-800">
           {summary.name}
         </h3>
       </a>
       <span
-        class="shrink-0 rounded-md border border-cyan-100 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-brand-800"
+        class="relative z-10 shrink-0 rounded-md border border-cyan-100 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-brand-800"
         title="Features in project"
       >
         {summary.featureCount} feature{summary.featureCount === 1 ? '' : 's'}
@@ -51,9 +58,7 @@
     </div>
 
     {#if summary.description}
-      <a href={`/projects/${summary.id}`} class="block" onclick={markOpened}>
-        <p class="line-clamp-3 text-sm leading-6 text-slate-600">{summary.description}</p>
-      </a>
+      <p class="line-clamp-3 text-sm leading-6 text-slate-600">{summary.description}</p>
     {:else}
       <p class="text-sm leading-6 text-slate-500">No description yet. Add a note so collaborators know what belongs here.</p>
     {/if}
@@ -61,12 +66,14 @@
 
   <div class="mt-5 flex items-end justify-between gap-3 border-t border-hairline pt-3 text-xs text-slate-500">
     <div class="min-w-0 flex-1 space-y-2">
-      <TagDotStrip tags={summary.tags} {onAddTag} {onRemoveTag} typeOptions={tagTypeOptions} />
+      <div class="relative z-10">
+        <TagDotStrip tags={summary.tags} {onAddTag} {onRemoveTag} typeOptions={tagTypeOptions} />
+      </div>
       <span class="block truncate">
         Updated {new Date(summary.updatedAt).toLocaleDateString()}
       </span>
     </div>
-    <div class="flex shrink-0 items-center gap-1">
+    <div class="relative z-10 flex shrink-0 items-center gap-1">
       <KebabMenu placement="up" align="right" label="Project actions">
         {#snippet children(close)}
           <MenuItem
