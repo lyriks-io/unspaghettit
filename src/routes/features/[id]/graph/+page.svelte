@@ -7,6 +7,7 @@
   import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
   import { setFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import ProjectionViewer from '$features/diagram-projection/presentation/components/ProjectionViewer.svelte';
+  import { fillViewportHeight } from '$shared/presentation/actions/fillViewportHeight';
 
   // Provide the queue context for any editor descendant (e.g. FeatureHeader)
   // rendered under the graph view, mirroring the main feature page.
@@ -33,11 +34,13 @@
     Feature not found. <a href="/projects" class="text-brand-700 underline">Back to projects</a>.
   </div>
 {:else}
-  <!-- Fill exactly the space under the sticky header (h-16 + its 1px border-b);
-       anything less precise leaves a 1px window scrollbar on an otherwise
+  <!-- Fill exactly the space below whatever sits above (sticky header, the
+       getting-started banner, ...); a hard-coded calc drifts the moment any
+       of those render and leaves a window scrollbar on an otherwise
        fixed-height page. -->
   <main
-    class="w-full px-4 py-6 lg:flex lg:h-[calc(100dvh-4rem-1px)] lg:flex-col lg:overflow-hidden"
+    use:fillViewportHeight
+    class="w-full px-4 py-6 lg:flex lg:flex-col lg:overflow-hidden"
   >
     <ProjectionViewer feature={featureStore.feature} />
   </main>

@@ -7,6 +7,7 @@
   import { projectFeaturesStore } from '$features/projects/presentation/stores/projectFeaturesStore.svelte';
   import { projectStore } from '$features/projects/presentation/stores/projectStore.svelte';
   import { subscribeSyncEvents } from '$lib/client/sync/syncEvents';
+  import { fillViewportHeight } from '$shared/presentation/actions/fillViewportHeight';
 
   let unsubscribeSync: (() => void) | null = null;
   let graphDataReady = $state(false);
@@ -77,11 +78,13 @@
     </p>
   </div>
 {:else}
-  <!-- Fill exactly the space under the sticky header (h-16 + its 1px border-b);
-       anything less precise leaves a 1px window scrollbar on an otherwise
+  <!-- Fill exactly the space below whatever sits above (sticky header, the
+       getting-started banner, ...); a hard-coded calc drifts the moment any
+       of those render and leaves a window scrollbar on an otherwise
        fixed-height page. -->
   <main
-    class="w-full px-4 py-6 lg:flex lg:h-[calc(100dvh-4rem-1px)] lg:flex-col lg:overflow-hidden"
+    use:fillViewportHeight
+    class="w-full px-4 py-6 lg:flex lg:flex-col lg:overflow-hidden"
   >
     <ProjectionViewer project={projectStore.project} features={projectFeaturesStore.features} />
   </main>
