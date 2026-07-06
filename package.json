@@ -80,7 +80,10 @@
     "!**/*.spec.tsx",
     "!**/*.spec.js",
     "!**/__tests__",
-    "!**/__snapshots__"
+    "!**/__snapshots__",
+    "!build/**/*.map",
+    "!build/client/unspaghettit-demo.gif",
+    "!static/unspaghettit-demo.gif"
   ],
   "overrides": {
     "cookie": ">=0.7.0"
