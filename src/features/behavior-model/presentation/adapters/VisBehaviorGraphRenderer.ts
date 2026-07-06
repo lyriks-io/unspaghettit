@@ -22,6 +22,8 @@ export type VisNetworkRuntime = typeof import('vis-network/standalone');
 export type BehaviorGraphRendererCallbacks = {
   readonly onSelectedNodeChange?: (id: string | null) => void;
   readonly onSelectedEdgeChange?: (id: string | null) => void;
+  /** A node was double-clicked (open it in the editor). */
+  readonly onNodeActivate?: (id: string) => void;
   readonly onStabilizationProgress?: (progress: number) => void;
   readonly onSettledChange?: (settled: boolean) => void;
 };
@@ -213,6 +215,10 @@ export class VisBehaviorGraphRenderer {
       this.callbacks.onSelectedNodeChange?.(null);
       this.callbacks.onSelectedEdgeChange?.(id);
       if (id) this.highlightEdgeNeighborhood(id, true);
+    });
+    network.on('doubleClick', (params?: { nodes: IdType[] }) => {
+      const id = params?.nodes?.find((node): node is string => typeof node === 'string') ?? null;
+      if (id) this.callbacks.onNodeActivate?.(id);
     });
     network.on('deselectNode', () => {
       if (this.selectionEventsSuppressed) return;

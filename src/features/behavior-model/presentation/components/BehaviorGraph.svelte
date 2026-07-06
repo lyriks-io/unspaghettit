@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
   import {
     ALL_BEHAVIOR_GRAPH_EDGE_KINDS,
@@ -148,6 +149,10 @@
         },
         onSelectedEdgeChange: (id) => {
           selectedEdgeId = id;
+        },
+        onNodeActivate: (id) => {
+          const node = graph.nodeById.get(id);
+          if (node?.href) void goto(node.href);
         },
         onStabilizationProgress: (progress) => {
           stabilizationProgress = progress;
@@ -535,8 +540,8 @@
           {:else}
             <h3 class="text-sm font-semibold text-slate-950">Explore the Map</h3>
             <p class="mt-2 text-sm leading-6 text-slate-600">
-              Click a node or edge to highlight its linked behavior. Hover highlighting is disabled so
-              the canvas stays lighter on slower laptops.
+              Click a node or edge to highlight its linked behavior. Double-click a node to jump
+              straight to it in the editor.
             </p>
           {/if}
         </div>
