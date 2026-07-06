@@ -27,8 +27,10 @@ export const replaceSnapshotViaSync = async (
 ): Promise<void> => {
   const { manager, directory } = getSyncManager();
   const doc = await manager.getOrLoad(makeRoomId(kind, id));
+  // 'http' origin (same as publish.ts): the author resolver attributes the
+  // resulting history entry to the connected user instead of 'unknown'.
   doc.transact(() => {
     doc.getMap(ROOM_DOC_MAP).set(ROOM_DOC_FIELD, value);
-  });
+  }, 'http');
   await persistSnapshotToDisk(directory, kind, id, value);
 };

@@ -7,14 +7,20 @@
  * change without a refresh.
  *
  * With no override we probe 127.0.0.1:3000 (the port `unspa dashboard` —
- * the adapter-node production build — listens on), then both the IPv4 and
- * IPv6 literals on :5173 (Vite dev binds `localhost`, which resolves to ::1
- * first on Windows/Node 20+). So both `unspa dashboard` and `npm run dev`
- * get live refresh + toasts with zero config. Set `UNSPA_SYNC_URL` to a
- * single loopback URL to pin a non-default port and skip the probe.
+ * the adapter-node production build — listens on), then both the IPv6 and
+ * IPv4 literals on :8173 (the Vite dev port; dev binds `localhost`, which
+ * resolves to ::1 first on Windows/Node 20+). So both `unspa dashboard` and
+ * `npm run dev` get live refresh + toasts with zero config. Set
+ * `UNSPA_SYNC_URL` to a single loopback URL to pin a non-default port and
+ * skip the probe.
  *
  * Failures are swallowed: MCP must work even when no SvelteKit server is up.
- * A 300 ms timeout caps the cost when the server is unreachable.
+ * A 1 s per-attempt timeout caps the cost of a slow listener. A dead loopback
+ * port refuses instantly (no timeout involved), so the generous value only
+ * bites when something answers slowly — e.g. a Vite dev server re-transforming
+ * its SSR graph after a code edit, which is exactly the case a tight timeout
+ * used to misclassify as "dashboard down" (300 ms lost to a cold recompile,
+ * then a 5 s cooldown skipped the following real notifies).
  *
  * `UNSPA_SYNC_URL` is restricted to loopback hosts. The MCP server runs
  * with the developer's filesystem privileges, so a non-loopback override
@@ -22,7 +28,7 @@
  * an arbitrary URL. Loopback-only keeps this a local IPC channel.
  */
 
-const TIMEOUT_MS = 300;
+const TIMEOUT_MS = 1000;
 
 export type SyncKind = 'feature' | 'project' | 'implementation-status';
 
@@ -35,16 +41,20 @@ export type SyncKind = 'feature' | 'project' | 'implementation-status';
 // Candidate dashboard base URLs to probe when no UNSPA_SYNC_URL is set, in
 // order. Covers both ways a local dashboard runs:
 //   - `unspa dashboard` (adapter-node prod build) binds 127.0.0.1:3000.
-//   - `npm run dev` (Vite) binds `localhost` on :5173 — which on Windows /
-//     Node 20+ resolves to ::1 (IPv6) first, so we probe BOTH the IPv4 and
-//     IPv6 literals on the dev port (a server bound to one family refuses the
-//     other). The prod server is IPv4-only, hence no ::1 variant there.
+//   - `npm run dev` (Vite) binds `localhost` on :8173 (vite.config.ts moved
+//     it off the WSL2-reserved 5173) — which on Windows / Node 20+ resolves
+//     to ::1 (IPv6) first, so we probe BOTH literals on the dev port, IPv6
+//     first (a server bound to one family refuses the other). The prod
+//     server is IPv4-only, hence no ::1 variant there.
+// The old :5173 candidates are gone on purpose: the dev server hasn't
+// listened there since the port move, and on Windows that port is often
+// held by a WSL2/Hyper-V relay — probing it hits a foreign process.
 // Literal addresses (not the `localhost` name) so we never pay the
 // resolve-wrong-family-then-time-out cost the name form incurs.
 const DEFAULT_SYNC_URLS = [
   'http://127.0.0.1:3000',
-  'http://127.0.0.1:5173',
-  'http://[::1]:5173'
+  'http://[::1]:8173',
+  'http://127.0.0.1:8173'
 ];
 
 const isLoopbackUrl = (raw: string): boolean => {

@@ -8,8 +8,11 @@
  *
  * Tracking model:
  *   - Each WebSocket connection registers its non-anonymous author on
- *     open and releases it on close. Anonymous tags (`Anon-XXXX`) are
- *     skipped — attributing an MCP write to "Anon-1234" is noise.
+ *     open and releases it on close. Anonymous tags are skipped —
+ *     attributing an MCP write to "Anon-1234" or "Anonymous" is noise.
+ *     That covers both spellings of "no name set": the server-minted
+ *     `Anon-XXXX` fallback and the client-side literal `Anonymous`
+ *     (identityStore's default when the user never set a display name).
  *   - A small ring of "recently registered" names lets us pick the
  *     "current" user as the most-recently-seen one. For solo dev (the
  *     common case) this is just "you". For multi-user, it's "whoever
@@ -44,7 +47,8 @@ const get = (): Registry => {
   return created;
 };
 
-const isAnonymous = (author: string): boolean => author.startsWith('Anon-');
+const isAnonymous = (author: string): boolean =>
+  author.startsWith('Anon-') || author === 'Anonymous';
 
 export const recordIdentity = (author: string): void => {
   if (isAnonymous(author) || author.length === 0) return;

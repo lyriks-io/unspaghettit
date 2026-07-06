@@ -9,8 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const RELOAD = '/api/sync/reload';
 const PROD = 'http://127.0.0.1:3000';
-const DEV = 'http://127.0.0.1:5173';
-const DEV6 = 'http://[::1]:5173';
+const DEV6 = 'http://[::1]:8173';
+const DEV4 = 'http://127.0.0.1:8173';
 
 const urlOf = (call: unknown[]): string => String(call[0]);
 
@@ -32,11 +32,14 @@ afterEach(() => {
 });
 
 describe('notifySyncReload port fallback', () => {
-  it('falls through from :3000 to the IPv4 dev port when production is down', async () => {
+  it('reaches an IPv6-only Vite dev server (the npm run dev / Windows case)', async () => {
+    // Production is down and only [::1]:8173 answers — exactly how
+    // `localhost`-bound Vite presents on Windows (Node 20+ resolves
+    // localhost to ::1 first, so Vite binds the IPv6 loopback).
     const fetchMock = vi.fn(async (url: string) =>
-      url.startsWith(PROD)
-        ? Promise.reject(new Error('ECONNREFUSED'))
-        : ({ ok: true } as Response)
+      url.startsWith(DEV6)
+        ? ({ ok: true } as Response)
+        : Promise.reject(new Error('ECONNREFUSED'))
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -45,14 +48,14 @@ describe('notifySyncReload port fallback', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(urlOf(fetchMock.mock.calls[0])).toBe(`${PROD}${RELOAD}`);
-    expect(urlOf(fetchMock.mock.calls[1])).toBe(`${DEV}${RELOAD}`);
+    expect(urlOf(fetchMock.mock.calls[1])).toBe(`${DEV6}${RELOAD}`);
   });
 
-  it('reaches an IPv6-only Vite dev server (the npm run dev / Windows case)', async () => {
-    // Both 127.0.0.1 candidates refuse (nothing bound there); only [::1]:5173
-    // answers — exactly how `localhost`-bound Vite presents on Windows.
+  it('falls through to the IPv4 dev port when the IPv6 bind refuses', async () => {
+    // A dev server started with an explicit IPv4 host (vite --host 127.0.0.1)
+    // refuses the ::1 probe; the IPv4 literal on the same port must catch it.
     const fetchMock = vi.fn(async (url: string) =>
-      url.startsWith(DEV6)
+      url.startsWith(DEV4)
         ? ({ ok: true } as Response)
         : Promise.reject(new Error('ECONNREFUSED'))
     );
@@ -63,8 +66,8 @@ describe('notifySyncReload port fallback', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(urlOf(fetchMock.mock.calls[0])).toBe(`${PROD}${RELOAD}`);
-    expect(urlOf(fetchMock.mock.calls[1])).toBe(`${DEV}${RELOAD}`);
-    expect(urlOf(fetchMock.mock.calls[2])).toBe(`${DEV6}${RELOAD}`);
+    expect(urlOf(fetchMock.mock.calls[1])).toBe(`${DEV6}${RELOAD}`);
+    expect(urlOf(fetchMock.mock.calls[2])).toBe(`${DEV4}${RELOAD}`);
   });
 
   it('sticks to the last-known-good URL on subsequent notifies', async () => {
@@ -76,12 +79,12 @@ describe('notifySyncReload port fallback', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const { notifySyncReload } = await loadFresh();
-    await notifySyncReload('feature', 'one'); // discovers :5173 (2 calls)
+    await notifySyncReload('feature', 'one'); // discovers :8173 (2 calls)
     fetchMock.mockClear();
-    await notifySyncReload('feature', 'two'); // should go straight to :5173
+    await notifySyncReload('feature', 'two'); // should go straight to :8173
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(urlOf(fetchMock.mock.calls[0])).toBe(`${DEV}${RELOAD}`);
+    expect(urlOf(fetchMock.mock.calls[0])).toBe(`${DEV6}${RELOAD}`);
   });
 
   it('uses only the explicit loopback override and skips probing', async () => {

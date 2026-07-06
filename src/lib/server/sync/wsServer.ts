@@ -14,7 +14,7 @@ import {
 } from '../../sync/protocol';
 import { YDocManager } from './YDocManager';
 import type { HistoryStore } from './historyStore';
-import { recordIdentity, releaseIdentity } from './identityRegistry';
+import { currentActiveUser, recordIdentity, releaseIdentity } from './identityRegistry';
 import {
   checkQueryAuth,
   isAuthEnabled,
@@ -78,14 +78,18 @@ export const attachSyncWebSocket = (
 
   // Author resolver: when the doc 'update' fires with `origin` being a
   // Subscriber object (set on the WS message handler below), we look up the
-  // author tag we stored on it. String origins like 'reload' (MCP) get
-  // mapped explicitly. Everything else falls back to 'unknown'.
+  // author tag we stored on it. String origins get mapped explicitly:
+  // 'reload' is the MCP's out-of-band write; 'http' is a REST write from the
+  // dashboard UI (publish.ts / syncBridge.ts), which we attribute to whoever
+  // is currently connected — the REST request came from their browser.
+  // Everything else falls back to 'unknown'.
   manager.setAuthorResolver((origin) => {
     if (origin && typeof origin === 'object' && 'author' in origin) {
       const author = (origin as { author?: unknown }).author;
       if (typeof author === 'string') return author;
     }
     if (origin === 'reload') return 'mcp';
+    if (origin === 'http') return currentActiveUser() ?? 'dashboard';
     return 'unknown';
   });
 

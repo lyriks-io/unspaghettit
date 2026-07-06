@@ -25,6 +25,11 @@ describe('identityRegistry', () => {
     expect(currentActiveUser()).toBeNull();
   });
 
+  it('ignores the client-side "Anonymous" default (no display name set)', () => {
+    recordIdentity('Anonymous');
+    expect(currentActiveUser()).toBeNull();
+  });
+
   it('ignores empty strings', () => {
     recordIdentity('');
     expect(currentActiveUser()).toBeNull();

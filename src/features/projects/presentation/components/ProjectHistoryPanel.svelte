@@ -30,7 +30,10 @@
 
   const authorBadgeClass = (author: string): string => {
     if (author === 'mcp') return 'bg-purple-100 text-purple-700';
-    if (author === 'system') return 'bg-neutral-100 text-neutral-600';
+    // Machine-ish authors share the neutral style; sky is reserved for
+    // humans so a glance separates "someone did this" from plumbing.
+    if (author === 'system' || author === 'dashboard' || author === 'unknown')
+      return 'bg-neutral-100 text-neutral-600';
     return 'bg-sky-100 text-sky-700';
   };
 
