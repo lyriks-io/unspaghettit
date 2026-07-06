@@ -14,6 +14,7 @@ test-results
 playwright-report
 blob-report
 .playwright
+e2e/.tmp
 
 # editor / per-machine AI client configs
 .vscode
