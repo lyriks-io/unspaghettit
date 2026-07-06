@@ -1,4 +1,4 @@
-import type { DiagramSpec } from '../../domain/DiagramSpec';
+import type { DiagramNode, DiagramSpec } from '../../domain/DiagramSpec';
 import type { DiagramExporter } from '../../domain/ports/DiagramExporter';
 
 /**
@@ -20,6 +20,10 @@ const escapeXml = (value: string): string =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+
+/** Typed attributes (ER entities) fold into the label so the image keeps them. */
+const nodeLabel = (node: DiagramNode): string =>
+  node.fields?.length ? `${node.label} (${node.fields.map((field) => field.name).join(', ')})` : node.label;
 
 export const svgExporter: DiagramExporter = {
   id: 'svg',
@@ -63,7 +67,7 @@ export const svgExporter: DiagramExporter = {
         `<rect x="${p.x}" y="${p.y}" width="${NODE_W}" height="${NODE_H}" rx="8" fill="#0e7490" stroke="#155e75"/>`
       );
       parts.push(
-        `<text x="${p.x + NODE_W / 2}" y="${p.y + NODE_H / 2 + 4}" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#ffffff">${escapeXml(node.label)}</text>`
+        `<text x="${p.x + NODE_W / 2}" y="${p.y + NODE_H / 2 + 4}" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#ffffff">${escapeXml(nodeLabel(node))}</text>`
       );
     }
 

@@ -1,8 +1,12 @@
-import type { DiagramSpec } from '../../domain/DiagramSpec';
+import type { DiagramNode, DiagramSpec } from '../../domain/DiagramSpec';
 import type { DiagramExporter } from '../../domain/ports/DiagramExporter';
 
 /** Graphviz DOT chokes on unescaped quotes and newlines inside labels. */
 const escape = (label: string): string => label.replace(/[\r\n]+/g, ' ').replace(/"/g, '\\"').trim();
+
+/** Typed attributes (ER entities) fold into the label so DOT keeps them. */
+const nodeLabel = (node: DiagramNode): string =>
+  node.fields?.length ? `${node.label} (${node.fields.map((field) => field.name).join(', ')})` : node.label;
 
 /**
  * Serializes a `DiagramSpec` to Graphviz DOT. Pure string building — works for
@@ -18,7 +22,7 @@ export const dotExporter: DiagramExporter = {
 
     const lines: string[] = [`digraph "${escape(spec.title)}" {`, '  rankdir=LR;'];
     for (const node of spec.nodes) {
-      lines.push(`  ${alias.get(node.id)} [label="${escape(node.label)}"];`);
+      lines.push(`  ${alias.get(node.id)} [label="${escape(nodeLabel(node))}"];`);
     }
     for (const edge of spec.edges) {
       const from = alias.get(edge.from);

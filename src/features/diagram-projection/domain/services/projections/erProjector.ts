@@ -3,9 +3,9 @@ import type { ProjectionSource, Projector } from '../../ports/Projector';
 
 /**
  * Projects the data model as an entity-relationship diagram: each entity is a
- * node labelled with its fields. The model declares no entity-to-entity foreign
- * keys, so this is a structural view (no edges); content is "has entities".
- * Pure.
+ * node carrying its fields as typed attributes, so renderers can draw real
+ * attribute rows. The model declares no entity-to-entity foreign keys, so this
+ * is a structural view (no edges); content is "has entities". Pure.
  */
 export const erProjector: Projector = {
   format: 'er',
@@ -22,11 +22,11 @@ export const erProjector: Projector = {
         const id = `${fid}::entity::${String(entity.id)}`;
         if (seen.has(id)) continue;
         seen.add(id);
-        const fields = entity.fields.map((field) => field.name).join(', ');
         nodes.push({
           id,
-          label: fields ? `${entity.namespace} (${fields})` : entity.namespace,
-          kind: 'entity'
+          label: entity.namespace,
+          kind: 'entity',
+          fields: entity.fields.map((field) => ({ name: field.name, type: String(field.type) }))
         });
       }
     }

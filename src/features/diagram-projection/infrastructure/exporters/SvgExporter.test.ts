@@ -22,6 +22,23 @@ describe('svgExporter', () => {
     expect(out.trimEnd().endsWith('</svg>')).toBe(true);
   });
 
+  it('folds typed attributes into the node label', () => {
+    const out = svgExporter.export({
+      format: 'er',
+      title: 'Data',
+      nodes: [
+        {
+          id: 'a',
+          label: 'User',
+          kind: 'entity',
+          fields: [{ name: 'email', type: 'string' }]
+        }
+      ],
+      edges: []
+    });
+    expect(out).toContain('>User (email)</text>');
+  });
+
   it('escapes XML-special characters in labels', () => {
     const out = svgExporter.export({
       ...spec,

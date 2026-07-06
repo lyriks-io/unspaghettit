@@ -9,11 +9,18 @@
 
 export type DiagramFormat = 'graph' | 'statechart' | 'sequence' | 'er' | 'flowchart' | 'mindmap';
 
+export type DiagramNodeField = {
+  readonly name: string;
+  readonly type: string;
+};
+
 export type DiagramNode = {
   readonly id: string;
   readonly label: string;
   /** Semantic kind (e.g. a surface type) for renderers and themes. Optional. */
   readonly kind?: string;
+  /** Typed attributes (ER entities). Renderers may show them as rows. Optional. */
+  readonly fields?: readonly DiagramNodeField[];
 };
 
 export type DiagramEdge = {

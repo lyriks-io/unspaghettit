@@ -22,6 +22,26 @@ describe('dotExporter', () => {
     expect(out.trimEnd().endsWith('}')).toBe(true);
   });
 
+  it('folds typed attributes into the node label', () => {
+    const out = dotExporter.export({
+      format: 'er',
+      title: 'Data',
+      nodes: [
+        {
+          id: 'a',
+          label: 'User',
+          kind: 'entity',
+          fields: [
+            { name: 'email', type: 'string' },
+            { name: 'age', type: 'number' }
+          ]
+        }
+      ],
+      edges: []
+    });
+    expect(out).toContain('n0 [label="User (email, age)"];');
+  });
+
   it('escapes quotes in labels', () => {
     const out = dotExporter.export({
       ...spec,

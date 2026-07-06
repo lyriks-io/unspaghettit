@@ -16,7 +16,7 @@ const feature = (entities: Feature['entities']): Feature => ({
 });
 
 describe('erProjector', () => {
-  it('emits one node per entity, labelled with its fields', () => {
+  it('emits one node per entity, carrying its fields as typed attributes', () => {
     const spec = erProjector.project({
       features: [
         feature([
@@ -34,7 +34,11 @@ describe('erProjector', () => {
 
     expect(spec.format).toBe('er');
     expect(spec.nodes).toHaveLength(1);
-    expect(spec.nodes[0]?.label).toBe('diagram (format, nodeCount)');
+    expect(spec.nodes[0]?.label).toBe('diagram');
+    expect(spec.nodes[0]?.fields).toEqual([
+      { name: 'format', type: 'string' },
+      { name: 'nodeCount', type: 'number' }
+    ]);
     expect(diagramHasContent(spec)).toBe(true);
   });
 
