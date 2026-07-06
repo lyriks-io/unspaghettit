@@ -223,6 +223,36 @@ body {
 }
 
 /*
+ * Code / input surfaces are NOT emphasis surfaces. Snippet <pre> blocks (the
+ * implementation panel's code locations, the MCP page's JSON) and any dark
+ * <textarea>/<code> share the same dark utility classes as the buttons above,
+ * so the emphasis remap would paint them violet. Pin them back to the
+ * un-themed near-black values (the element selector adds the specificity to
+ * beat the class-only remap), matching CodeBlock.svelte's literal-dark rule:
+ * code reads on black in every theme.
+ */
+:root[data-theme='lyriks'] pre.bg-slate-900,
+:root[data-theme='lyriks'] code.bg-slate-900,
+:root[data-theme='lyriks'] textarea.bg-slate-900 {
+  background-color: #0f172a;
+}
+:root[data-theme='lyriks'] pre.bg-slate-950,
+:root[data-theme='lyriks'] code.bg-slate-950,
+:root[data-theme='lyriks'] textarea.bg-slate-950 {
+  background-color: #020617;
+}
+:root[data-theme='lyriks'] pre.bg-neutral-900,
+:root[data-theme='lyriks'] code.bg-neutral-900,
+:root[data-theme='lyriks'] textarea.bg-neutral-900 {
+  background-color: #171717;
+}
+:root[data-theme='lyriks'] pre.bg-neutral-950,
+:root[data-theme='lyriks'] code.bg-neutral-950,
+:root[data-theme='lyriks'] textarea.bg-neutral-950 {
+  background-color: #0a0a0a;
+}
+
+/*
  * Card top-accent flourish. Project + feature cards paint a thin
  * `from-brand-500 via-brand-mint to-violet-400` bar across the top; the mint
  * (teal) middle stop is a fixed accent token we leave alone elsewhere (tags use
