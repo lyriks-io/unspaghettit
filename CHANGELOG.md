@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [SemVer](https://semver.org).
 
-## [Unreleased]
+## [0.7.0] - 2026-07-07
+
+Adopt what you already built, and wear the brand: code-to-spec becomes a first-class, evidence-gated flow that yields the model, its provenance, and implementation coverage in one pass; the dashboard now defaults to the Lyriks look with the Unspaghettit lockup in every theme.
 
 ### Added
 
