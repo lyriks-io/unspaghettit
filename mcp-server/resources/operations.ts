@@ -106,9 +106,10 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   \`{kind:"count_where", operand:{kind:"state", path:"applications"}, field:"status", equals:{kind:"literal", value:"enrolled"}}\` counts applications whose status field equals "enrolled".
   \`switch\` is the declarative case/branch primitive: \`{kind:"switch", cases:[{when: RuleCondition, then: Expression}, ...], default: Expression}\`. The first case whose condition holds wins; falls through to \`default\` if none match.
   Use for "enroll if seats available else waitlist" patterns that would otherwise need 4 rules: \`set_state path:"application.status" value:{kind:"switch", cases:[{when:{left:"enrolledCount", operator:"lower_than", right:{kind:"state", path:"capacity"}}, then:{kind:"literal", value:"enrolled"}}], default:{kind:"literal", value:"waitlisted"}}\`.
-- \`lower_than\` / \`greater_than\` compare numbers AND ISO 8601 date strings (lexicographic
-  order matches chronological order). Mix doesn't compare: both operands must be the
-  same kind.
+- \`lower_than\` / \`greater_than\` (and their inclusive forms \`lower_or_equal\` / \`greater_or_equal\`,
+  i.e. ≤ / ≥) compare numbers AND ISO 8601 date strings (lexicographic order matches
+  chronological order). Mix doesn't compare: both operands must be the same kind. Prefer the
+  inclusive forms over off-by-one literals (write \`greater_or_equal 20\`, not \`greater_than 19\`).
 - Rule \`condition\` is OPTIONAL. Omit it for an "always fires" rule, useful for
   unconditional side effects like resetting stale per-mode state when a Set Mode action
   runs. Invariants still require a condition (an unconditional invariant is vacuous).
@@ -119,7 +120,19 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   instead of two flat rules that share an effect. Implication \`A → B\` is \`{kind:"any", conditions:[{kind:"not", condition: A}, B]}\`.
 - Pass \`dryRun: true\` on apply_batch to validate + score without saving. Add \`verbose: true\`
   to get the full per-issue maturity report; otherwise the response is a slim summary (~1 KB).
-`;
+
+Evaluation semantics (matters for scenario assertions and rule ordering):
+- Effects apply SEQUENTIALLY in the order written, and derived (computed) state is
+  recomputed after EACH one. A rule's condition therefore reads the state left by every
+  earlier rule/effect in the same run, not the pre-action snapshot. Order your rules so a
+  guard sees the value it expects.
+- Surface rules run before action rules; if any rule's effect is a \`block_action\`, later
+  effects (and the action's own effects) are suppressed. \`onBlockedEffects\` still fire on a
+  block, but \`set_state\` among them is dropped (the action was rejected) while transitions,
+  events, and messages go through.
+- Assert on the POST-run state: a scenario's \`expectedAssertions\` see \`result.finalState\`
+  after all effects + derived recomputation, and after any \`emit_event\` cascade
+  (\`triggeredByEvent\` handlers) has settled.`;
 
 export const registerOperationsResource = (server: McpServer): void => {
   server.registerResource(

@@ -132,9 +132,17 @@ const compareLocal = (
       if (typeof left === 'number' && typeof right === 'number') return left > right;
       if (isIsoDateStringLocal(left) && isIsoDateStringLocal(right)) return left > right;
       return false;
+    case 'greater_or_equal':
+      if (typeof left === 'number' && typeof right === 'number') return left >= right;
+      if (isIsoDateStringLocal(left) && isIsoDateStringLocal(right)) return left >= right;
+      return false;
     case 'lower_than':
       if (typeof left === 'number' && typeof right === 'number') return left < right;
       if (isIsoDateStringLocal(left) && isIsoDateStringLocal(right)) return left < right;
+      return false;
+    case 'lower_or_equal':
+      if (typeof left === 'number' && typeof right === 'number') return left <= right;
+      if (isIsoDateStringLocal(left) && isIsoDateStringLocal(right)) return left <= right;
       return false;
     case 'contains':
       if (Array.isArray(left)) return left.some((item) => deepEqualValue(item, right));

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Action } from '../../src/features/behavior-model/domain/entities/Action';
 import { isEvolution } from '../../src/features/behavior-model/domain/entities/Action';
+import type { Effect } from '../../src/features/behavior-model/domain/value-objects/Effect';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import type { Surface } from '../../src/features/behavior-model/domain/entities/Surface';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
@@ -38,6 +39,43 @@ const hasBlockingValidationRule = (action: Action): boolean =>
   action.rules.some(
     (r) => r.condition.operator === 'is_false' || r.condition.operator === 'does_not_exist'
   );
+
+/**
+ * An action "does something" if it carries effects directly, if any of its
+ * rules carries an effect (every Rule has a required `effect`), or if it has
+ * onBlocked fallbacks. Counting rule-carried effects is what keeps the "no
+ * effects" gap from crying wolf on a perfectly valid action whose entire
+ * behavior lives in conditional rules (e.g. a tick whose set_state fires from
+ * a rule, or a validation action that only blocks).
+ */
+const hasAnyEffect = (action: Action): boolean =>
+  action.effects.length > 0 ||
+  action.rules.length > 0 ||
+  (action.onBlockedEffects?.length ?? 0) > 0;
+
+/**
+ * Every event name this action actually emits at runtime, gathered from
+ * emit_event effects wherever they live: the action's own effects, its
+ * onBlocked fallbacks, and any rule-carried effect. `Action.emittedEvents` is
+ * a DECLARATION (a catalog the dashboard and coverage read); only an
+ * emit_event *effect* triggers a cascade / `triggeredByEvent` handler at
+ * runtime. Comparing the two catches the silent no-op where an action claims
+ * to emit an event that nothing fires.
+ */
+const emittedEventNames = (action: Action): ReadonlySet<string> => {
+  const names = new Set<string>();
+  const scan = (effects: readonly Effect[] | undefined): void => {
+    for (const e of effects ?? []) {
+      if (e.type === 'emit_event') names.add(String(e.event));
+    }
+  };
+  scan(action.effects);
+  scan(action.onBlockedEffects);
+  for (const r of action.rules) {
+    if (r.effect.type === 'emit_event') names.add(String(r.effect.event));
+  }
+  return names;
+};
 
 /**
  * Pure detector. Walks the feature + implementation-status sidecar and
@@ -116,15 +154,32 @@ export const detectSpecGaps = (
       }
       const roles = new Set<string>(cap.roles ?? []);
 
-      if (cap.effects.length === 0) {
+      if (!hasAnyEffect(cap)) {
         critical.push({
           severity: 'critical',
           entityType: 'action',
           entityId: String(cap.id),
           entityName: cap.name,
-          reason: `Action "${cap.name}" has no effects.`,
-          suggestedFix: 'Add at least one effect'
+          reason: `Action "${cap.name}" has no effects (none on the action, its rules, or onBlocked).`,
+          suggestedFix: 'Add at least one effect, directly or via a rule'
         });
+      }
+
+      // emittedEvents is a declaration; only an emit_event *effect* fires a
+      // cascade at runtime. Flag any declared event that nothing emits so a
+      // dangling declaration doesn't read as working wiring.
+      const emitted = emittedEventNames(cap);
+      for (const declared of cap.emittedEvents) {
+        if (!emitted.has(String(declared))) {
+          recommended.push({
+            severity: 'recommended',
+            entityType: 'action',
+            entityId: String(cap.id),
+            entityName: cap.name,
+            reason: `Action "${cap.name}" declares it emits "${declared}" but no emit_event effect fires it — the declaration is inert at runtime (no cascade or triggeredByEvent handler will run).`,
+            suggestedFix: `Add an emit_event effect for "${declared}" (on the action or a rule), or remove it from emittedEvents`
+          });
+        }
       }
 
       if (roles.has('destructive') && (cap.scenarios ?? []).length === 0) {
@@ -199,7 +254,7 @@ export const registerSpecGapsTool = (deps: ToolDeps): void => {
     'get_spec_gaps',
     {
       description:
-        'Diagnose spec depth: returns a prioritized to-do list of critical + recommended gaps grounded in existing entities. Critical gaps must be resolved before claiming the spec complete (missing expectedActions, stateless surfaces, effect-less actions, untested destructive actions). Recommended gaps catch shallow modeling (async without loading/error coverage, validation without blocking rule, multi-state surface without transitions, action never implemented). Use after build/edit sessions, especially after a "don\'t-ask-just-build" pass.',
+        'Diagnose spec depth: returns a prioritized to-do list of critical + recommended gaps grounded in existing entities. Critical gaps must be resolved before claiming the spec complete (missing expectedActions, stateless surfaces, effect-less actions, untested destructive actions). Recommended gaps catch shallow modeling (async without loading/error coverage, validation without blocking rule, multi-state surface without transitions, action never implemented, emittedEvents declared but never fired by an emit_event effect). Use after build/edit sessions, especially after a "don\'t-ask-just-build" pass.',
       inputSchema: { featureId: z.string() }
     },
     async ({ featureId }) => {

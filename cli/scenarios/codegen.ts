@@ -132,8 +132,12 @@ const expectAssertion = (assertion: ScenarioAssertion): string | null => {
       return `  expect(${pathExpr}).not.toEqual(${literal});`;
     case 'greater_than':
       return `  expect(${pathExpr}).toBeGreaterThan(${literal});`;
+    case 'greater_or_equal':
+      return `  expect(${pathExpr}).toBeGreaterThanOrEqual(${literal});`;
     case 'lower_than':
       return `  expect(${pathExpr}).toBeLessThan(${literal});`;
+    case 'lower_or_equal':
+      return `  expect(${pathExpr}).toBeLessThanOrEqual(${literal});`;
     case 'contains':
       // Spec semantics: arrays contain element, strings contain substring.
       // Vitest's toContain handles both shapes.

@@ -43,6 +43,51 @@ describe('evaluateCondition', () => {
     ).toBe(false);
   });
 
+  it('greater_or_equal / lower_or_equal include the boundary (no off-by-one)', () => {
+    const at = { count: 20 };
+    // greater_or_equal is true AT the boundary; greater_than is not.
+    expect(
+      evaluateCondition({ left: path('count'), operator: 'greater_or_equal', right: 20 }, at)
+    ).toBe(true);
+    expect(
+      evaluateCondition({ left: path('count'), operator: 'greater_than', right: 20 }, at)
+    ).toBe(false);
+    // lower_or_equal is true AT the boundary; lower_than is not.
+    expect(
+      evaluateCondition({ left: path('count'), operator: 'lower_or_equal', right: 20 }, at)
+    ).toBe(true);
+    expect(
+      evaluateCondition({ left: path('count'), operator: 'lower_than', right: 20 }, at)
+    ).toBe(false);
+    // Below/above the boundary behave like the strict forms.
+    expect(
+      evaluateCondition({ left: path('count'), operator: 'greater_or_equal', right: 21 }, at)
+    ).toBe(false);
+    expect(
+      evaluateCondition({ left: path('count'), operator: 'lower_or_equal', right: 19 }, at)
+    ).toBe(false);
+    // Non-numeric operands never compare true (mirrors greater_than/lower_than).
+    expect(
+      evaluateCondition({ left: path('user.role'), operator: 'greater_or_equal', right: 0 }, snapshot)
+    ).toBe(false);
+  });
+
+  it('compares ISO date strings chronologically with the inclusive operators too', () => {
+    const dateSnap = { trip: { on: '2026-06-17' } };
+    expect(
+      evaluateCondition(
+        { left: path('trip.on'), operator: 'greater_or_equal', right: '2026-06-17' },
+        dateSnap
+      )
+    ).toBe(true);
+    expect(
+      evaluateCondition(
+        { left: path('trip.on'), operator: 'lower_or_equal', right: '2026-06-17' },
+        dateSnap
+      )
+    ).toBe(true);
+  });
+
   it('compares ISO date strings chronologically with lower_than / greater_than', () => {
     const dateSnap = {
       trip: { startDate: '2026-06-17', endDate: '2026-06-15', when: '2026-06-15T08:30:00Z' }

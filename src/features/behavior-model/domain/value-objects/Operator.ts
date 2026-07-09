@@ -2,7 +2,9 @@ export type Operator =
   | 'equals'
   | 'not_equals'
   | 'greater_than'
+  | 'greater_or_equal'
   | 'lower_than'
+  | 'lower_or_equal'
   | 'contains'
   | 'is_true'
   | 'is_false'
@@ -13,7 +15,9 @@ export const ALL_OPERATORS: readonly Operator[] = [
   'equals',
   'not_equals',
   'greater_than',
+  'greater_or_equal',
   'lower_than',
+  'lower_or_equal',
   'contains',
   'is_true',
   'is_false',
@@ -41,8 +45,12 @@ export const operatorLabel = (op: Operator): string => {
       return 'does not equal';
     case 'greater_than':
       return 'is greater than';
+    case 'greater_or_equal':
+      return 'is greater than or equal to';
     case 'lower_than':
       return 'is lower than';
+    case 'lower_or_equal':
+      return 'is lower than or equal to';
     case 'contains':
       return 'contains';
     case 'is_true':

@@ -6,6 +6,7 @@ import {
   asActionId,
   asEffectId,
   asFeatureId,
+  asRuleId,
   asStateDefinitionId,
   asSurfaceId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
@@ -88,5 +89,64 @@ describe('detectSpecGaps — Evolution proposals', () => {
     expect(
       gaps.some((g) => g.entityType === 'feature' && g.reason.includes('Export to CSV'))
     ).toBe(true);
+  });
+});
+
+describe('detectSpecGaps — effect detection', () => {
+  it('does not flag "no effects" when the effect lives inside a rule', () => {
+    const tick = action({
+      id: asActionId('tick'),
+      name: 'Resolve Tick',
+      effects: [], // the whole behavior is rule-carried
+      rules: [
+        {
+          id: asRuleId('r1'),
+          category: 'business',
+          condition: { left: asStatePath('a.b'), operator: 'is_true' },
+          effect: {
+            id: asEffectId('e1'),
+            type: 'set_state',
+            path: asStatePath('a.b'),
+            value: false
+          }
+        }
+      ]
+    });
+    const gaps = detectSpecGaps(feature([tick]), new Set([String(tick.id)]));
+    expect(gaps.some((g) => g.entityId === 'tick' && g.reason.includes('no effects'))).toBe(false);
+  });
+
+  it('still flags an action with no effects anywhere (no direct, no rule, no onBlocked)', () => {
+    const empty = action({ id: asActionId('empty'), name: 'Does Nothing', effects: [], rules: [] });
+    const gaps = detectSpecGaps(feature([empty]), new Set([String(empty.id)]));
+    expect(gaps.some((g) => g.entityId === 'empty' && g.reason.includes('no effects'))).toBe(true);
+  });
+});
+
+describe('detectSpecGaps — emittedEvents consistency', () => {
+  it('flags an emittedEvents declaration that no emit_event effect fires', () => {
+    const declarer = action({
+      id: asActionId('emit'),
+      name: 'Step Epoch',
+      emittedEvents: ['epoch.stepped'] as unknown as Action['emittedEvents'],
+      effects: [{ id: asEffectId('e1'), type: 'allow_action' }] // no emit_event for it
+    });
+    const gaps = detectSpecGaps(feature([declarer]), new Set([String(declarer.id)]));
+    expect(
+      gaps.some((g) => g.entityId === 'emit' && g.reason.includes('epoch.stepped') && g.reason.includes('inert'))
+    ).toBe(true);
+  });
+
+  it('does not flag a declared event that an emit_event effect actually fires', () => {
+    const emitter = action({
+      id: asActionId('emit'),
+      name: 'Step Epoch',
+      emittedEvents: ['epoch.stepped'] as unknown as Action['emittedEvents'],
+      effects: [
+        { id: asEffectId('e1'), type: 'emit_event', event: 'epoch.stepped' }
+      ] as unknown as Action['effects']
+    });
+    const gaps = detectSpecGaps(feature([emitter]), new Set([String(emitter.id)]));
+    expect(gaps.some((g) => g.entityId === 'emit' && g.reason.includes('inert'))).toBe(false);
   });
 });
