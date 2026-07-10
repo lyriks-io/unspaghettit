@@ -34,6 +34,12 @@ export type ToolDeps = {
   readonly sourceRepo: ProjectSourceRepository;
   /** Context the CLI passed about the host repo (link, cwd). */
   readonly repoContext?: RepoContext;
+  /**
+   * The running server's package version, so get_repo_context can report an
+   * available update. Set by the real entrypoint; omitted in tests (which then
+   * skip the update check, keeping the network out of the test path).
+   */
+  readonly version?: string;
 };
 
 // Compact JSON: every byte of whitespace is a token sent to / from the LLM.

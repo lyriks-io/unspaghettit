@@ -10,6 +10,7 @@
   import GettingStartedBanner from '$features/tutorial/presentation/components/GettingStartedBanner.svelte';
   import FloatingQueueWidget from '$features/implementation-queue/presentation/components/FloatingQueueWidget.svelte';
   import AppHeader from '$features/app-shell/presentation/components/AppHeader.svelte';
+  import UpdateBanner from '$features/update-check/presentation/components/UpdateBanner.svelte';
   import { bootstrapDashboard } from '$features/app-shell/presentation/bootstrapDashboard';
   import { isBuilderRoute } from '$features/app-shell/presentation/routeContext';
   import { themeStore } from '$lib/theme/themeStore.svelte';
@@ -36,6 +37,10 @@
     : 'bg-[linear-gradient(180deg,#f0fdfa_0%,#f8fafc_220px,#f8fafc_100%)]'}"
 >
   <AppHeader />
+  <!-- Newer-release strip. Sits under the header, appears only when the
+       server-side check reports an update, and remembers its dismissal per
+       target version. -->
+  <UpdateBanner />
   <!-- First-run onboarding strip. Sits outside the route transition so it
        doesn't re-fade on every navigation; hides itself permanently once
        the tour is completed or the user dismisses it. -->

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
+import { readCachedUpdateStatus } from '../../src/features/update-check/infrastructure/updateCheck';
 import { trackTokens } from '../metrics';
 import { text, type ToolDeps } from './_shared';
 import { indexStats } from './behavioralIndex';
@@ -20,19 +21,40 @@ export const registerRepoContextTool = ({
   server,
   projectRepo,
   repo,
-  repoContext
+  repoContext,
+  version
 }: ToolDeps): void => {
   server.registerTool(
     'get_repo_context',
     {
       description:
-        'Returns whether this repo is bound to one Unspaghettit project via .unspa.json. Call once at session start; if linked, the project owns one or more features and you scope all subsequent calls to that project. The response includes the project\'s `features[]` so you can pick the right featureId for the task without a separate list_features call (use file paths, action name, and the user prompt to choose). Also returns behavioralIndex stats so you know whether the index is fresh or needs a pass.',
+        'Returns whether this repo is bound to one Unspaghettit project via .unspa.json. Call once at session start; if linked, the project owns one or more features and you scope all subsequent calls to that project. The response includes the project\'s `features[]` so you can pick the right featureId for the task without a separate list_features call (use file paths, action name, and the user prompt to choose). Also returns behavioralIndex stats so you know whether the index is fresh or needs a pass, the running `version`, and — when a newer unspaghettit release is out — `updateAvailable:true` + `latestVersion` (mention it so the user can `npm i -g unspaghettit@latest`).',
       inputSchema: {}
     },
     async () => {
+      // Cache-only, synchronous, zero network: reports a newer release only
+      // when a prior refresh (CLI, dashboard, or this server's startup warm)
+      // already recorded one. `version` is absent in tests, which skips this.
+      const updateFields: Record<string, unknown> = version
+        ? (() => {
+            const status = readCachedUpdateStatus({ current: version });
+            return {
+              version,
+              ...(status.updateAvailable && status.latest
+                ? { updateAvailable: true, latestVersion: status.latest }
+                : {})
+            };
+          })()
+        : {};
+
       if (!repoContext) {
         return text(
-          trackTokens('get_repo_context', { linked: false, cwd: process.cwd(), linkPath: null })
+          trackTokens('get_repo_context', {
+            linked: false,
+            cwd: process.cwd(),
+            linkPath: null,
+            ...updateFields
+          })
         );
       }
       const linked = repoContext.link !== null;
@@ -83,7 +105,8 @@ export const registerRepoContextTool = ({
         linkedProjectName: repoContext.link?.projectName ?? null,
         ...(hint ? { hint } : {}),
         features,
-        behavioralIndex
+        behavioralIndex,
+        ...updateFields
       };
       return text(trackTokens('get_repo_context', payload));
     }

@@ -167,7 +167,8 @@ export const buildServer = (repo: FeatureRepository, deps: BuildServerDeps = {})
     getImplementationStatus,
     provenanceRepo,
     sourceRepo,
-    repoContext: deps.repoContext
+    repoContext: deps.repoContext,
+    version: PACKAGE_VERSION
   };
 
   registerGuideResource(server);

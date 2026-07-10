@@ -10,11 +10,17 @@ import { runLinkCommand } from './commands/link';
 import { runListCommand } from './commands/list';
 import { runScenariosAdapterCommand } from './commands/scenarios-adapter';
 import { runScenariosExportCommand } from './commands/scenarios-export';
+import { runOutdatedCommand } from './commands/outdated';
 import { runServeCommand } from './commands/serve';
 import { runThemeCommand } from './commands/theme';
 import { runUninstallCommand } from './commands/uninstall';
 import { runViewCommand } from './commands/view';
 import { log } from './util/log';
+import {
+  formatUpdateNotice,
+  readCachedUpdateStatus,
+  resolveUpdateStatus
+} from '../src/features/update-check/infrastructure/updateCheck';
 
 /**
  * The package publishes two bin aliases for the same CLI: `unspa` (short)
@@ -35,6 +41,28 @@ const FUN_MODE_BY_INVOCATION = process.env.UNSPA_FUN_MODE === '1';
 // Single source of truth for the CLI version: read package.json at runtime so
 // `unspa --version` cannot drift from the published package version.
 const pkg = createRequire(import.meta.url)('../package.json') as { version: string };
+
+/**
+ * Passive update notice. Prints a one-line "newer version available" hint to
+ * stderr on exit, read synchronously from the cache so it adds zero latency,
+ * and kicks a background refresh so the cache is warm next time (long-running
+ * commands like `dashboard` let it finish; short ones just re-check later).
+ * stderr keeps machine output (`--json`) and, were it ever reached, a stdio
+ * stream uncorrupted. Skipped for `serve` (the MCP stdio channel — the agent
+ * learns about updates via get_repo_context instead) and `outdated` (which
+ * prints its own, richer result). Fully silenced by the env opt-out, which
+ * makes the cache read return "unknown".
+ */
+const installUpdateNotice = (): void => {
+  const command = process.argv[2];
+  if (command === 'serve' || command === 'outdated') return;
+  void resolveUpdateStatus({ current: pkg.version }).catch(() => {});
+  process.on('exit', () => {
+    const notice = formatUpdateNotice(readCachedUpdateStatus({ current: pkg.version }));
+    if (notice) log.warn(notice);
+  });
+};
+installUpdateNotice();
 
 // v0.1 surface:
 //   init       register MCP with picked clients + optional CLAUDE.md/AGENTS.md
@@ -197,6 +225,14 @@ program
   .action(async (opts) => {
     const code = await runAdoptCommand({ promptOnly: opts.promptOnly === true });
     process.exit(code);
+  });
+
+program
+  .command('outdated')
+  .description('Check npm for a newer unspaghettit release and print whether an update is available. Hits the registry live; --json prints the raw status for scripts. A passive one-line notice also appears after other commands (silence it with UNSPA_NO_UPDATE_CHECK=1).')
+  .option('--json', 'Print the version status as JSON ({ current, latest, updateAvailable }).')
+  .action(async (opts) => {
+    process.exit(await runOutdatedCommand({ json: opts.json === true }));
   });
 
 program

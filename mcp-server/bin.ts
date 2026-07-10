@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { createRequire } from 'node:module';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { resolveUpdateStatus } from '../src/features/update-check/infrastructure/updateCheck';
 import { JsonFolderFeatureRepository } from '../src/features/behavior-model/infrastructure/persistence/JsonFolderFeatureRepository';
 import { discoverSnapshotDirectory } from '../src/features/behavior-model/infrastructure/persistence/snapshot-discovery';
 import { JsonFolderImplementationStatusRepository } from '../src/features/implementation-status/infrastructure/persistence/JsonFolderImplementationStatusRepository';
@@ -112,6 +114,14 @@ const main = async (): Promise<void> => {
   });
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  // Warm the update-check cache in the background so get_repo_context can report
+  // a newer release without any network I/O on its own hot path. Fire-and-
+  // forget and fail-silent; the env opt-out (UNSPA_NO_UPDATE_CHECK / CI) turns
+  // it into a no-op. Never blocks serving.
+  const version = (createRequire(import.meta.url)('../package.json') as { version: string })
+    .version;
+  void resolveUpdateStatus({ current: version }).catch(() => {});
 };
 
 main().catch((err) => {

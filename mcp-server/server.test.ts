@@ -208,12 +208,17 @@ describe('MCP server', () => {
       linkedProjectId: string | null;
       linkedProjectName: string | null;
       features: readonly { id: string; name: string }[];
+      version?: string;
     };
 
     expect(payload.linked).toBe(true);
     expect(payload.linkedProjectId).toBe('proj-storefront');
     expect(payload.linkedProjectName).toBe('Storefront');
     expect(payload.features).toEqual([{ id: storefrontFeature.id, name: storefrontFeature.name }]);
+    // The running server version rides along so the agent can surface an
+    // available update; the update-availability fields appear only when the
+    // (cache-only) check has recorded a newer release.
+    expect(typeof payload.version).toBe('string');
     await server.close();
   });
 
