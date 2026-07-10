@@ -265,6 +265,87 @@ describe('simulate', () => {
     expect((result.previousState.selection as { count: number }).count).toBe(0);
   });
 
+  const twoInvariantSurface = (): Surface => ({
+    ...buildCanvasSurface(),
+    invariants: [
+      {
+        id: asInvariantId('i-non-negative'),
+        name: 'count >= 0',
+        condition: {
+          left: asStatePath('selection.count'),
+          operator: 'greater_than',
+          right: -1
+        },
+        message: 'count went negative'
+      },
+      {
+        id: asInvariantId('i-unlocked'),
+        name: 'not locked',
+        condition: { left: asStatePath('selection.locked'), operator: 'is_false' },
+        message: 'selection is locked'
+      }
+    ]
+  });
+
+  it('scoped invariantRelaxation skips only the named invariant', () => {
+    const surface = twoInvariantSurface();
+    const repair: Action = {
+      ...deleteSelection,
+      id: asActionId('repair'),
+      rules: [],
+      invariants: [],
+      effects: [
+        {
+          id: asEffectId('drive-negative'),
+          type: 'set_state',
+          path: asStatePath('selection.count'),
+          value: -5
+        }
+      ],
+      emittedEvents: [],
+      invariantRelaxation: {
+        invariantIds: [asInvariantId('i-non-negative')],
+        rationale: 'Repair action reconciles the counter.'
+      }
+    };
+    const relaxed = simulate({ surface, action: repair, snapshot: {}, parameters: {} });
+    expect(relaxed.status).toBe('success');
+    expect(relaxed.invariantViolations).toEqual([]);
+
+    // Control: without the relaxation the same write violates count >= 0.
+    const strict: Action = { ...repair, invariantRelaxation: undefined };
+    const blocked = simulate({ surface, action: strict, snapshot: {}, parameters: {} });
+    expect(blocked.status).toBe('blocked');
+    expect(blocked.invariantViolations.length).toBeGreaterThan(0);
+  });
+
+  it('invariantRelaxation still enforces the invariants it does not name', () => {
+    const surface = twoInvariantSurface();
+    const action: Action = {
+      ...deleteSelection,
+      id: asActionId('half-repair'),
+      rules: [],
+      invariants: [],
+      // Relaxes only i-non-negative, but this write violates i-unlocked.
+      effects: [
+        {
+          id: asEffectId('lock-it'),
+          type: 'set_state',
+          path: asStatePath('selection.locked'),
+          value: true
+        }
+      ],
+      emittedEvents: [],
+      invariantRelaxation: {
+        invariantIds: [asInvariantId('i-non-negative')],
+        rationale: 'Only the counter invariant may be relaxed.'
+      }
+    };
+    const result = simulate({ surface, action, snapshot: {}, parameters: {} });
+    expect(result.status).toBe('blocked');
+    expect(result.invariantViolations.length).toBeGreaterThan(0);
+  });
+
   it('cascades event handlers in the same feature when the parent emits a matching event', () => {
     // Parent: emits `selection.deleted`. Handler: triggeredByEvent=`selection.deleted`,
     // increments a counter when it runs. The handler must live in the same

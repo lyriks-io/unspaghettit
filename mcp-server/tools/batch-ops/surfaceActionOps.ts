@@ -83,6 +83,11 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
         // Action.bypassInvariants doc, only set this when the action's
         // whole purpose is to recover from a broken invariant.
         ...(op.bypassInvariants === true ? { bypassInvariants: true } : {}),
+        // Scoped, preferred form: name only the invariants this action may
+        // relax, with a rationale. See Action.invariantRelaxation.
+        ...(op.invariantRelaxation && typeof op.invariantRelaxation === 'object'
+          ? { invariantRelaxation: op.invariantRelaxation as unknown as Action['invariantRelaxation'] }
+          : {}),
         // Subscribe this action to an event. When ANY action in the
         // feature emits the named event the simulator cascades into
         // this one. See Action.triggeredByEvent doc.
@@ -123,6 +128,15 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
             : {}),
           ...(typeof op.bypassInvariants === 'boolean'
             ? { bypassInvariants: op.bypassInvariants }
+            : {}),
+          // null clears the relaxation; an object sets it; omit to leave it.
+          ...(op.invariantRelaxation !== undefined
+            ? {
+                invariantRelaxation:
+                  op.invariantRelaxation === null
+                    ? undefined
+                    : (op.invariantRelaxation as unknown as Action['invariantRelaxation'])
+              }
             : {}),
           // null/empty string clears the subscription; non-empty sets it.
           ...(op.triggeredByEvent === null || op.triggeredByEvent === ''

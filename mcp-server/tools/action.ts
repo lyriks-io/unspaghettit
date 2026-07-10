@@ -26,6 +26,22 @@ const actionRoleSchema = z.enum([
   'persistence'
 ] as const);
 
+const invariantRelaxationSchema = z
+  .object({
+    invariantIds: z
+      .array(z.string())
+      .min(1)
+      .describe('The invariant ids this action may leave temporarily violated.'),
+    rationale: z.string().min(1).describe('Why this action is allowed to relax them.'),
+    recoveryCondition: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('Optional RuleCondition: when the relaxation is legitimate / recovery is complete.')
+  })
+  .describe(
+    'Scoped invariant relaxation — name only the invariants this repair/admin action may relax, with a rationale. Preferred over bypassInvariants (which relaxes everything).'
+  );
+
 export const registerActionTools = (deps: ToolDeps): void => {
   const { server, ids } = deps;
 
@@ -33,7 +49,7 @@ export const registerActionTools = (deps: ToolDeps): void => {
     'add_action',
     {
       description:
-        'Append an Action under a Surface. emittedEvents can be declared up-front; flesh out parameters/rules/effects via add_parameter/add_action_rule/add_effect. Optional `roles[]` tags the action for spec-gap diagnostics (e.g. destructive, async, validation).',
+        'Append an Action under a Surface. emittedEvents can be declared up-front; flesh out parameters/rules/effects via add_parameter/add_action_rule/add_effect. Optional `roles[]` tags the action for spec-gap diagnostics (e.g. destructive, async, validation). For a repair/admin action that must leave an invariant temporarily violated, prefer `invariantRelaxation` (name only the invariants it may relax, with a rationale) over the all-or-nothing `bypassInvariants`.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -43,13 +59,14 @@ export const registerActionTools = (deps: ToolDeps): void => {
         emittedEvents: z.array(z.string()).optional(),
         roles: z.array(actionRoleSchema).optional(),
         bypassInvariants: z.boolean().optional(),
+        invariantRelaxation: invariantRelaxationSchema.optional(),
         triggeredByEvent: z.string().min(1).optional(),
         evolution: evolutionInputSchema
           .optional()
           .describe('Mark this action as a proposed Evolution (dashed placeholder) instead of committed behavior. Prefer propose_evolution for the common case.')
       }
     },
-    async ({ featureId, surfaceId, name, intent, requiredStates, emittedEvents, roles, bypassInvariants, triggeredByEvent, evolution }) => {
+    async ({ featureId, surfaceId, name, intent, requiredStates, emittedEvents, roles, bypassInvariants, invariantRelaxation, triggeredByEvent, evolution }) => {
       const action: Action = {
         id: asActionId(ids()),
         name,
@@ -63,6 +80,9 @@ export const registerActionTools = (deps: ToolDeps): void => {
         transitions: [],
         ...(roles && roles.length > 0 ? { roles: roles as readonly ActionRole[] } : {}),
         ...(bypassInvariants === true ? { bypassInvariants: true } : {}),
+        ...(invariantRelaxation
+          ? { invariantRelaxation: invariantRelaxation as unknown as Action['invariantRelaxation'] }
+          : {}),
         ...(triggeredByEvent ? { triggeredByEvent: triggeredByEvent as Action['triggeredByEvent'] } : {}),
         ...(evolution ? { evolution: normalizeEvolution(evolution) } : {})
       };
@@ -92,6 +112,7 @@ export const registerActionTools = (deps: ToolDeps): void => {
         emittedEvents: z.array(z.string()).optional(),
         roles: z.array(actionRoleSchema).optional(),
         bypassInvariants: z.boolean().optional(),
+        invariantRelaxation: invariantRelaxationSchema.nullable().optional(),
         triggeredByEvent: z.string().nullable().optional(),
         evolution: evolutionInputSchema
           .nullable()
@@ -109,6 +130,7 @@ export const registerActionTools = (deps: ToolDeps): void => {
       emittedEvents,
       roles,
       bypassInvariants,
+      invariantRelaxation,
       triggeredByEvent,
       evolution
     }) =>
@@ -128,6 +150,15 @@ export const registerActionTools = (deps: ToolDeps): void => {
               ? { roles: roles.length > 0 ? (roles as readonly ActionRole[]) : undefined }
               : {}),
             ...(bypassInvariants !== undefined ? { bypassInvariants } : {}),
+            // null clears the relaxation; an object sets it; omit to leave it.
+            ...(invariantRelaxation !== undefined
+              ? {
+                  invariantRelaxation:
+                    invariantRelaxation === null
+                      ? undefined
+                      : (invariantRelaxation as unknown as Action['invariantRelaxation'])
+                }
+              : {}),
             // null clears the subscription; an explicit string sets it; omit
             // to keep the current value.
             ...(triggeredByEvent !== undefined

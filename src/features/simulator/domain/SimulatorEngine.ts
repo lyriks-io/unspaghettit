@@ -329,6 +329,13 @@ const simulateInternal = (
   // still runs through every rule and effect; we just skip the post-flight
   // check so a broken invariant can't keep the user from fixing the data
   // that caused it (the "invariant paralysis" failure mode).
+  //
+  // `invariantRelaxation` is the scoped, preferred form: it names only the
+  // invariants (by id) this action may leave violated, so every OTHER invariant
+  // is still enforced. `bypassInvariants` (all-or-nothing) still wins if set.
+  const relaxedIds = new Set(
+    (action.invariantRelaxation?.invariantIds ?? []).map(String)
+  );
   const allInvariants = action.bypassInvariants
     ? []
     : [
@@ -345,7 +352,7 @@ const simulateInternal = (
         // must hold in EVERY reachable state, so they're still checked (the
         // unchanged pre-action state was already valid, so they hold).
         ...(application.blocked ? [] : action.invariants)
-      ];
+      ].filter((invariant) => !relaxedIds.has(String(invariant.id)));
   const invariantViolations = checkInvariants(
     allInvariants,
     application.snapshot,

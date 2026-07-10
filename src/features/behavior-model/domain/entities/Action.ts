@@ -1,6 +1,7 @@
 import type { Effect } from '../value-objects/Effect';
 import type { EventName } from '../value-objects/EventName';
-import type { ActionId } from '../value-objects/ids';
+import type { ActionId, InvariantId } from '../value-objects/ids';
+import type { RuleCondition } from '../value-objects/RuleCondition';
 import type { StatePath } from '../value-objects/StatePath';
 import type { Invariant } from './Invariant';
 import type { Parameter } from './Parameter';
@@ -88,6 +89,31 @@ export type Evolution = {
   readonly dismissed?: boolean;
 };
 
+/**
+ * Scoped, auditable relaxation of specific invariants for a repair / admin
+ * action — the safe replacement for the blunt {@link Action.bypassInvariants}
+ * boolean. Instead of silently skipping EVERY post-flight invariant, the action
+ * names exactly which invariants it may leave temporarily violated, why, and
+ * (optionally) the condition that describes when the relaxation is legitimate
+ * or recovery is complete.
+ *
+ * The simulator skips only the named invariants after this action runs; every
+ * other feature / surface / action invariant is still enforced. Prefer this
+ * over `bypassInvariants`, which relaxes everything with no rationale.
+ */
+export type InvariantRelaxation = {
+  /** The specific invariants (by id) this action may leave temporarily violated. */
+  readonly invariantIds: readonly InvariantId[];
+  /** Why this action is allowed to relax them — surfaced in audits and reviews. */
+  readonly rationale: string;
+  /**
+   * Optional condition describing when the relaxation is legitimate, or the
+   * state a repair must restore. Documented for review and future verification;
+   * not yet enforced by the simulator.
+   */
+  readonly recoveryCondition?: RuleCondition;
+};
+
 export type Action = {
   readonly id: ActionId;
   readonly name: string;
@@ -127,8 +153,20 @@ export type Action = {
    * (e.g. "Force Recompute Balances" when Σ != 0 has frozen every other
    * action via a feature invariant). The dashboard should mark these
    * conspicuously. Optional; treated as `false` when absent.
+   *
+   * Blunt: it relaxes EVERYTHING. Prefer {@link Action.invariantRelaxation},
+   * which names only the invariants that may be relaxed and records why.
    */
   readonly bypassInvariants?: boolean;
+  /**
+   * Scoped invariant relaxation: the specific invariants this repair/admin
+   * action may leave temporarily violated, with a rationale (and optional
+   * recovery condition). The simulator skips ONLY these after the action runs;
+   * every other invariant is still enforced. Preferred over the all-or-nothing
+   * `bypassInvariants`. Optional; absent means no relaxation. If both are set,
+   * `bypassInvariants` still wins (skips everything).
+   */
+  readonly invariantRelaxation?: InvariantRelaxation;
   /**
    * Marks this action as an event handler. When ANY action in the feature
    * emits an event with this name (via an `emit_event` effect), this action

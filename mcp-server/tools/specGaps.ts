@@ -142,6 +142,15 @@ export const detectSpecGaps = (
     }
   }
 
+  // Every invariant id in the feature — used to validate that a scoped
+  // invariantRelaxation names an invariant that actually exists.
+  const allInvariantIds = new Set<string>();
+  for (const inv of feature.featureInvariants ?? []) allInvariantIds.add(String(inv.id));
+  for (const s of feature.surfaces) {
+    for (const inv of s.invariants) allInvariantIds.add(String(inv.id));
+    for (const c of s.actions) for (const inv of c.invariants) allInvariantIds.add(String(inv.id));
+  }
+
   feature.surfaces.forEach((surface: Surface, surfaceIndex: number) => {
     if (
       surface.stateDefinitions.length === 0 &&
@@ -237,6 +246,34 @@ export const detectSpecGaps = (
           reason: `Action "${cap.name}" has no ImplementationStatus entry.`,
           suggestedFix: 'Report implementation via report_implementation_status'
         });
+      }
+
+      // The blunt bypassInvariants relaxes EVERY invariant with no rationale.
+      // Nudge toward the scoped, auditable form.
+      if (cap.bypassInvariants === true) {
+        recommended.push({
+          severity: 'recommended',
+          entityType: 'action',
+          entityId: String(cap.id),
+          entityName: cap.name,
+          reason: `Action "${cap.name}" uses bypassInvariants, which silently skips every invariant after it runs.`,
+          suggestedFix:
+            'Replace it with invariantRelaxation naming only the invariants this action must relax, plus a rationale.'
+        });
+      }
+      // A scoped relaxation that names an invariant which does not exist relaxes
+      // nothing (or masks a rename); flag the dangling reference.
+      for (const invId of cap.invariantRelaxation?.invariantIds ?? []) {
+        if (!allInvariantIds.has(String(invId))) {
+          recommended.push({
+            severity: 'recommended',
+            entityType: 'action',
+            entityId: String(cap.id),
+            entityName: cap.name,
+            reason: `Action "${cap.name}" declares invariantRelaxation for "${String(invId)}", but no invariant with that id exists in the feature.`,
+            suggestedFix: 'Fix the invariant id, or drop it from invariantRelaxation.invariantIds.'
+          });
+        }
       }
 
       // Decision-table analysis: contradictory, dead, redundant, or shadowed
