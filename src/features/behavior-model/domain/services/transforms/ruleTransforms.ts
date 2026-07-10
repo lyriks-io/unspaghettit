@@ -1,8 +1,16 @@
+import type { ActionOutcome } from '../../entities/ActionOutcome';
 import type { Feature } from '../../entities/Feature';
 import type { Invariant } from '../../entities/Invariant';
 import type { Rule } from '../../entities/Rule';
 import type { Effect } from '../../value-objects/Effect';
-import type { ActionId, EffectId, InvariantId, RuleId, SurfaceId } from '../../value-objects/ids';
+import type {
+  ActionId,
+  EffectId,
+  InvariantId,
+  OutcomeId,
+  RuleId,
+  SurfaceId
+} from '../../value-objects/ids';
 import { mustMap, updateActionIn, updateSurface } from './internal';
 
 export const addRuleToSurface = (
@@ -227,6 +235,37 @@ export const removeInvariantFromSurface = (
     ...s,
     invariants: s.invariants.filter((i) => i.id !== invariantId)
   }));
+
+// ─── Action outcomes ──────────────────────────────────────────────────────
+// The terminal results an action can resolve to beyond success/blocked. Same
+// add/remove shape as the other action sub-collections, against the optional
+// `action.outcomes` list (defaults to []).
+
+export const addOutcomeToCapability = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  outcome: ActionOutcome
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (c) => ({
+      ...c,
+      outcomes: [...(c.outcomes ?? []), outcome]
+    }))
+  );
+
+export const removeOutcomeFromCapability = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  outcomeId: OutcomeId
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (c) => ({
+      ...c,
+      outcomes: (c.outcomes ?? []).filter((o) => o.id !== outcomeId)
+    }))
+  );
 
 // ─── Feature-level invariants ─────────────────────────────────────────────
 // Cross-surface invariants checked after every action regardless of which

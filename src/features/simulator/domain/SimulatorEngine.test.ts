@@ -8,6 +8,7 @@ import {
   asEffectId,
   asFeatureId,
   asInvariantId,
+  asOutcomeId,
   asParameterId,
   asRuleId,
   asStateDefinitionId,
@@ -317,6 +318,111 @@ describe('simulate', () => {
     const blocked = simulate({ surface, action: strict, snapshot: {}, parameters: {} });
     expect(blocked.status).toBe('blocked');
     expect(blocked.invariantViolations.length).toBeGreaterThan(0);
+  });
+
+  it('resolves the first matching first-class outcome and applies its effects', () => {
+    const surface: Surface = {
+      id: asSurfaceId('checkout'),
+      name: 'Checkout',
+      type: 'screen',
+      stateDefinitions: [
+        {
+          id: asStateDefinitionId('os'),
+          path: asStatePath('order.status'),
+          type: 'enum',
+          enumValues: ['pending', 'charging', 'paid', 'declined'],
+          defaultValue: 'pending'
+        },
+        {
+          id: asStateDefinitionId('pd'),
+          path: asStatePath('payment.declined'),
+          type: 'boolean',
+          defaultValue: false
+        }
+      ],
+      actions: [],
+      rules: [],
+      invariants: [],
+      transitions: []
+    };
+    const charge: Action = {
+      id: asActionId('charge'),
+      name: 'Charge',
+      intent: 'Charge the card.',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [
+        {
+          id: asEffectId('mark-charging'),
+          type: 'set_state',
+          path: asStatePath('order.status'),
+          value: 'charging'
+        }
+      ],
+      emittedEvents: [],
+      transitions: [],
+      outcomes: [
+        {
+          id: asOutcomeId('declined'),
+          name: 'Declined',
+          kind: 'failure',
+          condition: { left: asStatePath('payment.declined'), operator: 'is_true' },
+          effects: [
+            {
+              id: asEffectId('mark-declined'),
+              type: 'set_state',
+              path: asStatePath('order.status'),
+              value: 'declined'
+            }
+          ]
+        },
+        {
+          id: asOutcomeId('paid'),
+          name: 'Paid',
+          kind: 'success',
+          effects: [
+            {
+              id: asEffectId('mark-paid'),
+              type: 'set_state',
+              path: asStatePath('order.status'),
+              value: 'paid'
+            }
+          ]
+        }
+      ]
+    };
+
+    const declined = simulate({
+      surface,
+      action: charge,
+      snapshot: { payment: { declined: true } },
+      parameters: {}
+    });
+    expect(declined.status).toBe('success');
+    expect(declined.outcome).toEqual({ name: 'Declined', kind: 'failure', outcomeId: 'declined' });
+    expect((declined.nextState.order as { status: string }).status).toBe('declined');
+
+    const paid = simulate({
+      surface,
+      action: charge,
+      snapshot: { payment: { declined: false } },
+      parameters: {}
+    });
+    expect(paid.outcome?.kind).toBe('success');
+    expect((paid.nextState.order as { status: string }).status).toBe('paid');
+  });
+
+  it('leaves outcome undefined when an action declares none (back-compat)', () => {
+    const result = simulate({
+      surface: buildCanvasSurface(),
+      action: deleteSelection,
+      snapshot: { selection: { count: 3 } },
+      parameters: {}
+    });
+    expect(result.status).toBe('success');
+    expect(result.outcome).toBeUndefined();
   });
 
   it('invariantRelaxation still enforces the invariants it does not name', () => {

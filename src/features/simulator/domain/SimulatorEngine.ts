@@ -29,6 +29,7 @@ import { mergeSnapshotWithDefaults } from '$features/behavior-model/domain/servi
 import { normalizeSnapshot, type StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
 import {
   fromApplication,
+  type ActionOutcomeResult,
   type CascadedHandlerResult,
   type EvaluatedRuleRecord,
   type SimulationResult
@@ -299,6 +300,7 @@ const simulateInternal = (
     evaluatedRules.push(...capabilityEval.records);
   }
 
+  let selectedOutcome: ActionOutcomeResult | undefined;
   if (!application.blocked) {
     for (const effect of action.effects) {
       application = applyEffect(application, effect, filledParams, constants);
@@ -306,6 +308,24 @@ const simulateInternal = (
         ...application,
         snapshot: recomputeDerived(application.snapshot, derivedDefs, constants)
       };
+    }
+    // First-class outcomes: after the action's own effects, resolve which
+    // declared result the run landed on — the first outcome whose condition
+    // holds (a condition-less outcome is the catch-all default) — and apply
+    // that outcome's effects. Purely additive: with no outcomes declared the
+    // action just succeeds, exactly as before.
+    const outcome = (action.outcomes ?? []).find((candidate) =>
+      evaluateCondition(candidate.condition, application.snapshot, filledParams, constants)
+    );
+    if (outcome) {
+      selectedOutcome = { name: outcome.name, kind: outcome.kind, outcomeId: outcome.id };
+      for (const effect of outcome.effects ?? []) {
+        application = applyEffect(application, effect, filledParams, constants);
+        application = {
+          ...application,
+          snapshot: recomputeDerived(application.snapshot, derivedDefs, constants)
+        };
+      }
     }
   } else if (action.onBlockedEffects && action.onBlockedEffects.length > 0) {
     // Universal "what to do when something blocked" fallbacks. State mutations
@@ -371,7 +391,8 @@ const simulateInternal = (
     evaluatedRules,
     application,
     previousState: completeSnapshot,
-    invariantViolations
+    invariantViolations,
+    outcome: selectedOutcome
   });
 
   // Event-handler cascade. Only triggers on a successful action that emitted

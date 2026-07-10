@@ -1,3 +1,4 @@
+import type { ActionOutcome } from './ActionOutcome';
 import type { Effect } from '../value-objects/Effect';
 import type { EventName } from '../value-objects/EventName';
 import type { ActionId, InvariantId } from '../value-objects/ids';
@@ -167,6 +168,14 @@ export type Action = {
    * `bypassInvariants` still wins (skips everything).
    */
   readonly invariantRelaxation?: InvariantRelaxation;
+  /**
+   * The terminal results this action can resolve to beyond success / blocked
+   * (a decline, a timeout, a queued job, a partial completion). The simulator
+   * picks the first outcome whose condition holds after the action's effects
+   * apply and runs that outcome's effects. Optional and purely additive: with
+   * no outcomes an action simply succeeds. See {@link ActionOutcome}.
+   */
+  readonly outcomes?: readonly ActionOutcome[];
   /**
    * Marks this action as an event handler. When ANY action in the feature
    * emits an event with this name (via an `emit_event` effect), this action

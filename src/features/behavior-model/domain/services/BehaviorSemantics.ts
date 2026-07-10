@@ -127,7 +127,8 @@ export const effectStateWrites = (effect: Effect): readonly StatePath[] => {
 export const actionEffects = (action: Action): readonly Effect[] => [
   ...action.effects,
   ...(action.onBlockedEffects ?? []),
-  ...action.rules.map((rule) => rule.effect)
+  ...action.rules.map((rule) => rule.effect),
+  ...(action.outcomes ?? []).flatMap((outcome) => outcome.effects ?? [])
 ];
 
 const ruleStateReads = (rule: Rule): readonly StatePath[] => [
@@ -141,7 +142,11 @@ export const actionStateReads = (action: Action): readonly StatePath[] =>
       ...action.rules.flatMap(ruleStateReads),
       ...action.invariants.flatMap((invariant) => conditionStateReads(invariant.condition)),
       ...action.effects.flatMap(effectStateReads),
-      ...(action.onBlockedEffects ?? []).flatMap(effectStateReads)
+      ...(action.onBlockedEffects ?? []).flatMap(effectStateReads),
+      ...(action.outcomes ?? []).flatMap((outcome) => [
+        ...conditionStateReads(outcome.condition),
+        ...(outcome.effects ?? []).flatMap(effectStateReads)
+      ])
     ],
     String
   );

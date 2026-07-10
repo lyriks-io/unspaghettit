@@ -4,11 +4,28 @@ import type {
 } from '$features/behavior-model/domain/services/EffectApplier';
 import type { ParameterError } from '$features/behavior-model/domain/services/ParameterValidator';
 import type { InvariantViolation } from '$features/behavior-model/domain/services/InvariantChecker';
-import type { ActionId, RuleId, SurfaceId } from '$features/behavior-model/domain/value-objects/ids';
+import type {
+  ActionId,
+  OutcomeId,
+  RuleId,
+  SurfaceId
+} from '$features/behavior-model/domain/value-objects/ids';
+import type { ActionOutcomeKind } from '$features/behavior-model/domain/entities/ActionOutcome';
 import type { EventName } from '$features/behavior-model/domain/value-objects/EventName';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
 
 export type SimulationStatus = 'success' | 'blocked';
+
+/**
+ * The declared outcome a successful action resolved to (see ActionOutcome).
+ * Absent when the action declares no outcomes or was blocked. `status` remains
+ * the coarse success/blocked gate; this is the finer semantic result.
+ */
+export type ActionOutcomeResult = {
+  readonly name: string;
+  readonly kind: ActionOutcomeKind;
+  readonly outcomeId?: OutcomeId;
+};
 
 export type EvaluatedRuleRecord = {
   readonly ruleId: RuleId;
@@ -35,6 +52,11 @@ export type SimulationResult = {
   readonly invariantViolations: readonly InvariantViolation[];
   readonly transition: SurfaceId | null;
   /**
+   * Which declared outcome the action resolved to (see ActionOutcome). Absent
+   * when the action declares no outcomes, none matched, or it was blocked.
+   */
+  readonly outcome?: ActionOutcomeResult;
+  /**
    * Event handlers that ran as a cascade after this action's effects.
    * Empty when no handlers subscribed, or when the simulator wasn't given
    * a feature context (legacy callers). Each entry is the SimulationResult
@@ -60,6 +82,7 @@ export const fromApplication = (params: {
   application: EffectApplication;
   previousState: StateSnapshot;
   invariantViolations: readonly InvariantViolation[];
+  outcome?: ActionOutcomeResult;
   cascadedHandlers?: readonly CascadedHandlerResult[];
 }): SimulationResult => ({
   actionId: params.actionId,
@@ -73,6 +96,7 @@ export const fromApplication = (params: {
   nextState: params.application.snapshot,
   invariantViolations: params.invariantViolations,
   transition: params.application.transition,
+  ...(params.outcome ? { outcome: params.outcome } : {}),
   ...(params.cascadedHandlers && params.cascadedHandlers.length > 0
     ? { cascadedHandlers: params.cascadedHandlers }
     : {})

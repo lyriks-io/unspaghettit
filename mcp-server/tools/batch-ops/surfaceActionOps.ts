@@ -1,9 +1,12 @@
 import * as T from '../../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { Action } from '../../../src/features/behavior-model/domain/entities/Action';
+import type { ActionOutcome } from '../../../src/features/behavior-model/domain/entities/ActionOutcome';
 import type { Feature } from '../../../src/features/behavior-model/domain/entities/Feature';
 import type { Surface } from '../../../src/features/behavior-model/domain/entities/Surface';
 import {
   asActionId,
+  asEffectId,
+  asOutcomeId,
   asSurfaceId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
 import { normalizeEvolutionLoose } from '../_evolution';
@@ -167,6 +170,42 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asActionId(resolve(op, refs, 'actionRef', 'actionId')),
         directionDelta(op)
+      );
+      break;
+
+    // ── Action outcome ──────────────────────────────────────────────
+    case 'add_action_outcome': {
+      // `outcomeKind` (not `kind`, which is the op discriminator) carries the
+      // ActionOutcome kind. Inline effects get fresh ids minted here.
+      const rawEffects = Array.isArray(op.effects) ? op.effects : [];
+      const effects = rawEffects.map(
+        (e) => ({ ...(e as Record<string, unknown>), id: asEffectId(mintId()) })
+      ) as unknown as ActionOutcome['effects'];
+      const outcome: ActionOutcome = {
+        id: asOutcomeId(mintId()),
+        name: op.name as string,
+        kind: op.outcomeKind as ActionOutcome['kind'],
+        ...(op.condition && typeof op.condition === 'object'
+          ? { condition: op.condition as ActionOutcome['condition'] }
+          : {}),
+        ...(effects && effects.length > 0 ? { effects } : {}),
+        ...(typeof op.description === 'string' ? { description: op.description } : {})
+      };
+      exp = T.addOutcomeToCapability(
+        exp,
+        asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
+        asActionId(resolve(op, refs, 'actionRef', 'actionId')),
+        outcome
+      );
+      remember(op.ref, outcome.id);
+      break;
+    }
+    case 'remove_action_outcome':
+      exp = T.removeOutcomeFromCapability(
+        exp,
+        asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
+        asActionId(resolve(op, refs, 'actionRef', 'actionId')),
+        asOutcomeId(op.outcomeId as string)
       );
       break;
 
