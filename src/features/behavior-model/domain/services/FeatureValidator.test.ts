@@ -10,10 +10,13 @@ import {
   asActionId,
   asConstantId,
   asEffectId,
+  asEntityId,
   asEventDefinitionId,
   asFeatureId,
   asParameterId,
+  asPersonaId,
   asReachabilityGoalId,
+  asResourceId,
   asRuleId,
   asScenarioId,
   asStateDefinitionId,
@@ -1069,6 +1072,143 @@ describe('reference-integrity hardening (params, bindToStatePath, scenarios)', (
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.errors.some((e) => /expected-assertion path "nope\.assert"/.test(e))).toBe(true);
+    }
+  });
+});
+
+describe('reference-integrity hardening (events, resources, personas, quantifiers)', () => {
+  it('rejects a triggeredByEvent whose name is not a valid event name, catalog or not', () => {
+    const feat: Feature = {
+      ...storefrontFeature,
+      surfaces: storefrontFeature.surfaces.map((s, i) =>
+        i === 0
+          ? {
+              ...s,
+              actions: s.actions.map((a, j) =>
+                j === 0 ? ({ ...a, triggeredByEvent: 'Bad Name!' } as never) : a
+              )
+            }
+          : s
+      )
+    };
+    const result = validateFeature(feat);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /triggeredByEvent/.test(e))).toBe(true);
+    }
+  });
+
+  it('rejects an entity resourceId that does not resolve to a declared resource', () => {
+    const feat: Feature = {
+      ...storefrontFeature,
+      entities: [
+        {
+          id: asEntityId('e1'),
+          namespace: 'ghost',
+          description: 'Entity with a dangling resource link.',
+          fields: [],
+          resourceId: asResourceId('nope-res')
+        } as never
+      ]
+    };
+    const result = validateReferenceIntegrity(feat);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /resourceId "nope-res" does not resolve/.test(e))).toBe(true);
+    }
+  });
+
+  it('rejects a persona stateOverride path not declared on any surface', () => {
+    const feat: Feature = {
+      ...storefrontFeature,
+      personas: [
+        {
+          id: asPersonaId('p1'),
+          name: 'Ghost',
+          description: 'Persona with a bad override path.',
+          stateOverrides: [{ path: asStatePath('nope.persona'), value: 1 }],
+          parameterOverrides: []
+        } as never
+      ]
+    };
+    const result = validateReferenceIntegrity(feat);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /stateOverride path "nope\.persona"/.test(e))).toBe(true);
+    }
+  });
+
+  // A self-contained surface with an array state and an action whose rule is an
+  // all_match quantifier, so the body's outer references can be exercised.
+  const withQuantifier = (rightPath: string): Feature => ({
+    ...storefrontFeature,
+    surfaces: [
+      ...storefrontFeature.surfaces,
+      {
+        id: asSurfaceId('q'),
+        name: 'Quant',
+        type: 'screen',
+        description: 'Surface for quantifier-body tests.',
+        stateDefinitions: [
+          {
+            id: asStateDefinitionId('q-items'),
+            path: asStatePath('q.items'),
+            type: 'array',
+            defaultValue: [],
+            description: 'The list quantified over.'
+          },
+          {
+            id: asStateDefinitionId('q-cap'),
+            path: asStatePath('q.cap'),
+            type: 'number',
+            defaultValue: 0,
+            description: 'An outer threshold the body may compare to.'
+          }
+        ] as never,
+        rules: [
+          {
+            id: asRuleId('q-r'),
+            category: 'validation',
+            condition: {
+              kind: 'all_match',
+              overPath: asStatePath('q.items'),
+              as: 'line',
+              // `line.qty` is element-scoped (valid); the right compares to
+              // `rightPath`, which the test flips between a declared outer path
+              // and an undeclared one.
+              where: {
+                left: asStatePath('line.qty'),
+                operator: 'greater_than',
+                right: { kind: 'state', path: asStatePath(rightPath) }
+              }
+            },
+            description: 'Every line qty must exceed the outer threshold.',
+            effect: {
+              id: asEffectId('q-e'),
+              type: 'block_action',
+              reason: 'A line is under the cap.',
+              description: 'Rejects when any line is under the outer cap.'
+            }
+          }
+        ] as never,
+        invariants: [],
+        transitions: [],
+        actions: []
+      }
+    ] as never
+  });
+
+  it('accepts a quantifier body that references a declared outer path (element-scoped refs skipped)', () => {
+    expect(validateReferenceIntegrity(withQuantifier('q.cap')).valid).toBe(true);
+  });
+
+  it('rejects a quantifier body that references an undeclared outer path', () => {
+    const result = validateReferenceIntegrity(withQuantifier('q.ghost'));
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /quantifier body references unknown state path "q\.ghost"/.test(e))).toBe(
+        true
+      );
     }
   });
 });

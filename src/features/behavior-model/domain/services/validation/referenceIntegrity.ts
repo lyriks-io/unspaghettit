@@ -4,7 +4,10 @@ import { isExpression } from '../../value-objects/Expression';
 import { CLOCK_NOW_PATH } from '../../value-objects/SimulationClock';
 import {
   flattenLeafConditions,
+  isCompositeCondition,
   isParamLeft,
+  isQuantifierCondition,
+  type LeafRuleCondition,
   type RuleCondition
 } from '../../value-objects/RuleCondition';
 import { requireDescription, type ValidationResult } from './shared';
@@ -261,6 +264,86 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     }
   };
 
+  // A ref is element-scoped when it names, or is nested under, a quantifier's
+  // bound element (`as`). Those are resolved by the evaluator's binding, not by
+  // the declared state, so they must be skipped when validating a body.
+  const isBoundRef = (ref: string, bound: ReadonlySet<string>): boolean => {
+    for (const b of bound) {
+      if (ref === b || ref.startsWith(`${b}.`)) return true;
+    }
+    return false;
+  };
+
+  // Validate the OUTER references inside quantifier bodies (all_match/any_match
+  // `where`). flattenLeafConditions surfaces a quantifier's overPath but never
+  // descends into its body, because the body's leaves may reference the scoped
+  // `as` binding, which isn't a declared outer path. Here we DO descend: skip
+  // element-scoped refs and validate the rest (real outer state paths + params)
+  // the same way a normal leaf is. `paths` is the declared-path set for the
+  // scope (per-surface, or the any-surface union for feature invariants/goals).
+  const checkQuantifierBodies = (
+    condition: RuleCondition | undefined,
+    paths: Set<string>,
+    label: string,
+    paramNames: ReadonlySet<string> | undefined
+  ): void => {
+    const checkOuterExpr = (value: unknown, bound: ReadonlySet<string>): void => {
+      if (!isExpression(value)) return;
+      const acc: string[] = [];
+      collectExpressionStatePaths(value, acc);
+      for (const p of acc) {
+        if (!isBoundRef(p, bound) && !paths.has(p)) {
+          errors.push(`${label}: quantifier body references unknown state path "${p}".`);
+        }
+      }
+      checkExpressionParams(value, paramNames, `${label}: quantifier body`);
+    };
+    const checkLeaf = (leaf: LeafRuleCondition, bound: ReadonlySet<string>): void => {
+      if (isParamLeft(leaf.left)) {
+        const name = leaf.left.name;
+        if (!paramNames) {
+          errors.push(
+            `${label}: quantifier body references parameter "${name}" but this scope has no parameters.`
+          );
+        } else if (!paramNames.has(name)) {
+          errors.push(
+            `${label}: quantifier body references parameter "${name}" but the action has no parameter with that name.`
+          );
+        }
+      } else if (
+        typeof leaf.left === 'string' &&
+        !isBoundRef(leaf.left, bound) &&
+        !paths.has(leaf.left)
+      ) {
+        errors.push(`${label}: quantifier body condition.left "${leaf.left}" is not a declared state path.`);
+      }
+      checkOuterExpr(leaf.right, bound);
+    };
+    const walk = (node: RuleCondition, bound: ReadonlySet<string>, inBody: boolean): void => {
+      if (isCompositeCondition(node)) {
+        if (node.kind === 'not') walk(node.condition, bound, inBody);
+        else for (const sub of node.conditions) walk(sub, bound, inBody);
+        return;
+      }
+      if (isQuantifierCondition(node)) {
+        // A nested quantifier's overPath is an outer array ref (unless scoped by
+        // an enclosing binding). Top-level overPaths are already validated by
+        // the caller via flattenLeafConditions, so only check when in a body.
+        if (inBody && !isBoundRef(String(node.overPath), bound) && !paths.has(String(node.overPath))) {
+          errors.push(`${label}: quantifier body overPath "${node.overPath}" is not a declared state path.`);
+        }
+        const nextBound = new Set(bound);
+        nextBound.add(node.as);
+        walk(node.where, nextBound, true);
+        return;
+      }
+      // Plain leaf: the caller validates top-level leaves; we only own the ones
+      // reached inside a quantifier body.
+      if (inBody) checkLeaf(node, bound);
+    };
+    if (condition) walk(condition, new Set(), false);
+  };
+
   const checkEffect = (
     effect: { readonly id: string; readonly type: string } & Record<string, unknown>,
     surfaceId: string,
@@ -400,6 +483,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       }
       checkExpressionParams(leaf.right, paramNames, `${label}: condition.right`);
     }
+    checkQuantifierBodies(condition, paths, label, paramNames);
   };
 
   for (const surface of feature.surfaces) {
@@ -571,6 +655,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       }
       checkExpressionParams(leaf.right, undefined, `Feature invariant ${inv.id}: condition.right`);
     }
+    checkQuantifierBodies(inv.condition, anySurfacePaths, `Feature invariant ${inv.id}`, undefined);
   }
 
   // Reachability/liveness goals: like feature invariants, they run outside any
@@ -613,6 +698,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       }
       checkExpressionParams(leaf.right, undefined, `Reachability goal ${goal.id}: condition.right`);
     }
+    checkQuantifierBodies(goal.condition, anySurfacePaths, `Reachability goal ${goal.id}`, undefined);
   }
 
   // Constant reference integrity. A `{kind:'const', name}` node resolves to a
@@ -733,6 +819,44 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         for (const [i, step] of (scenario.steps ?? []).entries()) {
           checkScenarioAssertions(step.expectedAssertions, `${base} step[${i}]`);
         }
+      }
+    }
+  }
+
+  // Resource back-references. Entity.resourceId and Parameter.resourceId point
+  // at a feature-level Resource for compliance/provenance; they don't drive the
+  // simulation, but a dangling id is still a broken link. Diff-aware, so a
+  // legacy dangling ref only blocks the edit that reintroduces it.
+  const resourceIds = new Set<string>();
+  for (const r of feature.resources) resourceIds.add(String(r.id));
+  for (const entity of feature.entities) {
+    if (entity.resourceId !== undefined && !resourceIds.has(String(entity.resourceId))) {
+      errors.push(
+        `Entity "${entity.namespace}": resourceId "${entity.resourceId}" does not resolve to a declared feature resource.`
+      );
+    }
+  }
+  for (const surface of feature.surfaces) {
+    for (const cap of surface.actions) {
+      for (const param of cap.parameters) {
+        if (param.resourceId !== undefined && !resourceIds.has(String(param.resourceId))) {
+          errors.push(
+            `Action ${cap.id} parameter "${param.name}": resourceId "${param.resourceId}" does not resolve to a declared feature resource.`
+          );
+        }
+      }
+    }
+  }
+
+  // Persona state overrides arrange the initial snapshot by state path (feature-
+  // wide, applied before any scenario overrides). A path declared nowhere
+  // silently sets junk state, the same class as a scenario stateOverride typo.
+  for (const persona of feature.personas) {
+    for (const ov of persona.stateOverrides ?? []) {
+      if (!anySurfacePaths.has(String(ov.path))) {
+        errors.push(
+          `Persona ${persona.id} ("${persona.name}"): stateOverride path "${ov.path}" is not declared on any surface in the feature.`
+        );
       }
     }
   }

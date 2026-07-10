@@ -466,6 +466,15 @@ export const validateFeature = (feature: Feature): ValidationResult => {
           errors.push(eventNameError(name, `Action ${cap.id} emittedEvents`));
         }
       }
+      // triggeredByEvent is an event NAME too, but the catalog-gated
+      // reference check skips it when no events are declared — so validate its
+      // format here, regardless of the catalog, the same way emittedEvents are.
+      if (cap.triggeredByEvent !== undefined) {
+        const name = String(cap.triggeredByEvent);
+        if (!isEventName(name)) {
+          errors.push(eventNameError(name, `Action ${cap.id} triggeredByEvent`));
+        }
+      }
       const checkEffect = (effect: { type: string; event?: unknown }, where: string) => {
         if (effect.type === 'emit_event' && effect.event !== undefined) {
           const name = String(effect.event);

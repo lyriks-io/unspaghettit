@@ -37,6 +37,54 @@ export const removeTransitionFromSurface = (
     transitions: s.transitions.filter((t) => t.id !== transitionId)
   }));
 
+// ─── Transitions (action-scoped) ─────────────────────────────────────────
+// An action can carry its own transitions[] (declarative "this action leads
+// here" edges the diagram / graph / coverage read), distinct from the
+// surface's. Mirrors the surface helpers above but against action.transitions.
+
+export const addTransitionToCapability = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  transition: Transition
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (c) => ({
+      ...c,
+      transitions: [...(c.transitions ?? []), transition]
+    }))
+  );
+
+export const updateTransitionOnCapability = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  transitionId: TransitionId,
+  patch: Partial<Transition>
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (c) => ({
+      ...c,
+      transitions: mustMap(c.transitions ?? [], String(transitionId), 'transition', (t) => ({
+        ...t,
+        ...patch
+      }))
+    }))
+  );
+
+export const removeTransitionFromCapability = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  transitionId: TransitionId
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (c) => ({
+      ...c,
+      transitions: (c.transitions ?? []).filter((t) => t.id !== transitionId)
+    }))
+  );
+
 // ─── Scenarios (action-scoped) ───────────────────────────────────────────
 
 export const addScenarioToCapability = (

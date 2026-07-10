@@ -8,6 +8,7 @@ import type { StateValue } from '../../../src/features/behavior-model/domain/val
 import type { Transition } from '../../../src/features/behavior-model/domain/entities/Transition';
 import type { ValueSet } from '../../../src/features/behavior-model/domain/entities/ValueSet';
 import {
+  asActionId,
   asConstantId,
   asEntityFieldId,
   asEntityId,
@@ -36,6 +37,8 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
   let exp = ctx.feature;
   switch (op.kind) {
     // ── Transitions ─────────────────────────────────────────────────
+    // Surface-scoped by default; pass actionRef|actionId to attach to that
+    // action's own transitions[] instead.
     case 'add_transition': {
       const target = asSurfaceId(resolve(op, refs, 'targetRef', 'target'));
       const trans: Transition = {
@@ -44,35 +47,53 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
         ...(typeof op.label === 'string' ? { label: op.label } : {}),
         ...(typeof op.description === 'string' ? { description: op.description } : {})
       };
-      exp = T.addTransitionToSurface(
-        exp,
-        asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
-        trans
-      );
+      const sid = asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId'));
+      exp =
+        'actionId' in op || 'actionRef' in op
+          ? T.addTransitionToCapability(
+              exp,
+              sid,
+              asActionId(resolve(op, refs, 'actionRef', 'actionId')),
+              trans
+            )
+          : T.addTransitionToSurface(exp, sid, trans);
       remember(op.ref, trans.id);
       break;
     }
-    case 'update_transition':
-      exp = T.updateTransitionOnSurface(
-        exp,
-        asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
-        asTransitionId(op.transitionId as string),
-        {
-          ...('target' in op || 'targetRef' in op
-            ? { target: asSurfaceId(resolve(op, refs, 'targetRef', 'target')) }
-            : {}),
-          ...(typeof op.label === 'string' ? { label: op.label } : {}),
-          ...(typeof op.description === 'string' ? { description: op.description } : {})
-        }
-      );
+    case 'update_transition': {
+      const sid = asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId'));
+      const patch = {
+        ...('target' in op || 'targetRef' in op
+          ? { target: asSurfaceId(resolve(op, refs, 'targetRef', 'target')) }
+          : {}),
+        ...(typeof op.label === 'string' ? { label: op.label } : {}),
+        ...(typeof op.description === 'string' ? { description: op.description } : {})
+      };
+      exp =
+        'actionId' in op || 'actionRef' in op
+          ? T.updateTransitionOnCapability(
+              exp,
+              sid,
+              asActionId(resolve(op, refs, 'actionRef', 'actionId')),
+              asTransitionId(op.transitionId as string),
+              patch
+            )
+          : T.updateTransitionOnSurface(exp, sid, asTransitionId(op.transitionId as string), patch);
       break;
-    case 'remove_transition':
-      exp = T.removeTransitionFromSurface(
-        exp,
-        asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
-        asTransitionId(op.transitionId as string)
-      );
+    }
+    case 'remove_transition': {
+      const sid = asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId'));
+      exp =
+        'actionId' in op || 'actionRef' in op
+          ? T.removeTransitionFromCapability(
+              exp,
+              sid,
+              asActionId(resolve(op, refs, 'actionRef', 'actionId')),
+              asTransitionId(op.transitionId as string)
+            )
+          : T.removeTransitionFromSurface(exp, sid, asTransitionId(op.transitionId as string));
       break;
+    }
 
     // ── Personas ────────────────────────────────────────────────────
     case 'add_persona': {

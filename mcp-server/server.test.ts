@@ -1556,7 +1556,7 @@ describe('MCP server', () => {
     await server.close();
   });
 
-  it('add_parameter persists a resourceId link', async () => {
+  it('add_parameter persists a resourceId link to a declared resource', async () => {
     const { client, server, repo } = await setup();
     const created = parseTextContent(
       await client.callTool({
@@ -1571,6 +1571,20 @@ describe('MCP server', () => {
           featureId: created.id,
           operations: [
             { kind: 'add_surface', ref: 's', name: 'S', type: 'screen', description: 'A screen.' },
+            {
+              kind: 'add_resource',
+              ref: 'res',
+              resource: {
+                name: 'Users',
+                description: 'User records store.',
+                kind: 'relational_db',
+                provider: 'postgres',
+                scope: 'cloud',
+                sensitivity: 'confidential',
+                containsPii: true,
+                accessMode: 'read_write'
+              }
+            },
             { kind: 'add_action', ref: 'a', surfaceRef: 's', name: 'Save', intent: 'Save input.' }
           ]
         }
@@ -1586,11 +1600,49 @@ describe('MCP server', () => {
         type: 'email',
         required: true,
         description: 'The user email being captured.',
-        resourceId: 'res-users'
+        resourceId: batch.refs.res
       }
     });
     const param = (await repo.get(created.id as never))?.surfaces[0]?.actions[0]?.parameters[0];
-    expect(param?.resourceId).toBe('res-users');
+    expect(param?.resourceId).toBe(batch.refs.res);
+    await server.close();
+  });
+
+  it('rejects a parameter resourceId that does not resolve to a declared resource', async () => {
+    const { client, server } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Dangling res', description: 'Verifies dangling resourceId is caught.' }
+      })
+    ) as { id: string };
+    const setup2 = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            { kind: 'add_surface', ref: 's', name: 'S', type: 'screen', description: 'A screen.' },
+            { kind: 'add_action', ref: 'a', surfaceRef: 's', name: 'Save', intent: 'Save input.' }
+          ]
+        }
+      })
+    ) as { refs: Record<string, string> };
+    const result = await client.callTool({
+      name: 'add_parameter',
+      arguments: {
+        featureId: created.id,
+        surfaceId: setup2.refs.s,
+        actionId: setup2.refs.a,
+        name: 'email',
+        type: 'email',
+        required: true,
+        description: 'The user email being captured.',
+        resourceId: 'ghost-resource'
+      }
+    });
+    const r = result as { isError?: boolean; content: { text: string }[] };
+    expect(r.content[0]?.text).toMatch(/resourceId "ghost-resource" does not resolve/);
     await server.close();
   });
 
@@ -1620,6 +1672,52 @@ describe('MCP server', () => {
       await client.callTool({ name: 'get_project', arguments: { projectId: created.id } })
     ) as { domainId?: string };
     expect(cleared.domainId).toBeUndefined();
+    await server.close();
+  });
+
+  it('add_transition with actionId lands on the action, not the surface', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Action transition', description: 'Verifies action-level transition authoring.' }
+      })
+    ) as { id: string };
+    const batch = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            { kind: 'add_surface', ref: 'home', name: 'Home', type: 'screen', description: 'Home screen.' },
+            { kind: 'add_surface', ref: 'next', name: 'Next', type: 'screen', description: 'Next screen.' },
+            { kind: 'add_action', ref: 'go', surfaceRef: 'home', name: 'Go', intent: 'Advance to Next.' }
+          ]
+        }
+      })
+    ) as { refs: Record<string, string> };
+
+    const result = await client.callTool({
+      name: 'add_transition',
+      arguments: {
+        featureId: created.id,
+        surfaceId: batch.refs.home,
+        actionId: batch.refs.go,
+        target: batch.refs.next,
+        description: 'Go advances the user to the Next screen.'
+      }
+    });
+    const ack = parseTextContent(result) as { ok: true; id: string };
+    expect(ack.ok).toBe(true);
+
+    const persisted = await repo.get(created.id as never);
+    const home = persisted?.surfaces.find((s) => s.id === batch.refs.home);
+    const action = home?.actions[0];
+    // Landed on the action's transitions[], not the surface's.
+    expect(home?.transitions ?? []).toHaveLength(0);
+    expect(action?.transitions ?? []).toHaveLength(1);
+    expect(String(action?.transitions?.[0]?.target)).toBe(batch.refs.next);
+    expect(action?.transitions?.[0]?.id).toBe(ack.id);
     await server.close();
   });
 
