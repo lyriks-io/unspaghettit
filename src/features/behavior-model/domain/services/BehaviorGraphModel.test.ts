@@ -119,6 +119,62 @@ describe('BehaviorGraphModel', () => {
     );
   });
 
+  it('draws a writes edge for a collection mutation, not just set_state', () => {
+    const cartSurface: Surface = {
+      id: asSurfaceId('cart'),
+      name: 'Cart',
+      type: 'screen',
+      stateDefinitions: [
+        {
+          id: asStateDefinitionId('lines'),
+          path: asStatePath('cart.lines'),
+          type: 'array',
+          defaultValue: []
+        }
+      ],
+      rules: [],
+      invariants: [],
+      transitions: [],
+      actions: [
+        {
+          id: asActionId('add-line'),
+          name: 'Add Line',
+          intent: 'Append a line to the cart.',
+          parameters: [],
+          requiredStates: [],
+          rules: [],
+          invariants: [],
+          effects: [
+            {
+              id: asEffectId('append-line'),
+              type: 'append_to_list',
+              path: asStatePath('cart.lines'),
+              item: 'sku-1'
+            }
+          ],
+          emittedEvents: [],
+          transitions: []
+        }
+      ]
+    };
+    const cartFeature: Feature = {
+      ...feature,
+      id: asFeatureId('cartf'),
+      name: 'Cartf',
+      surfaces: [cartSurface]
+    };
+    const graph = buildBehaviorGraph([cartFeature]);
+    expect(graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          from: 'feature:cartf:effect:append-line',
+          to: 'feature:cartf:state:cart.lines',
+          kind: 'writes'
+        })
+      ])
+    );
+  });
+
   it('filters by search while preserving connected behavior context', () => {
     const view = deriveBehaviorGraphView(buildBehaviorGraph([feature], project));
     const filtered = filterBehaviorGraphView(view, {

@@ -1,5 +1,6 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
+import { effectStateWrites } from '$features/behavior-model/domain/services/BehaviorSemantics';
 import {
   flattenLeafConditions,
   isParamLeft
@@ -175,10 +176,14 @@ export const buildBehaviorGraph = (
       layer: 5
     });
     addEdge({ from: ownerId, to: effectId, kind: relation });
-    if (effect.type === 'set_state') {
-      ensureState(feature, String(effect.path));
-      addEdge({ from: effectId, to: stateIdFor(feature, effect.path), kind: 'writes' });
-    } else if (effect.type === 'emit_event') {
+    // Every state path this effect writes: set_state, the three list mutations,
+    // and advance_time (clock.now). Routing through BehaviorSemantics is what
+    // keeps a collection mutation from vanishing off the graph.
+    for (const wp of effectStateWrites(effect)) {
+      ensureState(feature, String(wp));
+      addEdge({ from: effectId, to: stateIdFor(feature, wp), kind: 'writes' });
+    }
+    if (effect.type === 'emit_event') {
       const eventId = `event:${effect.event}`;
       addNode({ id: eventId, type: 'event', label: String(effect.event), layer: 3 });
       addEdge({ from: effectId, to: eventId, kind: 'emits' });

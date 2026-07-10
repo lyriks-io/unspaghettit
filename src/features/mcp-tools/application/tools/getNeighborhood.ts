@@ -1,8 +1,11 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
-import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
-import { flattenLeafConditions } from '$features/behavior-model/domain/value-objects/RuleCondition';
+import {
+  actionEmittedEvents,
+  actionStateReads,
+  actionStateWrites
+} from '$features/behavior-model/domain/services/BehaviorSemantics';
 
 export type NeighborhoodEdgeKind = 'reads' | 'writes' | 'emits' | 'transitions' | 'contains';
 
@@ -83,22 +86,6 @@ type EdgeIndex = {
   readonly nodes: ReadonlyMap<string, NeighborhoodNode>;
 };
 
-const collectWrittenPaths = (effects: readonly Effect[]): readonly string[] => {
-  const out: string[] = [];
-  for (const e of effects) if (e.type === 'set_state') out.push(String(e.path));
-  return out;
-};
-
-const collectEmitted = (action: Action): readonly string[] => {
-  const names = new Set<string>();
-  for (const n of action.emittedEvents) names.add(String(n));
-  for (const e of action.effects) if (e.type === 'emit_event') names.add(String(e.event));
-  for (const e of action.onBlockedEffects ?? []) {
-    if (e.type === 'emit_event') names.add(String(e.event));
-  }
-  return [...names];
-};
-
 const collectTransitionTargets = (action: Action): readonly string[] => {
   const targets = new Set<string>();
   for (const e of action.effects) {
@@ -109,21 +96,6 @@ const collectTransitionTargets = (action: Action): readonly string[] => {
   }
   for (const t of action.transitions) targets.add(String(t.target));
   return [...targets];
-};
-
-const collectReadPaths = (action: Action): readonly string[] => {
-  const paths = new Set<string>();
-  for (const r of action.requiredStates) paths.add(String(r));
-  for (const rule of action.rules) {
-    for (const leaf of flattenLeafConditions(rule.condition)) paths.add(String(leaf.left));
-  }
-  for (const inv of action.invariants) {
-    for (const leaf of flattenLeafConditions(inv.condition)) paths.add(String(leaf.left));
-  }
-  for (const p of action.parameters) {
-    if (p.bindToStatePath) paths.add(String(p.bindToStatePath));
-  }
-  return [...paths];
 };
 
 /**
@@ -203,22 +175,32 @@ const buildIndex = (feature: Feature): EdgeIndex => {
       });
       addEdge({ from: sKey, to: cKey, kind: 'contains' });
 
-      for (const path of collectReadPaths(cap)) {
+      // reads: the declared requiredStates dependency plus every path
+      // BehaviorSemantics finds read in conditions, invariants, and effect
+      // expressions (list-item predicates, set_state values).
+      const reads = new Set<string>();
+      for (const r of cap.requiredStates) reads.add(String(r));
+      for (const p of actionStateReads(cap)) reads.add(String(p));
+      for (const path of reads) {
         ensureStateNode(path);
         addEdge({ from: stateNodeKey(path), to: cKey, kind: 'reads' });
       }
-      const writes = new Set<string>();
-      for (const p of collectWrittenPaths(cap.effects)) writes.add(p);
-      for (const p of collectWrittenPaths(cap.onBlockedEffects ?? [])) writes.add(p);
-      for (const rule of cap.rules) {
-        if (rule.effect.type === 'set_state') writes.add(String(rule.effect.path));
-      }
-      for (const path of writes) {
+
+      // writes: BehaviorSemantics covers set_state, the three list mutations,
+      // advance_time (clock.now), and parameter state bindings — the collection
+      // effects the old local walker missed.
+      for (const p of actionStateWrites(cap)) {
+        const path = String(p);
         ensureStateNode(path);
         addEdge({ from: cKey, to: stateNodeKey(path), kind: 'writes' });
       }
 
-      for (const evtName of collectEmitted(cap)) {
+      // emits: declared events plus every event an emit_event effect actually
+      // fires, including rule-carried emissions.
+      const emits = new Set<string>();
+      for (const n of cap.emittedEvents) emits.add(String(n));
+      for (const n of actionEmittedEvents(cap)) emits.add(String(n));
+      for (const evtName of emits) {
         const eKey = eventNodeKey(evtName);
         if (!nodes.has(eKey)) {
           nodes.set(eKey, { key: eKey, type: 'event', name: evtName });
