@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [SemVer](https://semver.org).
 
+## [0.8.0] - 2026-07-10
+
+Read the model in plain language, and compare against thresholds honestly: any scope of the behavior model now projects to a "what happens here" summary over MCP, and rules gained inclusive `>=` / `<=` comparisons.
+
+### Added
+
+- **`get_digest`: the plain-language digest is now an MCP tool.** The "what happens here" summary the dashboard renders at the top of its inspector — the things you can do here with their guards, the guardrails that always hold, and where you can navigate next — was previously dashboard-only. `get_digest` exposes the same projection to an agent for any scope: `projectId` (one clickable line per feature), `featureId` (a whole feature), `+surfaceId` (one surface), or `+surfaceId`+`actionId` (a single action). `detailLevel` gates depth (`glance` | `standard` | `full`), and `format` returns either the structured `DigestSpec` (each line carries the id of the model element it was derived from, so a caller can jump straight to it) or serialized Markdown ready to paste into a pull request or README; `hasContent` is `false` when the scope has no behavior to summarize. The prose is derived deterministically from the model — each action's intent, its block-rule reasons as guards, its effects and emitted events, invariant messages, transition labels — never LLM-generated, so it can never describe behavior that is not in the spec. Thin orchestration over the existing digest projector and Markdown exporter, so the MCP surface and the dashboard always describe behavior identically.
+- **Inclusive comparison operators `>=` and `<=` (`greater_or_equal` / `lower_or_equal`).** Rules, invariants, and scenario assertions can now say "at least" / "at most" directly instead of forcing a strict `greater_than` / `lower_than` with an off-by-one literal like `greater_than 19` to mean `>= 20` — a trick that made specs lie slightly about intent. Wired end to end: the operator union and labels, the condition evaluator (numeric and ISO-date), the scenario assertion enum, scenario test codegen (`toBeGreaterThanOrEqual` / `toBeLessThanOrEqual`), the rule and scenario MCP tools, and the operations reference. UI operator dropdowns pick them up automatically.
+
+### Changed
+
+- **`get_spec_gaps` stops crying wolf, and catches an inert declaration it used to miss.** The "no effects" gap no longer fires on an action whose behavior lives entirely in rule-carried effects (every Rule has a required effect) or in `onBlockedEffects` — correct actions were being flagged as incomplete. In exchange it gains an honest new recommended gap: an action that declares `emittedEvents` which no `emit_event` effect actually fires, so the declaration is inert at runtime (no cascade or `triggeredByEvent` handler runs). The operations resource now also documents the evaluation semantics the diagnostics assume (sequential effects, derived recompute after each, surface-rules-before-action-rules, block suppression, post-cascade assertions).
+
 ## [0.7.0] - 2026-07-07
 
 Adopt what you already built, and wear the brand: code-to-spec becomes a first-class, evidence-gated flow that yields the model, its provenance, and implementation coverage in one pass; the dashboard now defaults to the Lyriks look with the Unspaghettit lockup in every theme.
