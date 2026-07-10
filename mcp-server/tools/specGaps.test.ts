@@ -150,3 +150,52 @@ describe('detectSpecGaps — emittedEvents consistency', () => {
     expect(gaps.some((g) => g.entityId === 'emit' && g.reason.includes('inert'))).toBe(false);
   });
 });
+
+describe('detectSpecGaps — decision-table analysis', () => {
+  it('surfaces two rules that disagree on the same condition as a critical gap', () => {
+    const contradictory = action({
+      id: asActionId('dec'),
+      name: 'Approve',
+      rules: [
+        {
+          id: asRuleId('r1'),
+          category: 'permissions',
+          condition: { left: asStatePath('a.b'), operator: 'is_true' },
+          effect: { id: asEffectId('e1'), type: 'allow_action' }
+        },
+        {
+          id: asRuleId('r2'),
+          category: 'permissions',
+          condition: { left: asStatePath('a.b'), operator: 'is_true' },
+          effect: { id: asEffectId('e2'), type: 'block_action', reason: 'nope' }
+        }
+      ]
+    });
+    const gaps = detectSpecGaps(feature([contradictory]), new Set([String(contradictory.id)]));
+    const gap = gaps.find((g) => g.entityId === 'dec' && g.reason.includes('disagree'));
+    expect(gap?.severity).toBe('critical');
+  });
+
+  it('does not flag a clean, mutually-exclusive rule set', () => {
+    const clean = action({
+      id: asActionId('clean'),
+      name: 'Route',
+      rules: [
+        {
+          id: asRuleId('r1'),
+          category: 'business',
+          condition: { left: asStatePath('a.b'), operator: 'is_true' },
+          effect: { id: asEffectId('e1'), type: 'allow_action' }
+        },
+        {
+          id: asRuleId('r2'),
+          category: 'business',
+          condition: { left: asStatePath('a.b'), operator: 'is_false' },
+          effect: { id: asEffectId('e2'), type: 'block_action', reason: 'closed' }
+        }
+      ]
+    });
+    const gaps = detectSpecGaps(feature([clean]), new Set([String(clean.id)]));
+    expect(gaps.some((g) => g.entityId === 'clean' && g.reason.includes('disagree'))).toBe(false);
+  });
+});

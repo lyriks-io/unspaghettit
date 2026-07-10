@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [SemVer](https://semver.org).
 
+## [Unreleased]
+
+Make the model's own claims trustworthy, then start catching the defects a green model used to hide.
+
+### Added
+
+- **An evidence-first strict gate: `unspa check --strict` (and the `verify` MCP tool's `strict`).** One flag turns the exploratory report into a completeness claim: it enables bounded model checking, requires scenarios and 100% maturity and 100% verified implementation coverage, and promotes every advisory limitation — drift, dead actions, unmet reachability goals, actions model checking could not exercise, and a truncated exploration — from a warning to a failure. The ordinary defaults are unchanged and still fail only on the unambiguous things (a failing scenario, a reachable invariant violation), so nobody's CI changes unless they opt in. Skipped actions and truncated exploration are now first-class verdict checks either way.
+- **Decision-table analysis in `get_spec_gaps`.** The gap report now inspects each action's rule set and flags defects it can PROVE, never guesses: a rule whose condition can never hold (a conjunction that requires one state to equal two values, or to be both true and false), and two rules that fire on the same condition with disagreeing effects (allow vs block, or the same path set to different values) surface as critical gaps; a duplicate rule, a rule shadowed by an earlier unconditional block, and an action that is unconditionally blocked surface as recommended. Sound but deliberately incomplete: it stays silent where satisfiability is undecidable rather than cry wolf.
+
+### Fixed
+
+- **Two maturity checks could never fail.** Scenario coverage and required-state coverage had both collapsed into tautologies, so a complex action with no scenarios, or a partial `requiredStates` declaration, still scored the point. Both now actually gate. Alongside them a new shared `BehaviorSemantics` analyzer is the single source of truth for what an action reads, writes, and emits — it counts list mutations (`append/remove/update_list_item`), rule-carried effects, and parameter state bindings that the old scattered walkers missed, so mutating actions no longer slip past permission and dependency scoring. The permission check now keys off `persistence` / `destructive` roles rather than any transient write.
+- **Standard-library blueprints stopped over-promising.** They were documented and tested as scoring 100% maturity on insertion; they are starter models — structurally valid and free of critical defects, but rescored after insertion and expected to need domain-specific rules, scenarios, and permissions.
+
 ## [0.8.0] - 2026-07-10
 
 Read the model in plain language, and compare against thresholds honestly: any scope of the behavior model now projects to a "what happens here" summary over MCP, and rules gained inclusive `>=` / `<=` comparisons.

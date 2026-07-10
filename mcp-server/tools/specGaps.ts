@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import type { Action } from '../../src/features/behavior-model/domain/entities/Action';
 import { isEvolution } from '../../src/features/behavior-model/domain/entities/Action';
+import {
+  analyzeActionDecisions,
+  type DecisionFindingKind
+} from '../../src/features/behavior-model/domain/services/DecisionAnalysis';
 import type { Effect } from '../../src/features/behavior-model/domain/value-objects/Effect';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import type { Surface } from '../../src/features/behavior-model/domain/entities/Surface';
@@ -22,6 +26,15 @@ export type SpecGap = {
 };
 
 const normalizeName = (s: string): string => s.trim().toLowerCase();
+
+const DECISION_FIX: Record<DecisionFindingKind, string> = {
+  'dead-rule': 'Fix the contradictory condition so the rule can fire, or remove the rule.',
+  'conflicting-rules':
+    'Make the two conditions mutually exclusive, or reconcile the effects so the outcome does not depend on rule order.',
+  'redundant-rule': 'Remove the duplicate rule.',
+  'shadowed-rule': 'Move this rule before the unconditional block, or remove it.',
+  'always-blocked': 'Give the blocking rule a condition, or drop the success effects that can never run.'
+};
 
 const hasLoadingOrErrorCoverage = (action: Action): boolean => {
   const scenarios = action.scenarios ?? [];
@@ -226,6 +239,20 @@ export const detectSpecGaps = (
         });
       }
 
+      // Decision-table analysis: contradictory, dead, redundant, or shadowed
+      // rules. Every finding is provable from the rule set, so it is safe to
+      // surface as a gap rather than a guess.
+      for (const finding of analyzeActionDecisions(cap)) {
+        (finding.severity === 'critical' ? critical : recommended).push({
+          severity: finding.severity,
+          entityType: 'action',
+          entityId: String(cap.id),
+          entityName: cap.name,
+          reason: `Action "${cap.name}": ${finding.detail}`,
+          suggestedFix: DECISION_FIX[finding.kind]
+        });
+      }
+
       // surfaceIndex / capIndex are captured implicitly: forEach iterates in
       // declaration order and we push as we go.
       void surfaceIndex;
@@ -254,7 +281,7 @@ export const registerSpecGapsTool = (deps: ToolDeps): void => {
     'get_spec_gaps',
     {
       description:
-        'Diagnose spec depth: returns a prioritized to-do list of critical + recommended gaps grounded in existing entities. Critical gaps must be resolved before claiming the spec complete (missing expectedActions, stateless surfaces, effect-less actions, untested destructive actions). Recommended gaps catch shallow modeling (async without loading/error coverage, validation without blocking rule, multi-state surface without transitions, action never implemented, emittedEvents declared but never fired by an emit_event effect). Use after build/edit sessions, especially after a "don\'t-ask-just-build" pass.',
+        'Diagnose spec depth: returns a prioritized to-do list of critical + recommended gaps grounded in existing entities. Critical gaps must be resolved before claiming the spec complete (missing expectedActions, stateless surfaces, effect-less actions, untested destructive actions, and decision-table defects: a rule whose condition can never hold, or two rules that fire on the same condition with disagreeing effects). Recommended gaps catch shallow modeling (async without loading/error coverage, validation without blocking rule, multi-state surface without transitions, action never implemented, emittedEvents declared but never fired by an emit_event effect, and redundant / shadowed / unconditionally-blocked rules). Use after build/edit sessions, especially after a "don\'t-ask-just-build" pass.',
       inputSchema: { featureId: z.string() }
     },
     async ({ featureId }) => {
