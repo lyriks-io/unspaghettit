@@ -129,21 +129,6 @@ export const detectSpecGaps = (
     }
   }
 
-  // Every event name emitted ANYWHERE in the feature — by an emit_event effect
-  // (emittedEventNames) or declared on an action's emittedEvents. Feeds the
-  // dead-handler check: a triggeredByEvent whose event is in NEITHER can never
-  // fire from within this feature. Kept single-feature (like every other gap);
-  // an event delivered by a sibling feature's cascade would false-positive, so
-  // the fix note calls that out rather than making it a hard error.
-  const emittedAnywhere = new Set<string>();
-  for (const s of feature.surfaces) {
-    for (const c of s.actions) {
-      if (isEvolution(c)) continue;
-      for (const name of emittedEventNames(c)) emittedAnywhere.add(name);
-      for (const declared of c.emittedEvents) emittedAnywhere.add(String(declared));
-    }
-  }
-
   feature.surfaces.forEach((surface: Surface, surfaceIndex: number) => {
     if (
       surface.stateDefinitions.length === 0 &&
@@ -195,24 +180,6 @@ export const detectSpecGaps = (
             suggestedFix: `Add an emit_event effect for "${declared}" (on the action or a rule), or remove it from emittedEvents`
           });
         }
-      }
-
-      // Dead handler: subscribes to an event nothing in the feature emits, so
-      // it can never fire here. Common causes: a typo in the event name, or an
-      // emitter that was never wired. (An event delivered by another feature's
-      // cascade is the legitimate exception the fix note allows for.)
-      if (
-        cap.triggeredByEvent !== undefined &&
-        !emittedAnywhere.has(String(cap.triggeredByEvent))
-      ) {
-        recommended.push({
-          severity: 'recommended',
-          entityType: 'action',
-          entityId: String(cap.id),
-          entityName: cap.name,
-          reason: `Action "${cap.name}" handles event "${cap.triggeredByEvent}" (triggeredByEvent) but no action in this feature emits it — the handler can never fire from within this feature.`,
-          suggestedFix: `Add an emit_event effect for "${cap.triggeredByEvent}" on the emitting action, fix the event name, or ignore if this event is delivered by another feature's cascade`
-        });
       }
 
       if (roles.has('destructive') && (cap.scenarios ?? []).length === 0) {
@@ -287,7 +254,7 @@ export const registerSpecGapsTool = (deps: ToolDeps): void => {
     'get_spec_gaps',
     {
       description:
-        'Diagnose spec depth: returns a prioritized to-do list of critical + recommended gaps grounded in existing entities. Critical gaps must be resolved before claiming the spec complete (missing expectedActions, stateless surfaces, effect-less actions, untested destructive actions). Recommended gaps catch shallow modeling (async without loading/error coverage, validation without blocking rule, multi-state surface without transitions, action never implemented, emittedEvents declared but never fired by an emit_event effect, triggeredByEvent handler subscribing to an event no action in the feature emits). Use after build/edit sessions, especially after a "don\'t-ask-just-build" pass.',
+        'Diagnose spec depth: returns a prioritized to-do list of critical + recommended gaps grounded in existing entities. Critical gaps must be resolved before claiming the spec complete (missing expectedActions, stateless surfaces, effect-less actions, untested destructive actions). Recommended gaps catch shallow modeling (async without loading/error coverage, validation without blocking rule, multi-state surface without transitions, action never implemented, emittedEvents declared but never fired by an emit_event effect). Use after build/edit sessions, especially after a "don\'t-ask-just-build" pass.',
       inputSchema: { featureId: z.string() }
     },
     async ({ featureId }) => {
