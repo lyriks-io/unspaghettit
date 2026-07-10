@@ -17,6 +17,7 @@ import {
   findStateReferencesTool,
   getActionsTool,
   getActionTool,
+  getDigestTool,
   getFeatureIndexTool,
   getNeighborhoodTool,
   getSurfaceTool,
@@ -26,6 +27,7 @@ import {
   scoreFeatureTool,
   type NeighborhoodEdgeKind
 } from '../../src/features/mcp-tools/application/tools';
+import type { DigestScopeRef } from '../../src/features/behavior-digest/domain/ports/DigestProjector';
 import { trackTokens } from '../metrics';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import type { FeatureRepository } from '../../src/features/behavior-model/application/ports/FeatureRepository';
@@ -64,6 +66,20 @@ const loadProjectSiblings = async (
     return siblings.filter((f): f is Feature => f !== null);
   }
   return undefined;
+};
+
+/**
+ * Load every feature named by `featureIds`, dropping any that no longer resolve.
+ * Feeds a project-scope digest, which summarizes one clickable line per member
+ * feature. Order follows the project's own featureIds so the digest reads in the
+ * order the developer arranged their features.
+ */
+const loadFeaturesByIds = async (
+  repo: FeatureRepository,
+  featureIds: readonly string[]
+): Promise<readonly Feature[]> => {
+  const loaded = await Promise.all(featureIds.map((id) => repo.get(asFeatureId(id))));
+  return loaded.filter((f): f is Feature => f !== null);
 };
 
 export const registerReadTools = ({
@@ -366,6 +382,98 @@ export const registerReadTools = ({
       if (!result) return errorText(`Surface ${surfaceId} not found in feature ${featureId}`);
       const trackKey = verbose ? 'get_surface.verbose' : 'get_surface';
       return text(trackTokens(trackKey, result));
+    }
+  );
+
+  server.registerTool(
+    'get_digest',
+    {
+      description:
+        'Plain-language "what happens here" summary of one scope, the same digest the dashboard renders. The prose is derived from the model (each action\'s intent, its block-rule reasons as guards, its effects/events, invariant messages, transition labels), never generated, so it can never describe behavior that is not in the spec. Scope: pass `projectId` for a whole-project glance (one clickable line per feature), or `featureId` alone (feature), `featureId`+`surfaceId` (one surface), or `featureId`+`surfaceId`+`actionId` (one action). `detailLevel`: glance (purpose + names) | standard (adds intent + guards + guardrails, the default) | full (adds each action\'s effects, events, and navigation paths). `format`: spec (structured, carries source ids for jump-to-element; default) | markdown (ready to paste into a PR/README). `hasContent` is false when the scope has no behavior to summarize.',
+      inputSchema: {
+        featureId: z.string().optional(),
+        surfaceId: z.string().optional(),
+        actionId: z.string().optional(),
+        projectId: z.string().optional(),
+        detailLevel: z.enum(['glance', 'standard', 'full']).optional(),
+        format: z.enum(['spec', 'markdown']).optional()
+      }
+    },
+    async ({ featureId, surfaceId, actionId, projectId, detailLevel, format }) => {
+      if (projectId && featureId) {
+        return errorText('Pass exactly one of projectId or featureId, not both.');
+      }
+      if (!projectId && !featureId) {
+        return errorText(
+          'Pass featureId (feature/surface/action scope) or projectId (whole-project scope).'
+        );
+      }
+
+      // Project scope: summarize every member feature at a glance.
+      if (projectId) {
+        if (surfaceId || actionId) {
+          return errorText('surfaceId/actionId narrow a featureId scope; drop them for a projectId digest.');
+        }
+        try {
+          projectId = await expandProjectId(projectRepo, projectId);
+        } catch (e) {
+          return errorText((e as Error).message);
+        }
+        const project = await projectRepo.get(asProjectId(projectId));
+        if (!project) return errorText(`Project ${projectId} not found`);
+        const features = await loadFeaturesByIds(repo, project.featureIds.map(String));
+        const output = getDigestTool({
+          features,
+          project,
+          scope: { kind: 'project' },
+          ...(detailLevel ? { detailLevel } : {}),
+          ...(format ? { format } : {})
+        });
+        return text(trackTokens('get_digest.project', output));
+      }
+
+      // Feature / surface / action scope: one feature, narrowed by the ids given.
+      try {
+        featureId = await expandFeatureId(repo, featureId!);
+      } catch (e) {
+        return errorText((e as Error).message);
+      }
+      const exp = await repo.get(asFeatureId(featureId!));
+      if (!exp) return errorText(`Feature ${featureId} not found`);
+      if (surfaceId) {
+        try {
+          surfaceId = expandIdInFeature(exp, surfaceId, 'surfaceId');
+        } catch (e) {
+          return errorText((e as Error).message);
+        }
+      }
+      if (actionId) {
+        try {
+          actionId = expandIdInFeature(exp, actionId, 'actionId');
+        } catch (e) {
+          return errorText((e as Error).message);
+        }
+      }
+
+      let scope: DigestScopeRef;
+      if (actionId) {
+        if (!surfaceId) {
+          return errorText('An actionId digest also needs the surfaceId the action lives on.');
+        }
+        scope = { kind: 'action', featureId: featureId!, surfaceId, actionId };
+      } else if (surfaceId) {
+        scope = { kind: 'surface', featureId: featureId!, surfaceId };
+      } else {
+        scope = { kind: 'feature', featureId: featureId! };
+      }
+
+      const output = getDigestTool({
+        features: [exp],
+        scope,
+        ...(detailLevel ? { detailLevel } : {}),
+        ...(format ? { format } : {})
+      });
+      return text(trackTokens(`get_digest.${scope.kind}`, output));
     }
   );
 

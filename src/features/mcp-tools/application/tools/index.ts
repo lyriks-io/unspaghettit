@@ -49,6 +49,12 @@ export {
   type FocusedSurfaceVerbose
 } from './getSurface';
 export {
+  getDigestTool,
+  type DigestFormat,
+  type GetDigestInput,
+  type GetDigestOutput
+} from './getDigest';
+export {
   generateTypesTool,
   type GenerateTypesInput,
   type GenerateTypesOutput

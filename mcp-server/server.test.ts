@@ -76,6 +76,7 @@ describe('MCP server', () => {
       'generate_types',
       'get_action',
       'get_behavioral_index',
+      'get_digest',
       'get_drift',
       'get_feature',
       'get_implementation_gaps',
@@ -1248,6 +1249,49 @@ describe('MCP server', () => {
     });
     const sim = parseTextContent(result) as { status: string };
     expect(sim.status).toBe('blocked');
+    await server.close();
+  });
+
+  it('get_digest returns a plain-language spec for a feature scope', async () => {
+    const { client, server } = await setup();
+    const result = await client.callTool({
+      name: 'get_digest',
+      arguments: { featureId: storefrontFeature.id }
+    });
+    const payload = parseTextContent(result) as {
+      format: string;
+      hasContent: boolean;
+      digest: { scope: string; title: string; sections: readonly unknown[] };
+    };
+    expect(payload.format).toBe('spec');
+    expect(payload.hasContent).toBe(true);
+    expect(payload.digest.scope).toBe('feature');
+    expect(payload.digest.title).toBe(storefrontFeature.name);
+    expect(payload.digest.sections.length).toBeGreaterThan(0);
+    await server.close();
+  });
+
+  it('get_digest serializes to Markdown when format=markdown', async () => {
+    const { client, server } = await setup();
+    const result = await client.callTool({
+      name: 'get_digest',
+      arguments: { featureId: storefrontFeature.id, format: 'markdown' }
+    });
+    const payload = parseTextContent(result) as { format: string; markdown: string };
+    expect(payload.format).toBe('markdown');
+    expect(payload.markdown.startsWith(`# ${storefrontFeature.name}`)).toBe(true);
+    await server.close();
+  });
+
+  it('get_digest rejects passing both featureId and projectId', async () => {
+    const { client, server } = await setup();
+    const result = await client.callTool({
+      name: 'get_digest',
+      arguments: { featureId: storefrontFeature.id, projectId: 'anything' }
+    });
+    const r = result as { isError: boolean; content: { text: string }[] };
+    expect(r.isError).toBe(true);
+    expect(r.content[0]?.text).toMatch(/exactly one/i);
     await server.close();
   });
 
