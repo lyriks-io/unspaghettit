@@ -47,6 +47,8 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   add_persona              { ref?, name, description, stateOverrides?, parameterOverrides?, persistAcrossSurfaces? }
   add_value_set            { ref?, name, description, values }
 . A named, reusable enum (\`values\` is a non-empty string[]). States/params of type "enum" reference it via \`valueSetId\` so the allowed values live in one place; edit them once via update_value_set.
+  add_constant             { ref?, name, description, value }
+. A named feature-level constant (\`value\` is any scalar or array). Expressions reference it via \`{kind:"const", name}\` (a condition.right, set_state.value, derived formula, invariant threshold) so a threshold/cutoff lives in one place instead of copy-pasted literals. \`name\` is the reference key, unique within the feature; edit the value once via update_constant.
   add_resource             { ref?, resource: { name, kind, provider, scope, sensitivity, containsPii, accessMode, ... } }
 . The resource's own \`kind\` collides with the op-kind discriminator. Nest under \`resource:{kind,...}\` (preferred) or pass \`resourceKind\` on the flat form.
   add_entity                 { ref?, namespace, fields, description, resourceRef?|resourceId? }
@@ -73,6 +75,8 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   update_persona              { personaId, ...partial }
   update_value_set            { valueSetId, name?, description?, values? }
 . \`values\` is a full replacement. On update_state_definition / update_parameter, \`valueSetId:null\` clears the reference (back to inline enumValues or no enum).
+  update_constant             { constantId, name?, description?, value? }
+. Editing \`value\` is the single source of truth for every \`{kind:"const"}\` reference. Renaming \`name\` re-keys it, so any expression still using the old name becomes a dangling reference (validator flags it) - rename the references in the same batch.
   update_resource             { resourceId, resource?:{ ...partial }, resourceKind?, ...partial }
 . Same kind-collision rule as add_resource.
   update_entity                 { entityId, ...partial }

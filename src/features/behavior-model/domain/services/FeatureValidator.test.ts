@@ -8,6 +8,7 @@ import {
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import {
   asActionId,
+  asConstantId,
   asEffectId,
   asEventDefinitionId,
   asFeatureId,
@@ -819,5 +820,79 @@ describe('introducedValidationErrors (diff-aware gate)', () => {
     const broken = withBlankSurfaceDescription(storefrontFeature);
     expect(introducedValidationErrors(null, broken).length).toBeGreaterThan(0);
     expect(introducedValidationErrors(null, storefrontFeature)).toEqual([]);
+  });
+});
+
+describe('feature-level constants', () => {
+  const constant = (over: Record<string, unknown> = {}) => ({
+    id: asConstantId('c-max'),
+    name: 'maxItems',
+    value: 10,
+    description: 'Maximum items allowed in a cart.',
+    ...over
+  });
+
+  const withConstants = (constants: unknown[]): Feature => ({
+    ...storefrontFeature,
+    constants: constants as never
+  });
+
+  // A feature invariant whose right-hand side references a constant by name,
+  // so reference-integrity has a `{kind:'const'}` node to resolve.
+  const withConstRef = (name: string, constants: unknown[]): Feature => ({
+    ...storefrontFeature,
+    constants: constants as never,
+    featureInvariants: [
+      {
+        id: 'inv-const',
+        name: 'Cart within cap',
+        message: 'The cart never exceeds the configured maximum.',
+        description: 'Ties the cart size to the maxItems constant.',
+        condition: {
+          left: asStatePath('cart.itemCount'),
+          operator: 'greater_than',
+          right: { kind: 'const', name }
+        }
+      } as never
+    ]
+  });
+
+  it('accepts a well-formed constant', () => {
+    expect(validateFeature(withConstants([constant()])).valid).toBe(true);
+  });
+
+  it('rejects a constant with no value', () => {
+    const result = validateFeature(withConstants([constant({ value: undefined })]));
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.errors.some((e) => /must declare a value/.test(e))).toBe(true);
+  });
+
+  it('rejects two constants sharing a name', () => {
+    const result = validateFeature(
+      withConstants([constant(), constant({ id: asConstantId('c-dup') })])
+    );
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /Duplicate constant name/.test(e))).toBe(true);
+    }
+  });
+
+  it('accepts an expression that references a declared constant', () => {
+    expect(validateReferenceIntegrity(withConstRef('maxItems', [constant()])).valid).toBe(true);
+  });
+
+  it('flags an expression that references an undeclared constant', () => {
+    const result = validateReferenceIntegrity(withConstRef('maxItemz', [constant()]));
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /undeclared constant "maxItemz"/.test(e))).toBe(true);
+    }
+  });
+
+  it('is diff-aware: only a newly introduced dangling const reference is reported', () => {
+    const before = withConstRef('maxItems', [constant()]);
+    const after = withConstRef('typo', [constant()]);
+    const introduced = introducedValidationErrors(before, after);
+    expect(introduced.some((e) => /undeclared constant "typo"/.test(e))).toBe(true);
   });
 });

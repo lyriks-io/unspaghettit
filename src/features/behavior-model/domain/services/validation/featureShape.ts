@@ -50,6 +50,32 @@ export const validateFeature = (feature: Feature): ValidationResult => {
     }
   }
 
+  // Named constants (feature-level reusable values referenced from expressions
+  // via `{kind:'const', name}`). The name is the reference key, so it must be
+  // unique within the feature; the value must be present (false / 0 / "" are
+  // legitimate, so only `undefined` is rejected).
+  const constantIds = new Set<string>();
+  const constantNames = new Set<string>();
+  for (const c of feature.constants ?? []) {
+    if (constantIds.has(String(c.id))) {
+      errors.push(`Duplicate constant id "${c.id}"`);
+    }
+    constantIds.add(String(c.id));
+    if (!c.name || c.name.trim().length === 0) {
+      errors.push(`Constant ${c.id} is missing a name.`);
+    } else if (constantNames.has(c.name)) {
+      errors.push(
+        `Duplicate constant name "${c.name}": names are the reference key for {kind:"const"} and must be unique within the feature.`
+      );
+    } else {
+      constantNames.add(c.name);
+    }
+    requireDescription(errors, `Constant ${c.id}`, c);
+    if (c.value === undefined) {
+      errors.push(`Constant ${c.id} ("${c.name}") must declare a value.`);
+    }
+  }
+
   if (!feature.id || feature.id.trim().length === 0) {
     errors.push('Feature id is required.');
   }

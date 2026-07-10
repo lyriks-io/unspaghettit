@@ -22,6 +22,7 @@ import { registerOperationsResource } from './resources/operations';
 import { registerBatchTool } from './tools/batch';
 import { registerBehavioralIndexTools } from './tools/behavioralIndex';
 import { registerActionTools } from './tools/action';
+import { registerConstantTools } from './tools/constant';
 import { registerEntityTools } from './tools/entity';
 import { registerEntityFieldTools } from './tools/entityField';
 import { registerEffectTools } from './tools/effect';
@@ -187,6 +188,7 @@ export const buildServer = (repo: FeatureRepository, deps: BuildServerDeps = {})
   registerTransitionTools(toolDeps);
   registerPersonaTools(toolDeps);
   registerValueSetTools(toolDeps);
+  registerConstantTools(toolDeps);
   registerResourceTools(toolDeps);
   registerEntityTools(toolDeps);
   registerEntityFieldTools(toolDeps);

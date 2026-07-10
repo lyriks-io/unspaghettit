@@ -55,6 +55,48 @@ const collectExpressionStatePaths = (expr: Expression, out: string[]): void => {
   }
 };
 
+/**
+ * Collect every `{kind:'const', name}` reference reachable from an expression.
+ * Mirrors `collectExpressionStatePaths` but gathers constant names (a
+ * feature-global reference key) instead of state paths, so the validator can
+ * flag a const reference that names no declared `feature.constants` entry.
+ */
+const collectExpressionConstNames = (expr: Expression, out: Set<string>): void => {
+  if (!isExpression(expr)) return;
+  switch (expr.kind) {
+    case 'literal':
+    case 'state':
+    case 'param':
+      return;
+    case 'const':
+      out.add(expr.name);
+      return;
+    case 'neg':
+    case 'not':
+    case 'sum':
+    case 'count':
+    case 'sum_pluck':
+      collectExpressionConstNames(expr.operand, out);
+      return;
+    case 'count_where':
+      collectExpressionConstNames(expr.operand, out);
+      collectExpressionConstNames(expr.equals, out);
+      return;
+    case 'switch':
+      for (const c of expr.cases) {
+        for (const leaf of flattenLeafConditions(c.when)) {
+          if (isExpression(leaf.right)) collectExpressionConstNames(leaf.right, out);
+        }
+        collectExpressionConstNames(c.then, out);
+      }
+      collectExpressionConstNames(expr.default, out);
+      return;
+    default:
+      collectExpressionConstNames(expr.left, out);
+      collectExpressionConstNames(expr.right, out);
+  }
+};
+
 const statePathsFromConditionRight = (right: unknown): readonly string[] => {
   if (!isExpression(right)) return [];
   const acc: string[] = [];
@@ -477,6 +519,82 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         }
       }
     }
+  }
+
+  // Constant reference integrity. A `{kind:'const', name}` node resolves to a
+  // feature-level Constant by name; an unknown name evaluates to `undefined` at
+  // runtime (silently degrading a comparison/arithmetic), so catch a typo'd or
+  // removed constant at write time. Names are feature-global, so unlike state
+  // paths there is no per-surface scope: collect every referenced name across
+  // conditions, effect values, and derived expressions, then flag the ones that
+  // don't resolve. Diff-aware like the rest: a pre-existing dangling const on a
+  // legacy snapshot only blocks the mutation that reintroduces it.
+  const declaredConstNames = new Set<string>();
+  for (const c of feature.constants ?? []) declaredConstNames.add(c.name);
+  const undeclaredConst = new Map<string, string>(); // name -> first label seen
+  const noteConstExpr = (value: unknown, label: string): void => {
+    if (!isExpression(value)) return;
+    const names = new Set<string>();
+    collectExpressionConstNames(value, names);
+    for (const name of names) {
+      if (!declaredConstNames.has(name) && !undeclaredConst.has(name)) {
+        undeclaredConst.set(name, label);
+      }
+    }
+  };
+  const noteConstCondition = (condition: RuleCondition | undefined, label: string): void => {
+    if (!condition) return;
+    for (const leaf of flattenLeafConditions(condition)) noteConstExpr(leaf.right, label);
+  };
+  const noteConstEffect = (
+    effect: Record<string, unknown>,
+    label: string
+  ): void => {
+    noteConstExpr(effect.value, label);
+    noteConstExpr(effect.item, label);
+    noteConstExpr(effect.by, label);
+    const where = effect.where as { equals?: unknown } | undefined;
+    if (where) noteConstExpr(where.equals, label);
+  };
+  for (const surface of feature.surfaces) {
+    for (const def of surface.stateDefinitions) {
+      if (def.derived !== undefined) {
+        noteConstExpr(def.derived, `Surface ${surface.id} derived state "${def.path}"`);
+      }
+    }
+    for (const rule of surface.rules) {
+      const label = `Surface ${surface.id} rule ${rule.id}`;
+      noteConstCondition(rule.condition, label);
+      noteConstEffect(rule.effect as Record<string, unknown>, label);
+    }
+    for (const inv of surface.invariants) {
+      noteConstCondition(inv.condition, `Surface ${surface.id} invariant ${inv.id}`);
+    }
+    for (const cap of surface.actions) {
+      for (const rule of cap.rules) {
+        const label = `Action ${cap.id} rule ${rule.id}`;
+        noteConstCondition(rule.condition, label);
+        noteConstEffect(rule.effect as Record<string, unknown>, label);
+      }
+      for (const inv of cap.invariants) {
+        noteConstCondition(inv.condition, `Action ${cap.id} invariant ${inv.id}`);
+      }
+      for (const e of cap.effects) noteConstEffect(e as Record<string, unknown>, `Action ${cap.id}`);
+      for (const e of cap.onBlockedEffects ?? []) {
+        noteConstEffect(e as Record<string, unknown>, `Action ${cap.id} onBlocked`);
+      }
+    }
+  }
+  for (const inv of feature.featureInvariants ?? []) {
+    noteConstCondition(inv.condition, `Feature invariant ${inv.id}`);
+  }
+  for (const goal of feature.reachabilityGoals ?? []) {
+    noteConstCondition(goal.condition, `Reachability goal ${goal.id}`);
+  }
+  for (const [name, label] of undeclaredConst) {
+    errors.push(
+      `${label}: references undeclared constant "${name}" (no feature-level constant with that name — declare it with add_constant or fix the reference).`
+    );
   }
 
   // Transitive parent cycle detection. Self-parent is caught by the

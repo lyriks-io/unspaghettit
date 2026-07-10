@@ -1,3 +1,4 @@
+import type { Constant } from '../../entities/Constant';
 import type { Entity, EntityField } from '../../entities/Entity';
 import type { EventDefinition } from '../../entities/EventDefinition';
 import type { Feature } from '../../entities/Feature';
@@ -6,6 +7,7 @@ import type { ReachabilityGoal } from '../../entities/ReachabilityGoal';
 import type { Resource } from '../../entities/Resource';
 import type { ValueSet } from '../../entities/ValueSet';
 import type {
+  ConstantId,
   EntityFieldId,
   EntityId,
   EventDefinitionId,
@@ -79,6 +81,26 @@ export const updateValueSet = (feature: Feature, valueSet: ValueSet): Feature =>
 export const removeValueSet = (feature: Feature, valueSetId: ValueSetId): Feature => ({
   ...feature,
   valueSets: (feature.valueSets ?? []).filter((vs) => vs.id !== valueSetId)
+});
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+// Named, reusable scalar/array values referenced from expressions via
+// `{kind:'const', name}`. Same add/update/remove shape against
+// `feature.constants` as the other optional feature-level collections.
+
+export const addConstant = (feature: Feature, constant: Constant): Feature => ({
+  ...feature,
+  constants: [...(feature.constants ?? []), constant]
+});
+
+export const updateConstant = (feature: Feature, constant: Constant): Feature => ({
+  ...feature,
+  constants: mustMap(feature.constants ?? [], String(constant.id), 'constant', () => constant)
+});
+
+export const removeConstant = (feature: Feature, constantId: ConstantId): Feature => ({
+  ...feature,
+  constants: (feature.constants ?? []).filter((c) => c.id !== constantId)
 });
 
 // ─── Resources ───────────────────────────────────────────────────────────────

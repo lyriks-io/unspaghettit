@@ -48,6 +48,7 @@ Feature
   ├── entities[]        Structured data namespaces with typed fields
   ├── events[]          First-class event registry { name, description, payloadSchema? }
   ├── valueSets[]       Named reusable enums { name, values } referenced by valueSetId
+  ├── constants[]       Named reusable values { name, value } referenced by {kind:"const", name} in expressions
   ├── featureInvariants[]  Cross-surface post-conditions (checked after every action)
   └── reachabilityGoals[]  Liveness goals — reachable / always_reachable target states (the complement to invariants)
 

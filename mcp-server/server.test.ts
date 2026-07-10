@@ -41,6 +41,7 @@ describe('MCP server', () => {
       'add_action',
       'add_action_invariant',
       'add_action_rule',
+      'add_constant',
       'add_effect',
       'add_entity',
       'add_entity_field',
@@ -108,6 +109,7 @@ describe('MCP server', () => {
       'remove_action',
       'remove_action_invariant',
       'remove_action_rule',
+      'remove_constant',
       'remove_effect',
       'remove_entity',
       'remove_entity_field',
@@ -145,6 +147,7 @@ describe('MCP server', () => {
       'update_action',
       'update_action_invariant',
       'update_action_rule',
+      'update_constant',
       'update_effect',
       'update_entity',
       'update_entity_field',
@@ -1292,6 +1295,127 @@ describe('MCP server', () => {
     const r = result as { isError: boolean; content: { text: string }[] };
     expect(r.isError).toBe(true);
     expect(r.content[0]?.text).toMatch(/exactly one/i);
+    await server.close();
+  });
+
+  it('add_constant + update_constant + remove_constant round-trip through the repository', async () => {
+    const { client, server, repo } = await setup();
+
+    const added = parseTextContent(
+      await client.callTool({
+        name: 'add_constant',
+        arguments: {
+          featureId: storefrontFeature.id,
+          name: 'freeShippingThreshold',
+          description: 'Order subtotal above which shipping is free.',
+          value: 50
+        }
+      })
+    ) as { ok: true; id: string };
+    expect(added.ok).toBe(true);
+
+    const afterAdd = await repo.get(storefrontFeature.id);
+    const constant = afterAdd?.constants?.find((c) => c.id === added.id);
+    expect(constant?.name).toBe('freeShippingThreshold');
+    expect(constant?.value).toBe(50);
+
+    await client.callTool({
+      name: 'update_constant',
+      arguments: { featureId: storefrontFeature.id, constantId: added.id, value: 75 }
+    });
+    const afterUpdate = await repo.get(storefrontFeature.id);
+    expect(afterUpdate?.constants?.find((c) => c.id === added.id)?.value).toBe(75);
+
+    await client.callTool({
+      name: 'remove_constant',
+      arguments: { featureId: storefrontFeature.id, constantId: added.id }
+    });
+    const afterRemove = await repo.get(storefrontFeature.id);
+    expect(afterRemove?.constants?.some((c) => c.id === added.id)).toBe(false);
+    await server.close();
+  });
+
+  it('rejects an expression that references an undeclared constant, accepts it once declared', async () => {
+    const { client, server } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Const refs', description: 'Verifies constant reference integrity.' }
+      })
+    ) as { id: string };
+
+    // Build a surface + a boolean state + a rule whose condition compares the
+    // state against a constant that does NOT exist yet. The batch must fail
+    // reference integrity (dangling const), proving the write-time guard fires.
+    const danglingBatch = {
+      featureId: created.id,
+      dryRun: true,
+      operations: [
+        {
+          kind: 'add_surface',
+          ref: 'main',
+          name: 'Main',
+          type: 'screen',
+          description: 'Main screen for constant reference testing.'
+        },
+        {
+          kind: 'add_state_definition',
+          surfaceRef: 'main',
+          path: 'cart.items',
+          type: 'number',
+          defaultValue: 0,
+          description: 'Item count in the cart.'
+        },
+        {
+          kind: 'add_action',
+          ref: 'go',
+          surfaceRef: 'main',
+          name: 'Checkout',
+          intent: 'Attempt checkout when the cart is under the cap.'
+        },
+        {
+          kind: 'add_action_rule',
+          surfaceRef: 'main',
+          actionRef: 'go',
+          rule: {
+            category: 'permissions',
+            condition: {
+              left: 'cart.items',
+              operator: 'greater_than',
+              right: { kind: 'const', name: 'maxItems' }
+            },
+            description: 'Blocks checkout when the cart exceeds the maximum.',
+            effect: {
+              type: 'block_action',
+              reason: 'Cart is over the maximum.',
+              description: 'Rejects checkout above the cap.'
+            }
+          }
+        }
+      ]
+    };
+
+    const dangling = parseTextContent(
+      await client.callTool({ name: 'apply_batch', arguments: danglingBatch })
+    ) as { ok: boolean; validation: { valid: boolean; errors?: readonly string[] } };
+    expect(dangling.ok).toBe(false);
+    expect(dangling.validation.errors?.some((e) => /undeclared constant "maxItems"/.test(e))).toBe(
+      true
+    );
+
+    // Now declare the constant in the same batch: the reference resolves and
+    // validation passes.
+    const withConstant = {
+      ...danglingBatch,
+      operations: [
+        { kind: 'add_constant', name: 'maxItems', description: 'Maximum cart size.', value: 20 },
+        ...danglingBatch.operations
+      ]
+    };
+    const ok = parseTextContent(
+      await client.callTool({ name: 'apply_batch', arguments: withConstant })
+    ) as { ok: boolean };
+    expect(ok.ok).toBe(true);
     await server.close();
   });
 

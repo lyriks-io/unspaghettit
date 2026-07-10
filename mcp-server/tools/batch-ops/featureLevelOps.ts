@@ -1,11 +1,14 @@
 import * as T from '../../../src/features/behavior-model/domain/services/FeatureTransforms';
+import type { Constant } from '../../../src/features/behavior-model/domain/entities/Constant';
 import type { Entity, EntityField } from '../../../src/features/behavior-model/domain/entities/Entity';
 import type { Feature } from '../../../src/features/behavior-model/domain/entities/Feature';
 import type { Persona } from '../../../src/features/behavior-model/domain/entities/Persona';
 import type { Resource } from '../../../src/features/behavior-model/domain/entities/Resource';
+import type { StateValue } from '../../../src/features/behavior-model/domain/value-objects/StateValue';
 import type { Transition } from '../../../src/features/behavior-model/domain/entities/Transition';
 import type { ValueSet } from '../../../src/features/behavior-model/domain/entities/ValueSet';
 import {
+  asConstantId,
   asEntityFieldId,
   asEntityId,
   asPersonaId,
@@ -140,6 +143,35 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
     }
     case 'remove_value_set':
       exp = T.removeValueSet(exp, asValueSetId(op.valueSetId as string));
+      break;
+
+    // ── Constants ───────────────────────────────────────────────────
+    case 'add_constant': {
+      const constant: Constant = {
+        id: asConstantId(mintId()),
+        name: op.name as string,
+        ...(typeof op.description === 'string' ? { description: op.description } : {}),
+        value: op.value as StateValue
+      } as Constant;
+      exp = T.addConstant(exp, constant);
+      remember(op.ref, constant.id);
+      break;
+    }
+    case 'update_constant': {
+      const cid = asConstantId(op.constantId as string);
+      const existing = (exp.constants ?? []).find((c) => c.id === cid);
+      if (!existing) break;
+      const merged: Constant = {
+        ...existing,
+        ...(typeof op.name === 'string' ? { name: op.name } : {}),
+        ...(typeof op.description === 'string' ? { description: op.description } : {}),
+        ...(op.value !== undefined ? { value: op.value as StateValue } : {})
+      };
+      exp = T.updateConstant(exp, merged);
+      break;
+    }
+    case 'remove_constant':
+      exp = T.removeConstant(exp, asConstantId(op.constantId as string));
       break;
 
     // ── Resources ───────────────────────────────────────────────────
