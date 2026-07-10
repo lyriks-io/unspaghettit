@@ -124,9 +124,11 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       break;
 
     // ── Effects ─────────────────────────────────────────────────────
+    // `onBlocked:true` targets the action's onBlockedEffects (the blocked-path
+    // fallback the simulator runs) instead of the success-path effects.
     case 'add_effect': {
       const effect = buildEffect(mintId, (op.effect as Record<string, unknown>) ?? {}, refs);
-      exp = T.addEffectToCapability(
+      exp = (op.onBlocked ? T.addOnBlockedEffectToCapability : T.addEffectToCapability)(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asActionId(resolve(op, refs, 'actionRef', 'actionId')),
@@ -136,7 +138,7 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       break;
     }
     case 'update_effect':
-      exp = T.updateEffectOnCapability(
+      exp = (op.onBlocked ? T.updateOnBlockedEffectOnCapability : T.updateEffectOnCapability)(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asActionId(resolve(op, refs, 'actionRef', 'actionId')),
@@ -145,7 +147,7 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       );
       break;
     case 'remove_effect':
-      exp = T.removeEffectFromCapability(
+      exp = (op.onBlocked ? T.removeOnBlockedEffectFromCapability : T.removeEffectFromCapability)(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asActionId(resolve(op, refs, 'actionRef', 'actionId')),

@@ -1424,6 +1424,205 @@ describe('MCP server', () => {
     await server.close();
   });
 
+  it('add_action_rule accepts a list-mutation effect (append_to_list), not just the 6-type subset', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'List rule', description: 'Verifies rules can carry list effects.' }
+      })
+    ) as { id: string };
+
+    // Surface + an array-typed state path + an action to hang the rule on.
+    const batch = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            {
+              kind: 'add_surface',
+              ref: 'log',
+              name: 'Log',
+              type: 'screen',
+              description: 'Screen that accumulates log entries.'
+            },
+            {
+              kind: 'add_state_definition',
+              surfaceRef: 'log',
+              path: 'log.entries',
+              type: 'array',
+              defaultValue: [],
+              description: 'Accumulated log entries.'
+            },
+            {
+              kind: 'add_action',
+              ref: 'record',
+              surfaceRef: 'log',
+              name: 'Record',
+              intent: 'Append an entry to the log.'
+            }
+          ]
+        }
+      })
+    ) as { ok: boolean; refs: Record<string, string> };
+    expect(batch.ok).toBe(true);
+
+    // The rule the 6-type allowlist used to reject.
+    const result = await client.callTool({
+      name: 'add_action_rule',
+      arguments: {
+        featureId: created.id,
+        surfaceId: batch.refs.log,
+        actionId: batch.refs.record,
+        rule: {
+          category: 'data',
+          description: 'Always append an entry when the action runs.',
+          effect: {
+            type: 'append_to_list',
+            path: 'log.entries',
+            item: 'entry',
+            description: 'Adds one entry to the log list.'
+          }
+        }
+      }
+    });
+    const ack = parseTextContent(result) as { ok: true; id: string };
+    expect(ack.ok).toBe(true);
+    const persisted = await repo.get(created.id as never);
+    const rule = persisted?.surfaces[0]?.actions[0]?.rules[0];
+    expect((rule?.effect as { type?: string })?.type).toBe('append_to_list');
+    await server.close();
+  });
+
+  it('add_effect onBlocked:true appends to onBlockedEffects, not the success-path effects', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Blocked fallback', description: 'Verifies onBlockedEffects authoring.' }
+      })
+    ) as { id: string };
+
+    const batch = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            {
+              kind: 'add_surface',
+              ref: 'main',
+              name: 'Main',
+              type: 'screen',
+              description: 'Main screen for the blocked-fallback test.'
+            },
+            {
+              kind: 'add_action',
+              ref: 'go',
+              surfaceRef: 'main',
+              name: 'Submit',
+              intent: 'Submit the form.'
+            }
+          ]
+        }
+      })
+    ) as { ok: boolean; refs: Record<string, string> };
+    expect(batch.ok).toBe(true);
+
+    const result = await client.callTool({
+      name: 'add_effect',
+      arguments: {
+        featureId: created.id,
+        surfaceId: batch.refs.main,
+        actionId: batch.refs.go,
+        onBlocked: true,
+        effect: {
+          type: 'show_message',
+          message: 'Submission was blocked.',
+          tone: 'warning',
+          description: 'Tells the user their submission was rejected.'
+        }
+      }
+    });
+    const ack = parseTextContent(result) as { ok: true; id: string };
+    expect(ack.ok).toBe(true);
+
+    const action = (await repo.get(created.id as never))?.surfaces[0]?.actions[0];
+    expect(action?.effects ?? []).toHaveLength(0);
+    expect(action?.onBlockedEffects ?? []).toHaveLength(1);
+    expect((action?.onBlockedEffects?.[0] as { type?: string })?.type).toBe('show_message');
+    expect(action?.onBlockedEffects?.[0]?.id).toBe(ack.id);
+    await server.close();
+  });
+
+  it('add_parameter persists a resourceId link', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Param resource', description: 'Verifies parameter resourceId authoring.' }
+      })
+    ) as { id: string };
+    const batch = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            { kind: 'add_surface', ref: 's', name: 'S', type: 'screen', description: 'A screen.' },
+            { kind: 'add_action', ref: 'a', surfaceRef: 's', name: 'Save', intent: 'Save input.' }
+          ]
+        }
+      })
+    ) as { refs: Record<string, string> };
+    await client.callTool({
+      name: 'add_parameter',
+      arguments: {
+        featureId: created.id,
+        surfaceId: batch.refs.s,
+        actionId: batch.refs.a,
+        name: 'email',
+        type: 'email',
+        required: true,
+        description: 'The user email being captured.',
+        resourceId: 'res-users'
+      }
+    });
+    const param = (await repo.get(created.id as never))?.surfaces[0]?.actions[0]?.parameters[0];
+    expect(param?.resourceId).toBe('res-users');
+    await server.close();
+  });
+
+  it('update_project sets and clears domainId', async () => {
+    const { client, server } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_project',
+        arguments: { name: 'Domained', description: 'Project for domainId authoring test.' }
+      })
+    ) as { id: string };
+
+    await client.callTool({
+      name: 'update_project',
+      arguments: { projectId: created.id, domainId: 'dom-1' }
+    });
+    const withDomain = parseTextContent(
+      await client.callTool({ name: 'get_project', arguments: { projectId: created.id } })
+    ) as { domainId?: string };
+    expect(withDomain.domainId).toBe('dom-1');
+
+    await client.callTool({
+      name: 'update_project',
+      arguments: { projectId: created.id, domainId: null }
+    });
+    const cleared = parseTextContent(
+      await client.callTool({ name: 'get_project', arguments: { projectId: created.id } })
+    ) as { domainId?: string };
+    expect(cleared.domainId).toBeUndefined();
+    await server.close();
+  });
+
   it('create_project with features creates + attaches described features in one round-trip', async () => {
     const { client, server } = await setup();
     const result = await client.callTool({

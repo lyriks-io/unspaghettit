@@ -105,6 +105,58 @@ export const removeEffectFromCapability = (
     }))
   );
 
+// ─── onBlockedEffects ─────────────────────────────────────────────────────
+// The "what to do when this action is blocked" fallback list the simulator
+// runs (state mutations suppressed, but transitions/events/messages fire) so a
+// rejected action can still redirect or notify. Same add/update/remove shape as
+// the success-path `effects`, but against `action.onBlockedEffects` (optional,
+// so it defaults to []).
+
+export const addOnBlockedEffectToCapability = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  effect: Effect
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (c) => ({
+      ...c,
+      onBlockedEffects: [...(c.onBlockedEffects ?? []), effect]
+    }))
+  );
+
+export const updateOnBlockedEffectOnCapability = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  effectId: EffectId,
+  patch: Partial<Effect>
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (c) => ({
+      ...c,
+      onBlockedEffects: mustMap(
+        c.onBlockedEffects ?? [],
+        String(effectId),
+        'onBlocked effect',
+        (e) => ({ ...e, ...patch }) as Effect
+      )
+    }))
+  );
+
+export const removeOnBlockedEffectFromCapability = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  effectId: EffectId
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (c) => ({
+      ...c,
+      onBlockedEffects: (c.onBlockedEffects ?? []).filter((e) => e.id !== effectId)
+    }))
+  );
+
 export const addInvariantToCapability = (
   feature: Feature,
   surfaceId: SurfaceId,

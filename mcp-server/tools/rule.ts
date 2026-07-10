@@ -26,13 +26,22 @@ const ruleCategorySchema = z.enum(
 const ruleSchemaDescription =
   '{ category, condition?, effect:{..., description}, description }. Rule and nested effect descriptions are mandatory. condition is OPTIONAL (omit it to make the rule fire unconditionally, useful for "always run this side-effect when the action fires"). Otherwise condition is either { left, operator: equals|not_equals|greater_than|greater_or_equal|lower_than|lower_or_equal|contains|is_true|is_false|exists|does_not_exist, right? } (the leaf form; greater_or_equal/lower_or_equal are ≥/≤ — use them instead of off-by-one tricks like `greater_than 19` to mean `≥20`) OR a composite { kind: "all"|"any", conditions: [...] } / { kind: "not", condition: {...} } that combines other conditions, OR a quantifier over an array-typed state path: { kind: "all_match"|"any_match", overPath: "dotted.array.path", as: "item", where: {...condition...} } — all_match holds when EVERY element satisfies `where`, any_match when at least one does. The body binds each element under `as`, so it reads `item` (scalar arrays) or `item.field` (object arrays) and may also reference outer state paths. Use for per-element invariants like "every order line has qty>0": { kind:"all_match", overPath:"order.lines", as:"line", where:{ left:"line.qty", operator:"greater_than", right:0 } }. Vacuous: all_match over an empty/missing array is true, any_match is false. condition.left is normally a state-path string, but on ACTION rules only it may also be { kind:"param", name:"paramName" } to branch on a caller parameter without an intermediate set_state. Surface rules have no parameter scope and reject param-left at validation. condition.right accepts a raw literal OR a structured Expression for state-vs-state, state-vs-parameter, and arithmetic comparisons. Expression AST (discriminated by `kind`): { kind:"literal", value } | { kind:"state", path:"dotted.path" } | { kind:"param", name:"paramName" } | { kind:"add"|"sub"|"mul"|"div"|"mod"|"min"|"max", left:Expression, right:Expression } | { kind:"neg"|"not", operand:Expression }. Example state-on-left: condition:{ left:"player.lapsCompleted", operator:"greater_than", right:{ kind:"state", path:"match.lapsToWin" } } expresses "player.lapsCompleted > match.lapsToWin" honestly. Example param-on-left (action rule): condition:{ left:{ kind:"param", name:"quantity" }, operator:"greater_than", right:10 } fires when the caller passes quantity>10 with no state write required. Similarly, effect.value on set_state accepts the same Expression form.';
 
+// The full effect vocabulary the simulator executes (EffectApplier). A rule's
+// effect is a full Effect, so it must accept the same 10 types add_effect does —
+// including the list mutations and advance_time — not the 6-type subset this
+// list used to be, which silently blocked a conditional append_to_list /
+// advance_time rule authored through the granular tools.
 const KNOWN_EFFECT_TYPES = [
   'set_state',
   'show_message',
   'emit_event',
   'block_action',
   'allow_action',
-  'transition_surface'
+  'transition_surface',
+  'append_to_list',
+  'remove_from_list',
+  'update_list_item',
+  'advance_time'
 ] as const;
 
 const ruleInputSchema = z

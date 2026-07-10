@@ -11,6 +11,7 @@ import { saveProjectUseCase } from '../../src/features/projects/application/use-
 import { createFeatureUseCase } from '../../src/features/behavior-model/application/use-cases/CreateFeature';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
+import { asDomainId } from '../../src/features/domains/domain/value-objects/ids';
 import type { Project } from '../../src/features/projects/domain/entities/Project';
 import { addTag, normalizeTags, removeTag } from '../../src/shared/domain/Tags';
 import { buildInvariant as buildInvariantBody } from './_entity_builders';
@@ -173,10 +174,24 @@ export const registerProjectTools = (deps: ToolDeps): void => {
         tags: tagsSchema,
         customTagType: z.string().min(1).optional(),
         customTag: z.string().min(1).optional(),
-        projectInvariants: z.array(projectInvariantInputSchema).optional()
+        projectInvariants: z.array(projectInvariantInputSchema).optional(),
+        domainId: z
+          .string()
+          .nullable()
+          .optional()
+          .describe('Parent Domain id (organizational grouping). Pass null to detach from its domain.')
       }
     },
-    async ({ projectId, name, description, tags, customTagType, customTag, projectInvariants }) => {
+    async ({
+      projectId,
+      name,
+      description,
+      tags,
+      customTagType,
+      customTag,
+      projectInvariants,
+      domainId
+    }) => {
       try {
         projectId = await expandProjectId(projectRepo, projectId);
         const current = await getProject(asProjectId(projectId));
@@ -199,7 +214,13 @@ export const registerProjectTools = (deps: ToolDeps): void => {
               ? projectInvariants.map((inv) =>
                   buildInvariantBody(inv as unknown as Record<string, unknown>, ids)
                 )
-              : current.projectInvariants
+              : current.projectInvariants,
+          domainId:
+            domainId !== undefined
+              ? domainId === null
+                ? undefined
+                : asDomainId(domainId)
+              : current.domainId
         });
         return text({ ok: true, id: next.id, updatedAt: next.updatedAt });
       } catch (e) {

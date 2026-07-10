@@ -5,6 +5,7 @@ import type { StateDefinition } from '../../../src/features/behavior-model/domai
 import {
   asActionId,
   asParameterId,
+  asResourceId,
   asStateDefinitionId,
   asSurfaceId,
   asValueSetId
@@ -121,6 +122,9 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
           : {}),
         ...(Array.isArray(op.validations)
           ? { validations: op.validations as unknown as Parameter['validations'] }
+          : {}),
+        ...(typeof op.resourceId === 'string'
+          ? { resourceId: asResourceId(op.resourceId) }
           : {})
       };
       exp = T.addParameter(
@@ -165,6 +169,12 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
             : {}),
           ...(Array.isArray(op.validations)
             ? { validations: op.validations as unknown as Parameter['validations'] }
+            : {}),
+          ...('resourceId' in op
+            ? {
+                resourceId:
+                  op.resourceId == null ? undefined : asResourceId(op.resourceId as string)
+              }
             : {})
         }
       );

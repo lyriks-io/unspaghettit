@@ -10,6 +10,7 @@ import {
   asActionId,
   asFeatureId,
   asParameterId,
+  asResourceId,
   asSurfaceId,
   asValueSetId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
@@ -50,7 +51,11 @@ export const registerParameterTools = (deps: ToolDeps): void => {
         valueSetId: z.string().optional(),
         defaultValue: z.unknown().optional(),
         bindToStatePath: z.string().optional(),
-        validations: z.array(z.record(z.string(), z.unknown())).optional()
+        validations: z.array(z.record(z.string(), z.unknown())).optional(),
+        resourceId: z
+          .string()
+          .optional()
+          .describe('Link to a feature Resource (where this value comes from / persists to). Compliance/provenance metadata; does not affect simulation.')
       }
     },
     async (input) => {
@@ -75,7 +80,8 @@ export const registerParameterTools = (deps: ToolDeps): void => {
           : {}),
         ...(input.validations
           ? { validations: input.validations as unknown as Parameter['validations'] }
-          : {})
+          : {}),
+        ...(input.resourceId ? { resourceId: asResourceId(input.resourceId) } : {})
       };
       return runMutation(
         deps,
@@ -111,7 +117,8 @@ export const registerParameterTools = (deps: ToolDeps): void => {
         valueSetId: z.string().nullable().optional(),
         defaultValue: z.unknown().optional(),
         bindToStatePath: z.string().nullable().optional(),
-        validations: z.array(z.record(z.string(), z.unknown())).optional()
+        validations: z.array(z.record(z.string(), z.unknown())).optional(),
+        resourceId: z.string().nullable().optional()
       }
     },
     async (input) => {
@@ -140,6 +147,9 @@ export const registerParameterTools = (deps: ToolDeps): void => {
           : {}),
         ...(input.validations !== undefined
           ? { validations: input.validations as unknown as Parameter['validations'] }
+          : {}),
+        ...(input.resourceId !== undefined
+          ? { resourceId: input.resourceId === null ? undefined : asResourceId(input.resourceId) }
           : {})
       };
       return runMutation(deps, {

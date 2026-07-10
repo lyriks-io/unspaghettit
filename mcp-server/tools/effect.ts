@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import {
   addEffectToCapability,
+  addOnBlockedEffectToCapability,
   removeEffectFromCapability,
-  updateEffectOnCapability
+  removeOnBlockedEffectFromCapability,
+  updateEffectOnCapability,
+  updateOnBlockedEffectOnCapability
 } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { Effect } from '../../src/features/behavior-model/domain/value-objects/Effect';
 import {
@@ -57,15 +60,20 @@ export const registerEffectTools = (deps: ToolDeps): void => {
   server.registerTool(
     'add_effect',
     {
-      description: 'Append Effect that fires on action success. For conditional blocks, use add_action_rule.',
+      description:
+        'Append Effect to an Action. By default it fires on action SUCCESS. Pass onBlocked:true to append to the action\'s onBlockedEffects instead — the fallback the simulator runs when the action is BLOCKED (state mutations are suppressed, but transition_surface / emit_event / show_message still fire), so a rejected action can still redirect or notify. For conditional blocks themselves, use add_action_rule.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
         actionId: z.string(),
-        effect: effectInputSchema
+        effect: effectInputSchema,
+        onBlocked: z
+          .boolean()
+          .optional()
+          .describe('Append to onBlockedEffects (the blocked-path fallback) instead of the success-path effects.')
       }
     },
-    async ({ featureId, surfaceId, actionId, effect }) => {
+    async ({ featureId, surfaceId, actionId, effect, onBlocked }) => {
       const built = {
         ...(effect as object),
         id: asEffectId((effect as { id?: string }).id ?? ids())
@@ -75,7 +83,7 @@ export const registerEffectTools = (deps: ToolDeps): void => {
         {
           featureId: asFeatureId(featureId),
           transform: (exp) =>
-            addEffectToCapability(
+            (onBlocked ? addOnBlockedEffectToCapability : addEffectToCapability)(
               exp,
               asSurfaceId(surfaceId),
               asActionId(actionId),
@@ -90,20 +98,21 @@ export const registerEffectTools = (deps: ToolDeps): void => {
   server.registerTool(
     'update_effect',
     {
-      description: 'Patch Effect fields. Id fixed.',
+      description: 'Patch Effect fields. Id fixed. Pass onBlocked:true to target the action\'s onBlockedEffects list instead of its success-path effects.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
         actionId: z.string(),
         effectId: z.string(),
-        patch: z.record(z.string(), z.unknown())
+        patch: z.record(z.string(), z.unknown()),
+        onBlocked: z.boolean().optional()
       }
     },
-    async ({ featureId, surfaceId, actionId, effectId, patch }) =>
+    async ({ featureId, surfaceId, actionId, effectId, patch, onBlocked }) =>
       runMutation(deps, {
         featureId: asFeatureId(featureId),
         transform: (exp) =>
-          updateEffectOnCapability(
+          (onBlocked ? updateOnBlockedEffectOnCapability : updateEffectOnCapability)(
             exp,
             asSurfaceId(surfaceId),
             asActionId(actionId),
@@ -116,19 +125,20 @@ export const registerEffectTools = (deps: ToolDeps): void => {
   server.registerTool(
     'remove_effect',
     {
-      description: 'Delete Effect from Action.',
+      description: 'Delete Effect from Action. Pass onBlocked:true to remove from the action\'s onBlockedEffects list instead of its success-path effects.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
         actionId: z.string(),
-        effectId: z.string()
+        effectId: z.string(),
+        onBlocked: z.boolean().optional()
       }
     },
-    async ({ featureId, surfaceId, actionId, effectId }) =>
+    async ({ featureId, surfaceId, actionId, effectId, onBlocked }) =>
       runMutation(deps, {
         featureId: asFeatureId(featureId),
         transform: (exp) =>
-          removeEffectFromCapability(
+          (onBlocked ? removeOnBlockedEffectFromCapability : removeEffectFromCapability)(
             exp,
             asSurfaceId(surfaceId),
             asActionId(actionId),
