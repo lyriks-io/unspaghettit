@@ -97,6 +97,51 @@ const collectExpressionConstNames = (expr: Expression, out: Set<string>): void =
   }
 };
 
+/**
+ * Collect every `{kind:'param', name}` reference reachable from an expression,
+ * including param-lefts inside a `switch`'s `when` conditions. Mirrors the
+ * const/state walkers. Feeds the scope-aware param check: a param reference is
+ * only valid inside an action's own rules/invariants/effects, and must name a
+ * parameter of that action. Anywhere else (surface rules, feature invariants,
+ * goals, derived state) there is no parameter scope, so ANY param node is a bug.
+ */
+const collectExpressionParamNames = (expr: Expression, out: Set<string>): void => {
+  if (!isExpression(expr)) return;
+  switch (expr.kind) {
+    case 'literal':
+    case 'state':
+    case 'const':
+      return;
+    case 'param':
+      out.add(expr.name);
+      return;
+    case 'neg':
+    case 'not':
+    case 'sum':
+    case 'count':
+    case 'sum_pluck':
+      collectExpressionParamNames(expr.operand, out);
+      return;
+    case 'count_where':
+      collectExpressionParamNames(expr.operand, out);
+      collectExpressionParamNames(expr.equals, out);
+      return;
+    case 'switch':
+      for (const c of expr.cases) {
+        for (const leaf of flattenLeafConditions(c.when)) {
+          if (isParamLeft(leaf.left)) out.add(leaf.left.name);
+          if (isExpression(leaf.right)) collectExpressionParamNames(leaf.right, out);
+        }
+        collectExpressionParamNames(c.then, out);
+      }
+      collectExpressionParamNames(expr.default, out);
+      return;
+    default:
+      collectExpressionParamNames(expr.left, out);
+      collectExpressionParamNames(expr.right, out);
+  }
+};
+
 const statePathsFromConditionRight = (right: unknown): readonly string[] => {
   if (!isExpression(right)) return [];
   const acc: string[] = [];
@@ -189,11 +234,40 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     'advance_time'
   ]);
 
+  // Scope-aware param-reference check. `paramNames` is the set of parameters in
+  // scope (an action's own parameters), or undefined where no parameters exist
+  // (surface rules, feature invariants, goals, derived state). A `{kind:'param'}`
+  // node in a no-param scope, or one naming a parameter the action doesn't have,
+  // silently evaluates to `undefined` at runtime — the same footgun as a bad
+  // const reference — so reject it at write time.
+  const checkExpressionParams = (
+    value: unknown,
+    paramNames: ReadonlySet<string> | undefined,
+    label: string
+  ): void => {
+    if (!isExpression(value)) return;
+    const names = new Set<string>();
+    collectExpressionParamNames(value as Expression, names);
+    for (const name of names) {
+      if (!paramNames) {
+        errors.push(
+          `${label}: references parameter "${name}" but this scope has no parameters (a {kind:"param"} reference only works inside an action's rules, invariants, or effects).`
+        );
+      } else if (!paramNames.has(name)) {
+        errors.push(
+          `${label}: references parameter "${name}" but the action has no parameter with that name.`
+        );
+      }
+    }
+  };
+
   const checkEffect = (
     effect: { readonly id: string; readonly type: string } & Record<string, unknown>,
     surfaceId: string,
     paths: Set<string>,
-    label: string
+    label: string,
+    /** Parameters in scope for this effect's expressions (action effects only). */
+    paramNames?: ReadonlySet<string>
   ): void => {
     // Belt-and-suspenders: even with Zod-side enum validation, data loaded
     // from disk needs a final type check before it reaches the simulator
@@ -226,6 +300,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
         }
       }
+      checkExpressionParams(value, paramNames, `${label} effect ${effect.id}: ${verb}`);
     };
     switch (effect.type) {
       case 'set_state': {
@@ -323,6 +398,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
         }
       }
+      checkExpressionParams(leaf.right, paramNames, `${label}: condition.right`);
     }
   };
 
@@ -340,6 +416,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
         }
       }
+      // Derived expressions run outside any action, so a param reference here
+      // can never resolve.
+      checkExpressionParams(def.derived, undefined, `Surface ${surface.id} derived state "${def.path}"`);
     }
 
     for (const rule of surface.rules) {
@@ -410,6 +489,16 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         }
       }
       const capParamNames = new Set(cap.parameters.map((p) => p.name));
+      // A parameter's bindToStatePath writes the param value into the snapshot
+      // before rules run, so it must target a path declared on (or shared into)
+      // this surface — otherwise the write lands nowhere the rules can read.
+      for (const param of cap.parameters) {
+        if (param.bindToStatePath !== undefined && !paths.has(String(param.bindToStatePath))) {
+          errors.push(
+            `Action ${cap.id} on surface ${surface.id}: parameter "${param.name}" bindToStatePath "${param.bindToStatePath}" is not a declared state path on this surface (or shared into it).`
+          );
+        }
+      }
       for (const rule of cap.rules) {
         const label = `Action ${cap.id} rule ${rule.id}`;
         checkCondition(rule.condition, paths, surface.id, label, capParamNames);
@@ -417,7 +506,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           rule.effect as { id: string; type: string } & Record<string, unknown>,
           surface.id,
           paths,
-          label
+          label,
+          capParamNames
         );
       }
       for (const inv of cap.invariants) {
@@ -434,7 +524,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           e as { id: string; type: string } & Record<string, unknown>,
           surface.id,
           paths,
-          `Action ${cap.id}`
+          `Action ${cap.id}`,
+          capParamNames
         );
       }
       for (const e of cap.onBlockedEffects ?? []) {
@@ -442,7 +533,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           e as { id: string; type: string } & Record<string, unknown>,
           surface.id,
           paths,
-          `Action ${cap.id} onBlocked`
+          `Action ${cap.id} onBlocked`,
+          capParamNames
         );
       }
     }
@@ -477,6 +569,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
         }
       }
+      checkExpressionParams(leaf.right, undefined, `Feature invariant ${inv.id}: condition.right`);
     }
   }
 
@@ -518,6 +611,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
         }
       }
+      checkExpressionParams(leaf.right, undefined, `Reachability goal ${goal.id}: condition.right`);
     }
   }
 
@@ -595,6 +689,52 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     errors.push(
       `${label}: references undeclared constant "${name}" (no feature-level constant with that name — declare it with add_constant or fix the reference).`
     );
+  }
+
+  // Scenario reference integrity. A scenario's stateOverrides arrange the
+  // initial snapshot and its expectedAssertions read the post-run snapshot, both
+  // by state path; expectedTransition names the surface the action should route
+  // to. Paths are feature-wide (the simulation spans the feature), so validate
+  // against the any-surface union — a typo'd path silently arranges or asserts
+  // the wrong state and the scenario passes/fails meaninglessly (parameterName
+  // is already checked structurally; these were the gap).
+  const checkScenarioAssertions = (
+    assertions: readonly { readonly path: unknown }[] | undefined,
+    label: string
+  ): void => {
+    for (const a of assertions ?? []) {
+      if (typeof a.path === 'string' && !anySurfacePaths.has(a.path)) {
+        errors.push(
+          `${label}: expected-assertion path "${a.path}" is not declared on any surface in the feature.`
+        );
+      }
+    }
+  };
+  for (const surface of feature.surfaces) {
+    for (const cap of surface.actions) {
+      for (const scenario of cap.scenarios ?? []) {
+        const base = `Action ${cap.id} scenario ${scenario.id}`;
+        for (const ov of scenario.stateOverrides ?? []) {
+          if (!anySurfacePaths.has(String(ov.path))) {
+            errors.push(
+              `${base}: stateOverride path "${ov.path}" is not declared on any surface in the feature.`
+            );
+          }
+        }
+        checkScenarioAssertions(scenario.expectedAssertions, base);
+        if (
+          typeof scenario.expectedTransition === 'string' &&
+          !surfaceIds.has(scenario.expectedTransition)
+        ) {
+          errors.push(
+            `${base}: expectedTransition "${scenario.expectedTransition}" is not a known surface id.`
+          );
+        }
+        for (const [i, step] of (scenario.steps ?? []).entries()) {
+          checkScenarioAssertions(step.expectedAssertions, `${base} step[${i}]`);
+        }
+      }
+    }
   }
 
   // Transitive parent cycle detection. Self-parent is caught by the

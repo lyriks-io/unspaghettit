@@ -12,8 +12,10 @@ import {
   asEffectId,
   asEventDefinitionId,
   asFeatureId,
+  asParameterId,
   asReachabilityGoalId,
   asRuleId,
+  asScenarioId,
   asStateDefinitionId,
   asSurfaceId,
   asValueSetId
@@ -894,5 +896,179 @@ describe('feature-level constants', () => {
     const after = withConstRef('typo', [constant()]);
     const introduced = introducedValidationErrors(before, after);
     expect(introduced.some((e) => /undeclared constant "typo"/.test(e))).toBe(true);
+  });
+});
+
+describe('reference-integrity hardening (params, bindToStatePath, scenarios)', () => {
+  // A self-contained surface appended to the healthy seed: it declares its own
+  // state path `inj.count` and an action `Do` with a `qty` parameter, so tests
+  // control every path/param/scenario the new checks look at without depending
+  // on the seed's internals. The rest of the feature stays valid.
+  const paramRightRule = (paramName: string, id = 'inj-r') => ({
+    id: asRuleId(id),
+    category: 'permissions',
+    condition: {
+      left: asStatePath('inj.count'),
+      operator: 'greater_than',
+      right: { kind: 'param', name: paramName }
+    },
+    description: 'Blocks when the count exceeds the requested quantity.',
+    effect: {
+      id: asEffectId('inj-e'),
+      type: 'block_action',
+      reason: 'Count exceeds quantity.',
+      description: 'Rejects the action.'
+    }
+  });
+
+  const withInjected = (opts: {
+    rules?: unknown[];
+    params?: unknown[];
+    surfaceRules?: unknown[];
+    scenarios?: unknown[];
+  }): Feature => ({
+    ...storefrontFeature,
+    surfaces: [
+      ...storefrontFeature.surfaces,
+      {
+        id: asSurfaceId('inj'),
+        name: 'Injected',
+        type: 'screen',
+        description: 'Injected surface for reference-integrity tests.',
+        stateDefinitions: [
+          {
+            id: asStateDefinitionId('inj-sd'),
+            path: asStatePath('inj.count'),
+            type: 'number',
+            defaultValue: 0,
+            description: 'Injected item count.'
+          }
+        ],
+        rules: (opts.surfaceRules ?? []) as never,
+        invariants: [],
+        transitions: [],
+        actions: [
+          {
+            id: asActionId('inj-act'),
+            name: 'Do',
+            intent: 'Do a thing with a quantity.',
+            parameters: (opts.params ?? [
+              {
+                id: asParameterId('inj-p'),
+                name: 'qty',
+                type: 'number',
+                required: false,
+                defaultValue: 1,
+                description: 'Quantity requested.'
+              }
+            ]) as never,
+            requiredStates: [],
+            rules: (opts.rules ?? []) as never,
+            invariants: [],
+            effects: [],
+            emittedEvents: [],
+            transitions: [],
+            scenarios: (opts.scenarios ?? []) as never
+          }
+        ]
+      }
+    ] as never
+  });
+
+  it('accepts a param reference in condition.right naming a declared parameter', () => {
+    expect(validateReferenceIntegrity(withInjected({ rules: [paramRightRule('qty')] })).valid).toBe(
+      true
+    );
+  });
+
+  it('rejects a param reference naming a parameter the action does not have', () => {
+    const result = validateReferenceIntegrity(withInjected({ rules: [paramRightRule('bogus')] }));
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /parameter "bogus"/.test(e))).toBe(true);
+    }
+  });
+
+  it('rejects a param reference in a surface rule, which has no parameter scope', () => {
+    const result = validateReferenceIntegrity(
+      withInjected({ surfaceRules: [paramRightRule('qty', 'inj-sr')] })
+    );
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /no parameters/.test(e))).toBe(true);
+    }
+  });
+
+  const paramWith = (extra: Record<string, unknown>) => [
+    {
+      id: asParameterId('inj-p'),
+      name: 'qty',
+      type: 'number',
+      required: false,
+      defaultValue: 1,
+      description: 'Quantity requested.',
+      ...extra
+    }
+  ];
+
+  it('accepts a bindToStatePath that targets a declared surface path', () => {
+    const feat = withInjected({ params: paramWith({ bindToStatePath: asStatePath('inj.count') }) });
+    expect(validateReferenceIntegrity(feat).valid).toBe(true);
+  });
+
+  it('rejects a bindToStatePath that targets an undeclared path', () => {
+    const feat = withInjected({ params: paramWith({ bindToStatePath: asStatePath('inj.nope') }) });
+    const result = validateReferenceIntegrity(feat);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /bindToStatePath "inj\.nope"/.test(e))).toBe(true);
+    }
+  });
+
+  const scenario = (over: Record<string, unknown>) => ({
+    id: asScenarioId('inj-sc'),
+    name: 'A scenario',
+    description: 'Scenario for reference-integrity tests.',
+    stateOverrides: [],
+    parameterOverrides: [],
+    ...over
+  });
+
+  it('rejects a scenario stateOverride path not declared on any surface', () => {
+    const feat = withInjected({
+      scenarios: [scenario({ stateOverrides: [{ path: asStatePath('nope.here'), value: 1 }] })]
+    });
+    const result = validateReferenceIntegrity(feat);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /stateOverride path "nope\.here"/.test(e))).toBe(true);
+    }
+  });
+
+  it('rejects a scenario expectedTransition to an unknown surface, accepts a known one', () => {
+    const bad = validateReferenceIntegrity(
+      withInjected({ scenarios: [scenario({ expectedTransition: asSurfaceId('ghost') })] })
+    );
+    expect(bad.valid).toBe(false);
+    if (!bad.valid) {
+      expect(bad.errors.some((e) => /expectedTransition "ghost"/.test(e))).toBe(true);
+    }
+    const good = validateReferenceIntegrity(
+      withInjected({ scenarios: [scenario({ expectedTransition: asSurfaceId('inj') })] })
+    );
+    expect(good.valid).toBe(true);
+  });
+
+  it('rejects a scenario expected-assertion path not declared on any surface', () => {
+    const feat = withInjected({
+      scenarios: [
+        scenario({ expectedAssertions: [{ path: asStatePath('nope.assert'), operator: 'exists' }] })
+      ]
+    });
+    const result = validateReferenceIntegrity(feat);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /expected-assertion path "nope\.assert"/.test(e))).toBe(true);
+    }
   });
 });
