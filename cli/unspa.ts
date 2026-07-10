@@ -169,6 +169,7 @@ program
   .option('-s, --snapshots <dir>', 'Verify a specific snapshots folder (defaults to walk-up, then the shared hub).')
   .option('--project <id>', 'Verify a specific project\'s features (overrides the .unspa.json link).')
   .option('--model-check', 'Also run bounded model checking (exhaustive state-space exploration). Off by default; it is the costly part.')
+  .option('--strict', 'Evidence-first gate: model check, 100% maturity and verified coverage, scenarios required, and drift/dead/unmet/skipped/truncated findings fail.')
   .option('--max-depth <n>', 'Model-check action-depth bound (default 6).', (v) => Number.parseInt(v, 10))
   .option('--max-states <n>', 'Model-check state cap (default 2000).', (v) => Number.parseInt(v, 10))
   .option('--min-maturity <n>', 'Fail any feature scoring below this maturity percentage.', (v) => Number.parseInt(v, 10))
@@ -178,6 +179,8 @@ program
   .option('--fail-on-drift', 'Fail when an implementation was audited against an older spec (default: warn only).')
   .option('--fail-on-dead-actions', 'Fail when an action never fires within the model-check bound (default: warn only).')
   .option('--fail-on-unmet-goals', 'Fail when a reachability/liveness goal is unmet (default: warn only). Requires --model-check.')
+  .option('--fail-on-skipped-actions', 'Fail when model checking cannot exercise actions with unsupplied required parameters. Requires --model-check.')
+  .option('--fail-on-truncated-exploration', 'Fail when model checking reaches its depth or state bound. Requires --model-check.')
   .option('--allow-invariant-violations', 'Downgrade reachable invariant violations from failure to warning.')
   .option('--json', 'Emit the full verification report as JSON instead of the human view.')
   .action(async (featureId, opts) => {
@@ -187,6 +190,7 @@ program
       project: opts.project,
       json: opts.json === true,
       modelCheck: opts.modelCheck === true,
+      strict: opts.strict === true,
       maxDepth: opts.maxDepth,
       maxStates: opts.maxStates,
       minMaturity: opts.minMaturity,
@@ -196,6 +200,8 @@ program
       failOnDrift: opts.failOnDrift === true,
       failOnDeadActions: opts.failOnDeadActions === true,
       failOnUnmetGoals: opts.failOnUnmetGoals === true,
+      failOnSkippedActions: opts.failOnSkippedActions === true,
+      failOnTruncatedExploration: opts.failOnTruncatedExploration === true,
       allowInvariantViolations: opts.allowInvariantViolations === true
     });
     process.exit(code);

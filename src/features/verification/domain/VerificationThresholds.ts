@@ -34,6 +34,10 @@ export type VerificationThresholds = {
    * it warns unless opted in.
    */
   readonly failOnUnmetGoals: boolean;
+  /** Fail when model checking cannot exercise an action because inputs have no exploration values. */
+  readonly failOnSkippedActions: boolean;
+  /** Fail when depth/state bounds cut model checking short. */
+  readonly failOnTruncatedExploration: boolean;
 };
 
 export const defaultThresholds = (): VerificationThresholds => ({
@@ -44,7 +48,27 @@ export const defaultThresholds = (): VerificationThresholds => ({
   allowDrift: true,
   requireScenarios: false,
   failOnUnmetGoals: false,
+  failOnSkippedActions: false,
+  failOnTruncatedExploration: false,
   minVerified: 0
+});
+
+/**
+ * Evidence-first gate for teams that want a completeness claim rather than an
+ * exploratory report. It intentionally keeps invariant violations forbidden
+ * and requires every advisory model-check limitation to become a failure.
+ */
+export const strictThresholds = (): VerificationThresholds => ({
+  minMaturity: 100,
+  maxScenarioFailures: 0,
+  allowInvariantViolations: false,
+  failOnDeadActions: true,
+  allowDrift: false,
+  requireScenarios: true,
+  minVerified: 100,
+  failOnUnmetGoals: true,
+  failOnSkippedActions: true,
+  failOnTruncatedExploration: true
 });
 
 export const withThresholdDefaults = (

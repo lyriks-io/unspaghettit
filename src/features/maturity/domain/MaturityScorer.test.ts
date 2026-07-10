@@ -57,6 +57,7 @@ describe('MaturityScorer', () => {
     const cap: Action = {
       ...baseCapability,
       intent: 'do',
+      roles: ['persistence'],
       rules: [
         {
           id: 'r' as never,
@@ -114,6 +115,7 @@ describe('MaturityScorer', () => {
     const cap: Action = {
       ...baseCapability,
       intent: 'do',
+      roles: ['persistence'],
       effects: [
         {
           id: asEffectId('e'),
@@ -126,6 +128,67 @@ describe('MaturityScorer', () => {
     const report = scoreCapability(dummySurface, cap);
     const critical = report.criticalIssues.map((i) => i.area);
     expect(critical).toContain('permissions');
+  });
+
+  it('flags complex actions without scenarios', () => {
+    const cap: Action = {
+      ...baseCapability,
+      intent: 'Change state',
+      roles: ['primary'],
+      effects: [
+        { id: asEffectId('e'), type: 'set_state', path: asStatePath('x.y'), value: 1 }
+      ]
+    };
+    const report = scoreCapability(dummySurface, cap);
+    expect(report.recommendedIssues.map((issue) => issue.area)).toContain('scenarios');
+  });
+
+  it('flags a partial requiredStates declaration that omits discovered reads', () => {
+    const cap: Action = {
+      ...baseCapability,
+      intent: 'Read state',
+      rules: [
+        {
+          id: 'r' as never,
+          category: 'business',
+          condition: { left: asStatePath('account.active'), operator: 'is_true' },
+          effect: { id: asEffectId('allow'), type: 'allow_action' }
+        }
+      ]
+    };
+    const inferred = scoreCapability(dummySurface, cap);
+    expect(inferred.recommendedIssues.map((issue) => issue.area)).not.toContain('required states');
+
+    const partial = scoreCapability(dummySurface, {
+      ...cap,
+      requiredStates: [asStatePath('other.path')]
+    });
+    expect(partial.recommendedIssues.map((issue) => issue.area)).toContain('required states');
+
+    const declared = scoreCapability(dummySurface, {
+      ...cap,
+      requiredStates: [asStatePath('account.active')]
+    });
+    expect(declared.recommendedIssues.map((issue) => issue.area)).not.toContain('required states');
+  });
+
+  it('treats collection effects as mutations requiring permissions', () => {
+    const cap: Action = {
+      ...baseCapability,
+      intent: 'Add item',
+      roles: ['persistence'],
+      effects: [
+        {
+          id: asEffectId('append'),
+          type: 'append_to_list',
+          path: asStatePath('cart.lines'),
+          item: 'sku-1'
+        }
+      ]
+    };
+    expect(scoreCapability(dummySurface, cap).criticalIssues.map((issue) => issue.area)).toContain(
+      'permissions'
+    );
   });
 
   it('scoreSurfaceBreakdown exposes action-first rollup', () => {
@@ -361,7 +424,7 @@ describe('MaturityScorer', () => {
     const action: Action = {
       ...baseCapability,
       intent: 'increment',
-      requiredStates: [asStatePath('counter.value')],
+      requiredStates: [asStatePath('counter.value'), asStatePath('user.canEdit')],
       parameters: [
         {
           id: asParameterId('amount'),

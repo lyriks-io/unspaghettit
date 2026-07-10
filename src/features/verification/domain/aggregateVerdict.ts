@@ -186,6 +186,15 @@ const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
     checks.push(invariantsCheck(exploration, thresholds));
     if (exploration.goalResults.length > 0) checks.push(livenessCheck(exploration, thresholds));
     checks.push(deadActionsCheck(exploration, thresholds));
+    if (exploration.skippedActions.length > 0) {
+      checks.push({
+        id: 'skipped-actions',
+        label: 'Unexplored actions',
+        status: thresholds.failOnSkippedActions ? 'fail' : 'warn',
+        detail: `${exploration.skippedActions.length} action(s) could not be exercised by model checking`,
+        items: exploration.skippedActions.map((action) => `${action.actionName}: ${action.reason}`)
+      });
+    }
     if (exploration.deadlockStates > 0) {
       checks.push({
         id: 'deadlocks',
@@ -198,7 +207,7 @@ const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
       checks.push({
         id: 'bounds',
         label: 'Search bounds',
-        status: 'warn',
+        status: thresholds.failOnTruncatedExploration ? 'fail' : 'warn',
         detail: 'model check truncated — findings are "within bounds", not a proof. Raise maxDepth/maxStates to widen.'
       });
     }

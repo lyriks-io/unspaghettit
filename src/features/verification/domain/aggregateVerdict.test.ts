@@ -176,9 +176,36 @@ describe('aggregateFeatureVerdict', () => {
     expect(checkById(gated, 'verified')?.status).toBe('fail');
   });
 
-  it('warns (never fails) when the model check was truncated', () => {
+  it('warns by default and can fail when the model check was truncated', () => {
     const verdict = aggregateFeatureVerdict(base({ exploration: exploration({ truncated: true }) }));
     expect(verdict.passed).toBe(true);
     expect(checkById(verdict, 'bounds')?.status).toBe('warn');
+
+    const strict = aggregateFeatureVerdict(base({
+      exploration: exploration({ truncated: true }),
+      thresholds: withThresholdDefaults({ failOnTruncatedExploration: true })
+    }));
+    expect(strict.passed).toBe(false);
+    expect(checkById(strict, 'bounds')?.status).toBe('fail');
+  });
+
+  it('reports skipped actions and supports a strict failure gate', () => {
+    const skipped = exploration({
+      skippedActions: [{
+        surfaceId: 's',
+        actionId: 'a',
+        actionName: 'Submit',
+        reason: 'has a required parameter with no default'
+      }]
+    });
+    const warned = aggregateFeatureVerdict(base({ exploration: skipped }));
+    expect(checkById(warned, 'skipped-actions')?.status).toBe('warn');
+
+    const strict = aggregateFeatureVerdict(base({
+      exploration: skipped,
+      thresholds: withThresholdDefaults({ failOnSkippedActions: true })
+    }));
+    expect(strict.passed).toBe(false);
+    expect(checkById(strict, 'skipped-actions')?.status).toBe('fail');
   });
 });

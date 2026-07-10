@@ -50,6 +50,19 @@ Invariants come at three scopes: per-surface, feature-wide, and **cross-feature 
 
 Maturity is a gate, not a vanity metric. 100% maturity is the recommended default for a first serious prompt because it pushes the agent to produce complete scenarios, rules, and checks instead of an outline. Lower it deliberately when you want brainstorming or a partial draft. See [Working with AI](prompting.md) for how to set the target.
 
+Maturity measures the structure and depth of the model; it is not, by itself,
+proof that every real-world behavior was discovered. Use verification and
+source provenance alongside it. Standard-library blueprints are starter models:
+they are intentionally rescored after insertion and may require domain-specific
+permissions, rules, and scenarios.
+
+For an evidence-first CI gate, run `unspa check --strict`. Strict mode enables
+bounded model checking, requires scenarios, 100% maturity and verified code
+coverage, rejects drift and invariant violations, and fails when exploration
+skips an action or reaches its configured bounds. A strict pass is still scoped
+to the authored model and the declared exploration bounds; it is not a claim
+that undocumented behavior cannot exist.
+
 ## Generated TypeScript contracts
 
 `generate_types` writes types for state shapes, event names, and action parameters. Your implementation imports them, so TypeScript catches drift the moment the spec changes. The compiler becomes your first line of defense against intent and code diverging.

@@ -8,6 +8,7 @@ import type { Invariant } from '../../src/features/behavior-model/domain/entitie
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { fileBehavioralIndexReader } from '../../src/features/verification/infrastructure/persistence/FileBehavioralIndexReader';
 import { verifyFeaturesUseCase } from '../../src/features/verification/application/use-cases/VerifyFeatures';
+import { strictThresholds } from '../../src/features/verification/domain/VerificationThresholds';
 import type { CheckStatus, FeatureVerdict } from '../../src/features/verification/domain/VerificationVerdict';
 import {
   mergeVerificationReports,
@@ -35,7 +36,11 @@ export type CheckOptions = {
   readonly failOnDrift?: boolean;
   readonly failOnDeadActions?: boolean;
   readonly failOnUnmetGoals?: boolean;
+  readonly failOnSkippedActions?: boolean;
+  readonly failOnTruncatedExploration?: boolean;
   readonly allowInvariantViolations?: boolean;
+  /** Evidence-first preset: 100% maturity/verified, model check, no warnings hidden as pass. */
+  readonly strict?: boolean;
 };
 
 const STATUS_GLYPH: Record<CheckStatus, string> = {
@@ -143,16 +148,19 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
   });
 
   const thresholds = {
-    minMaturity: options.minMaturity ?? 0,
-    minVerified: options.minVerified ?? 0,
+    ...(options.strict ? strictThresholds() : {}),
+    minMaturity: options.minMaturity ?? (options.strict ? 100 : 0),
+    minVerified: options.minVerified ?? (options.strict ? 100 : 0),
     maxScenarioFailures: options.maxScenarioFailures ?? 0,
-    allowInvariantViolations: options.allowInvariantViolations === true,
-    failOnDeadActions: options.failOnDeadActions === true,
-    allowDrift: options.failOnDrift !== true,
-    requireScenarios: options.requireScenarios === true,
-    failOnUnmetGoals: options.failOnUnmetGoals === true
+    allowInvariantViolations: !options.strict && options.allowInvariantViolations === true,
+    failOnDeadActions: options.strict || options.failOnDeadActions === true,
+    allowDrift: !(options.strict || options.failOnDrift === true),
+    requireScenarios: options.strict || options.requireScenarios === true,
+    failOnUnmetGoals: options.strict || options.failOnUnmetGoals === true,
+    failOnSkippedActions: options.strict || options.failOnSkippedActions === true,
+    failOnTruncatedExploration: options.strict || options.failOnTruncatedExploration === true
   };
-  const modelCheck = options.modelCheck
+  const modelCheck = options.modelCheck || options.strict
     ? {
         ...(options.maxDepth !== undefined ? { maxDepth: options.maxDepth } : {}),
         ...(options.maxStates !== undefined ? { maxStates: options.maxStates } : {})

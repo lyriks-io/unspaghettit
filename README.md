@@ -88,6 +88,7 @@ Point your AI agent at whatever you already have: a design screenshot, a product
 - **Maturity scoring**: per-area scores with critical issues, so shallow modeling gets caught before it ships.
 - **Spec ↔ code audit**: every entity records where it lives in code; coverage, gaps, and drift are reported, and generated scenario tests can *prove* the implementation matches, not just claim it.
 - **A CI gate**: `unspa check` runs the whole verification spine and exits non-zero on failure; `unspa ci` scaffolds the GitHub Actions workflow.
+- **An evidence-first strict gate**: `unspa check --strict` turns drift, skipped actions, truncated exploration, dead actions, unmet goals, missing scenarios, and incomplete verified coverage into failures instead of advisory warnings.
 - **Generated TypeScript contracts**: state, event, and parameter types your implementation imports, so the compiler catches divergence first.
 - **Diagrams & provenance**: project the model as a statechart, sequence, ER, flowchart, or mindmap (export Mermaid, DOT, SVG/PNG), and trace every element back to the exact source span it was extracted from.
 - **A live dashboard**: editor, simulator, behavior graph, verify view with navigable counterexample traces, implementation coverage, global search (⌘K).

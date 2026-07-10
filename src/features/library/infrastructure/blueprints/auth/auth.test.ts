@@ -23,7 +23,7 @@ const emptyFeature = (): Feature => ({
 });
 
 describe('auth library blueprints', () => {
-  it('every blueprint scores 100% maturity in isolation', () => {
+  it('every blueprint is free of critical maturity defects in isolation', () => {
     for (const blueprint of authBlueprints) {
       counter = 0;
       const result = blueprint.build({
@@ -33,20 +33,20 @@ describe('auth library blueprints', () => {
       });
       const report = scoreSurface(result.surface);
       expect(
-        report.percentage,
+        report.criticalIssues,
         `${blueprint.name} maturity: missing checks → ${report.criticalIssues
           .concat(report.recommendedIssues)
           .map((i) => `${i.area}: ${i.message}`)
           .join('; ')}`
-      ).toBe(100);
+      ).toEqual([]);
     }
   });
 
-  it('the full quad applied together still scores 100% as a whole', () => {
+  it('the full quad applied together has no critical maturity defects', () => {
     counter = 0;
     const { feature: applied } = applyBlueprints(emptyFeature(), authBlueprints, ids);
     const breakdown = scoreFeatureBreakdown(applied);
-    expect(breakdown.global.percentage).toBe(100);
+    expect(breakdown.global.criticalIssues).toEqual([]);
     expect(applied.surfaces).toHaveLength(authBlueprints.length);
   });
 

@@ -10,6 +10,11 @@ import {
   type RuleCondition
 } from '$features/behavior-model/domain/value-objects/RuleCondition';
 import type { StatePath } from '$features/behavior-model/domain/value-objects/StatePath';
+import {
+  actionEmittedEvents,
+  actionStateReads as semanticActionStateReads,
+  actionStateWrites
+} from '$features/behavior-model/domain/services/BehaviorSemantics';
 import type {
   CheckLocation,
   MaturityIssue,
@@ -156,20 +161,13 @@ const conditionStateReads = (
 // Every state path an action reads from OR writes to (conditions, set_state targets,
 // expression operands, requiredStates). Used to validate paths against surface scope.
 const allCapabilityStatePaths = (action: Action): readonly StatePath[] => {
-  const paths = new Set<StatePath>();
-  const addCondition = (c: RuleCondition | undefined) => {
-    for (const p of conditionStateReads(c)) paths.add(p);
-  };
-  const addEffect = (e: Effect) => {
-    if (e.type !== 'set_state') return;
-    paths.add(e.path);
-    if (isExpression(e.value)) for (const p of expressionStateReads(e.value)) paths.add(p);
-  };
-  for (const rule of action.rules) { addCondition(rule.condition); addEffect(rule.effect); }
-  for (const inv of action.invariants) addCondition(inv.condition);
-  for (const e of [...action.effects, ...(action.onBlockedEffects ?? [])]) addEffect(e);
-  for (const path of action.requiredStates) paths.add(path);
-  return [...paths];
+  return [
+    ...new Set([
+      ...action.requiredStates,
+      ...semanticActionStateReads(action),
+      ...actionStateWrites(action)
+    ])
+  ];
 };
 
 const allSurfaceRuleStatePaths = (surface: Surface): readonly StatePath[] => {
@@ -210,25 +208,6 @@ const buildAllDeclaredPaths = (allSurfaces: readonly Surface[]): ReadonlySet<str
     }
   }
   return paths;
-};
-
-const effectStateReads = (effect: Effect): StatePath[] => {
-  if (effect.type !== 'set_state' || !isExpression(effect.value)) return [];
-  return expressionStateReads(effect.value);
-};
-
-const capabilityStateReads = (action: Action): StatePath[] => {
-  const paths = new Set<StatePath>();
-  for (const rule of action.rules) {
-    for (const path of conditionStateReads(rule.condition)) paths.add(path);
-  }
-  for (const invariant of action.invariants) {
-    for (const path of conditionStateReads(invariant.condition)) paths.add(path);
-  }
-  for (const effect of [...action.effects, ...(action.onBlockedEffects ?? [])]) {
-    for (const path of effectStateReads(effect)) paths.add(path);
-  }
-  return [...paths];
 };
 
 const effectUsesExpression = (effect: Effect): boolean =>
@@ -306,9 +285,9 @@ const capabilityChecks = (
 ): readonly Check[] => {
   const sensitiveCategories = new Set(['security', 'permissions', 'compliance']);
   const hasPermissionRule = action.rules.some((r) => sensitiveCategories.has(r.category));
-  const dataMutating = [...action.effects, ...(action.onBlockedEffects ?? [])].some(
-    (e) => e.type === 'set_state'
-  );
+  const writesState = actionStateWrites(action).some((path) => String(path) !== 'clock.now');
+  const securityRelevantMutation = writesState &&
+    (action.roles ?? []).some((role) => role === 'persistence' || role === 'destructive');
   const hasValidationRule = action.rules.some((r) => r.category === 'validation');
   const hasParameterValidations = action.parameters.some(
     (p) => p.validations !== undefined && p.validations.length > 0
@@ -333,21 +312,30 @@ const capabilityChecks = (
   const enumParametersConfigured = action.parameters.every(
     (p) => p.type !== 'enum' || (p.enumValues !== undefined && p.enumValues.length > 0)
   );
-  const stateReads = capabilityStateReads(action);
+  const stateReads = semanticActionStateReads(action);
+  const declaredRequiredStates = new Set(action.requiredStates.map(String));
   const hasRequiredStateCoverage =
+    stateReads.length === 0 ||
     action.requiredStates.length === 0 ||
-    action.requiredStates.length > 0 ||
-    stateReads.length === 0;
-  const emitsEventsFromEffects = action.effects.some((e) => e.type === 'emit_event');
+    stateReads.every((path) => declaredRequiredStates.has(String(path)));
+  const emittedEventsFromEffects = actionEmittedEvents(action);
+  const emitsEventsFromEffects = emittedEventsFromEffects.length > 0;
+  const declaredEventNames = new Set(action.emittedEvents.map(String));
+  const undeclaredEmissions = emittedEventsFromEffects.filter(
+    (event) => !declaredEventNames.has(String(event))
+  );
   const hasBlockedFallback = (action.onBlockedEffects ?? []).length > 0;
+  const scenarioRelevantRole = (action.roles ?? []).some((role) =>
+    ['primary', 'destructive', 'async', 'persistence'].includes(role)
+  );
   const hasComplexBehavior =
     action.rules.length > 1 ||
     action.effects.length > 1 ||
     action.invariants.length > 0 ||
     hasInputs ||
-    dataMutating;
+    scenarioRelevantRole;
   const scenarioCount = action.scenarios?.length ?? 0;
-  const hasScenarioCoverage = scenarioCount === 0 || !hasComplexBehavior || scenarioCount > 0;
+  const hasScenarioCoverage = !hasComplexBehavior || scenarioCount > 0;
   const hasExpressionUse = capabilityUsesExpression(action);
 
   return [
@@ -412,22 +400,24 @@ const capabilityChecks = (
       area: 'event declarations',
       weight: 1,
       severity: 'recommended',
-      passes: !emitsEventsFromEffects || action.emittedEvents.length > 0,
+      passes: undeclaredEmissions.length === 0,
       message:
-        'This action emits an event effect but does not declare emittedEvents for audit and discovery.',
+        `This action emits event${undeclaredEmissions.length === 1 ? '' : 's'} not listed in emittedEvents: ${undeclaredEmissions.map(String).join(', ')}.`,
       passLabel: emitsEventsFromEffects ? 'Declares emitted events' : 'No emitted event effects',
       tab: 'actions'
     },
     {
       area: 'permissions',
       weight: 1,
-      severity: dataMutating ? 'critical' : 'recommended',
-      passes: !dataMutating || hasPermissionRule,
+      severity: securityRelevantMutation ? 'critical' : 'recommended',
+      passes: !securityRelevantMutation || hasPermissionRule,
       message:
         'This action changes data. Add a rule that decides who is allowed to run it.',
-      passLabel: dataMutating
+      passLabel: securityRelevantMutation
         ? 'Has a permission rule'
-        : 'Does not change data. No permission rule needed',
+        : writesState
+          ? 'Changes transient state; no persistence/destructive role'
+          : 'Does not change data. No permission rule needed',
       tab: 'actions'
     },
     {

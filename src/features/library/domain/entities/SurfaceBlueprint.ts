@@ -26,11 +26,11 @@ export type BlueprintBuildResult = {
 };
 
 /**
- * A SurfaceBlueprint is a deterministic spec for a fully-modeled, mature
- * Surface plus the supporting Resources and Personas it needs. Every blueprint
- * in the standard library is expected to score 100% on `MaturityScorer` once
- * applied, so users can drop one in and immediately have a compliant building
- * block.
+ * A SurfaceBlueprint is a deterministic starter model for a Surface plus the
+ * supporting Resources and Personas it needs. Blueprints must be structurally
+ * valid and free of critical maturity defects, but domain-specific rules,
+ * scenarios and permissions still require review after insertion. Treating a
+ * generic template as 100% complete would create false confidence.
  *
  * The model treats blueprints as static specifications. They have no
  * lifecycle, only an identity (`id`) and a `build` factory. Concrete

@@ -8,6 +8,7 @@ import { verifyFeaturesUseCase } from '../../src/features/verification/applicati
 import { fileBehavioralIndexReader } from '../../src/features/verification/infrastructure/persistence/FileBehavioralIndexReader';
 import { staticBehavioralIndexReader } from '../../src/features/verification/infrastructure/persistence/StaticBehavioralIndexReader';
 import type { BehavioralIndexReader } from '../../src/features/verification/application/ports/BehavioralIndexReader';
+import { strictThresholds } from '../../src/features/verification/domain/VerificationThresholds';
 import { trackTokens } from '../metrics';
 import { errorText, text, type ToolDeps } from './_shared';
 import { expandFeatureId } from './short-ids';
@@ -91,6 +92,7 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
         'Run the whole verification spine and return a gated verdict — the in-chat form of `unspa check`. Per feature: runs every scenario as an executable spec test, scores maturity, analyses surface (navigation) reachability, optionally model-checks the reachable state space, and folds in spec→code drift. Each check is pass / warn / fail; `passed` is true when nothing failed (warnings are advisory — bounded-search caveats, drift, ungated maturity). Defaults fail only on the unambiguous things (a failing scenario, a reachable invariant violation). Use after a build/edit pass to confirm the spec is sound before claiming done.',
       inputSchema: {
         featureId: z.string().optional(),
+        strict: z.boolean().optional(),
         modelCheck: z.boolean().optional(),
         maxDepth: z.number().int().positive().optional(),
         maxStates: z.number().int().positive().optional(),
@@ -98,7 +100,9 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
         minVerified: z.number().int().min(0).max(100).optional(),
         requireScenarios: z.boolean().optional(),
         failOnDrift: z.boolean().optional(),
-        failOnUnmetGoals: z.boolean().optional()
+        failOnUnmetGoals: z.boolean().optional(),
+        failOnSkippedActions: z.boolean().optional(),
+        failOnTruncatedExploration: z.boolean().optional()
       }
     },
     async (args) => {
@@ -109,13 +113,17 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
           featureIds: features.map((f) => f.id),
           projectInvariants,
           thresholds: {
-            minMaturity: args.minMaturity ?? 0,
-            minVerified: args.minVerified ?? 0,
-            requireScenarios: args.requireScenarios === true,
-            allowDrift: args.failOnDrift !== true,
-            failOnUnmetGoals: args.failOnUnmetGoals === true
+            ...(args.strict ? strictThresholds() : {}),
+            minMaturity: args.minMaturity ?? (args.strict ? 100 : 0),
+            minVerified: args.minVerified ?? (args.strict ? 100 : 0),
+            requireScenarios: args.strict || args.requireScenarios === true,
+            allowDrift: !(args.strict || args.failOnDrift === true),
+            failOnUnmetGoals: args.strict || args.failOnUnmetGoals === true,
+            failOnSkippedActions: args.strict || args.failOnSkippedActions === true,
+            failOnTruncatedExploration: args.strict || args.failOnTruncatedExploration === true,
+            failOnDeadActions: args.strict === true
           },
-          modelCheck: args.modelCheck
+          modelCheck: args.modelCheck || args.strict
             ? {
                 ...(args.maxDepth !== undefined ? { maxDepth: args.maxDepth } : {}),
                 ...(args.maxStates !== undefined ? { maxStates: args.maxStates } : {})
