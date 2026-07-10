@@ -30,8 +30,10 @@ export type EffectApplication = {
 };
 
 export type EffectContext = EvaluationContext['parameters'];
+export type EffectConstants = NonNullable<EvaluationContext['constants']>;
 
 const EMPTY_PARAMETERS: EffectContext = {};
+const EMPTY_CONSTANTS: EffectConstants = {};
 
 /**
  * Converts legacy sentinel strings written into JSON specs before the
@@ -142,7 +144,8 @@ const elementMatches = (
 export const applyEffect = (
   current: EffectApplication,
   effect: Effect,
-  parameters: EffectContext = EMPTY_PARAMETERS
+  parameters: EffectContext = EMPTY_PARAMETERS,
+  constants: EffectConstants = EMPTY_CONSTANTS
 ): EffectApplication => {
   const record: AppliedEffectRecord = {
     effectId: effect.id,
@@ -164,7 +167,8 @@ export const applyEffect = (
       const coerced = coerceSentinel(effect.value, effect.path);
       const resolved = resolveValueOrExpression(coerced, {
         snapshot: current.snapshot,
-        parameters
+        parameters,
+        constants
       });
       if (resolved === undefined) {
         return { ...current, applied: [...current.applied, record] };
@@ -248,7 +252,7 @@ export const applyEffect = (
       if (current.blocked) {
         return { ...current, applied: [...current.applied, record] };
       }
-      const context: EvaluationContext = { snapshot: current.snapshot, parameters };
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters, constants };
       const item = resolveValueOrExpression(effect.item, context);
       // An item that can't be resolved (missing param / non-computable expr)
       // is skipped rather than pushing `undefined` and poisoning the array.
@@ -268,7 +272,7 @@ export const applyEffect = (
       if (existing === null) {
         return { ...current, applied: [...current.applied, record] };
       }
-      const context: EvaluationContext = { snapshot: current.snapshot, parameters };
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters, constants };
       let kept: readonly StateValue[];
       if (effect.where !== undefined) {
         kept = existing.filter((el) => !elementMatches(el, effect.where!, context));
@@ -292,7 +296,7 @@ export const applyEffect = (
       if (existing === null) {
         return { ...current, applied: [...current.applied, record] };
       }
-      const context: EvaluationContext = { snapshot: current.snapshot, parameters };
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters, constants };
       const value = resolveValueOrExpression(effect.value, context);
       // Unresolvable value → leave every element untouched (don't write undefined).
       if (value === undefined) {
@@ -310,7 +314,7 @@ export const applyEffect = (
       if (current.blocked) {
         return { ...current, applied: [...current.applied, record] };
       }
-      const context: EvaluationContext = { snapshot: current.snapshot, parameters };
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters, constants };
       const by = resolveValueOrExpression(effect.by, context);
       // Non-numeric / unresolvable duration → no-op (advanceClock clamps).
       const nextSnapshot = advanceClock(current.snapshot, typeof by === 'number' ? by : 0);

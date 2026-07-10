@@ -17,6 +17,7 @@ export type ScenarioId = Brand<string, 'ScenarioId'>;
 export type EventDefinitionId = Brand<string, 'EventDefinitionId'>;
 export type ValueSetId = Brand<string, 'ValueSetId'>;
 export type ReachabilityGoalId = Brand<string, 'ReachabilityGoalId'>;
+export type ConstantId = Brand<string, 'ConstantId'>;
 
 export const asFeatureId = (v: string): FeatureId => v as FeatureId;
 export const asSurfaceId = (v: string): SurfaceId => v as SurfaceId;
@@ -35,3 +36,4 @@ export const asScenarioId = (v: string): ScenarioId => v as ScenarioId;
 export const asEventDefinitionId = (v: string): EventDefinitionId => v as EventDefinitionId;
 export const asValueSetId = (v: string): ValueSetId => v as ValueSetId;
 export const asReachabilityGoalId = (v: string): ReachabilityGoalId => v as ReachabilityGoalId;
+export const asConstantId = (v: string): ConstantId => v as ConstantId;

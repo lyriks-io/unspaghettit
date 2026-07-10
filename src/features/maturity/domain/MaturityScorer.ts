@@ -132,6 +132,7 @@ const expressionStateReads = (expression: Expression): StatePath[] => {
       ];
     case 'literal':
     case 'param':
+    case 'const':
       return [];
   }
 };

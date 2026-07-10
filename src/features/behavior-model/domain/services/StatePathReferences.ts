@@ -62,6 +62,8 @@ const countStateRefsInExpression = (
       return 0;
     case 'param':
       return 0;
+    case 'const':
+      return 0;
     case 'state':
       return String(expr.path) === target ? 1 : 0;
     case 'neg':

@@ -13,11 +13,12 @@ export type InvariantViolation = {
 export const checkInvariants = (
   invariants: readonly Invariant[],
   snapshot: StateSnapshot,
-  parameters: { readonly [name: string]: StateValue } = {}
+  parameters: { readonly [name: string]: StateValue } = {},
+  constants: { readonly [name: string]: StateValue } = {}
 ): readonly InvariantViolation[] => {
   const violations: InvariantViolation[] = [];
   for (const invariant of invariants) {
-    const holds = evaluateCondition(invariant.condition, snapshot, parameters);
+    const holds = evaluateCondition(invariant.condition, snapshot, parameters, constants);
     if (!holds) {
       violations.push({
         invariantId: invariant.id,

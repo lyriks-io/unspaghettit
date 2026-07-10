@@ -2,9 +2,12 @@ import type { StateDefinition } from '../entities/StateDefinition';
 import {
   deepEqualValue,
   evaluateExpression,
+  type EvaluationContext,
   type Expression
 } from '../value-objects/Expression';
 import { readPath, writePath, type StateSnapshot, type StatePath } from '../value-objects/StatePath';
+
+type ConstantMap = NonNullable<EvaluationContext['constants']>;
 
 /**
  * A state path whose value is computed from an Expression rather than authored.
@@ -47,14 +50,15 @@ export const derivedPathSet = (defs: readonly DerivedDef[]): ReadonlySet<string>
  */
 export const recomputeDerived = (
   snapshot: StateSnapshot,
-  defs: readonly DerivedDef[]
+  defs: readonly DerivedDef[],
+  constants: ConstantMap = {}
 ): StateSnapshot => {
   if (defs.length === 0) return snapshot;
   let next = snapshot;
   for (let pass = 0; pass < defs.length; pass += 1) {
     let changed = false;
     for (const def of defs) {
-      const value = evaluateExpression(def.expr, { snapshot: next, parameters: {} });
+      const value = evaluateExpression(def.expr, { snapshot: next, parameters: {}, constants });
       if (value === undefined) continue;
       if (!deepEqualValue(readPath(next, def.path), value)) {
         next = writePath(next, def.path, value);

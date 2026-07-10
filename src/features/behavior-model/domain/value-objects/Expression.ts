@@ -33,6 +33,7 @@ export type Expression =
   | { readonly kind: 'literal'; readonly value: StateValue }
   | { readonly kind: 'state'; readonly path: StatePath }
   | { readonly kind: 'param'; readonly name: string }
+  | { readonly kind: 'const'; readonly name: string }
   | { readonly kind: 'add'; readonly left: Expression; readonly right: Expression }
   | { readonly kind: 'sub'; readonly left: Expression; readonly right: Expression }
   | { readonly kind: 'mul'; readonly left: Expression; readonly right: Expression }
@@ -75,6 +76,7 @@ export const EXPRESSION_KINDS = [
   'literal',
   'state',
   'param',
+  'const',
   'add',
   'sub',
   'mul',
@@ -107,6 +109,14 @@ export const isExpression = (v: unknown): v is Expression => {
 export type EvaluationContext = {
   readonly snapshot: StateSnapshot;
   readonly parameters: { readonly [name: string]: StateValue };
+  /**
+   * Feature-level named constants, keyed by name. Referenced by
+   * `{ kind: 'const', name }` expression nodes. Optional so ad-hoc callers
+   * and legacy fixtures keep compiling; a `const` node whose name isn't here
+   * resolves to `undefined` (the same "unknown" behaviour as a missing state
+   * path), and the reference validator flags it at write time.
+   */
+  readonly constants?: { readonly [name: string]: StateValue };
 };
 
 // ISO 8601 calendar date / datetime / time-of-day, same shape used by
@@ -265,6 +275,8 @@ export const evaluateExpression = (
       return readPath(context.snapshot, expression.path);
     case 'param':
       return context.parameters[expression.name];
+    case 'const':
+      return context.constants?.[expression.name];
     case 'neg': {
       const v = evaluateExpression(expression.operand, context);
       return typeof v === 'number' ? -v : undefined;
@@ -417,6 +429,7 @@ export const normalizeExpression = (
     case 'literal':
     case 'state':
     case 'param':
+    case 'const':
       return value;
     case 'neg':
       return { kind: 'neg', operand: normalizeExpressionChild(value.operand) };

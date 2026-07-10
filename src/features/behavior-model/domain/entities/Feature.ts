@@ -1,5 +1,6 @@
 import type { DevContext } from '../value-objects/DevContext';
 import type { FeatureId } from '../value-objects/ids';
+import type { Constant } from './Constant';
 import type { Entity } from './Entity';
 import type { EventDefinition } from './EventDefinition';
 import type { Invariant } from './Invariant';
@@ -27,6 +28,14 @@ export type Feature = {
    * value sets declared". Downstream code reads `feature.valueSets ?? []`.
    */
   readonly valueSets?: readonly ValueSet[];
+  /**
+   * Named constants referenced from expressions via `{ kind: 'const', name }`.
+   * A threshold declared once here instead of copy-pasted into every rule /
+   * invariant / derived formula that compares against it, so the number can't
+   * drift across the spec (or against the code constant that implements it).
+   * Optional and additive; downstream code reads `feature.constants ?? []`.
+   */
+  readonly constants?: readonly Constant[];
   /**
    * Cross-surface invariants. Checked after EVERY action runs, regardless
    * of which surface the action lives on. Use for accounting equations

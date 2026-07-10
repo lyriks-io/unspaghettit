@@ -135,6 +135,7 @@ const collectExpr = (expr: Expression, out: Set<string>): void => {
   switch (expr.kind) {
     case 'literal':
     case 'param':
+    case 'const':
       return;
     case 'state':
       out.add(String(expr.path));

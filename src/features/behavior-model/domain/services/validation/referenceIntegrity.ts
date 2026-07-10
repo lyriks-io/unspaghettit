@@ -19,6 +19,9 @@ const collectExpressionStatePaths = (expr: Expression, out: string[]): void => {
   switch (expr.kind) {
     case 'literal':
     case 'param':
+    case 'const':
+      // const references a feature-level constant by name, not a state path;
+      // its existence is validated separately (see collectExpressionConstNames).
       return;
     case 'state':
       out.push(expr.path);

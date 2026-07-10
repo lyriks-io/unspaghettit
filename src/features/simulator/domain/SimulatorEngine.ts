@@ -3,8 +3,10 @@ import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { Rule } from '$features/behavior-model/domain/entities/Rule';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
+import type { Constant } from '$features/behavior-model/domain/entities/Constant';
 import type { ActionId } from '$features/behavior-model/domain/value-objects/ids';
 import type { EventName } from '$features/behavior-model/domain/value-objects/EventName';
+import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
 import {
   collectDerivedDefs,
   recomputeDerived,
@@ -69,17 +71,32 @@ export type SimulationInput = {
 /** Defense against handler-triggers-handler-triggers-... chains. */
 const CASCADE_DEPTH_LIMIT = 8;
 
+type ConstantMap = { readonly [name: string]: StateValue };
+
+/**
+ * Flatten a feature's declared constants into a name→value map for the
+ * evaluator. Last declaration wins on a duplicate name (the validator rejects
+ * duplicates before this runs, so it never matters in practice).
+ */
+const buildConstantMap = (constants: readonly Constant[] | undefined): ConstantMap => {
+  if (!constants || constants.length === 0) return {};
+  const out: { [name: string]: StateValue } = {};
+  for (const c of constants) out[c.name] = c.value;
+  return out;
+};
+
 const evaluateRules = (
   rules: readonly Rule[],
   origin: 'surface' | 'action',
   application: EffectApplication,
   parameters: ParameterValues,
-  derivedDefs: readonly DerivedDef[]
+  derivedDefs: readonly DerivedDef[],
+  constants: ConstantMap
 ): { readonly application: EffectApplication; readonly records: readonly EvaluatedRuleRecord[] } => {
   let current = application;
   const records: EvaluatedRuleRecord[] = [];
   for (const rule of rules) {
-    const held = evaluateCondition(rule.condition, current.snapshot, parameters);
+    const held = evaluateCondition(rule.condition, current.snapshot, parameters, constants);
     records.push({
       ruleId: rule.id,
       category: rule.category,
@@ -87,10 +104,10 @@ const evaluateRules = (
       origin
     });
     if (!held) continue;
-    current = applyEffect(current, rule.effect, parameters);
+    current = applyEffect(current, rule.effect, parameters, constants);
     // Keep derived paths consistent so a LATER rule's condition sees the
     // recomputed value, not a stale one from before this effect landed.
-    current = { ...current, snapshot: recomputeDerived(current.snapshot, derivedDefs) };
+    current = { ...current, snapshot: recomputeDerived(current.snapshot, derivedDefs, constants) };
   }
   return { application: current, records };
 };
@@ -209,6 +226,12 @@ const simulateInternal = (
   // every mutation below so authors never hand-maintain them and a stale write
   // can't survive (the next recompute overwrites it).
   const derivedDefs = collectDerivedDefs(allFeatureDefs);
+  // Feature-level named constants, resolved once per simulate and threaded into
+  // every rule/effect/derived/invariant evaluation below so a `{kind:"const"}`
+  // reference sees the declared value. Cross-feature cascade handlers build
+  // their OWN map from their own feature (simulateInternal runs per handler),
+  // so a handler in feature B reads B's constants, not the emitter's.
+  const constants = buildConstantMap(feature?.constants);
   // Note: the simulation clock (`clock.now`) is NOT auto-seeded here — it
   // materializes only when time is actually advanced (an `advance_time` effect
   // or a scenario `timeAdvance`), so time-free features keep a clean snapshot.
@@ -216,7 +239,8 @@ const simulateInternal = (
   // comparisons degrade correctly when the path is still absent.
   const completeSnapshot = recomputeDerived(
     mergeSnapshotWithDefaults(normalizedSnapshot, allFeatureDefs),
-    derivedDefs
+    derivedDefs,
+    constants
   );
 
   const filledParams = fillDefaults(action.parameters, parameters);
@@ -245,12 +269,20 @@ const simulateInternal = (
   // Recompute derived afterwards: a bound parameter can feed a derived value.
   const boundSnapshot = recomputeDerived(
     applyParameterBindings(action.parameters, filledParams, completeSnapshot),
-    derivedDefs
+    derivedDefs,
+    constants
   );
 
   let application = initialApplication(boundSnapshot);
 
-  const surfaceEval = evaluateRules(surface.rules, 'surface', application, filledParams, derivedDefs);
+  const surfaceEval = evaluateRules(
+    surface.rules,
+    'surface',
+    application,
+    filledParams,
+    derivedDefs,
+    constants
+  );
   application = surfaceEval.application;
   const evaluatedRules: EvaluatedRuleRecord[] = [...surfaceEval.records];
 
@@ -260,7 +292,8 @@ const simulateInternal = (
       'action',
       application,
       filledParams,
-      derivedDefs
+      derivedDefs,
+      constants
     );
     application = capabilityEval.application;
     evaluatedRules.push(...capabilityEval.records);
@@ -268,8 +301,11 @@ const simulateInternal = (
 
   if (!application.blocked) {
     for (const effect of action.effects) {
-      application = applyEffect(application, effect, filledParams);
-      application = { ...application, snapshot: recomputeDerived(application.snapshot, derivedDefs) };
+      application = applyEffect(application, effect, filledParams, constants);
+      application = {
+        ...application,
+        snapshot: recomputeDerived(application.snapshot, derivedDefs, constants)
+      };
     }
   } else if (action.onBlockedEffects && action.onBlockedEffects.length > 0) {
     // Universal "what to do when something blocked" fallbacks. State mutations
@@ -277,8 +313,11 @@ const simulateInternal = (
     // events, and messages do fire so the user gets a graceful redirect /
     // observability signal.
     for (const effect of action.onBlockedEffects) {
-      application = applyEffect(application, effect, filledParams);
-      application = { ...application, snapshot: recomputeDerived(application.snapshot, derivedDefs) };
+      application = applyEffect(application, effect, filledParams, constants);
+      application = {
+        ...application,
+        snapshot: recomputeDerived(application.snapshot, derivedDefs, constants)
+      };
     }
   }
 
@@ -310,7 +349,8 @@ const simulateInternal = (
   const invariantViolations = checkInvariants(
     allInvariants,
     application.snapshot,
-    filledParams
+    filledParams,
+    constants
   );
 
   let status: SimulationResult['status'] = 'success';

@@ -6,8 +6,10 @@ import type { StateSnapshot } from '../value-objects/StatePath';
 import type { RuleCondition } from '../value-objects/RuleCondition';
 
 export type ParameterContext = EvaluationContext['parameters'];
+export type ConstantContext = NonNullable<EvaluationContext['constants']>;
 
 const EMPTY_PARAMETERS: ParameterContext = {};
+const EMPTY_CONSTANTS: ConstantContext = {};
 
 /**
  * Evaluate a condition. `parameters` is optional so existing call-sites
@@ -27,5 +29,6 @@ const EMPTY_PARAMETERS: ParameterContext = {};
 export const evaluateCondition = (
   condition: RuleCondition | undefined | null,
   snapshot: StateSnapshot,
-  parameters: ParameterContext = EMPTY_PARAMETERS
-): boolean => evaluateConditionInternal(condition, { snapshot, parameters });
+  parameters: ParameterContext = EMPTY_PARAMETERS,
+  constants: ConstantContext = EMPTY_CONSTANTS
+): boolean => evaluateConditionInternal(condition, { snapshot, parameters, constants });
