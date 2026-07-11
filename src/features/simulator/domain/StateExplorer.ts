@@ -9,11 +9,12 @@ import {
   collectDerivedDefs,
   recomputeDerived
 } from '$features/behavior-model/domain/services/DerivedState';
-import { fillDefaults } from '$features/behavior-model/domain/services/ParameterValidator';
+import type { ParameterValues } from '$features/behavior-model/domain/services/ParameterValidator';
 import { evaluateCondition } from '$features/behavior-model/domain/services/RuleEvaluator';
 import { buildInitialSnapshot } from '$features/behavior-model/domain/services/StateSnapshot';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
 import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
+import { parameterCombinations } from './ParameterDomains';
 import { simulate } from './SimulatorEngine';
 
 /**
@@ -27,11 +28,13 @@ import { simulate } from './SimulatorEngine';
  *   - Are there deadlock states (reachable, but no action can fire)?
  *
  * It is BOUNDED (depth + total-states caps) — "no violation found within N
- * steps", not a proof for unbounded executions — and DETERMINISTIC: actions run
- * with their parameter defaults, and an action with a required parameter that
- * has no default is skipped (and reported), since the explorer can't invent a
- * value. Those caveats are surfaced in the report so a green result is never
- * mistaken for more than it is.
+ * steps", not a proof for unbounded executions — and DETERMINISTIC: each action
+ * runs across a bounded set of parameter-value combinations drawn from each
+ * parameter's domain (every enum value, both booleans, a number's min/max
+ * bounds; see ParameterDomains). An action is skipped (and reported) only when a
+ * required parameter has no default and no enumerable domain, and the run is
+ * marked truncated when a parameter grid is capped. Those caveats are surfaced
+ * in the report so a green result is never mistaken for more than it is.
  */
 export type ExplorerOptions = {
   /** Max action-steps from the initial state. */
@@ -127,10 +130,12 @@ const canonical = (v: StateValue | undefined): string => {
     .join(',')}}`;
 };
 
-type Move = { readonly surface: Surface; readonly action: Action };
-
-const requiresUnsuppliableParam = (action: Action): boolean =>
-  action.parameters.some((p) => p.required && p.defaultValue === undefined);
+type Move = {
+  readonly surface: Surface;
+  readonly action: Action;
+  /** Parameter-value combinations to fire this action with (from its domains). */
+  readonly combos: readonly ParameterValues[];
+};
 
 export const exploreStateSpace = (
   feature: Feature,
@@ -158,19 +163,22 @@ export const exploreStateSpace = (
   // so they read as "not explored", never as "dead".
   const moves: Move[] = [];
   const skippedActions: SkippedAction[] = [];
+  let combosCapped = false;
   for (const surface of feature.surfaces) {
     for (const action of surface.actions) {
       if (isEvolution(action)) continue;
-      if (requiresUnsuppliableParam(action)) {
+      const domains = parameterCombinations(action, feature.valueSets);
+      if (!domains.explorable) {
         skippedActions.push({
           surfaceId: String(surface.id),
           actionId: String(action.id),
           actionName: action.name,
-          reason: 'has a required parameter with no default; the explorer cannot invent a value'
+          reason: domains.reason ?? 'has a required parameter the explorer cannot supply'
         });
         continue;
       }
-      moves.push({ surface, action });
+      if (domains.capped) combosCapped = true;
+      moves.push({ surface, action, combos: domains.combos });
     }
   }
 
@@ -227,57 +235,60 @@ export const exploreStateSpace = (
 
     let anySuccess = false;
     for (const move of moves) {
-      const params = fillDefaults(move.action.parameters, {});
-      const result = simulate({
-        surface: move.surface,
-        action: move.action,
-        snapshot: node.snapshot,
-        parameters: params,
-        featureInvariants: checkedInvariants,
-        feature,
-        ...(projectFeatures ? { projectFeatures } : {})
-      });
+      // Fire the action once per parameter-value combination from its domain, so
+      // branches gated on an enum / boolean / bounded number are all exercised.
+      for (const params of move.combos) {
+        const result = simulate({
+          surface: move.surface,
+          action: move.action,
+          snapshot: node.snapshot,
+          parameters: params,
+          featureInvariants: checkedInvariants,
+          feature,
+          ...(projectFeatures ? { projectFeatures } : {})
+        });
 
-      if (result.invariantViolations.length > 0) {
-        // A reachable action that breaks an invariant: the counterexample is
-        // the path to here plus this action. BFS means the first time we see a
-        // given (invariant, action) pair the path is shortest.
-        for (const v of result.invariantViolations) {
-          const key = `${v.invariantId}@${move.action.id}`;
-          if (violationSeen.has(key)) continue;
-          violationSeen.add(key);
-          violations.push({
-            invariantId: String(v.invariantId),
-            invariantName: v.invariantName,
-            surfaceId: String(move.surface.id),
-            actionId: String(move.action.id),
-            actionName: move.action.name,
-            path: [...node.path, move.action.name]
-          });
-        }
-        // The engine blocks on violation, so this is not an enabling
-        // transition — don't enqueue the violating state.
-        continue;
-      }
-
-      if (result.status === 'success') {
-        firedActions.add(String(move.action.id));
-        anySuccess = true;
-        const key = canonical(result.nextState as StateValue);
-        if (trackGoals) {
-          let succ = forwardEdges.get(node.key);
-          if (!succ) {
-            succ = new Set<string>();
-            forwardEdges.set(node.key, succ);
+        if (result.invariantViolations.length > 0) {
+          // A reachable action that breaks an invariant: the counterexample is
+          // the path to here plus this action. BFS means the first time we see a
+          // given (invariant, action) pair the path is shortest.
+          for (const v of result.invariantViolations) {
+            const key = `${v.invariantId}@${move.action.id}`;
+            if (violationSeen.has(key)) continue;
+            violationSeen.add(key);
+            violations.push({
+              invariantId: String(v.invariantId),
+              invariantName: v.invariantName,
+              surfaceId: String(move.surface.id),
+              actionId: String(move.action.id),
+              actionName: move.action.name,
+              path: [...node.path, move.action.name]
+            });
           }
-          succ.add(key);
-          // Evaluate the goal on the successor even if it sits beyond the depth
-          // bound (never enqueued) — a frontier state can still BE the goal.
-          recordGoalSatisfaction(result.nextState, key);
+          // The engine blocks on violation, so this is not an enabling
+          // transition — don't enqueue the violating state.
+          continue;
         }
-        if (!visited.has(key) && node.path.length < maxDepth) {
-          visited.add(key);
-          queue.push({ snapshot: result.nextState, path: [...node.path, move.action.name], key });
+
+        if (result.status === 'success') {
+          firedActions.add(String(move.action.id));
+          anySuccess = true;
+          const key = canonical(result.nextState as StateValue);
+          if (trackGoals) {
+            let succ = forwardEdges.get(node.key);
+            if (!succ) {
+              succ = new Set<string>();
+              forwardEdges.set(node.key, succ);
+            }
+            succ.add(key);
+            // Evaluate the goal on the successor even if it sits beyond the depth
+            // bound (never enqueued) — a frontier state can still BE the goal.
+            recordGoalSatisfaction(result.nextState, key);
+          }
+          if (!visited.has(key) && node.path.length < maxDepth) {
+            visited.add(key);
+            queue.push({ snapshot: result.nextState, path: [...node.path, move.action.name], key });
+          }
         }
       }
     }
@@ -327,7 +338,9 @@ export const exploreStateSpace = (
   return {
     statesExplored,
     depthReached,
-    truncated,
+    // A capped parameter grid means some combinations were never tried, so the
+    // result is bounded in the same honest sense as a depth/state cutoff.
+    truncated: truncated || combosCapped,
     invariantViolations: violations,
     deadActions,
     deadlockStates,

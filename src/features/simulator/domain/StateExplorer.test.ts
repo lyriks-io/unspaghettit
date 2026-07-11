@@ -163,6 +163,55 @@ describe('exploreStateSpace', () => {
     const feature = featureWith(countSurface([incr], []));
     expect(exploreStateSpace(feature, { maxDepth: 3 }).goalResults).toEqual([]);
   });
+
+  it('explores an action across a required enum parameter domain instead of skipping it', () => {
+    const surface: Surface = {
+      id: asSurfaceId('s'),
+      name: 'Chooser',
+      type: 'screen',
+      stateDefinitions: [
+        {
+          id: asStateDefinitionId('d-chosen'),
+          path: asStatePath('chosen'),
+          type: 'enum',
+          enumValues: ['none', 'a', 'b'],
+          defaultValue: 'none'
+        }
+      ],
+      rules: [],
+      invariants: [],
+      transitions: [],
+      actions: [
+        {
+          id: asActionId('choose'),
+          name: 'choose',
+          intent: 'pick a mode',
+          parameters: [
+            {
+              id: asParameterId('mode'),
+              name: 'mode',
+              type: 'enum',
+              required: true,
+              enumValues: ['a', 'b'],
+              bindToStatePath: asStatePath('chosen')
+            }
+          ],
+          requiredStates: [],
+          rules: [],
+          invariants: [],
+          effects: [],
+          emittedEvents: [],
+          transitions: []
+        }
+      ]
+    };
+    const report = exploreStateSpace(featureWith(surface), { maxDepth: 3 });
+    // Not skipped (enum is enumerable) and not dead (it fired).
+    expect(report.skippedActions).toEqual([]);
+    expect(report.deadActions).toEqual([]);
+    // Both enum branches reached: initial (none) + chosen=a + chosen=b.
+    expect(report.statesExplored).toBeGreaterThanOrEqual(3);
+  });
 });
 
 describe('exploreStateSpace — reachability goals', () => {
