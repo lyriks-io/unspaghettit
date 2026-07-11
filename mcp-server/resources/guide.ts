@@ -568,8 +568,9 @@ Use the evidence-gated adoption flow; the index falls out of the provenance span
 6. sync_from_index to push the coverage report.
 
 One pass yields the model, its provenance (Source Viewer), and implementation
-coverage with drift detection armed. The manual workflow below remains the right
-tool for ongoing implementation work after adoption.
+coverage with drift detection armed. When sources conflict or completeness has
+to be defensible, add the trust tools below. The manual workflow further down
+remains the right tool for ongoing implementation work after adoption.
 
 ### Source trust & extraction completeness
 

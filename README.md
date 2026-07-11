@@ -92,6 +92,7 @@ Point your AI agent at whatever you already have: a design screenshot, a product
 - **An evidence-first strict gate**: `unspa check --strict` turns drift, skipped actions, truncated exploration, dead actions, unmet goals, missing scenarios, and incomplete verified coverage into failures instead of advisory warnings.
 - **Generated TypeScript contracts**: state, event, and parameter types your implementation imports, so the compiler catches divergence first.
 - **Diagrams & provenance**: project the model as a statechart, sequence, ER, flowchart, or mindmap (export Mermaid, DOT, SVG/PNG), and trace every element back to the exact source span it was extracted from.
+- **Source trust & completeness**: rank sources by authority, record two that contradict each other as a first-class conflict (resolved by authority, not reading order), and measure the share of each source's behavior that actually reached the model, so "what might we be missing?" has an answer.
 - **A live dashboard**: editor, simulator, behavior graph, verify view with navigable counterexample traces, implementation coverage, global search (⌘K).
 - **Multi-agent ready**: real-time sync for several humans and AI agents editing at once, with per-agent attribution.
 - **Local-first**: plain JSON on your disk. No accounts, no telemetry, no hosted service.

@@ -56,7 +56,16 @@ a recorded span, so nothing can be invented without a source.
       The single `record_element_span` remains for one-off fixes.
    e. `finalize_analysis` once tracing is complete.
    f. `seed_index_from_analysis`, then `sync_from_index`.
-4. **Prove.** `verify` + `score_feature`; close reported gaps until clean.
+4. **Account for the sources (optional, for a defensible extraction).** When
+   code and docs disagree, rank the sources (`authority`/`artifact` on attach,
+   or `classify_source` after) and record the disagreement with `flag_conflict`
+   instead of silently modeling one side; the higher-authority claim comes back
+   as the suggested winner, and `resolve_conflict` closes it with a reason. To
+   prove nothing was skipped, `stage_candidate` each behavior a source describes
+   and `dispose_candidate` it (accepted / rejected / merged / ...); then
+   `get_source_coverage` reports the share of each source that reached the model
+   and the still-unresolved list.
+5. **Prove.** `verify` + `score_feature`; close reported gaps until clean.
 
 ## Extraction recipe (where each element hides in code)
 

@@ -79,6 +79,13 @@ automatically (model, provenance, and coverage from one pass), then
 `sync_from_index`. `unspa adopt` prints this flow; the `unspa-adopt` skill
 runs it.
 
+For a defensible extraction (optional): rank sources with `authority` /
+`artifact` on attach (or `classify_source`), record two sources that disagree
+with `flag_conflict` (the higher-authority claim is the suggested winner)
+instead of silently modeling one, and account for every source behavior with
+`stage_candidate` + `dispose_candidate`; `get_source_coverage` then reports the
+share of a source that reached the model and what is still unresolved.
+
 ### Don't
 
 - Don't regenerate an entire feature JSON from scratch; mutate via the MCP.
