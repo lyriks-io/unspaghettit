@@ -10,17 +10,26 @@ A project is built from a small set of entities:
 
 - **Features**, the top-level units of behavior.
 - **Surfaces**, where a feature is exposed.
-- **Actions**, what a user or system can do.
+- **Actions**, what a user or system can do, resolving to typed **outcomes** (success, failure, timeout, partial, ...).
 - **State**, the data an action reads and writes.
 - **Rules**, conditions that allow or block an action.
-- **Invariants**, properties that must always hold.
-- **Effects** and **events**, what happens after an action, including cascades.
+- **Invariants**, properties that must always hold (a repair action can name exactly which it may temporarily relax).
+- **Effects** and **events**, what happens after an action, including cascades, external calls (`invoke_operation`), and event **delivery** guarantees.
 - **Scenarios**, concrete step-by-step expectations.
-- **Personas**, **resources**, and **entities** for mapping and overrides.
+- **Personas**, **resources**, **entities**, and **dependencies** (the external systems a feature calls out to) for mapping and overrides.
 
 You don't author these by hand. You describe the product in plain language and the LLM builds the runtime through the MCP (`create_feature`, `apply_batch`, `add_action`, and so on). Validation errors come back inline, so the runtime converges instead of drifting.
 
 A Feature is one coherent slice of behavior (a flow, a screen, a capability), sized so you can hold it in your head - roughly 1–15 surfaces. A whole product is a Project made of many Features.
+
+## Modeling failure and the boundary
+
+Real behavior is rarely just "worked" or "was blocked". A few first-class concepts capture what code usually leaves implicit:
+
+- **Outcomes.** Beyond the coarse `success` / `blocked` status, an action declares the terminal results it resolves to - `failure`, `timeout`, `cancelled`, `partial`, `pending` - each with a condition that selects it and its own effects. A charge is `declined`; a job is `queued`. The simulator picks the first matching outcome, and downstream rules and scenarios can branch on it. Purely additive: an action with no outcomes just succeeds as before.
+- **Dependencies and `invoke_operation`.** A feature declares the external systems it calls out to - services, datastores, queues, devices, humans - each with its operations and the contract code hides: a timeout, retries, whether it is idempotent, and how it can fail. An action calls one with the `invoke_operation` effect, writing the modeled result to state so an outcome can react to it. A lot of a system's real logic lives at this boundary.
+- **Event delivery.** A registered event carries a delivery guarantee: `best_effort` (fire-and-forget), `required` (a failing handler blocks the emitter), or `transactional` (a failing handler also rolls the emitter back). So "the command was accepted but the mandatory downstream update failed" is modelled honestly instead of read as a clean success.
+- **Scoped invariant relaxation.** A repair or admin action names exactly which invariants it may leave temporarily violated, with a rationale - instead of one blunt boolean that silently disables every safety property.
 
 ## Scenarios are spec tests
 
@@ -44,9 +53,13 @@ Scenarios test the paths you thought of. `model_check` exhaustively explores the
 
 Invariants come at three scopes: per-surface, feature-wide, and **cross-feature at the project level** (`projectInvariants`, e.g. "the orders feature's open count equals the billing feature's unpaid count" - something a feature invariant can't reference).
 
+Model checking draws each action's parameters from their **domains** - every enum value, both booleans, a number's declared bounds - rather than only their defaults, so branches gated on an input are actually explored. An action is reported *skipped* (never "dead") only when a required parameter has no enumerable domain, and a capped parameter grid marks the run truncated - so a green result is never mistaken for exhaustive.
+
 ## Maturity scoring
 
-`score_feature` returns a per-area score with critical and recommended issues. It surfaces the worst surfaces and the biggest gaps, so shallow modelling gets caught before it ships. `get_spec_gaps` lists what is still missing.
+`score_feature` returns a per-area score with critical and recommended issues. It surfaces the worst surfaces and the biggest gaps, so shallow modelling gets caught before it ships. `get_spec_gaps` lists what is still missing - including a **decision-table analysis** over each action's rules that flags contradictions it can prove (a rule whose condition can never hold, or two rules that fire on the same condition with disagreeing effects) and external calls with no declared timeout or failure modes.
+
+Because a single percentage mixes structural hygiene with behavioral confidence, `score_feature` also returns a **confidence matrix**: independent dimensions (structural, behavioral coverage, guardrails, executability, consistency), each derived from concrete counts, with `overall` set to the *weakest* dimension rather than an average - so a strong score can never hide a zero.
 
 Maturity is a gate, not a vanity metric. 100% maturity is the recommended default for a first serious prompt because it pushes the agent to produce complete scenarios, rules, and checks instead of an outline. Lower it deliberately when you want brainstorming or a partial draft. See [Working with AI](prompting.md) for how to set the target.
 
@@ -106,10 +119,11 @@ A per-project "implement next" list of Feature, Surface, and Action items. Reord
 - **Code → spec adoption** - an LLM reads an existing repo, models its behavior with every element traced to the exact code span it came from, and `seed_index_from_analysis` wires the spec back to source automatically (`unspa adopt` / the `unspa-adopt` skill).
 - **Source provenance** - documents and code files are stored immutably per project; every extracted element links back to the span it was derived from, browsable in the Source Viewer.
 - **MCP-native** - every entity is created, read, edited, and validated through MCP tool calls. Works with any MCP-compatible IDE.
-- **Deterministic simulator & bounded model checking** - single transitions, whole-flow scenarios, and exhaustive state-space exploration.
+- **Deterministic simulator & bounded model checking** - single transitions, whole-flow scenarios, and exhaustive state-space exploration with parameter-domain coverage.
+- **Failure & boundary modeling** - typed action outcomes (failure / timeout / partial / ...), external dependencies + `invoke_operation` calls, event delivery guarantees, and scoped invariant relaxation.
 - **Safety + liveness properties** - invariants per-surface / feature / project, plus reachability goals.
-- **One-command verification gate** - `unspa check` / `verify` fold the whole spine into a single pass/warn/fail.
-- **Maturity scoring** - per-area scores with critical and recommended issues.
+- **One-command verification gate** - `unspa check` / `verify` fold the whole spine into a single pass/warn/fail; `--strict` makes it evidence-first.
+- **Maturity scoring** - per-area scores plus an honest confidence matrix (weakest-dimension overall) and decision-table contradiction analysis.
 - **Generated TypeScript contracts** - types for state, events, and parameters.
 - **Implementation audit** - `.unspa.json` records where each entity lives and reports coverage + gaps.
 - **Implementation queue** - per-project "implement next" list.

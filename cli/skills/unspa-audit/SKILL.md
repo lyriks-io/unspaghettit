@@ -23,9 +23,10 @@ source code is not annotated.
 | `get_behavioral_index` | Read the current `.unspa.json` index, server-side. Cheaper than re-parsing the file. |
 | `get_implementation_gaps` | Authoritative "what is missing/partial/implemented" report. Read this before deciding where to point the user. |
 | `get_implementation_status` | Detailed sidecar for one feature (or filtered to one action/surface). Shows captured fields, locations, staleness flags. |
-| `get_spec_gaps` | Spec-depth diagnostics. Critical + recommended to-do list grounded in entities. Catches shallow specs (effect-less actions, stateless surfaces, untested destructive paths, etc.), orthogonal to "is code indexed?". |
+| `get_spec_gaps` | Spec-depth diagnostics. Critical + recommended to-do list grounded in entities. Catches shallow specs (effect-less actions, stateless surfaces, untested destructive paths, etc.), decision-table contradictions (a rule whose condition can never hold; two rules that fire on the same condition with disagreeing effects), and external dependency operations with no timeout or failure modes. Orthogonal to "is code indexed?". |
+| `score_feature` | Maturity % plus an honest confidence matrix (structural / behavioral / guardrails / executability / consistency); `overall` is the WEAKEST dimension, not an average, so a strong score can't hide a zero. |
 | `get_drift` | Spec→code drift: implementations audited against an OLDER spec than the one now on disk — the `entry.specVersion` vs `feature.updatedAt` comparison, done for you. Returns `stale` (re-audit these), `unversioned` (audited but never stamped), and `orphans` (keys that no longer resolve). The fastest "what silently went stale" read. |
-| `verify` | One gated `pass`/`warn`/`fail` verdict per feature — scenarios + maturity + reachability + bounded model check + drift + cross-feature event coherence. The in-chat form of the `unspa check` CLI. Use to confirm the spec itself is sound before declaring an audit clean. |
+| `verify` | One gated `pass`/`warn`/`fail` verdict per feature — scenarios + maturity + reachability + bounded model check + drift + cross-feature event coherence. The in-chat form of the `unspa check` CLI. Pass `strict:true` (or `unspa check --strict`) for the evidence-first gate that also fails on drift, skipped/unexplored actions, truncated exploration, and sub-100% maturity / verified coverage. Use to confirm the spec itself is sound before declaring an audit clean. |
 | `sync_from_index` | After you rewrite `.unspa.json`, the MCP re-reads it, resolves UUIDs, and posts one report per action and per surface. Use this instead of the lower-level `report_implementation_status_batch` unless you need per-entity granularity. |
 | `report_implementation_status` | Fine-grained: sync ONE action or surface plus its children. Use when you intentionally do not want to push the whole index. |
 
@@ -59,14 +60,20 @@ source code is not annotated.
 5. **Surface spec-depth issues.** `get_spec_gaps` returns a prioritized
    to-do list:
    - **critical**: missing `expectedActions`, stateless surfaces,
-     effect-less actions, destructive actions with no scenario.
+     effect-less actions, destructive actions with no scenario, and
+     decision-table contradictions (a rule whose condition can never hold;
+     two rules that fire on the same condition with disagreeing effects).
    - **recommended**: async actions without loading/error scenarios,
      validation actions without a blocking rule, multi-state surfaces
-     without transitions, actions never reported in implementation
-     status.
+     without transitions, actions never reported in implementation status,
+     external dependency operations with no timeout / failure modes, and
+     use of the blunt `bypassInvariants` (prefer scoped `invariantRelaxation`).
 
    Resolve every critical gap before declaring the audit clean.
-   Recommended gaps are a defensible backlog.
+   Recommended gaps are a defensible backlog. `score_feature`'s confidence
+   matrix is the honest headline: its `overall` is the weakest dimension, so
+   a 90% structural score with zero behavioral coverage still reads as low
+   confidence.
 
 6. **Check for drift, then verify.** Call `get_drift` to find code audited
    against an older spec than the one on disk (a rule changed under an

@@ -84,8 +84,9 @@ Point your AI agent at whatever you already have: a design screenshot, a product
 ## What you get
 
 - **Scenarios as spec tests**: the deterministic simulator runs every scenario, whole multi-step flows included, and reports pass or fail per assertion.
-- **Bounded model checking**: explores the reachable state space for the paths you *didn't* write scenarios for: invariant counterexamples with the action path that reaches them, dead actions, deadlocks, and liveness goals ("done stays reachable").
-- **Maturity scoring**: per-area scores with critical issues, so shallow modeling gets caught before it ships.
+- **Bounded model checking**: explores the reachable state space for the paths you *didn't* write scenarios for: invariant counterexamples with the action path that reaches them, dead actions, deadlocks, and liveness goals ("done stays reachable"), drawing action inputs from their domains (enum values, booleans, numeric bounds) so input-gated branches are explored too.
+- **Model what actually happens**: typed action outcomes (declined, timed out, partial), external dependencies + `invoke_operation` calls with their timeout / retry / idempotency contract, event delivery guarantees (a `required` handler failure fails the emitter; `transactional` rolls it back), and scoped invariant relaxation for repair actions.
+- **Maturity scoring**: per-area scores plus an honest confidence matrix (the weakest dimension is the headline, so a strong score can't hide a zero); `get_spec_gaps` also proves rule-set contradictions and flags external calls with no timeout.
 - **Spec ↔ code audit**: every entity records where it lives in code; coverage, gaps, and drift are reported, and generated scenario tests can *prove* the implementation matches, not just claim it.
 - **A CI gate**: `unspa check` runs the whole verification spine and exits non-zero on failure; `unspa ci` scaffolds the GitHub Actions workflow.
 - **An evidence-first strict gate**: `unspa check --strict` turns drift, skipped actions, truncated exploration, dead actions, unmet goals, missing scenarios, and incomplete verified coverage into failures instead of advisory warnings.

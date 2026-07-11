@@ -28,7 +28,8 @@ many Features. Use `add_feature_to_project` to attach.
 
 ## The domain in 60 seconds
 
-A **Feature** holds `surfaces[]`, `personas[]`, `resources[]`, `entities[]`,
+A **Feature** holds `surfaces[]`, `personas[]`, `resources[]` (where DATA
+lives), `dependencies[]` (external SYSTEMS it calls out to), `entities[]`,
 `events[]`, `featureInvariants[]` (cross-surface safety), `reachabilityGoals[]`
 (liveness: `reachable` / `always_reachable` target states), and optional
 `devContext`, `expectedActions[]`, `nonGoals[]`.
@@ -38,10 +39,12 @@ A **Surface** is one context (screen, terminal, workflow, canvas, ...) with
 `transitions[]`.
 
 An **Action** is a user/AI-triggerable action with `parameters[]`,
-`requiredStates[]`, `rules[]`, `invariants[]`, `effects[]`,
-`emittedEvents[]`, `transitions[]`, optional `scenarios[]`, and optional
-`roles[]` (`entry | primary | validation | feedback | destructive | async
-| persistence`).
+`requiredStates[]`, `rules[]`, `invariants[]`, `effects[]`, `outcomes[]`
+(terminal results beyond success/blocked), `emittedEvents[]`, `transitions[]`,
+optional `scenarios[]`, and optional `roles[]` (`entry | primary | validation |
+feedback | destructive | async | persistence`). A repair/admin action may carry
+`invariantRelaxation` (name the invariants it may temporarily relax, with a
+rationale) instead of the blunt `bypassInvariants`.
 
 **State** lives at dotted paths (`cart.itemCount`). A **StateDefinition**
 declares the schema (`path`, `type`, `defaultValue`, optional `sharedWith[]`
@@ -54,15 +57,40 @@ is_false | exists | does_not_exist`. `condition.right` accepts a literal
 OR a structured Expression node (see "Expressions" below).
 
 **Effects** are discriminated by `type`:
-`set_state{path,value} | show_message{message,tone?} |
-emit_event{event} | block_action{reason} | allow_action |
-transition_surface{target}`. `set_state.value` also accepts an Expression.
+`set_state{path,value} | show_message{message,tone?} | emit_event{event} |
+block_action{reason} | allow_action | transition_surface{target} |
+append_to_list{path,item} | remove_from_list{path,where?|value?} |
+update_list_item{path,where,field,value} | advance_time{by} |
+invoke_operation{dependencyId,operation,resultPath?,resultValue?}`.
+`set_state.value` (and the other value/item slots) also accepts an Expression.
 
 **Scenarios** sit under an action: named state + parameter overrides
 that exercise one rule branch. Optional `expectedStatus` and
 `expectedAssertions[]` turn a scenario into an executable spec. A scenario can
 set `personaId` so `run_all_scenarios` applies that persona baseline before the
 scenario's action-specific overrides.
+
+## Modeling failure and the boundary
+
+Model what really happens rather than forcing everything through success/blocked:
+
+- **Outcomes.** Give an action `outcomes[]` — each a `kind` (`success | rejected
+  | failure | timeout | cancelled | partial | pending`), an optional `condition`
+  that selects it, and its own `effects`. The simulator picks the first outcome
+  whose condition holds and applies it; the resolved outcome rides in the result.
+  Author via `apply_batch` `add_action_outcome { actionRef|actionId, name,
+  outcomeKind, condition?, effects?, description }` (note `outcomeKind`, not
+  `kind`). Additive: no outcomes ⇒ the action just succeeds.
+- **Dependencies + `invoke_operation`.** Declare the external systems the feature
+  calls with `add_dependency { name, dependencyKind, operations:[{name, timeout?,
+  retries?, idempotent?, failureModes?}], assumptions? }`. An action calls one
+  with the `invoke_operation` effect, writing the modeled result to `resultPath`
+  so an outcome can branch on it. `get_spec_gaps` flags an operation with no
+  timeout or failure modes.
+- **Event delivery.** `add_event` / `update_event` take `delivery` (`best_effort`
+  default | `required` | `transactional`). A failing handler of a required event
+  blocks the emitter; transactional also rolls it back — so a mandatory downstream
+  failure is not silently a success.
 
 ## Expressions
 
@@ -124,9 +152,11 @@ Atomic state-from-state-and-param write:
 `add_reachability_goal`, `update_reachability_goal`, `remove_reachability_goal`,
 `add_transition`, `update_transition`,
 `remove_transition`, `add_effect`, `update_effect`, `remove_effect`,
+`add_action_outcome`, `remove_action_outcome`,
 `add_event`, `update_event`, `remove_event`, `add_scenario`,
 `update_scenario`, `remove_scenario`, `add_persona`, `update_persona`,
 `remove_persona`, `add_resource`, `update_resource`, `remove_resource`,
+`add_dependency`, `remove_dependency`,
 `add_entity`, `update_entity`, `remove_entity`, `add_entity_field`,
 `update_entity_field`, `remove_entity_field`,
 `create_project`, `update_project`, `replace_project`, `delete_project`,

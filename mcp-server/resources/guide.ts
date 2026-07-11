@@ -37,16 +37,19 @@ Feature
   │   │   ├── requiredStates[] Pre-conditions (state paths that must exist)
   │   │   ├── rules[]          Guards: condition → effect
   │   │   ├── invariants[]     Post-conditions; violations block the run
-  │   │   ├── effects[]        Mutations: set_state|show_message|emit_event|block_action|allow_action|transition_surface
+  │   │   ├── effects[]        Mutations (see Effect types below): set_state, list mutations, emit_event, transition_surface, invoke_operation, …
+  │   │   ├── outcomes[]       Terminal results beyond success/blocked (failure|timeout|cancelled|partial|pending): a condition selects one, its effects apply
   │   │   ├── emittedEvents[]  Events this action can fire (by name)
   │   │   └── scenarios[]      Executable specs: personaId + overrides, optional steps[] (multi-step flows)
+  │   │   (invariantRelaxation? — a repair action names which invariants it may temporarily relax, with a rationale; prefer over the blunt bypassInvariants)
   │   ├── rules[]              Surface-level guards (apply to all actions)
   │   ├── invariants[]         Surface-level post-conditions
   │   └── transitions[]        Navigation edges to other surfaces
   ├── personas[]        Named user roles (used by scenarios)
-  ├── resources[]       External dependencies (APIs, storage, …)
+  ├── resources[]       Data touchpoints: where DATA lives (DB/table/field, provenance, PII, residency)
+  ├── dependencies[]    External SYSTEMS called out to (service|database|queue|device|human|filesystem|api): operations[] with timeout/retries/idempotent/failureModes; invoked via the invoke_operation effect
   ├── entities[]        Structured data namespaces with typed fields
-  ├── events[]          First-class event registry { name, description, payloadSchema? }
+  ├── events[]          First-class event registry { name, description, payloadSchema?, delivery?: best_effort|required|transactional }
   ├── valueSets[]       Named reusable enums { name, values } referenced by valueSetId
   ├── constants[]       Named reusable values { name, value } referenced by {kind:"const", name} in expressions
   ├── featureInvariants[]  Cross-surface post-conditions (checked after every action)
@@ -118,7 +121,9 @@ Before committing a large change:
   4. model_check               → bounded exhaustive state-space exploration: invariant counterexamples
                                  (with the shortest action path that reaches them), dead actions,
                                  deadlocks, unreachable/terminal surfaces, and reachability-goal results
-  5. score_feature          → maturity report; use to catch regressions
+  5. score_feature          → maturity report + honest confidence matrix (overall = the WEAKEST
+                                 dimension, not an average, so a strong score can't hide a zero); get_spec_gaps
+                                 adds decision-table contradictions and untimed external calls
 
 To gate the whole feature/project in one call (the CI shape), use verify — it folds scenarios +
 maturity + reachability + optional model_check + spec→code drift + cross-feature event coherence +
@@ -163,6 +168,17 @@ Examples:
   block_action     { reason }                   Reject the action with a reason
   allow_action     {}                           Explicitly allow (used to short-circuit rules)
   transition_surface { target|targetRef }       Navigate to another surface
+  append_to_list   { path, item }               Push an item onto an array-typed state path
+  remove_from_list { path, where?|value? }      Drop matching elements from an array-typed path
+  update_list_item { path, where, field, value } Set a field on array elements matching where
+  advance_time     { by }                       Move the simulation clock (clock.now) forward
+  invoke_operation { dependencyId, operation, resultPath?, resultValue? }  Call an operation on a feature dependency; writes the modeled result to resultPath (like set_state) so rules/outcomes can branch on it
+
+Model failure explicitly rather than through set_state gymnastics: give an action outcomes[]
+(each a kind + selecting condition + effects), register events with a delivery guarantee so a
+required/transactional handler failure fails the emitter, and reach across the boundary with a
+dependency + invoke_operation. Author outcomes via apply_batch add_action_outcome, dependencies
+via add_dependency, and event delivery via add_event/update_event { delivery }.
 
 ## Tagging Projects and Features
 
