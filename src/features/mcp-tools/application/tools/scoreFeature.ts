@@ -4,6 +4,7 @@ import type {
   MaturityReport,
   MaturitySeverity
 } from '$features/maturity/domain/MaturityReport';
+import { computeConfidence, type ConfidenceMatrix } from '$features/maturity/domain/ConfidenceMatrix';
 import { scoreFeatureUseCase } from '$features/maturity/application/use-cases/ScoreFeature';
 
 /**
@@ -23,6 +24,14 @@ export type ScoreFeatureSummary = {
   readonly criticalIssueCount: number;
   readonly recommendedIssueCount: number;
   readonly passedCheckCount: number;
+  /**
+   * Honest, explainable confidence breakdown: the single percentage split into
+   * independent dimensions (structural / behavioral / guardrails / executability
+   * / consistency), each with the counts it was derived from. `overall` is the
+   * WEAKEST dimension, not an average, so a strong score can never hide a zero.
+   * Always feature-level (not scoped by the surface/area/severity filters).
+   */
+  readonly confidence: ConfidenceMatrix;
   /** Top N issue buckets by count, scoped to the active filter. */
   readonly issuesByArea: ReadonlyArray<{
     readonly area: string;
@@ -125,10 +134,11 @@ const buildSummary = (
     criticalIssueCount: hasFilter ? critScoped : report.criticalIssues.length,
     recommendedIssueCount: hasFilter ? recScoped : report.recommendedIssues.length,
     passedCheckCount: report.passedChecks.length,
+    confidence: computeConfidence(feature, { passed: report.score, total: report.maxScore }),
     issuesByArea,
     worstSurfaces,
     hint:
-      'Compact summary. Add includeIssues:true to append the issue array, or pass surfaceId / area / severity to scope counts and the issue array.'
+      'Compact summary. `percentage` is the structural score; `confidence` splits it into dimensions and reports the weakest one as `overall`. Add includeIssues:true for the issue array, or filter by surfaceId / area / severity.'
   };
 
   if (opts.includeIssues) {

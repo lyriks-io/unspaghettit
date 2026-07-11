@@ -319,7 +319,7 @@ export const registerReadTools = ({
     'score_feature',
     {
       description:
-        'Maturity score for the feature. Always returns a compact summary (score, maxScore, percentage, issue counts, top failing areas, worst surfaces). Under ~1 KB. Pass `includeIssues:true` to append the per-issue array (skip the passed-check list, which is never useful and inflates payloads ~8×). Filters `surfaceId`, `area`, `severity` scope BOTH the counts and the appended issues so drill-down stays under 10 KB.',
+        'Maturity score for the feature. Always returns a compact summary (score, maxScore, percentage, issue counts, top failing areas, worst surfaces) plus an honest `confidence` matrix: the single percentage split into independent, explained dimensions (structural / behavioral / guardrails / executability / consistency), each with the counts it was derived from, and `overall` set to the WEAKEST dimension so a strong score can never hide a zero. Under ~1 KB. Pass `includeIssues:true` to append the per-issue array (skip the passed-check list, which is never useful and inflates payloads ~8×). Filters `surfaceId`, `area`, `severity` scope the counts and the appended issues (not the feature-level confidence).',
       inputSchema: {
         featureId: z.string(),
         includeIssues: z.boolean().optional(),
