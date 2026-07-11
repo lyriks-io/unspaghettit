@@ -1,6 +1,7 @@
 import type { DevContext } from '../value-objects/DevContext';
 import type { FeatureId } from '../value-objects/ids';
 import type { Constant } from './Constant';
+import type { Dependency } from './Dependency';
 import type { Entity } from './Entity';
 import type { EventDefinition } from './EventDefinition';
 import type { Invariant } from './Invariant';
@@ -20,6 +21,15 @@ export type Feature = {
   readonly personas: readonly Persona[];
   readonly resources: readonly Resource[];
   readonly entities: readonly Entity[];
+  /**
+   * External systems the feature calls out to: services, datastores, queues,
+   * devices, humans, filesystems. Distinct from `resources` (where DATA lives);
+   * a Dependency captures the OPERATIONS the feature invokes and their contract
+   * (timeout, retries, idempotency) and failure modes — the boundary logic that
+   * otherwise stays implicit in code. Optional and additive; downstream code
+   * reads `feature.dependencies ?? []`.
+   */
+  readonly dependencies?: readonly Dependency[];
   /**
    * Named, reusable enum value sets. A StateDefinition or Parameter of type
    * `enum` can reference one by id (`valueSetId`) instead of inlining its own

@@ -1,4 +1,5 @@
 import type { Constant } from '../../entities/Constant';
+import type { Dependency } from '../../entities/Dependency';
 import type { Entity, EntityField } from '../../entities/Entity';
 import type { EventDefinition } from '../../entities/EventDefinition';
 import type { Feature } from '../../entities/Feature';
@@ -8,6 +9,7 @@ import type { Resource } from '../../entities/Resource';
 import type { ValueSet } from '../../entities/ValueSet';
 import type {
   ConstantId,
+  DependencyId,
   EntityFieldId,
   EntityId,
   EventDefinitionId,
@@ -118,6 +120,28 @@ export const updateResource = (feature: Feature, resource: Resource): Feature =>
 export const removeResource = (feature: Feature, resourceId: ResourceId): Feature => ({
   ...feature,
   resources: feature.resources.filter((r) => r.id !== resourceId)
+});
+
+// ─── Dependencies ────────────────────────────────────────────────────────────
+// External systems the feature calls out to (services, queues, devices, humans).
+// Distinct from resources (where data lives). Optional list; add/update/remove
+// against `feature.dependencies`.
+
+export const addDependency = (feature: Feature, dependency: Dependency): Feature => ({
+  ...feature,
+  dependencies: [...(feature.dependencies ?? []), dependency]
+});
+
+export const updateDependency = (feature: Feature, dependency: Dependency): Feature => ({
+  ...feature,
+  dependencies: (feature.dependencies ?? []).map((d) =>
+    d.id === dependency.id ? dependency : d
+  )
+});
+
+export const removeDependency = (feature: Feature, dependencyId: DependencyId): Feature => ({
+  ...feature,
+  dependencies: (feature.dependencies ?? []).filter((d) => d.id !== dependencyId)
 });
 
 // ─── Entity ────────────────────────────────────────────────────────────────────

@@ -308,6 +308,44 @@ export const detectSpecGaps = (
     }
   });
 
+  // External dependencies: the boundary is where a lot of real logic (and
+  // risk) lives. Nudge for the contract details code hides — a call with no
+  // timeout, or an operation with no documented failure modes.
+  for (const dependency of feature.dependencies ?? []) {
+    if (dependency.operations.length === 0) {
+      recommended.push({
+        severity: 'recommended',
+        entityType: 'feature',
+        entityId: String(feature.id),
+        entityName: feature.name,
+        reason: `Dependency "${dependency.name}" declares no operations.`,
+        suggestedFix: 'Add the operations the feature invokes on it.'
+      });
+    }
+    for (const operation of dependency.operations) {
+      if (operation.timeout === undefined) {
+        recommended.push({
+          severity: 'recommended',
+          entityType: 'feature',
+          entityId: String(feature.id),
+          entityName: feature.name,
+          reason: `External operation "${dependency.name}.${operation.name}" has no documented timeout.`,
+          suggestedFix: 'Set a timeout so the failure boundary is explicit.'
+        });
+      }
+      if ((operation.failureModes?.length ?? 0) === 0) {
+        recommended.push({
+          severity: 'recommended',
+          entityType: 'feature',
+          entityId: String(feature.id),
+          entityName: feature.name,
+          reason: `External operation "${dependency.name}.${operation.name}" has no documented failure modes.`,
+          suggestedFix: 'List how the call can fail (declined, timeout, unavailable), so recovery paths can be modeled.'
+        });
+      }
+    }
+  }
+
   return [...critical, ...recommended];
 };
 

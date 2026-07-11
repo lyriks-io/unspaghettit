@@ -1,5 +1,6 @@
 import * as T from '../../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { Constant } from '../../../src/features/behavior-model/domain/entities/Constant';
+import type { Dependency } from '../../../src/features/behavior-model/domain/entities/Dependency';
 import type { Entity, EntityField } from '../../../src/features/behavior-model/domain/entities/Entity';
 import type { Feature } from '../../../src/features/behavior-model/domain/entities/Feature';
 import type { Persona } from '../../../src/features/behavior-model/domain/entities/Persona';
@@ -10,6 +11,8 @@ import type { ValueSet } from '../../../src/features/behavior-model/domain/entit
 import {
   asActionId,
   asConstantId,
+  asDependencyId,
+  asDependencyOperationId,
   asEntityFieldId,
   asEntityId,
   asPersonaId,
@@ -278,6 +281,39 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
     }
     case 'remove_resource':
       exp = T.removeResource(exp, asResourceId(op.resourceId as string));
+      break;
+
+    // ── Dependency ─────────────────────────────────────────────────────
+    case 'add_dependency': {
+      // `dependencyKind` (not `kind`, the op discriminator) carries the kind.
+      const rawOperations = Array.isArray(op.operations) ? op.operations : [];
+      const operations = rawOperations.map((raw) => {
+        const o = raw as Record<string, unknown>;
+        return {
+          id: asDependencyOperationId(mintId()),
+          name: o.name as string,
+          ...(typeof o.description === 'string' ? { description: o.description } : {}),
+          ...(Array.isArray(o.failureModes) ? { failureModes: o.failureModes as string[] } : {}),
+          ...(typeof o.timeout === 'string' ? { timeout: o.timeout } : {}),
+          ...(typeof o.retries === 'number' ? { retries: o.retries } : {}),
+          ...(typeof o.idempotent === 'boolean' ? { idempotent: o.idempotent } : {})
+        };
+      }) as Dependency['operations'];
+      const dependency: Dependency = {
+        id: asDependencyId(mintId()),
+        name: op.name as string,
+        kind: (op.dependencyKind as Dependency['kind']) ?? 'service',
+        ...(typeof op.description === 'string' ? { description: op.description } : {}),
+        ...(typeof op.provider === 'string' ? { provider: op.provider } : {}),
+        operations,
+        ...(Array.isArray(op.assumptions) ? { assumptions: op.assumptions as string[] } : {})
+      };
+      exp = T.addDependency(exp, dependency);
+      remember(op.ref, dependency.id);
+      break;
+    }
+    case 'remove_dependency':
+      exp = T.removeDependency(exp, asDependencyId(op.dependencyId as string));
       break;
 
     // ── Entity ────────────────────────────────────────────────────────

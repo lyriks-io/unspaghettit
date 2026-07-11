@@ -151,6 +151,26 @@ describe('detectSpecGaps — emittedEvents consistency', () => {
   });
 });
 
+describe('detectSpecGaps — external dependencies', () => {
+  it('flags an external operation with no timeout and no failure modes', () => {
+    const withDep = feature([action({ id: asActionId('a'), name: 'A' })], {
+      dependencies: [
+        {
+          id: 'dep' as never,
+          name: 'Payments',
+          kind: 'service',
+          operations: [{ id: 'op' as never, name: 'charge' }]
+        }
+      ]
+    });
+    const gaps = detectSpecGaps(withDep, new Set(['a']));
+    expect(
+      gaps.some((g) => g.reason.includes('Payments.charge') && g.reason.includes('timeout'))
+    ).toBe(true);
+    expect(gaps.some((g) => g.reason.includes('failure modes'))).toBe(true);
+  });
+});
+
 describe('detectSpecGaps — decision-table analysis', () => {
   it('surfaces two rules that disagree on the same condition as a critical gap', () => {
     const contradictory = action({

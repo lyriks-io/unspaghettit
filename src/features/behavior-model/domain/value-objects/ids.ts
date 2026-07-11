@@ -19,6 +19,8 @@ export type ValueSetId = Brand<string, 'ValueSetId'>;
 export type ReachabilityGoalId = Brand<string, 'ReachabilityGoalId'>;
 export type ConstantId = Brand<string, 'ConstantId'>;
 export type OutcomeId = Brand<string, 'OutcomeId'>;
+export type DependencyId = Brand<string, 'DependencyId'>;
+export type DependencyOperationId = Brand<string, 'DependencyOperationId'>;
 
 export const asFeatureId = (v: string): FeatureId => v as FeatureId;
 export const asSurfaceId = (v: string): SurfaceId => v as SurfaceId;
@@ -39,3 +41,6 @@ export const asValueSetId = (v: string): ValueSetId => v as ValueSetId;
 export const asReachabilityGoalId = (v: string): ReachabilityGoalId => v as ReachabilityGoalId;
 export const asConstantId = (v: string): ConstantId => v as ConstantId;
 export const asOutcomeId = (v: string): OutcomeId => v as OutcomeId;
+export const asDependencyId = (v: string): DependencyId => v as DependencyId;
+export const asDependencyOperationId = (v: string): DependencyOperationId =>
+  v as DependencyOperationId;

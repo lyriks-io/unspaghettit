@@ -55,6 +55,8 @@ actionRef: a_new }\` works when only the action was minted in this batch.
 . A named feature-level constant (\`value\` is any scalar or array). Expressions reference it via \`{kind:"const", name}\` (a condition.right, set_state.value, derived formula, invariant threshold) so a threshold/cutoff lives in one place instead of copy-pasted literals. \`name\` is the reference key, unique within the feature; edit the value once via update_constant.
   add_resource             { ref?, resource: { name, kind, provider, scope, sensitivity, containsPii, accessMode, ... } }
 . The resource's own \`kind\` collides with the op-kind discriminator. Nest under \`resource:{kind,...}\` (preferred) or pass \`resourceKind\` on the flat form.
+  add_dependency           { ref?, name, dependencyKind, description?, provider?, operations?, assumptions? }
+. An external system the feature calls out to (service | database | queue | device | human | filesystem | api | other), distinct from a resource (where DATA lives). \`dependencyKind\` (NOT \`kind\`, the op discriminator) is the kind. \`operations\` is \`[{ name, description?, failureModes?:[...], timeout?, retries?, idempotent? }]\` — the calls an action makes, with their contract. get_spec_gaps flags an operation with no timeout or no failure modes. \`remove_dependency { dependencyId }\`.
   add_entity                 { ref?, namespace, fields, description, resourceRef?|resourceId? }
   add_entity_field           { ref?, dataRef|entityId, name, type, ... }
   add_scenario             { ref?, surfaceRef|surfaceId, actionRef|actionId, name, description, personaId?|personaRef?, stateOverrides?, parameterOverrides?, expectedStatus?, expectedAssertions?, expectedTransition?|expectedTransitionRef?, steps? }
