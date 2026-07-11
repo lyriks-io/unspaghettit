@@ -24,6 +24,38 @@ import { DEFAULT_MAX_BYTES, byteLengthOf, hashContent } from './Provenance';
 export const SOURCE_KINDS = ['pasted', 'file', 'code'] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
+/**
+ * How much this source is allowed to SETTLE a disagreement, not just how it
+ * arrived. When two sources describe the same behavior differently, the one
+ * with the higher authority wins rather than whichever was ingested last:
+ *
+ *  - `normative`   the source of truth for intended behavior (a signed
+ *                  contract, an accepted spec, the API schema a client must obey)
+ *  - `supporting`  evidences behavior but isn't the authority on intent
+ *                  (implementation code, tests, internal docs)
+ *  - `observed`    a report of what happens in the wild, not a decision
+ *                  (an interview, a log, a captured trace)
+ *  - `unknown`     not yet ranked (the honest default)
+ */
+export const SOURCE_AUTHORITIES = ['normative', 'supporting', 'observed', 'unknown'] as const;
+export type SourceAuthority = (typeof SOURCE_AUTHORITIES)[number];
+
+/**
+ * What KIND of artifact the source is — the audit's second axis, named
+ * `artifact` (not `kind`) so it doesn't collide with the arrival-mode `kind`
+ * above. Informs a default authority when none is stated (see
+ * `defaultAuthorityForArtifact`), so tagging a source `contract` is enough to
+ * make it outrank a `documentation` source without spelling out the authority.
+ */
+export const SOURCE_ARTIFACTS = [
+  'implementation',
+  'test',
+  'contract',
+  'documentation',
+  'interview'
+] as const;
+export type SourceArtifact = (typeof SOURCE_ARTIFACTS)[number];
+
 export type ProjectSource = {
   readonly id: string;
   /** Owning project id, or null when the linked feature is unassigned. */
@@ -31,6 +63,14 @@ export type ProjectSource = {
   /** Human name ("Checkout PRD v2") or the original file name. */
   readonly name: string;
   readonly kind: SourceKind;
+  /**
+   * Evidentiary weight, used to resolve contradictions by authority rather than
+   * ingestion order. Absent = derived from `artifact`, else `unknown`; read it
+   * through `effectiveAuthority` so the default policy lives in one place.
+   */
+  readonly authority?: SourceAuthority;
+  /** What kind of artifact this is (implementation, test, contract, …). Absent = unclassified. */
+  readonly artifact?: SourceArtifact;
   /** The document text, verbatim and immutable. */
   readonly content: string;
   /** UTF-8 size of the content, used for the storage cap and display. */
@@ -42,6 +82,45 @@ export type ProjectSource = {
   readonly supersedes: string | null;
 };
 
+/** Comparable strength of each authority level (higher wins a contradiction). */
+export const authorityRank: Readonly<Record<SourceAuthority, number>> = {
+  normative: 3,
+  supporting: 2,
+  observed: 1,
+  unknown: 0
+};
+
+/**
+ * Default authority for a source that declared its artifact but not its
+ * authority. A contract is normative; code, tests and docs support; an
+ * interview is an observation. Conservative on purpose: code is `supporting`,
+ * not `normative`, because what the code does is evidence of behavior, not a
+ * decision about what the behavior should be.
+ */
+export const defaultAuthorityForArtifact = (artifact: SourceArtifact): SourceAuthority => {
+  switch (artifact) {
+    case 'contract':
+      return 'normative';
+    case 'implementation':
+    case 'test':
+    case 'documentation':
+      return 'supporting';
+    case 'interview':
+      return 'observed';
+  }
+};
+
+/**
+ * The authority to actually rank a source by: an explicit `authority` always
+ * wins; otherwise it's derived from the `artifact`; otherwise `unknown`.
+ * Deriving at read time (rather than freezing a value at attach time) keeps
+ * storage minimal and lets the default policy change without rewriting sources.
+ */
+export const effectiveAuthority = (
+  s: Pick<ProjectSource, 'authority' | 'artifact'>
+): SourceAuthority =>
+  s.authority ?? (s.artifact ? defaultAuthorityForArtifact(s.artifact) : 'unknown');
+
 /** Listing shape: everything except the content itself. */
 export type ProjectSourceMeta = Omit<ProjectSource, 'content'>;
 
@@ -50,6 +129,8 @@ export const toSourceMeta = (s: ProjectSource): ProjectSourceMeta => ({
   projectId: s.projectId,
   name: s.name,
   kind: s.kind,
+  ...(s.authority !== undefined ? { authority: s.authority } : {}),
+  ...(s.artifact !== undefined ? { artifact: s.artifact } : {}),
   byteLength: s.byteLength,
   contentHash: s.contentHash,
   attachedAt: s.attachedAt,
@@ -61,6 +142,8 @@ export type CreateSourceInput = {
   readonly projectId: string | null;
   readonly name: string;
   readonly kind: SourceKind;
+  readonly authority?: SourceAuthority;
+  readonly artifact?: SourceArtifact;
   readonly content: string;
   readonly attachedAt: string;
   readonly maxBytes?: number;
@@ -100,6 +183,8 @@ export const createProjectSource = (
   const duplicate = existing.find(
     (s) => s.contentHash === contentHash && s.content === input.content
   );
+  // Dedupe resolves to the existing source, so its classification wins over the
+  // re-attach's; use classifySource to (re)tag an already-stored document.
   if (duplicate) return { ok: true, source: duplicate, deduped: true };
   return {
     ok: true,
@@ -109,6 +194,8 @@ export const createProjectSource = (
       projectId: input.projectId,
       name,
       kind: input.kind,
+      ...(input.authority !== undefined ? { authority: input.authority } : {}),
+      ...(input.artifact !== undefined ? { artifact: input.artifact } : {}),
       content: input.content,
       byteLength,
       contentHash,
@@ -117,3 +204,21 @@ export const createProjectSource = (
     }
   };
 };
+
+export type ClassifyInput = {
+  readonly authority?: SourceAuthority;
+  readonly artifact?: SourceArtifact;
+};
+
+/**
+ * Re-tag a stored source's authority / artifact. Metadata only: content,
+ * hash, id and every other field are untouched, so the immutability contract
+ * (which is about the document text, not its classification) still holds and
+ * the source stays at the same place on disk. A field left `undefined` in the
+ * patch is preserved; pass `null`-like intent by not calling this at all.
+ */
+export const classifySource = (source: ProjectSource, patch: ClassifyInput): ProjectSource => ({
+  ...source,
+  ...(patch.authority !== undefined ? { authority: patch.authority } : {}),
+  ...(patch.artifact !== undefined ? { artifact: patch.artifact } : {})
+});

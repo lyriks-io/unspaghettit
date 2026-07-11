@@ -355,6 +355,91 @@ describe('source provenance tools', () => {
     await server.close();
   });
 
+  it('ranks a source at attach time, derives from artifact, and re-tags with classify_source', async () => {
+    const { client, server } = await setup();
+
+    // Explicit authority is echoed back and surfaced on reads.
+    const tagged = parse<{ ok: boolean; authority: string; artifact: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: {
+          featureId: 'feat-prov',
+          fileName: 'contract.md',
+          content: 'the contract',
+          authority: 'normative',
+          artifact: 'contract'
+        }
+      })
+    );
+    expect(tagged.ok).toBe(true);
+    expect(tagged.authority).toBe('normative');
+    expect(tagged.artifact).toBe('contract');
+
+    // artifact:'interview' with no explicit authority → derived 'observed'.
+    const derived = parse<{ sourceId: string; authority: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: {
+          featureId: 'feat-prov',
+          fileName: 'call.md',
+          content: 'a user interview transcript',
+          artifact: 'interview'
+        }
+      })
+    );
+    expect(derived.authority).toBe('observed');
+
+    // Re-tag the derived source; classify_source is metadata-only.
+    const reclassified = parse<{ ok: boolean; authority: string; artifact: string; contentHash: string }>(
+      await client.callTool({
+        name: 'classify_source',
+        arguments: { sourceId: derived.sourceId, authority: 'normative' }
+      })
+    );
+    expect(reclassified.ok).toBe(true);
+    expect(reclassified.authority).toBe('normative');
+    expect(reclassified.artifact).toBe('interview');
+
+    const read = parse<{ authority: string; artifact: string; content: string }>(
+      await client.callTool({ name: 'get_source', arguments: { sourceId: derived.sourceId } })
+    );
+    expect(read.authority).toBe('normative');
+    expect(read.content).toBe('a user interview transcript');
+
+    await server.close();
+  });
+
+  it('keeps the stored classification on a dedupe and flags that the new one was ignored', async () => {
+    const { client, server } = await setup();
+    const first = parse<{ sourceId: string; authority: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: {
+          featureId: 'feat-prov',
+          fileName: 'doc.md',
+          content: 'shared text',
+          authority: 'normative'
+        }
+      })
+    );
+    const again = parse<{ sourceId: string; authority: string; classificationIgnored?: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: {
+          featureId: 'feat-prov',
+          fileName: 'doc-copy.md',
+          content: 'shared text',
+          authority: 'observed'
+        }
+      })
+    );
+    expect(again.sourceId).toBe(first.sourceId);
+    expect(again.authority).toBe('normative');
+    expect(again.classificationIgnored).toMatch(/classify_source/i);
+
+    await server.close();
+  });
+
   it('rejects a span past the end of the file and an unknown element', async () => {
     const { client, server } = await setup();
     await client.callTool({

@@ -65,6 +65,7 @@ describe('MCP server', () => {
       'apply_batch',
       'attach_source_file',
       'attach_source_path',
+      'classify_source',
       'create_feature',
       'create_project',
       'delete_feature',

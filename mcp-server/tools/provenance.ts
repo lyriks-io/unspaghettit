@@ -18,8 +18,14 @@ import {
   recordSpan
 } from '../../src/features/source-provenance/domain/Provenance';
 import {
+  SOURCE_ARTIFACTS,
+  SOURCE_AUTHORITIES,
+  classifySource,
   createProjectSource,
-  toSourceMeta
+  effectiveAuthority,
+  toSourceMeta,
+  type SourceArtifact,
+  type SourceAuthority
 } from '../../src/features/source-provenance/domain/ProjectSource';
 import { writeRepoLink, type BehavioralIndex, type RepoLink } from '../repo-link';
 import {
@@ -62,6 +68,18 @@ const findOwningProjectId = async (
 /** Slice of a stored document returned by get_source. Full 1 MiB docs would flood the context. */
 const DEFAULT_READ_CHARS = 100_000;
 
+const sourceAuthoritySchema = z
+  .enum(SOURCE_AUTHORITIES)
+  .describe(
+    'How much this source may SETTLE a disagreement: normative (source of truth for intended behavior), supporting (evidences behavior but not the authority on intent), observed (a report of what happens, not a decision), unknown (default). When absent it is derived from `artifact`.'
+  );
+
+const sourceArtifactSchema = z
+  .enum(SOURCE_ARTIFACTS)
+  .describe(
+    'What kind of artifact the source is: implementation, test, contract, documentation, or interview. Sets a default authority (contract -> normative; implementation/test/documentation -> supporting; interview -> observed).'
+  );
+
 /**
  * Source Provenance tools (feature 39e57ee0). Documents live in the
  * project-level source store (`<projectFolder>/sources/`), immutable and
@@ -87,6 +105,8 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
     readonly feature: Feature;
     readonly name: string;
     readonly kind: 'file' | 'code';
+    readonly authority?: SourceAuthority;
+    readonly artifact?: SourceArtifact;
     readonly content: string;
     readonly maxBytes?: number;
     readonly extra?: Record<string, unknown>;
@@ -108,6 +128,8 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         projectId,
         name: args.name,
         kind: args.kind,
+        ...(args.authority !== undefined ? { authority: args.authority } : {}),
+        ...(args.artifact !== undefined ? { artifact: args.artifact } : {}),
         content: args.content,
         attachedAt: clock(),
         ...(args.maxBytes !== undefined ? { maxBytes: args.maxBytes } : {})
@@ -127,9 +149,20 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
       sourceId: created.source.id,
       fileName: created.source.name,
       kind: created.source.kind,
+      ...(created.source.artifact !== undefined ? { artifact: created.source.artifact } : {}),
+      authority: effectiveAuthority(created.source),
       byteLength: created.source.byteLength,
       contentHash: created.source.contentHash,
       deduped: created.deduped,
+      // A dedupe kept the STORED source's classification, not this call's — say so.
+      ...(created.deduped &&
+      (args.authority !== undefined || args.artifact !== undefined) &&
+      (created.source.authority !== args.authority || created.source.artifact !== args.artifact)
+        ? {
+            classificationIgnored:
+              'Deduped onto an existing source; its classification was kept. Use classify_source to re-tag it.'
+          }
+        : {}),
       elementCount: enumerateFeatureElements(args.feature).length,
       spanCount: linked.provenance.spans.length,
       ...(args.extra ?? {})
@@ -140,16 +173,18 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
     'attach_source_file',
     {
       description:
-        "Store the document you analyzed as a project-level source (in the owning project's sources/ folder) and link it to this feature's analysis. Identical content is deduplicated: re-attaching the same text links the existing source instead of storing a copy. Prefer pulling a source the user already pasted in the dashboard (list_sources + get_source) over pushing content here. Pass kind:'code' when the source is a source-code file you are adopting into the model; fileName must then be the file's repo-relative path (e.g. src/lib/cart.ts), because spans recorded against a code source can be turned into .unspa.json implementation entries by seed_index_from_analysis. Blocked if the analysis is finalized or the content exceeds the storage cap (default 1 MiB).",
+        "Store the document you analyzed as a project-level source (in the owning project's sources/ folder) and link it to this feature's analysis. Identical content is deduplicated: re-attaching the same text links the existing source instead of storing a copy. Prefer pulling a source the user already pasted in the dashboard (list_sources + get_source) over pushing content here. Pass kind:'code' when the source is a source-code file you are adopting into the model; fileName must then be the file's repo-relative path (e.g. src/lib/cart.ts), because spans recorded against a code source can be turned into .unspa.json implementation entries by seed_index_from_analysis. Set `authority` and/or `artifact` to rank the source, so a later contradiction resolves by authority rather than by which document was ingested last. Blocked if the analysis is finalized or the content exceeds the storage cap (default 1 MiB).",
       inputSchema: {
         featureId: z.string(),
         fileName: z.string().min(1),
         content: z.string(),
         kind: z.enum(['file', 'code']).optional(),
+        authority: sourceAuthoritySchema.optional(),
+        artifact: sourceArtifactSchema.optional(),
         maxBytes: z.number().int().positive().optional()
       }
     },
-    async ({ featureId, fileName, content, kind, maxBytes }) => {
+    async ({ featureId, fileName, content, kind, authority, artifact, maxBytes }) => {
       try {
         const fid = asFeatureId(await expandFeatureId(repo, featureId));
         const feature = await repo.get(fid);
@@ -169,6 +204,8 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
           feature,
           name: sourceName,
           kind: kind ?? 'file',
+          ...(authority !== undefined ? { authority } : {}),
+          ...(artifact !== undefined ? { artifact } : {}),
           content,
           ...(maxBytes !== undefined ? { maxBytes } : {})
         });
@@ -182,15 +219,17 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
     'attach_source_path',
     {
       description:
-        "Token-saving attach for codebase adoption: pass a repo-relative path and the server reads the file from disk itself, so the content never has to be re-emitted through the conversation (roughly halves the cost of adopting a file). This is the one deliberate, opt-in exception to 'the MCP never reads source files': the path is validated (repo-relative only, no absolute paths or dot-walks), resolved against the linked repo root (the .unspa.json folder; the server's working directory when not linked yet), and size-capped. CRLF line endings are normalized to LF so span offsets are OS-independent (line numbers unchanged); the ack's contentHash + totalChars let you verify the stored text against the version you read. Defaults to kind:'code'; pass kind:'file' for a document that happens to live in the repo. Blocked if the analysis is finalized.",
+        "Token-saving attach for codebase adoption: pass a repo-relative path and the server reads the file from disk itself, so the content never has to be re-emitted through the conversation (roughly halves the cost of adopting a file). This is the one deliberate, opt-in exception to 'the MCP never reads source files': the path is validated (repo-relative only, no absolute paths or dot-walks), resolved against the linked repo root (the .unspa.json folder; the server's working directory when not linked yet), and size-capped. CRLF line endings are normalized to LF so span offsets are OS-independent (line numbers unchanged); the ack's contentHash + totalChars let you verify the stored text against the version you read. Defaults to kind:'code'; pass kind:'file' for a document that happens to live in the repo. Set `authority`/`artifact` to rank the source (a code file defaults to artifact:'implementation' semantics; pass artifact:'test' for a spec/test file so a later contradiction resolves by authority). Blocked if the analysis is finalized.",
       inputSchema: {
         featureId: z.string(),
         path: z.string().min(1),
         kind: z.enum(['file', 'code']).optional(),
+        authority: sourceAuthoritySchema.optional(),
+        artifact: sourceArtifactSchema.optional(),
         maxBytes: z.number().int().positive().optional()
       }
     },
-    async ({ featureId, path, kind, maxBytes }) => {
+    async ({ featureId, path, kind, authority, artifact, maxBytes }) => {
       try {
         const fid = asFeatureId(await expandFeatureId(repo, featureId));
         const feature = await repo.get(fid);
@@ -223,6 +262,8 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
           feature,
           name: normalized.path,
           kind: kind ?? 'code',
+          ...(authority !== undefined ? { authority } : {}),
+          ...(artifact !== undefined ? { artifact } : {}),
           content,
           ...(maxBytes !== undefined ? { maxBytes } : {}),
           extra: { totalChars: content.length, normalizedEol }
@@ -620,7 +661,7 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         const sources = [];
         for (const id of prov?.sourceIds ?? []) {
           const source = await sourceRepo.find(id);
-          if (source) sources.push(toSourceMeta(source));
+          if (source) sources.push({ ...toSourceMeta(source), authority: effectiveAuthority(source) });
         }
 
         return text({
@@ -667,7 +708,10 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         return text({
           projectId: pid,
           count: sources.length,
-          sources: sources.map(toSourceMeta)
+          sources: sources.map((s) => ({
+            ...toSourceMeta(s),
+            authority: effectiveAuthority(s)
+          }))
         });
       } catch (e) {
         return errorText(`list_sources failed: ${(e as Error).message}`);
@@ -694,6 +738,7 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         const end = Math.min(start + (maxChars ?? DEFAULT_READ_CHARS), source.content.length);
         return text({
           ...toSourceMeta(source),
+          authority: effectiveAuthority(source),
           totalChars: source.content.length,
           offset: start,
           endOffset: end,
@@ -702,6 +747,40 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         });
       } catch (e) {
         return errorText(`get_source failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'classify_source',
+    {
+      description:
+        "Rank an already-stored source by setting its `authority` (how much it may settle a disagreement) and/or `artifact` (what kind of artifact it is). Metadata only: the document text, its hash and id are untouched, so spans stay valid. This is how you re-tag a source that was deduped onto (a re-attach keeps the STORED source's classification, not the new call's) or one attached before it was classified. Pass at least one of authority/artifact. Returns the source's effective authority (explicit, else derived from artifact, else 'unknown').",
+      inputSchema: {
+        sourceId: z.string().min(1),
+        authority: sourceAuthoritySchema.optional(),
+        artifact: sourceArtifactSchema.optional()
+      }
+    },
+    async ({ sourceId, authority, artifact }) => {
+      try {
+        if (authority === undefined && artifact === undefined) {
+          return errorText('Pass authority and/or artifact to classify the source.');
+        }
+        const source = await sourceRepo.find(sourceId);
+        if (!source) return errorText(`No stored source "${sourceId}". Call list_sources.`);
+        const reclassified = classifySource(source, {
+          ...(authority !== undefined ? { authority } : {}),
+          ...(artifact !== undefined ? { artifact } : {})
+        });
+        await sourceRepo.save(reclassified);
+        return text({
+          ok: true,
+          ...toSourceMeta(reclassified),
+          authority: effectiveAuthority(reclassified)
+        });
+      } catch (e) {
+        return errorText(`classify_source failed: ${(e as Error).message}`);
       }
     }
   );
