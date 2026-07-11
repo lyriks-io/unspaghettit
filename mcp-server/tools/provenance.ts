@@ -12,6 +12,7 @@ import {
   type AdoptionSourceMeta
 } from '../../src/features/source-provenance/domain/CodeAdoption';
 import {
+  ELEMENT_TYPES,
   emptyProvenance,
   finalizeProvenance,
   linkSource,
@@ -23,6 +24,12 @@ import {
   resolveConflict,
   suggestConflictWinner
 } from '../../src/features/source-provenance/domain/Conflicts';
+import {
+  CANDIDATE_DISPOSITIONS,
+  disposeCandidate,
+  stageCandidate,
+  type BehaviorCandidate
+} from '../../src/features/source-provenance/domain/Candidates';
 import {
   SOURCE_ARTIFACTS,
   SOURCE_AUTHORITIES,
@@ -85,6 +92,19 @@ const sourceArtifactSchema = z
   .describe(
     'What kind of artifact the source is: implementation, test, contract, documentation, or interview. Sets a default authority (contract -> normative; implementation/test/documentation -> supporting; interview -> observed).'
   );
+
+const candidateDispositionSchema = z
+  .enum(CANDIDATE_DISPOSITIONS)
+  .describe(
+    'Review state of a staged behavior: unreviewed (default), accepted (reached the model), merged (folded into another, a duplicate), rejected / out_of_scope (deliberately excluded), or conflict (tied up in an open disagreement).'
+  );
+
+const proposedKindSchema = z
+  .enum(ELEMENT_TYPES)
+  .describe('The element type this candidate proposes to become (surface, action, rule, ...).');
+
+const countUnreviewed = (candidates: readonly BehaviorCandidate[]): number =>
+  candidates.filter((c) => c.disposition === 'unreviewed').length;
 
 /**
  * Source Provenance tools (feature 39e57ee0). Documents live in the
@@ -710,6 +730,20 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
             affectedElements: c.affectedElements,
             ...(c.resolution !== undefined ? { resolution: c.resolution } : {}),
             ...(c.resolvedInFavorOf !== undefined ? { resolvedInFavorOf: c.resolvedInFavorOf } : {})
+          })),
+          candidateCount: prov?.candidates.length ?? 0,
+          unreviewedCandidateCount: (prov?.candidates ?? []).filter(
+            (c) => c.disposition === 'unreviewed'
+          ).length,
+          candidates: (prov?.candidates ?? []).map((c) => ({
+            id: c.id,
+            proposedKind: c.proposedKind,
+            summary: c.summary,
+            disposition: c.disposition,
+            sourceId: c.span.sourceId,
+            startLine: c.span.startLine,
+            endLine: c.span.endLine,
+            ...(c.elementId !== undefined ? { elementId: c.elementId } : {})
           }))
         });
       } catch (e) {
@@ -958,6 +992,225 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         });
       } catch (e) {
         return errorText(`resolve_conflict failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'stage_candidate',
+    {
+      description:
+        "Stage one behavior you read from a source BEFORE committing it to the model, so a reviewed behavior is distinguishable from an unreviewed guess and nothing a source describes goes silently unaccounted. This is the dual of record_element_span: a span points from a modeled element back to its source; a candidate points from a source range forward to a proposed behavior. Give the source range, the element type it would become (`proposedKind`), a plain-language `summary`, and an optional `confidence` (0..1). It starts `unreviewed`; move it to accepted / rejected / merged / out_of_scope / conflict with dispose_candidate. Feeds source coverage (get_source_coverage): the share of a source's behavior that actually reached the model.",
+      inputSchema: {
+        featureId: z.string(),
+        sourceId: z.string().min(1),
+        startOffset: z.number().int().nonnegative(),
+        endOffset: z.number().int().positive(),
+        proposedKind: proposedKindSchema,
+        summary: z.string().min(1),
+        confidence: z.number().min(0).max(1).optional(),
+        disposition: candidateDispositionSchema.optional()
+      }
+    },
+    async ({
+      featureId,
+      sourceId,
+      startOffset,
+      endOffset,
+      proposedKind,
+      summary,
+      confidence,
+      disposition
+    }) => {
+      try {
+        const fid = asFeatureId(await expandFeatureId(repo, featureId));
+        const feature = await repo.get(fid);
+        if (!feature) return errorText(`Feature ${String(fid)} not found`);
+        const src = await sourceRepo.find(sourceId);
+        if (!src) return errorText(`No stored source "${sourceId}". Call list_sources.`);
+
+        const current = (await provenanceRepo.get(fid)) ?? emptyProvenance(fid, clock());
+        const result = stageCandidate(current.candidates, {
+          id: ids(),
+          sourceId,
+          sourceContent: src.content,
+          proposedKind,
+          summary,
+          ...(confidence !== undefined ? { confidence } : {}),
+          startOffset,
+          endOffset,
+          ...(disposition ? { disposition } : {}),
+          at: clock()
+        });
+        if (!result.ok) return errorText(result.reason);
+        await provenanceRepo.save({
+          ...current,
+          candidates: result.candidates,
+          updatedAt: clock()
+        });
+        return text({
+          ok: true,
+          featureId: String(fid),
+          candidateId: result.candidate.id,
+          disposition: result.candidate.disposition,
+          startLine: result.candidate.span.startLine,
+          endLine: result.candidate.span.endLine,
+          candidateCount: result.candidates.length,
+          unreviewedCount: countUnreviewed(result.candidates)
+        });
+      } catch (e) {
+        return errorText(`stage_candidate failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'stage_candidates',
+    {
+      description:
+        'Batch form of stage_candidate: stage MANY behaviors read from one or more sources in a single call (one load, one save), so "account for every source span" is affordable at adoption scale. Each item: { sourceId?, startOffset, endOffset, proposedKind, summary, confidence?, disposition? }. A call-level sourceId is the default for items that omit their own. Items are applied in order; a failing item is reported in `results` with its reason and does NOT abort the rest. Nothing is persisted when every item fails.',
+      inputSchema: {
+        featureId: z.string(),
+        sourceId: z.string().optional(),
+        candidates: z
+          .array(
+            z.object({
+              sourceId: z.string().optional(),
+              startOffset: z.number().int().nonnegative(),
+              endOffset: z.number().int().positive(),
+              proposedKind: proposedKindSchema,
+              summary: z.string().min(1),
+              confidence: z.number().min(0).max(1).optional(),
+              disposition: candidateDispositionSchema.optional()
+            })
+          )
+          .min(1)
+      }
+    },
+    async ({ featureId, sourceId, candidates }) => {
+      try {
+        const fid = asFeatureId(await expandFeatureId(repo, featureId));
+        const feature = await repo.get(fid);
+        if (!feature) return errorText(`Feature ${String(fid)} not found`);
+
+        let current = (await provenanceRepo.get(fid)) ?? emptyProvenance(fid, clock());
+        const contentCache = new Map<string, string | null>();
+        const loadContent = async (id: string): Promise<string | null> => {
+          if (contentCache.has(id)) return contentCache.get(id) ?? null;
+          const found = await sourceRepo.find(id);
+          const content = found ? found.content : null;
+          contentCache.set(id, content);
+          return content;
+        };
+
+        const results: Array<Record<string, unknown>> = [];
+        let staged = 0;
+        for (const item of candidates) {
+          const wanted = item.sourceId ?? sourceId;
+          if (!wanted) {
+            results.push({ ok: false, error: 'No sourceId on the item or the call.', summary: item.summary });
+            continue;
+          }
+          const content = await loadContent(wanted);
+          if (content === null) {
+            results.push({ ok: false, error: `No stored source "${wanted}".`, summary: item.summary });
+            continue;
+          }
+          const result = stageCandidate(current.candidates, {
+            id: ids(),
+            sourceId: wanted,
+            sourceContent: content,
+            proposedKind: item.proposedKind,
+            summary: item.summary,
+            ...(item.confidence !== undefined ? { confidence: item.confidence } : {}),
+            startOffset: item.startOffset,
+            endOffset: item.endOffset,
+            ...(item.disposition ? { disposition: item.disposition } : {}),
+            at: clock()
+          });
+          if (!result.ok) {
+            results.push({ ok: false, error: result.reason, summary: item.summary });
+            continue;
+          }
+          current = { ...current, candidates: result.candidates };
+          staged += 1;
+          results.push({ ok: true, candidateId: result.candidate.id, proposedKind: item.proposedKind });
+        }
+
+        if (staged > 0) await provenanceRepo.save({ ...current, updatedAt: clock() });
+
+        const failed = results.filter((r) => r.ok !== true).length;
+        return text({
+          ok: failed === 0,
+          featureId: String(fid),
+          staged,
+          failed,
+          results,
+          candidateCount: current.candidates.length,
+          unreviewedCount: countUnreviewed(current.candidates)
+        });
+      } catch (e) {
+        return errorText(`stage_candidates failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'dispose_candidate',
+    {
+      description:
+        "Review a staged candidate: move it from `unreviewed` to a decision. `accepted` (it reached the model) and `merged` (it folded into another element, a duplicate) MUST name the modeled `elementId` they map to (full id or unique prefix), so acceptance is traceable to a real element; `rejected` / `out_of_scope` exclude it; `conflict` marks it tied up in an open disagreement. A `rationale` narrates the decision. This is what turns a source's staged behaviors into an honest coverage picture.",
+      inputSchema: {
+        featureId: z.string(),
+        candidateId: z.string().min(1),
+        disposition: candidateDispositionSchema,
+        rationale: z.string().optional(),
+        elementId: z.string().optional()
+      }
+    },
+    async ({ featureId, candidateId, disposition, rationale, elementId }) => {
+      try {
+        const fid = asFeatureId(await expandFeatureId(repo, featureId));
+        const feature = await repo.get(fid);
+        if (!feature) return errorText(`Feature ${String(fid)} not found`);
+        const current = await provenanceRepo.get(fid);
+        if (!current || current.candidates.length === 0) {
+          return errorText(`No candidates staged for feature ${String(fid)}.`);
+        }
+
+        // accepted/merged link to a modeled element: resolve it to a canonical id.
+        let resolvedElementId = elementId;
+        if ((disposition === 'accepted' || disposition === 'merged') && elementId !== undefined) {
+          const match = matchElement(enumerateFeatureElements(feature), elementId);
+          if ('error' in match) return errorText(match.error);
+          resolvedElementId = match.el.id;
+        }
+
+        const result = disposeCandidate(current.candidates, {
+          id: candidateId,
+          disposition,
+          ...(rationale !== undefined ? { rationale } : {}),
+          ...(resolvedElementId !== undefined ? { elementId: resolvedElementId } : {}),
+          at: clock()
+        });
+        if (!result.ok) return errorText(result.reason);
+        await provenanceRepo.save({
+          ...current,
+          candidates: result.candidates,
+          updatedAt: clock()
+        });
+        return text({
+          ok: true,
+          featureId: String(fid),
+          candidateId: result.candidate.id,
+          disposition: result.candidate.disposition,
+          ...(result.candidate.elementId !== undefined
+            ? { elementId: result.candidate.elementId }
+            : {}),
+          unreviewedCount: countUnreviewed(result.candidates)
+        });
+      } catch (e) {
+        return errorText(`dispose_candidate failed: ${(e as Error).message}`);
       }
     }
   );

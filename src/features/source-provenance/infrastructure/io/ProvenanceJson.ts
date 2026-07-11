@@ -12,14 +12,19 @@ import {
   type ConflictClaim,
   type ConflictStatus
 } from '$features/source-provenance/domain/Conflicts';
+import {
+  CANDIDATE_DISPOSITIONS,
+  type BehaviorCandidate,
+  type CandidateDisposition
+} from '$features/source-provenance/domain/Candidates';
 
 /**
  * Version history:
  *  - 1: the analyzed document embedded in the sidecar (`provenance.file`).
  *  - 2: adds `provenance.sourceIds` + per-span `sourceId`, pointing at
  *       project-level documents in the owning project's `sources/` folder.
- *       Later additive within v2: `provenance.conflicts` (absent = none), so
- *       older sidecars still parse.
+ *       Later additive within v2: `provenance.conflicts` and
+ *       `provenance.candidates` (absent = none), so older sidecars still parse.
  * Reads accept both; writes always emit version 2.
  */
 type Envelope = {
@@ -38,6 +43,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 
 const ELEMENT_TYPE_SET: ReadonlySet<ElementType> = new Set(ELEMENT_TYPES);
 const CONFLICT_STATUS_SET: ReadonlySet<ConflictStatus> = new Set(CONFLICT_STATUSES);
+const CANDIDATE_DISPOSITION_SET: ReadonlySet<CandidateDisposition> = new Set(CANDIDATE_DISPOSITIONS);
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
@@ -124,6 +130,48 @@ const parseConflict = (raw: unknown): Conflict | null => {
   };
 };
 
+const parseCandidate = (raw: unknown): BehaviorCandidate | null => {
+  if (!isObject(raw)) return null;
+  if (typeof raw.id !== 'string') return null;
+  if (typeof raw.summary !== 'string') return null;
+  if (
+    typeof raw.proposedKind !== 'string' ||
+    !ELEMENT_TYPE_SET.has(raw.proposedKind as ElementType)
+  ) {
+    return null;
+  }
+  const span = isObject(raw.span) ? raw.span : null;
+  if (!span || typeof span.sourceId !== 'string') return null;
+  const startOffset = num(span.startOffset);
+  const endOffset = num(span.endOffset);
+  if (startOffset === null || endOffset === null) return null;
+  const disposition =
+    typeof raw.disposition === 'string' &&
+    CANDIDATE_DISPOSITION_SET.has(raw.disposition as CandidateDisposition)
+      ? (raw.disposition as CandidateDisposition)
+      : 'unreviewed';
+  const recordedAt = typeof raw.recordedAt === 'string' ? raw.recordedAt : '';
+  return {
+    id: raw.id,
+    span: {
+      sourceId: span.sourceId,
+      startOffset,
+      endOffset,
+      startLine: num(span.startLine) ?? 1,
+      endLine: num(span.endLine) ?? 1,
+      snippet: typeof span.snippet === 'string' ? span.snippet : ''
+    },
+    proposedKind: raw.proposedKind as ElementType,
+    summary: raw.summary,
+    confidence: num(raw.confidence) ?? 0.5,
+    disposition,
+    ...(typeof raw.rationale === 'string' ? { rationale: raw.rationale } : {}),
+    ...(typeof raw.elementId === 'string' ? { elementId: raw.elementId } : {}),
+    recordedAt,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : recordedAt
+  };
+};
+
 export const importProvenanceFromJson = (raw: string): Provenance => {
   let parsed: unknown;
   try {
@@ -151,12 +199,16 @@ export const importProvenanceFromJson = (raw: string): Provenance => {
   const conflicts = Array.isArray(prov.conflicts)
     ? prov.conflicts.map(parseConflict).filter((c): c is Conflict => c !== null)
     : [];
+  const candidates = Array.isArray(prov.candidates)
+    ? prov.candidates.map(parseCandidate).filter((c): c is BehaviorCandidate => c !== null)
+    : [];
   return {
     featureId: prov.featureId as FeatureId,
     file: parseFile(prov.file),
     sourceIds,
     spans,
     conflicts,
+    candidates,
     finalized: prov.finalized === true,
     updatedAt: prov.updatedAt
   };

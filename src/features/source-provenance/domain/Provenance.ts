@@ -1,5 +1,6 @@
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import type { Conflict } from './Conflicts';
+import type { BehaviorCandidate } from './Candidates';
 
 /**
  * Source Provenance — the data behind feature 39e57ee0.
@@ -81,6 +82,12 @@ export type Provenance = {
    * untraced element (a hole in its attribution).
    */
   readonly conflicts: readonly Conflict[];
+  /**
+   * Behaviors read from the sources, each with a review disposition, staged
+   * before (or instead of) committing to the model. This is what lets source
+   * coverage account for every extracted span, not just the modeled ones.
+   */
+  readonly candidates: readonly BehaviorCandidate[];
   /** Locked once every extracted element has a span (the finalize gate). */
   readonly finalized: boolean;
   readonly updatedAt: string;
@@ -100,6 +107,7 @@ export const emptyProvenance = (featureId: FeatureId, at: string): Provenance =>
   sourceIds: [],
   spans: [],
   conflicts: [],
+  candidates: [],
   finalized: false,
   updatedAt: at
 });

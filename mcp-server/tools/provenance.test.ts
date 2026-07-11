@@ -521,6 +521,82 @@ describe('source provenance tools', () => {
     await server.close();
   });
 
+  it('stages behavior candidates and disposes them, tracking the unreviewed count', async () => {
+    const { client, server } = await setup();
+    const src = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'prd.md', content: 'The user can click. And scroll.' }
+      })
+    );
+
+    const batch = parse<{ ok: boolean; staged: number; failed: number; unreviewedCount: number }>(
+      await client.callTool({
+        name: 'stage_candidates',
+        arguments: {
+          featureId: 'feat-prov',
+          sourceId: src.sourceId,
+          candidates: [
+            { startOffset: 0, endOffset: 18, proposedKind: 'action', summary: 'User can click' },
+            { startOffset: 19, endOffset: 31, proposedKind: 'action', summary: 'User can scroll', confidence: 0.8 }
+          ]
+        }
+      })
+    );
+    expect(batch.ok).toBe(true);
+    expect(batch.staged).toBe(2);
+    expect(batch.unreviewedCount).toBe(2);
+
+    // One more staged singly, so we have a candidate id to dispose.
+    const single = parse<{ candidateId: string; unreviewedCount: number }>(
+      await client.callTool({
+        name: 'stage_candidate',
+        arguments: {
+          featureId: 'feat-prov',
+          sourceId: src.sourceId,
+          startOffset: 0,
+          endOffset: 4,
+          proposedKind: 'surface',
+          summary: 'The screen'
+        }
+      })
+    );
+    expect(single.unreviewedCount).toBe(3);
+
+    // Accept it against a real element; the unreviewed count drops.
+    const accepted = parse<{ ok: boolean; disposition: string; elementId: string; unreviewedCount: number }>(
+      await client.callTool({
+        name: 'dispose_candidate',
+        arguments: {
+          featureId: 'feat-prov',
+          candidateId: single.candidateId,
+          disposition: 'accepted',
+          elementId: 'surf-1',
+          rationale: 'Modeled as the Home surface.'
+        }
+      })
+    );
+    expect(accepted.ok).toBe(true);
+    expect(accepted.disposition).toBe('accepted');
+    expect(accepted.elementId).toBe('surf-1');
+    expect(accepted.unreviewedCount).toBe(2);
+
+    // Accepting without an element is refused.
+    const noElement = await client.callTool({
+      name: 'dispose_candidate',
+      arguments: { featureId: 'feat-prov', candidateId: single.candidateId, disposition: 'merged' }
+    });
+    expect(isErr(noElement)).toBe(true);
+
+    const prov = parse<{ candidateCount: number; unreviewedCandidateCount: number }>(
+      await client.callTool({ name: 'get_provenance', arguments: { featureId: 'feat-prov' } })
+    );
+    expect(prov.candidateCount).toBe(3);
+    expect(prov.unreviewedCandidateCount).toBe(2);
+
+    await server.close();
+  });
+
   it('rejects a conflict with under two claims or an unknown source', async () => {
     const { client, server } = await setup();
     const src = parse<{ sourceId: string }>(

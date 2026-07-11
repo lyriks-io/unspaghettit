@@ -14,6 +14,7 @@ import {
   importProvenanceFromJson
 } from '$features/source-provenance/infrastructure/io/ProvenanceJson';
 import { addConflict } from './Conflicts';
+import { stageCandidate } from './Candidates';
 
 const CONTENT = 'function add(a, b) {\n  return a + b\n}\n';
 
@@ -308,6 +309,48 @@ describe('JSON round-trip', () => {
       }
     });
     expect(importProvenanceFromJson(malformed).conflicts).toHaveLength(0);
+  });
+
+  it('round-trips candidates and drops one with an unknown proposedKind', () => {
+    const staged = stageCandidate([], {
+      id: 'cand-1',
+      sourceId: 'src-9',
+      sourceContent: CONTENT,
+      proposedKind: 'action',
+      summary: 'Add two numbers',
+      startOffset: 0,
+      endOffset: 8,
+      disposition: 'accepted',
+      at: 't1'
+    });
+    if (!staged.ok) throw new Error('seed failed');
+    const withCandidate: Provenance = {
+      ...emptyProvenance(asFeatureId('feat'), 't0'),
+      candidates: staged.candidates
+    };
+    const back = importProvenanceFromJson(exportProvenanceToJson(withCandidate));
+    expect(back.candidates).toHaveLength(1);
+    expect(back.candidates[0]?.proposedKind).toBe('action');
+    expect(back.candidates[0]?.disposition).toBe('accepted');
+    expect(back.candidates[0]?.span.sourceId).toBe('src-9');
+
+    // A candidate whose proposedKind is not an element type is dropped on read.
+    const malformed = JSON.stringify({
+      format: 'unspaghettit-provenance',
+      version: 2,
+      provenance: {
+        featureId: 'feat',
+        file: null,
+        sourceIds: [],
+        spans: [],
+        candidates: [
+          { id: 'c', summary: 's', proposedKind: 'gizmo', span: { sourceId: 'x', startOffset: 0, endOffset: 1 } }
+        ],
+        finalized: false,
+        updatedAt: 't0'
+      }
+    });
+    expect(importProvenanceFromJson(malformed).candidates).toHaveLength(0);
   });
 
   it('imports a version-1 sidecar (no sourceIds field)', () => {
