@@ -60,7 +60,8 @@ actionRef: a_new }\` works when only the action was minted in this batch.
   add_scenario             { ref?, surfaceRef|surfaceId, actionRef|actionId, name, description, personaId?|personaRef?, stateOverrides?, parameterOverrides?, expectedStatus?, expectedAssertions?, expectedTransition?|expectedTransitionRef?, steps? }
 . \`parameterOverrides\` items are \`{parameterName, value}\` - must match a declared parameter on the target action (NOT parameterId, NOT name). \`stateOverrides\` items are \`{path, value}\`. \`expectedStatus\` enum: \`"success"\` | \`"blocked"\` (NOT "ok"). \`expectedTransition\` is the target surfaceId, or null to assert "no transition fires", or omitted to skip the check. If you author expectedAssertions but the action gets blocked, the scenario FAILS - set expectedStatus:"blocked" if the block is intentional.
 . \`steps\` makes the scenario multi-step: an ordered array of \`{actionId, surfaceId?, parameterOverrides?, expectedStatus?, expectedAssertions?, description?}\` REPLAYED before the subject action (each a real simulate, threading state forward). The subject action's stateOverrides set the INITIAL snapshot. A step defaults to expectedStatus:"success"; a step that blocks unexpectedly fails the whole scenario. Use for flows: add to cart -> apply coupon -> checkout.
-  add_event                { ref?, name, description, payloadSchema? }
+  add_event                { ref?, name, description, payloadSchema?, delivery? }
+. \`delivery\` is the handler guarantee: best_effort (default, a failing handler never touches the emitter), required (a failing handler blocks the emitting action), or transactional (a failing handler also rolls the emitter's state back). Lets you model "the command was accepted but a mandatory downstream update failed" instead of a silent success.
 
 ## UPDATE ops
 

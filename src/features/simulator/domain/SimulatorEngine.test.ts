@@ -6,6 +6,7 @@ import type { Action } from '$features/behavior-model/domain/entities/Action';
 import {
   asActionId,
   asEffectId,
+  asEventDefinitionId,
   asFeatureId,
   asInvariantId,
   asOutcomeId,
@@ -1017,5 +1018,125 @@ describe('simulate', () => {
     expect(result.status).toBe('success');
     // The derived subtotal reflects the appended line without any set_state.
     expect((result.nextState.cart as { subtotal: number }).subtotal).toBe(15);
+  });
+});
+
+describe('simulate — event delivery semantics', () => {
+  const sendCommand: Action = {
+    id: asActionId('send'),
+    name: 'Send Command',
+    intent: 'send a command and notify',
+    parameters: [],
+    requiredStates: [],
+    rules: [],
+    invariants: [],
+    effects: [
+      {
+        id: asEffectId('inc'),
+        type: 'set_state',
+        path: asStatePath('command.count'),
+        value: {
+          kind: 'add',
+          left: { kind: 'state', path: asStatePath('command.count') },
+          right: { kind: 'literal', value: 1 }
+        }
+      },
+      { id: asEffectId('emit'), type: 'emit_event', event: asEventName('command.sent') }
+    ],
+    emittedEvents: [asEventName('command.sent')],
+    transitions: []
+  };
+
+  // Handler that always fails: it tries to break the interlock, which a surface
+  // invariant forbids, so its run is blocked.
+  const updateInterlock: Action = {
+    id: asActionId('handler'),
+    name: 'Update Interlock',
+    intent: 'flip the interlock',
+    parameters: [],
+    requiredStates: [],
+    rules: [],
+    invariants: [],
+    effects: [
+      { id: asEffectId('flip'), type: 'set_state', path: asStatePath('interlock.ok'), value: false }
+    ],
+    emittedEvents: [],
+    transitions: [],
+    triggeredByEvent: asEventName('command.sent')
+  };
+
+  const featureWithDelivery = (delivery: 'best_effort' | 'required' | 'transactional'): Feature => ({
+    id: asFeatureId('f'),
+    name: 'Console',
+    surfaces: [
+      {
+        id: asSurfaceId('s'),
+        name: 'Console',
+        type: 'screen',
+        stateDefinitions: [
+          {
+            id: asStateDefinitionId('d-ok'),
+            path: asStatePath('interlock.ok'),
+            type: 'boolean',
+            defaultValue: true
+          },
+          {
+            id: asStateDefinitionId('d-count'),
+            path: asStatePath('command.count'),
+            type: 'number',
+            defaultValue: 0
+          }
+        ],
+        rules: [],
+        invariants: [
+          {
+            id: asInvariantId('i-ok'),
+            name: 'interlock stays ok',
+            condition: { left: asStatePath('interlock.ok'), operator: 'is_true' },
+            message: 'interlock update failed'
+          }
+        ],
+        transitions: [],
+        actions: [sendCommand, updateInterlock]
+      }
+    ],
+    personas: [],
+    resources: [],
+    entities: [],
+    events: [
+      { id: asEventDefinitionId('ev'), name: asEventName('command.sent'), delivery }
+    ],
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z'
+  });
+
+  const run = (delivery: 'best_effort' | 'required' | 'transactional') => {
+    const feature = featureWithDelivery(delivery);
+    return simulate({
+      surface: feature.surfaces[0]!,
+      action: sendCommand,
+      snapshot: {},
+      parameters: {},
+      feature
+    });
+  };
+
+  it('best_effort: a failing handler leaves the emitter a success', () => {
+    const result = run('best_effort');
+    expect(result.status).toBe('success');
+    expect(result.cascadedHandlers?.[0]?.result.status).toBe('blocked');
+    expect((result.nextState.command as { count: number }).count).toBe(1);
+  });
+
+  it('required: a failing handler blocks the emitter but its own effect stands', () => {
+    const result = run('required');
+    expect(result.status).toBe('blocked');
+    expect((result.nextState.command as { count: number }).count).toBe(1);
+  });
+
+  it('transactional: a failing handler rolls the emitter back', () => {
+    const result = run('transactional');
+    expect(result.status).toBe('blocked');
+    expect((result.nextState.command as { count: number }).count).toBe(0);
   });
 });

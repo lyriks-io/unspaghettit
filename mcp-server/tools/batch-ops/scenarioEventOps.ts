@@ -75,6 +75,9 @@ export const applyScenarioEventOps = (op: Op, ctx: OpContext): Feature | null =>
                   }) as EventPayloadField
               )
             }
+          : {}),
+        ...(typeof op.delivery === 'string'
+          ? { delivery: op.delivery as EventDefinition['delivery'] }
           : {})
       };
       exp = T.addEvent(exp, event);
@@ -108,6 +111,9 @@ export const applyScenarioEventOps = (op: Op, ctx: OpContext): Feature | null =>
                     }) as EventPayloadField
                 )
               }
+          : {}),
+        ...(typeof op.delivery === 'string'
+          ? { delivery: op.delivery as EventDefinition['delivery'] }
           : {})
       };
       exp = T.updateEvent(exp, merged);

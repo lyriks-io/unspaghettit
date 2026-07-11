@@ -4,6 +4,7 @@ import type { Invariant } from '$features/behavior-model/domain/entities/Invaria
 import type { Rule } from '$features/behavior-model/domain/entities/Rule';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import type { Constant } from '$features/behavior-model/domain/entities/Constant';
+import type { EventDelivery } from '$features/behavior-model/domain/entities/EventDefinition';
 import type { ActionId } from '$features/behavior-model/domain/value-objects/ids';
 import type { EventName } from '$features/behavior-model/domain/value-objects/EventName';
 import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
@@ -400,8 +401,13 @@ const simulateInternal = (
   // simulator has nothing to look subscribers up in). Each handler is a
   // full simulation against the running snapshot; if it succeeds, its
   // post-effect snapshot becomes the running snapshot for the next handler.
-  // Handler failures don't fail the parent, they're reported individually
-  // in `cascadedHandlers` so a scenario can assert on either side honestly.
+  //
+  // Delivery semantics decide whether a handler failure reaches the emitter:
+  // a `best_effort` event (the default) reports the failure but leaves the
+  // emitter a success; a failing handler of a `required` or `transactional`
+  // event blocks the emitter (it cannot be a clean success when a mandatory
+  // consumer failed), and `transactional` additionally rolls the emitter's
+  // state back to before the action ran so nothing partial lands.
   if (
     feature !== undefined &&
     status === 'success' &&
@@ -419,6 +425,27 @@ const simulateInternal = (
       cascadeVisited
     );
     if (cascaded.length === 0) return baseResult;
+
+    const deliveryOf = (eventName: EventName): EventDelivery =>
+      (feature.events ?? []).find((e) => String(e.name) === String(eventName))?.delivery ??
+      'best_effort';
+    const failedDeliveries = cascaded.filter(
+      (handler) =>
+        handler.result.status !== 'success' && deliveryOf(handler.triggeredBy) !== 'best_effort'
+    );
+    if (failedDeliveries.length > 0) {
+      const transactional = failedDeliveries.some(
+        (handler) => deliveryOf(handler.triggeredBy) === 'transactional'
+      );
+      return {
+        ...baseResult,
+        status: 'blocked',
+        // transactional: nothing lands. required: the emitter's own effects
+        // stand, but it is reported blocked so the failed delivery is visible.
+        nextState: transactional ? completeSnapshot : finalSnapshot,
+        cascadedHandlers: cascaded
+      };
+    }
     return { ...baseResult, nextState: finalSnapshot, cascadedHandlers: cascaded };
   }
 
