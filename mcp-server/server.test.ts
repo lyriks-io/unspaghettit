@@ -92,6 +92,7 @@ describe('MCP server', () => {
       'get_provenance',
       'get_repo_context',
       'get_source',
+      'get_source_coverage',
       'get_spec_gaps',
       'get_surface',
       'list_actions',

@@ -597,6 +597,82 @@ describe('source provenance tools', () => {
     await server.close();
   });
 
+  it('reports bidirectional source coverage from staged candidates', async () => {
+    const { client, server } = await setup();
+    const src = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'prd.md', content: 'aaaa bbbb cccc dddd' }
+      })
+    );
+
+    // Four candidates: accept one, reject one, leave two unreviewed.
+    const staged = parse<{ results: readonly { candidateId: string }[] }>(
+      await client.callTool({
+        name: 'stage_candidates',
+        arguments: {
+          featureId: 'feat-prov',
+          sourceId: src.sourceId,
+          candidates: [
+            { startOffset: 0, endOffset: 4, proposedKind: 'action', summary: 'A' },
+            { startOffset: 5, endOffset: 9, proposedKind: 'action', summary: 'B' },
+            { startOffset: 10, endOffset: 14, proposedKind: 'action', summary: 'C' },
+            { startOffset: 15, endOffset: 19, proposedKind: 'action', summary: 'D' }
+          ]
+        }
+      })
+    );
+    await client.callTool({
+      name: 'dispose_candidate',
+      arguments: {
+        featureId: 'feat-prov',
+        candidateId: staged.results[0]!.candidateId,
+        disposition: 'accepted',
+        elementId: 'act-1'
+      }
+    });
+    await client.callTool({
+      name: 'dispose_candidate',
+      arguments: {
+        featureId: 'feat-prov',
+        candidateId: staged.results[1]!.candidateId,
+        disposition: 'rejected',
+        rationale: 'Not a behavior.'
+      }
+    });
+
+    const coverage = parse<{
+      ok: boolean;
+      candidateCount: number;
+      overall: { total: number; modeled: number; excluded: number; unresolved: number; unresolvedShare: number };
+      sources: readonly { sourceId: string; name?: string; total: number; unresolved: number }[];
+      unresolved: readonly { summary: string }[];
+    }>(
+      await client.callTool({ name: 'get_source_coverage', arguments: { featureId: 'feat-prov' } })
+    );
+    expect(coverage.ok).toBe(true);
+    expect(coverage.candidateCount).toBe(4);
+    expect(coverage.overall.modeled).toBe(1);
+    expect(coverage.overall.excluded).toBe(1);
+    expect(coverage.overall.unresolved).toBe(2);
+    expect(coverage.overall.unresolvedShare).toBe(0.5);
+    expect(coverage.sources[0]?.name).toBe('prd.md');
+    expect(coverage.unresolved.map((u) => u.summary).sort()).toEqual(['C', 'D']);
+
+    await server.close();
+  });
+
+  it('reports empty coverage when nothing is staged', async () => {
+    const { client, server } = await setup();
+    const empty = parse<{ ok: boolean; candidateCount: number; hint?: string }>(
+      await client.callTool({ name: 'get_source_coverage', arguments: { featureId: 'feat-prov' } })
+    );
+    expect(empty.ok).toBe(true);
+    expect(empty.candidateCount).toBe(0);
+    expect(empty.hint).toMatch(/stage_candidate/i);
+    await server.close();
+  });
+
   it('rejects a conflict with under two claims or an unknown source', async () => {
     const { client, server } = await setup();
     const src = parse<{ sourceId: string }>(

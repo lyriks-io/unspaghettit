@@ -26,7 +26,9 @@ import {
 } from '../../src/features/source-provenance/domain/Conflicts';
 import {
   CANDIDATE_DISPOSITIONS,
+  coverageForCandidates,
   disposeCandidate,
+  rollUpCoverage,
   stageCandidate,
   type BehaviorCandidate
 } from '../../src/features/source-provenance/domain/Candidates';
@@ -1211,6 +1213,72 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         });
       } catch (e) {
         return errorText(`dispose_candidate failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'get_source_coverage',
+    {
+      description:
+        "Bidirectional source coverage: the reverse of the finalize gate. Finalize asks whether every MODEL element traces to a source; this asks whether every staged SOURCE behavior has a disposition, and reports the share of each source's behavior that reached the model (`modeled`), was already there (`duplicate`), was deliberately left out (`excluded`), or is still undecided (`unresolved`). The unresolved share is the answer to \"what might we be missing?\". Requires candidates staged with stage_candidate; a source with none has nothing to account for. Pass `sourceId` to scope to one source. Returns the still-unresolved candidates so you know exactly what to review.",
+      inputSchema: {
+        featureId: z.string(),
+        sourceId: z.string().optional()
+      }
+    },
+    async ({ featureId, sourceId }) => {
+      try {
+        const fid = asFeatureId(await expandFeatureId(repo, featureId));
+        const feature = await repo.get(fid);
+        if (!feature) return errorText(`Feature ${String(fid)} not found`);
+
+        const prov = await provenanceRepo.get(fid);
+        const candidates = (prov?.candidates ?? []).filter(
+          (c) => sourceId === undefined || c.span.sourceId === sourceId
+        );
+        if (candidates.length === 0) {
+          return text({
+            ok: true,
+            featureId: String(fid),
+            candidateCount: 0,
+            sources: [],
+            hint: 'No candidates staged for this scope; stage_candidate to account for a source’s behavior.'
+          });
+        }
+
+        const perSource = coverageForCandidates(candidates);
+        const nameById = new Map<string, string>();
+        for (const cov of perSource) {
+          const src = await sourceRepo.find(cov.sourceId);
+          if (src) nameById.set(cov.sourceId, src.name);
+        }
+
+        const unresolved = candidates
+          .filter((c) => c.disposition === 'unreviewed' || c.disposition === 'conflict')
+          .slice(0, 50)
+          .map((c) => ({
+            id: c.id,
+            summary: c.summary,
+            proposedKind: c.proposedKind,
+            disposition: c.disposition,
+            sourceId: c.span.sourceId,
+            startLine: c.span.startLine
+          }));
+
+        return text({
+          ok: true,
+          featureId: String(fid),
+          candidateCount: candidates.length,
+          overall: rollUpCoverage(perSource),
+          sources: perSource.map((cov) => ({
+            ...cov,
+            ...(nameById.has(cov.sourceId) ? { name: nameById.get(cov.sourceId) } : {})
+          })),
+          unresolved
+        });
+      } catch (e) {
+        return errorText(`get_source_coverage failed: ${(e as Error).message}`);
       }
     }
   );

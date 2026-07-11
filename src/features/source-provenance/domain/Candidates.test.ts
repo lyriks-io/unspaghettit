@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { disposeCandidate, stageCandidate, type BehaviorCandidate } from './Candidates';
+import {
+  bucketForDisposition,
+  coverageForCandidates,
+  disposeCandidate,
+  rollUpCoverage,
+  stageCandidate,
+  type BehaviorCandidate,
+  type CandidateDisposition
+} from './Candidates';
 
 const CONTENT = 'line one\nline two\nline three\n';
 
@@ -121,5 +129,74 @@ describe('candidate shape', () => {
     const r = stage();
     const c: BehaviorCandidate = r.candidate;
     expect(c.elementId).toBeUndefined();
+  });
+});
+
+describe('source coverage', () => {
+  const cand = (
+    id: string,
+    sourceId: string,
+    disposition: CandidateDisposition
+  ): BehaviorCandidate => ({
+    id,
+    span: { sourceId, startOffset: 0, endOffset: 1, startLine: 1, endLine: 1, snippet: 'x' },
+    proposedKind: 'action',
+    summary: id,
+    confidence: 0.5,
+    disposition,
+    recordedAt: 't',
+    updatedAt: 't'
+  });
+
+  it('maps every disposition to exactly one bucket', () => {
+    expect(bucketForDisposition('accepted')).toBe('modeled');
+    expect(bucketForDisposition('merged')).toBe('duplicate');
+    expect(bucketForDisposition('rejected')).toBe('excluded');
+    expect(bucketForDisposition('out_of_scope')).toBe('excluded');
+    expect(bucketForDisposition('unreviewed')).toBe('unresolved');
+    expect(bucketForDisposition('conflict')).toBe('unresolved');
+  });
+
+  it('reports per-source buckets and shares that sum to the total', () => {
+    const cov = coverageForCandidates([
+      cand('a', 'src-1', 'accepted'),
+      cand('b', 'src-1', 'merged'),
+      cand('c', 'src-1', 'rejected'),
+      cand('d', 'src-1', 'unreviewed')
+    ]);
+    expect(cov).toHaveLength(1);
+    const s = cov[0]!;
+    expect(s.total).toBe(4);
+    expect(s.modeled + s.duplicate + s.excluded + s.unresolved).toBe(s.total);
+    expect(s.modeledShare).toBe(0.25);
+    expect(s.representedShare).toBe(0.5); // modeled + duplicate
+    expect(s.unresolvedShare).toBe(0.25);
+  });
+
+  it('sorts sources by most unresolved first', () => {
+    const cov = coverageForCandidates([
+      cand('a', 'clean', 'accepted'),
+      cand('b', 'messy', 'unreviewed'),
+      cand('c', 'messy', 'unreviewed')
+    ]);
+    expect(cov.map((s) => s.sourceId)).toEqual(['messy', 'clean']);
+  });
+
+  it('rolls per-source coverage up to an analysis-wide total', () => {
+    const perSource = coverageForCandidates([
+      cand('a', 'src-1', 'accepted'),
+      cand('b', 'src-2', 'unreviewed'),
+      cand('c', 'src-2', 'accepted')
+    ]);
+    const overall = rollUpCoverage(perSource);
+    expect(overall.total).toBe(3);
+    expect(overall.modeled).toBe(2);
+    expect(overall.unresolved).toBe(1);
+    expect(overall.unresolvedShare).toBeCloseTo(0.33, 2);
+  });
+
+  it('is empty for no candidates and 0-shares are safe', () => {
+    expect(coverageForCandidates([])).toEqual([]);
+    expect(rollUpCoverage([]).modeledShare).toBe(0);
   });
 });

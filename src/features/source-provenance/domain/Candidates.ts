@@ -178,3 +178,93 @@ export const disposeCandidate = (
   next[idx] = updated;
   return { ok: true, candidate: updated, candidates: next };
 };
+
+/**
+ * The four coverage buckets a candidate span falls into, the answer to "what in
+ * this source did we do with each behavior?": `modeled` (new behavior that
+ * reached the model), `duplicate` (behavior already in the model), `excluded`
+ * (deliberately not modeled), `unresolved` (still undecided). Every disposition
+ * maps to exactly one, so the buckets always sum to the candidate total.
+ */
+export const COVERAGE_BUCKETS = ['modeled', 'duplicate', 'excluded', 'unresolved'] as const;
+export type CoverageBucket = (typeof COVERAGE_BUCKETS)[number];
+
+export const bucketForDisposition = (d: CandidateDisposition): CoverageBucket => {
+  switch (d) {
+    case 'accepted':
+      return 'modeled';
+    case 'merged':
+      return 'duplicate';
+    case 'rejected':
+    case 'out_of_scope':
+      return 'excluded';
+    case 'unreviewed':
+    case 'conflict':
+      return 'unresolved';
+  }
+};
+
+export type CoverageTotals = {
+  readonly total: number;
+  readonly modeled: number;
+  readonly duplicate: number;
+  readonly excluded: number;
+  readonly unresolved: number;
+  /** Share of candidates that became NEW modeled behavior (0..1). */
+  readonly modeledShare: number;
+  /** Share already represented in the model, new or duplicate (0..1). */
+  readonly representedShare: number;
+  /** Share still undecided: the "what might be missing" number (0..1). */
+  readonly unresolvedShare: number;
+};
+
+export type SourceCoverage = CoverageTotals & { readonly sourceId: string };
+
+const share = (n: number, total: number): number =>
+  total === 0 ? 0 : Math.round((n / total) * 100) / 100;
+
+type Counts = { total: number; modeled: number; duplicate: number; excluded: number; unresolved: number };
+const emptyCounts = (): Counts => ({ total: 0, modeled: 0, duplicate: 0, excluded: 0, unresolved: 0 });
+
+const withShares = (c: Counts): CoverageTotals => ({
+  ...c,
+  modeledShare: share(c.modeled, c.total),
+  representedShare: share(c.modeled + c.duplicate, c.total),
+  unresolvedShare: share(c.unresolved, c.total)
+});
+
+/**
+ * Bidirectional coverage: for each source that has staged candidates, the share
+ * of its behavior that reached the model versus what stays excluded or
+ * unresolved. This is the reverse of the finalize gate (which asks whether every
+ * MODEL element has a source); here we ask whether every SOURCE behavior has a
+ * disposition. Sources are returned sorted by the most unresolved first, so the
+ * biggest gaps surface at the top.
+ */
+export const coverageForCandidates = (
+  candidates: readonly BehaviorCandidate[]
+): readonly SourceCoverage[] => {
+  const bySource = new Map<string, Counts>();
+  for (const cand of candidates) {
+    const counts = bySource.get(cand.span.sourceId) ?? emptyCounts();
+    counts.total += 1;
+    counts[bucketForDisposition(cand.disposition)] += 1;
+    bySource.set(cand.span.sourceId, counts);
+  }
+  return [...bySource.entries()]
+    .map(([sourceId, counts]) => ({ sourceId, ...withShares(counts) }))
+    .sort((a, b) => b.unresolved - a.unresolved || b.total - a.total);
+};
+
+/** Roll per-source coverage up to one analysis-wide summary. */
+export const rollUpCoverage = (perSource: readonly SourceCoverage[]): CoverageTotals => {
+  const counts = emptyCounts();
+  for (const s of perSource) {
+    counts.total += s.total;
+    counts.modeled += s.modeled;
+    counts.duplicate += s.duplicate;
+    counts.excluded += s.excluded;
+    counts.unresolved += s.unresolved;
+  }
+  return withShares(counts);
+};
