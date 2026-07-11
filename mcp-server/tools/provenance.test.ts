@@ -12,6 +12,8 @@ import {
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import { InMemoryFeatureRepository } from '../../src/features/behavior-model/infrastructure/persistence/InMemoryFeatureRepository';
+import { JsonFolderProvenanceRepository } from '../../src/features/source-provenance/infrastructure/persistence/JsonFolderProvenanceRepository';
+import { JsonFolderProjectSourceRepository } from '../../src/features/source-provenance/infrastructure/persistence/JsonFolderProjectSourceRepository';
 import { buildServer } from '../server';
 
 /**
@@ -971,5 +973,148 @@ describe('seed_index_from_analysis (codebase adoption)', () => {
     expect(isErr(noSpans)).toBe(true);
     expect(rawText(noSpans)).toMatch(/no spans recorded/i);
     await linked.server.close();
+  });
+});
+
+/**
+ * The suites above run against in-memory repositories. This one wires the SAME
+ * server to the on-disk JsonFolder repositories the CLI uses in production
+ * (mcp-server/bin.ts), so authority, conflicts, and candidates are exercised
+ * through the real serialize -> write -> read-back-with-fresh-repos path, not
+ * just the pure IO round-trip. A second server built on the same directory
+ * proves the data actually survives on disk.
+ */
+describe('source provenance on-disk persistence (JsonFolder repos)', () => {
+  const setupDisk = async () => {
+    nextId = 0;
+    const dir = mkdtempSync(join(tmpdir(), 'unspa-prov-disk-'));
+    // Feature/project stay in memory (not what we're testing); provenance and
+    // sources go to disk, exactly as bin.ts wires them.
+    const featureRepo = new InMemoryFeatureRepository();
+    await featureRepo.save(tinyFeature);
+
+    const build = async () => {
+      const server = buildServer(featureRepo, {
+        ids: fixedIds,
+        clock: fixedClock('2026-05-09T00:00:00.000Z'),
+        provenanceRepo: new JsonFolderProvenanceRepository(dir),
+        sourceRepo: new JsonFolderProjectSourceRepository(dir)
+      });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: 'test-client', version: '0.0.0' });
+      await Promise.all([server.connect(st), client.connect(ct)]);
+      return { client, server };
+    };
+
+    return { build, dir };
+  };
+
+  it('persists authority, conflicts, and candidates to disk and reloads them', async () => {
+    const { build, dir } = await setupDisk();
+    const first = await build();
+
+    const contract = parse<{ sourceId: string; authority: string }>(
+      await first.client.callTool({
+        name: 'attach_source_file',
+        arguments: {
+          featureId: 'feat-prov',
+          fileName: 'prd.md',
+          content: 'cart caps at 20',
+          authority: 'normative',
+          artifact: 'contract'
+        }
+      })
+    );
+    expect(contract.authority).toBe('normative');
+
+    const code = parse<{ sourceId: string }>(
+      await first.client.callTool({
+        name: 'attach_source_file',
+        arguments: {
+          featureId: 'feat-prov',
+          fileName: 'cart.ts',
+          content: 'const CAP = 10',
+          kind: 'code',
+          artifact: 'implementation'
+        }
+      })
+    );
+
+    const flagged = parse<{ conflictId: string; suggestedResolution: { sourceId?: string } }>(
+      await first.client.callTool({
+        name: 'flag_conflict',
+        arguments: {
+          featureId: 'feat-prov',
+          summary: 'cap disagreement',
+          claims: [
+            { sourceId: contract.sourceId, statement: 'caps at 20' },
+            { sourceId: code.sourceId, statement: 'caps at 10' }
+          ]
+        }
+      })
+    );
+    expect(flagged.suggestedResolution.sourceId).toBe(contract.sourceId);
+
+    const staged = parse<{ candidateId: string }>(
+      await first.client.callTool({
+        name: 'stage_candidate',
+        arguments: {
+          featureId: 'feat-prov',
+          sourceId: contract.sourceId,
+          startOffset: 0,
+          endOffset: 4,
+          proposedKind: 'action',
+          summary: 'cart cap behavior'
+        }
+      })
+    );
+    await first.client.callTool({
+      name: 'dispose_candidate',
+      arguments: {
+        featureId: 'feat-prov',
+        candidateId: staged.candidateId,
+        disposition: 'accepted',
+        elementId: 'act-1'
+      }
+    });
+    await first.server.close();
+
+    // A fresh server on the SAME directory reads everything back from disk.
+    const second = await build();
+
+    const reloadedSource = parse<{ authority: string; artifact: string }>(
+      await second.client.callTool({ name: 'get_source', arguments: { sourceId: contract.sourceId } })
+    );
+    expect(reloadedSource.authority).toBe('normative');
+    expect(reloadedSource.artifact).toBe('contract');
+
+    const prov = parse<{
+      openConflictCount: number;
+      conflicts: readonly { id: string; summary: string }[];
+      candidateCount: number;
+      candidates: readonly { id: string; disposition: string; elementId?: string }[];
+    }>(await second.client.callTool({ name: 'get_provenance', arguments: { featureId: 'feat-prov' } }));
+    expect(prov.openConflictCount).toBe(1);
+    expect(prov.conflicts[0]?.id).toBe(flagged.conflictId);
+    expect(prov.conflicts[0]?.summary).toBe('cap disagreement');
+    expect(prov.candidateCount).toBe(1);
+    expect(prov.candidates[0]?.disposition).toBe('accepted');
+    expect(prov.candidates[0]?.elementId).toBe('act-1');
+
+    const coverage = parse<{ overall: { modeled: number; total: number } }>(
+      await second.client.callTool({ name: 'get_source_coverage', arguments: { featureId: 'feat-prov' } })
+    );
+    expect(coverage.overall.total).toBe(1);
+    expect(coverage.overall.modeled).toBe(1);
+
+    // The raw sidecar on disk really carries the new arrays (not an in-memory leak).
+    const rawSidecar = readFileSync(
+      join(dir, '__unassigned', 'feat-prov.provenance.json'),
+      'utf8'
+    );
+    expect(rawSidecar).toContain('"conflicts"');
+    expect(rawSidecar).toContain('"candidates"');
+
+    await second.server.close();
   });
 });
