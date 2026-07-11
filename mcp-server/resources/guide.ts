@@ -571,6 +571,29 @@ One pass yields the model, its provenance (Source Viewer), and implementation
 coverage with drift detection armed. The manual workflow below remains the right
 tool for ongoing implementation work after adoption.
 
+### Source trust & extraction completeness
+
+Provenance proves every model element came from SOMEWHERE (attribution). These
+tools prove the reverse, that every important SOURCE behavior is accounted for
+(completeness), and settle disagreements by evidence rather than reading order:
+
+- Rank a source with attach_*'s authority (normative | supporting | observed |
+  unknown) and artifact (implementation | test | contract | documentation |
+  interview); an unstated authority is derived from the artifact. classify_source
+  re-tags a source attached (or deduped onto) before it was ranked.
+- When two sources disagree about the same behavior, flag_conflict it (>= 2
+  attributed claims) instead of silently modeling one; the ack suggests the
+  higher-authority winner. resolve_conflict settles it (resolved or
+  accepted_ambiguity) with a written reason.
+- stage_candidate / stage_candidates record a behavior a source proposes BEFORE
+  it commits to the model; dispose_candidate reviews each (accepted / merged /
+  rejected / out_of_scope / conflict). get_source_coverage then reports the share
+  of a source's behavior that reached the model and lists what is still
+  unresolved: the answer to "what might we be missing?".
+
+All optional and additive: skip them for a quick pass, reach for them when the
+sources conflict or completeness has to be defensible.
+
 ### Indexing workflow
 
 1. Call get_behavioral_index to see what is already resolved. Check stats (implemented /
