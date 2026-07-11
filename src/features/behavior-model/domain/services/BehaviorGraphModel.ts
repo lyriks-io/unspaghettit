@@ -121,6 +121,8 @@ const effectLabel = (effect: Effect): string => {
       return `update ${effect.path}`;
     case 'advance_time':
       return 'advance time';
+    case 'invoke_operation':
+      return `invoke ${effect.operation}`;
   }
 };
 

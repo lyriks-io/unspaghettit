@@ -108,6 +108,10 @@ const collectStatePathsOnSurface = (surface: Surface): Set<string> => {
       case 'advance_time':
         if (isExpression(e.by)) collectExpr(e.by, out);
         return;
+      case 'invoke_operation':
+        if (e.resultPath !== undefined) out.add(String(e.resultPath));
+        if (e.resultValue !== undefined && isExpression(e.resultValue)) collectExpr(e.resultValue, out);
+        return;
       default:
         return;
     }

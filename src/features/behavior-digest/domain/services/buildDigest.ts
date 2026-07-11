@@ -76,6 +76,8 @@ const describeEffect = (effect: Effect, surfaceNameById: ReadonlyMap<string, str
       return `updates an item in ${humanizeStatePath(String(effect.path))}`;
     case 'advance_time':
       return 'advances time';
+    case 'invoke_operation':
+      return `calls ${effect.operation}`;
     case 'emit_event': // emitted events are reported on their own clause
     case 'block_action': // block reasons are reported as guards
     case 'allow_action':

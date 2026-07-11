@@ -63,6 +63,8 @@ const effectSummary = (effect: Effect): string => {
       return `Update ${effect.field} in ${effect.path}`;
     case 'advance_time':
       return 'Advance time';
+    case 'invoke_operation':
+      return `Invoke ${effect.operation}`;
   }
 };
 

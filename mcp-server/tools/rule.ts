@@ -41,7 +41,8 @@ const KNOWN_EFFECT_TYPES = [
   'append_to_list',
   'remove_from_list',
   'update_list_item',
-  'advance_time'
+  'advance_time',
+  'invoke_operation'
 ] as const;
 
 const ruleInputSchema = z

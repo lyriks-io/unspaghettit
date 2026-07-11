@@ -11,6 +11,7 @@ import type { Effect } from '$features/behavior-model/domain/value-objects/Effec
 import type { Operator } from '$features/behavior-model/domain/value-objects/Operator';
 import {
   asActionId,
+  asDependencyId,
   asEffectId,
   asInvariantId,
   asReachabilityGoalId,
@@ -148,6 +149,13 @@ export const newEffect = (ids: IdGenerator, type: Effect['type']): Effect => {
         id: asEffectId(ids()),
         type: 'advance_time',
         by: 0
+      };
+    case 'invoke_operation':
+      return {
+        id: asEffectId(ids()),
+        type: 'invoke_operation',
+        dependencyId: asDependencyId(''),
+        operation: ''
       };
   }
 };

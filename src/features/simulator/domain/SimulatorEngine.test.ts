@@ -5,6 +5,7 @@ import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import type { Action } from '$features/behavior-model/domain/entities/Action';
 import {
   asActionId,
+  asDependencyId,
   asEffectId,
   asEventDefinitionId,
   asFeatureId,
@@ -1138,5 +1139,59 @@ describe('simulate — event delivery semantics', () => {
     const result = run('transactional');
     expect(result.status).toBe('blocked');
     expect((result.nextState.command as { count: number }).count).toBe(0);
+  });
+});
+
+describe('simulate — invoke_operation', () => {
+  const surface: Surface = {
+    id: asSurfaceId('s'),
+    name: 'Pay',
+    type: 'screen',
+    stateDefinitions: [
+      {
+        id: asStateDefinitionId('d'),
+        path: asStatePath('charge.status'),
+        type: 'enum',
+        enumValues: ['pending', 'ok'],
+        defaultValue: 'pending'
+      }
+    ],
+    rules: [],
+    invariants: [],
+    transitions: [],
+    actions: [
+      {
+        id: asActionId('charge'),
+        name: 'Charge',
+        intent: 'charge the card',
+        parameters: [],
+        requiredStates: [],
+        rules: [],
+        invariants: [],
+        effects: [
+          {
+            id: asEffectId('call'),
+            type: 'invoke_operation',
+            dependencyId: asDependencyId('dep'),
+            operation: 'charge',
+            resultPath: asStatePath('charge.status'),
+            resultValue: 'ok'
+          }
+        ],
+        emittedEvents: [],
+        transitions: []
+      }
+    ]
+  };
+
+  it('writes its modeled result to resultPath', () => {
+    const result = simulate({
+      surface,
+      action: surface.actions[0]!,
+      snapshot: {},
+      parameters: {}
+    });
+    expect(result.status).toBe('success');
+    expect((result.nextState.charge as { status: string }).status).toBe('ok');
   });
 });

@@ -135,6 +135,11 @@ const countRefsInEffect = (effect: Effect, target: string): number => {
       );
     case 'advance_time':
       return countStateRefsInExpression(effect.by, target);
+    case 'invoke_operation':
+      return (
+        (effect.resultPath !== undefined && eq(String(effect.resultPath), target) ? 1 : 0) +
+        countStateRefsInExpression(effect.resultValue, target)
+      );
     default:
       return 0;
   }

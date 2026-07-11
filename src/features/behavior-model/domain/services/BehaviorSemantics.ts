@@ -97,6 +97,8 @@ export const effectStateReads = (effect: Effect): readonly StatePath[] => {
       ];
     case 'advance_time':
       return expressionStateReads(effect.by);
+    case 'invoke_operation':
+      return effect.resultValue !== undefined ? expressionStateReads(effect.resultValue) : [];
     case 'show_message':
     case 'emit_event':
     case 'block_action':
@@ -115,6 +117,8 @@ export const effectStateWrites = (effect: Effect): readonly StatePath[] => {
       return [effect.path];
     case 'advance_time':
       return ['clock.now' as StatePath];
+    case 'invoke_operation':
+      return effect.resultPath !== undefined ? [effect.resultPath] : [];
     case 'show_message':
     case 'emit_event':
     case 'block_action':

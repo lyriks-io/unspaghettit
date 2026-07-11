@@ -1,5 +1,5 @@
 import type { Expression } from './Expression';
-import type { EffectId, SurfaceId } from './ids';
+import type { DependencyId, EffectId, SurfaceId } from './ids';
 import type { EventName } from './EventName';
 import type { StatePath } from './StatePath';
 import type { StateValue } from './StateValue';
@@ -14,7 +14,8 @@ export type EffectType =
   | 'append_to_list'
   | 'remove_from_list'
   | 'update_list_item'
-  | 'advance_time';
+  | 'advance_time'
+  | 'invoke_operation';
 
 /**
  * Writes `value` (or the result of `value` if it is an `Expression`) to the
@@ -142,6 +143,28 @@ export type AdvanceTimeEffect = {
   readonly description?: string;
 };
 
+/**
+ * Invokes an operation on a feature {@link Dependency} — the explicit act of
+ * calling out across the system boundary (charge a card, publish a message,
+ * ask a human). The modeled deterministic result is written to `resultPath`
+ * when given (so downstream rules and outcomes can branch on it), exactly like
+ * a `set_state`; omit it for a fire-and-forget call. The dependency's operation
+ * carries the timeout / retry / idempotency contract and failure modes; a
+ * failure branch is modeled with a first-class action outcome on that result.
+ */
+export type InvokeOperationEffect = {
+  readonly id: EffectId;
+  readonly type: 'invoke_operation';
+  readonly dependencyId: DependencyId;
+  /** The operation name on that dependency. */
+  readonly operation: string;
+  /** Where the modeled return value is written. Omit for a fire-and-forget call. */
+  readonly resultPath?: StatePath;
+  /** The modeled result value (literal or Expression), written to `resultPath`. */
+  readonly resultValue?: StateValue | Expression;
+  readonly description?: string;
+};
+
 export type Effect =
   | SetStateEffect
   | ShowMessageEffect
@@ -152,7 +175,8 @@ export type Effect =
   | AppendToListEffect
   | RemoveFromListEffect
   | UpdateListItemEffect
-  | AdvanceTimeEffect;
+  | AdvanceTimeEffect
+  | InvokeOperationEffect;
 
 export const ALL_EFFECT_TYPES: readonly EffectType[] = [
   'set_state',
@@ -164,7 +188,8 @@ export const ALL_EFFECT_TYPES: readonly EffectType[] = [
   'append_to_list',
   'remove_from_list',
   'update_list_item',
-  'advance_time'
+  'advance_time',
+  'invoke_operation'
 ];
 
 export const effectTypeLabel = (t: EffectType): string => {
@@ -189,6 +214,8 @@ export const effectTypeLabel = (t: EffectType): string => {
       return 'Update list item';
     case 'advance_time':
       return 'Advance time';
+    case 'invoke_operation':
+      return 'Invoke operation';
   }
 };
 

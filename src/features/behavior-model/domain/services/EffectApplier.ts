@@ -109,6 +109,8 @@ const summarize = (effect: Effect): string => {
       return `set ${effect.field} on ${humanizeStatePath(effect.path)} items where ${effect.where.field} matches`;
     case 'advance_time':
       return `advance time by ${isExpression(effect.by) ? `<expr:${effect.by.kind}>` : JSON.stringify(effect.by)}`;
+    case 'invoke_operation':
+      return `invoke ${effect.operation}${effect.resultPath ? ` → ${humanizeStatePath(effect.resultPath)}` : ''}`;
   }
 };
 
@@ -318,6 +320,29 @@ export const applyEffect = (
       const by = resolveValueOrExpression(effect.by, context);
       // Non-numeric / unresolvable duration → no-op (advanceClock clamps).
       const nextSnapshot = advanceClock(current.snapshot, typeof by === 'number' ? by : 0);
+      return { ...current, snapshot: nextSnapshot, applied: [...current.applied, record] };
+    }
+    case 'invoke_operation': {
+      // Model the boundary call. When blocked, or when there is no modeled
+      // result to write, record the attempt and move on. Otherwise write the
+      // resolved result to resultPath, exactly like set_state, so downstream
+      // rules and outcomes can branch on what the call "returned".
+      if (
+        current.blocked ||
+        effect.resultPath === undefined ||
+        effect.resultValue === undefined
+      ) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const resolved = resolveValueOrExpression(effect.resultValue, {
+        snapshot: current.snapshot,
+        parameters,
+        constants
+      });
+      if (resolved === undefined) {
+        return { ...current, applied: [...current.applied, record] };
+      }
+      const nextSnapshot = writePath(current.snapshot, effect.resultPath, resolved);
       return { ...current, snapshot: nextSnapshot, applied: [...current.applied, record] };
     }
     default: {
