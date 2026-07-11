@@ -13,6 +13,7 @@ import {
   exportProvenanceToJson,
   importProvenanceFromJson
 } from '$features/source-provenance/infrastructure/io/ProvenanceJson';
+import { addConflict } from './Conflicts';
 
 const CONTENT = 'function add(a, b) {\n  return a + b\n}\n';
 
@@ -272,6 +273,41 @@ describe('JSON round-trip', () => {
     const back = importProvenanceFromJson(exportProvenanceToJson(span.provenance));
     expect(back.sourceIds).toEqual(['src-9']);
     expect(back.spans[0]?.sourceId).toBe('src-9');
+  });
+
+  it('round-trips conflicts and drops a malformed one on read', () => {
+    const added = addConflict([], {
+      id: 'conf-1',
+      summary: 'cap disagreement',
+      claims: [
+        { sourceId: 'a', statement: 'caps at 10' },
+        { sourceId: 'b', statement: 'caps at 20' }
+      ],
+      affectedElements: ['el-1'],
+      at: 't1'
+    });
+    if (!added.ok) throw new Error('seed failed');
+    const withConflict: Provenance = { ...emptyProvenance(asFeatureId('feat'), 't0'), conflicts: added.conflicts };
+    const back = importProvenanceFromJson(exportProvenanceToJson(withConflict));
+    expect(back.conflicts).toHaveLength(1);
+    expect(back.conflicts[0]?.summary).toBe('cap disagreement');
+    expect(back.conflicts[0]?.claims).toHaveLength(2);
+
+    // A conflict with fewer than two claims is not a conflict; the reader drops it.
+    const malformed = JSON.stringify({
+      format: 'unspaghettit-provenance',
+      version: 2,
+      provenance: {
+        featureId: 'feat',
+        file: null,
+        sourceIds: [],
+        spans: [],
+        conflicts: [{ id: 'c', summary: 's', claims: [{ sourceId: 'a', statement: 'x' }], status: 'open' }],
+        finalized: false,
+        updatedAt: 't0'
+      }
+    });
+    expect(importProvenanceFromJson(malformed).conflicts).toHaveLength(0);
   });
 
   it('imports a version-1 sidecar (no sourceIds field)', () => {

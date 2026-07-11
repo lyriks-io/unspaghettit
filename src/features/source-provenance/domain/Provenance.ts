@@ -1,4 +1,5 @@
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
+import type { Conflict } from './Conflicts';
 
 /**
  * Source Provenance — the data behind feature 39e57ee0.
@@ -74,6 +75,12 @@ export type Provenance = {
   /** Project-level sources linked to this analysis. */
   readonly sourceIds: readonly string[];
   readonly spans: readonly SourceSpan[];
+  /**
+   * Recorded disagreements between the linked sources. An `open` conflict is an
+   * undecided behavior: a hole in the analysis's completeness, distinct from an
+   * untraced element (a hole in its attribution).
+   */
+  readonly conflicts: readonly Conflict[];
   /** Locked once every extracted element has a span (the finalize gate). */
   readonly finalized: boolean;
   readonly updatedAt: string;
@@ -92,6 +99,7 @@ export const emptyProvenance = (featureId: FeatureId, at: string): Provenance =>
   file: null,
   sourceIds: [],
   spans: [],
+  conflicts: [],
   finalized: false,
   updatedAt: at
 });

@@ -440,6 +440,123 @@ describe('source provenance tools', () => {
     await server.close();
   });
 
+  it('flags a source conflict, suggests the higher-authority winner, and resolves it', async () => {
+    const { client, server } = await setup();
+
+    const contract = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: {
+          featureId: 'feat-prov',
+          fileName: 'prd.md',
+          content: 'the cart caps at 20',
+          artifact: 'contract'
+        }
+      })
+    );
+    const code = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: {
+          featureId: 'feat-prov',
+          fileName: 'cart.ts',
+          content: 'const CAP = 10',
+          kind: 'code',
+          artifact: 'implementation'
+        }
+      })
+    );
+
+    const flagged = parse<{
+      ok: boolean;
+      conflictId: string;
+      status: string;
+      openConflictCount: number;
+      suggestedResolution: { kind: string; sourceId?: string; authority?: string };
+    }>(
+      await client.callTool({
+        name: 'flag_conflict',
+        arguments: {
+          featureId: 'feat-prov',
+          summary: 'Cart item cap disagreement',
+          claims: [
+            { sourceId: contract.sourceId, statement: 'caps at 20' },
+            { sourceId: code.sourceId, statement: 'caps at 10' }
+          ],
+          affectedElements: ['act-1']
+        }
+      })
+    );
+    expect(flagged.ok).toBe(true);
+    expect(flagged.status).toBe('open');
+    expect(flagged.openConflictCount).toBe(1);
+    // The contract (normative) outranks the implementation (supporting).
+    expect(flagged.suggestedResolution.kind).toBe('winner');
+    expect(flagged.suggestedResolution.sourceId).toBe(contract.sourceId);
+    expect(flagged.suggestedResolution.authority).toBe('normative');
+
+    // get_provenance surfaces the open conflict.
+    const prov = parse<{ openConflictCount: number; conflicts: readonly { id: string; status: string }[] }>(
+      await client.callTool({ name: 'get_provenance', arguments: { featureId: 'feat-prov' } })
+    );
+    expect(prov.openConflictCount).toBe(1);
+    expect(prov.conflicts[0]?.id).toBe(flagged.conflictId);
+
+    const resolved = parse<{ ok: boolean; status: string; openConflictCount: number }>(
+      await client.callTool({
+        name: 'resolve_conflict',
+        arguments: {
+          featureId: 'feat-prov',
+          conflictId: flagged.conflictId,
+          status: 'resolved',
+          resolution: 'The contract governs; cap is 20.',
+          resolvedInFavorOf: contract.sourceId
+        }
+      })
+    );
+    expect(resolved.ok).toBe(true);
+    expect(resolved.status).toBe('resolved');
+    expect(resolved.openConflictCount).toBe(0);
+
+    await server.close();
+  });
+
+  it('rejects a conflict with under two claims or an unknown source', async () => {
+    const { client, server } = await setup();
+    const src = parse<{ sourceId: string }>(
+      await client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'a.md', content: 'doc' }
+      })
+    );
+
+    const tooFew = await client.callTool({
+      name: 'flag_conflict',
+      arguments: {
+        featureId: 'feat-prov',
+        summary: 's',
+        claims: [{ sourceId: src.sourceId, statement: 'x' }]
+      }
+    });
+    expect(isErr(tooFew)).toBe(true);
+
+    const ghost = await client.callTool({
+      name: 'flag_conflict',
+      arguments: {
+        featureId: 'feat-prov',
+        summary: 's',
+        claims: [
+          { sourceId: src.sourceId, statement: 'x' },
+          { sourceId: 'no-such-source', statement: 'y' }
+        ]
+      }
+    });
+    expect(isErr(ghost)).toBe(true);
+    expect(rawText(ghost)).toMatch(/no stored source/i);
+
+    await server.close();
+  });
+
   it('rejects a span past the end of the file and an unknown element', async () => {
     const { client, server } = await setup();
     await client.callTool({

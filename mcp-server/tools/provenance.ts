@@ -18,6 +18,12 @@ import {
   recordSpan
 } from '../../src/features/source-provenance/domain/Provenance';
 import {
+  addConflict,
+  openConflicts,
+  resolveConflict,
+  suggestConflictWinner
+} from '../../src/features/source-provenance/domain/Conflicts';
+import {
   SOURCE_ARTIFACTS,
   SOURCE_AUTHORITIES,
   classifySource,
@@ -372,12 +378,20 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         if (!result.ok) return errorText(result.reason);
         await provenanceRepo.save(result.provenance);
 
+        const stillOpen = openConflicts(result.provenance.conflicts).length;
         return text({
           ok: true,
           featureId: String(fid),
           finalized: true,
           elementCount,
-          spanCount: result.provenance.spans.length
+          spanCount: result.provenance.spans.length,
+          // Tracing is complete; an open conflict means a behavior is still
+          // undecided. Advisory (finalize is not blocked), but surfaced so a
+          // completeness claim can account for it.
+          openConflictCount: stillOpen,
+          ...(stillOpen > 0
+            ? { note: `${stillOpen} source conflict(s) still open; the extraction is traced but not settled.` }
+            : {})
         });
       } catch (e) {
         return errorText(`finalize_analysis failed: ${(e as Error).message}`);
@@ -686,6 +700,16 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
             ...(s.sourceId ? { sourceId: s.sourceId } : {}),
             startLine: s.startLine,
             endLine: s.endLine
+          })),
+          openConflictCount: openConflicts(prov?.conflicts ?? []).length,
+          conflicts: (prov?.conflicts ?? []).map((c) => ({
+            id: c.id,
+            summary: c.summary,
+            status: c.status,
+            claims: c.claims,
+            affectedElements: c.affectedElements,
+            ...(c.resolution !== undefined ? { resolution: c.resolution } : {}),
+            ...(c.resolvedInFavorOf !== undefined ? { resolvedInFavorOf: c.resolvedInFavorOf } : {})
           }))
         });
       } catch (e) {
@@ -805,6 +829,135 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         return text({ ok: true, sourceId, name: source.name });
       } catch (e) {
         return errorText(`remove_source failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'flag_conflict',
+    {
+      description:
+        "Record that two or more linked sources DISAGREE about the same behavior (code vs docs, a test vs the implementation, two specs), instead of silently modeling whichever you read last. Each claim is one source's position in plain language; pass at least two claims from distinct sources, and optionally the ids of the model elements the disagreement bears on (full id or unique prefix). The conflict starts `open` — a hole in the analysis's completeness, distinct from an untraced element. The ack returns a suggested resolution derived from source authority: when one claim's source outranks the rest it is named as the winner; when the top authority is tied it is flagged ambiguous for a human to settle. Resolve it later with resolve_conflict.",
+      inputSchema: {
+        featureId: z.string(),
+        summary: z.string().min(1),
+        claims: z
+          .array(
+            z.object({
+              sourceId: z.string().min(1),
+              statement: z.string().min(1)
+            })
+          )
+          .min(2),
+        affectedElements: z.array(z.string().min(1)).optional()
+      }
+    },
+    async ({ featureId, summary, claims, affectedElements }) => {
+      try {
+        const fid = asFeatureId(await expandFeatureId(repo, featureId));
+        const feature = await repo.get(fid);
+        if (!feature) return errorText(`Feature ${String(fid)} not found`);
+
+        // Each claim must name a source that exists; collect its effective
+        // authority so the ack can suggest a winner.
+        const authorityBySource = new Map<string, SourceAuthority>();
+        for (const c of claims) {
+          const src = await sourceRepo.find(c.sourceId);
+          if (!src) return errorText(`No stored source "${c.sourceId}". Call list_sources.`);
+          authorityBySource.set(c.sourceId, effectiveAuthority(src));
+        }
+
+        // Resolve affected element ids (full or unique prefix) to canonical ids.
+        const elements = enumerateFeatureElements(feature);
+        const resolvedElements: string[] = [];
+        for (const raw of affectedElements ?? []) {
+          const match = matchElement(elements, raw);
+          if ('error' in match) return errorText(match.error);
+          resolvedElements.push(match.el.id);
+        }
+
+        const current = (await provenanceRepo.get(fid)) ?? emptyProvenance(fid, clock());
+        const result = addConflict(current.conflicts, {
+          id: ids(),
+          summary,
+          claims,
+          affectedElements: resolvedElements,
+          at: clock()
+        });
+        if (!result.ok) return errorText(result.reason);
+        await provenanceRepo.save({
+          ...current,
+          conflicts: result.conflicts,
+          updatedAt: clock()
+        });
+
+        const suggestion = suggestConflictWinner(
+          result.conflict.claims,
+          (id) => authorityBySource.get(id) ?? 'unknown'
+        );
+        return text({
+          ok: true,
+          featureId: String(fid),
+          conflictId: result.conflict.id,
+          status: result.conflict.status,
+          openConflictCount: openConflicts(result.conflicts).length,
+          suggestedResolution: suggestion,
+          ...(suggestion.kind === 'ambiguous'
+            ? {
+                hint: 'Authority cannot break this tie (the top sources rank equally); resolve manually or accept the ambiguity.'
+              }
+            : {
+                hint: `Higher-authority source ${suggestion.sourceId} (${suggestion.authority}) is the suggested winner; confirm with resolve_conflict.`
+              })
+        });
+      } catch (e) {
+        return errorText(`flag_conflict failed: ${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.registerTool(
+    'resolve_conflict',
+    {
+      description:
+        "Settle a conflict flagged with flag_conflict. `resolved` means one reading won (say which in `resolution`, and name the winning source in `resolvedInFavorOf` when it was authority-based); `accepted_ambiguity` means the disagreement is real and left open on purpose (say why in `resolution`). Either way a written resolution is required, so a closed conflict always records the reasoning. Resolving takes a conflict off the analysis's open-conflict count.",
+      inputSchema: {
+        featureId: z.string(),
+        conflictId: z.string().min(1),
+        status: z.enum(['resolved', 'accepted_ambiguity']),
+        resolution: z.string().min(1),
+        resolvedInFavorOf: z.string().optional()
+      }
+    },
+    async ({ featureId, conflictId, status, resolution, resolvedInFavorOf }) => {
+      try {
+        const fid = asFeatureId(await expandFeatureId(repo, featureId));
+        const current = await provenanceRepo.get(fid);
+        if (!current || current.conflicts.length === 0) {
+          return errorText(`No conflicts recorded for feature ${String(fid)}.`);
+        }
+        const result = resolveConflict(current.conflicts, {
+          id: conflictId,
+          status,
+          resolution,
+          ...(resolvedInFavorOf !== undefined ? { resolvedInFavorOf } : {}),
+          at: clock()
+        });
+        if (!result.ok) return errorText(result.reason);
+        await provenanceRepo.save({
+          ...current,
+          conflicts: result.conflicts,
+          updatedAt: clock()
+        });
+        return text({
+          ok: true,
+          featureId: String(fid),
+          conflictId: result.conflict.id,
+          status: result.conflict.status,
+          openConflictCount: openConflicts(result.conflicts).length
+        });
+      } catch (e) {
+        return errorText(`resolve_conflict failed: ${(e as Error).message}`);
       }
     }
   );
