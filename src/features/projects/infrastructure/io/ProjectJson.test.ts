@@ -65,3 +65,32 @@ describe('ProjectJson queue-goal round-trip', () => {
     expect(back.implementationQueue?.[0]?.target).toBeUndefined();
   });
 });
+
+describe('ProjectJson core-features round-trip', () => {
+  const project = (over: Record<string, unknown>): Project =>
+    ({
+      id: 'p1',
+      name: 'P',
+      description: 'd',
+      featureIds: [],
+      createdAt: '2026-05-22T00:00:00.000Z',
+      updatedAt: '2026-05-22T00:00:00.000Z',
+      ...over
+    }) as unknown as Project;
+
+  it('preserves the core-feature registry through export -> import', () => {
+    const p = project({
+      coreFeatures: [
+        { value: 'auth', description: 'sign-in' },
+        { value: 'billing', description: 'payments' }
+      ]
+    });
+    const back = importProjectFromJson(exportProjectToJson(p));
+    expect(back.coreFeatures).toEqual(p.coreFeatures);
+  });
+
+  it('loads a project with no coreFeatures key as absent', () => {
+    const back = importProjectFromJson(exportProjectToJson(project({})));
+    expect(back.coreFeatures).toBeUndefined();
+  });
+});

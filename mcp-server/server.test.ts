@@ -1689,6 +1689,88 @@ describe('MCP server', () => {
     await server.close();
   });
 
+  it('core features: declare, assign (at most one), group, and warn end-to-end', async () => {
+    const { client, server } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_project',
+        arguments: {
+          name: 'Core FX',
+          description: 'Project for core-feature authoring test.',
+          features: [
+            { name: 'Login', description: 'Sign-in flow.' },
+            { name: 'Notes', description: 'Note taking.' }
+          ]
+        }
+      })
+    ) as { id: string; features: { name: string; id: string }[] };
+    const loginId = created.features.find((f) => f.name === 'Login')!.id;
+
+    // Declare a core feature (value normalized lowercase).
+    const declared = parseTextContent(
+      await client.callTool({
+        name: 'declare_core_feature',
+        arguments: { projectId: created.id, value: 'Auth', description: 'Sign-in and sessions.' }
+      })
+    ) as { coreFeatures: { value: string; description: string }[] };
+    expect(declared.coreFeatures).toEqual([{ value: 'auth', description: 'Sign-in and sessions.' }]);
+
+    // Assign, then re-assign: at most one core tag survives.
+    await client.callTool({
+      name: 'set_feature_core',
+      arguments: { featureId: loginId, value: 'auth' }
+    });
+    const reassigned = parseTextContent(
+      await client.callTool({
+        name: 'set_feature_core',
+        arguments: { featureId: loginId, value: 'billing' }
+      })
+    ) as { tags: { type: string; value: string }[] };
+    expect(reassigned.tags.filter((t) => t.type === 'core')).toEqual([
+      { type: 'core', value: 'billing' }
+    ]);
+
+    // Clear with null.
+    const cleared = parseTextContent(
+      await client.callTool({
+        name: 'set_feature_core',
+        arguments: { featureId: loginId, value: null }
+      })
+    ) as { tags: { type: string; value: string }[] };
+    expect(cleared.tags.some((t) => t.type === 'core')).toBe(false);
+
+    // Assign back to the declared value; the aggregate groups it, no warnings.
+    await client.callTool({
+      name: 'set_feature_core',
+      arguments: { featureId: loginId, value: 'auth' }
+    });
+    const agg = parseTextContent(
+      await client.callTool({ name: 'get_project_aggregate', arguments: { projectId: created.id } })
+    ) as {
+      coreFeatureGroups: { value: string; features: { name: string }[] }[];
+      coreFeatureUncategorized: { name: string }[];
+      coreFeatureWarnings: { kind: string }[];
+    };
+    expect(
+      agg.coreFeatureGroups.find((g) => g.value === 'auth')?.features.map((f) => f.name)
+    ).toEqual(['Login']);
+    expect(agg.coreFeatureUncategorized.map((f) => f.name)).toEqual(['Notes']);
+    expect(agg.coreFeatureWarnings).toEqual([]);
+
+    // Removing the registry entry leaves the member tagged: a soft undeclared warning.
+    await client.callTool({
+      name: 'remove_core_feature',
+      arguments: { projectId: created.id, value: 'auth' }
+    });
+    const agg2 = parseTextContent(
+      await client.callTool({ name: 'get_project_aggregate', arguments: { projectId: created.id } })
+    ) as { coreFeatures: unknown[]; coreFeatureWarnings: { kind: string }[] };
+    expect(agg2.coreFeatures).toEqual([]);
+    expect(agg2.coreFeatureWarnings.map((w) => w.kind)).toEqual(['undeclared']);
+
+    await server.close();
+  });
+
   it('add_transition with actionId lands on the action, not the surface', async () => {
     const { client, server, repo } = await setup();
     const created = parseTextContent(

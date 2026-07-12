@@ -20,9 +20,20 @@
 
   const report = $derived(coreFeatureReport(project, features));
   const declaredValues = $derived(report.groups.map((g) => g.value));
+  const declaredSet = $derived(new Set(declaredValues));
   // Each feature's current core value, for the assignment dropdowns.
   const currentCore = $derived(
     new Map(features.map((f) => [String(f.id), coreValueOf(f.tags) ?? '']))
+  );
+  // Features tagged with a core value that is NOT declared. These are the
+  // "undeclared" warnings, surfaced here as an actionable list so the mistag is
+  // recoverable in one click (reassign to a real pillar, or clear it).
+  const misassigned = $derived(
+    features
+      .map((f) => ({ id: f.id, name: f.name, value: coreValueOf(f.tags) }))
+      .filter((m): m is { id: FeatureId; name: string; value: string } => {
+        return m.value !== undefined && !declaredSet.has(m.value);
+      })
   );
 
   let newValue = $state('');
@@ -70,7 +81,7 @@
         class="mt-1 h-9 w-full rounded-md border border-slate-300 px-2 text-sm outline-none focus:border-slate-900"
       />
     </label>
-    <label class="flex-[2] text-xs font-medium text-slate-600">
+    <label class="flex-2 text-xs font-medium text-slate-600">
       Description
       <input
         type="text"
@@ -116,7 +127,12 @@
               <input
                 type="text"
                 value={group.description}
-                onblur={(e) => onUpdate(group.value, (e.target as HTMLInputElement).value)}
+                onblur={(e) => {
+                  // Description is mandatory; ignore an emptied field (the value
+                  // reverts to the stored description on the next render).
+                  const next = (e.target as HTMLInputElement).value.trim();
+                  if (next.length > 0 && next !== group.description) onUpdate(group.value, next);
+                }}
                 class="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 outline-none focus:border-slate-400"
                 aria-label={`Description for ${group.value}`}
               />
@@ -155,6 +171,40 @@
           {/if}
         </div>
       {/each}
+    </div>
+  {/if}
+
+  {#if misassigned.length > 0}
+    <div class="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+      <h3 class="text-sm font-semibold text-amber-900">
+        Tagged with an undeclared core feature
+        <span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-normal text-amber-800">
+          {misassigned.length}
+        </span>
+      </h3>
+      <p class="mt-0.5 text-[11px] text-amber-700">
+        Reassign to a declared core feature, clear it, or declare the value above.
+      </p>
+      <ul class="mt-2 divide-y divide-amber-100">
+        {#each misassigned as member (member.id)}
+          <li class="flex items-center justify-between gap-2 py-1.5 text-sm">
+            <span class="min-w-0 truncate text-slate-700">
+              {member.name}
+              <span class="ml-1 font-mono text-[11px] text-amber-700">core:{member.value}</span>
+            </span>
+            <select
+              class="shrink-0 rounded-md border border-slate-300 px-1.5 py-1 text-xs text-slate-700"
+              value=""
+              onchange={(e) => assign(member.id, (e.target as HTMLSelectElement).value)}
+            >
+              <option value="">(none)</option>
+              {#each declaredValues as value}
+                <option {value}>{humanizeTagText(value)}</option>
+              {/each}
+            </select>
+          </li>
+        {/each}
+      </ul>
     </div>
   {/if}
 
