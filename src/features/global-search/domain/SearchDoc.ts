@@ -25,7 +25,8 @@ export type SearchEntityKind =
   | 'entity-field'
   | 'event'
   | 'value-set'
-  | 'scenario';
+  | 'scenario'
+  | 'acceptance-criterion';
 
 /** Where clicking a result takes the user — a dashboard route + query. */
 export type SearchNavTarget = {
@@ -107,5 +108,6 @@ export const SEARCH_GROUP_ORDER: readonly SearchEntityKind[] = [
   'value-set',
   'resource',
   'persona',
-  'scenario'
+  'scenario',
+  'acceptance-criterion'
 ];

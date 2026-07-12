@@ -19,7 +19,8 @@ export type FeatureTopTab =
   | 'data'
   | 'events'
   | 'transitions'
-  | 'invariants';
+  | 'invariants'
+  | 'acceptance';
 
 export type FeatureHrefOptions = {
   readonly tab?: FeatureTopTab;

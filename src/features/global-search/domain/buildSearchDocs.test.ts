@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import {
+  asAcceptanceCriterionId,
   asActionId,
   asEffectId,
   asEntityFieldId,
@@ -197,5 +198,42 @@ describe('buildSearchDocs', () => {
   it('gives every doc a unique id', () => {
     const ids = docs.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('indexes acceptance criteria so their Given/When/Then prose is searchable', () => {
+    const feature = {
+      id: asFeatureId('refunds'),
+      name: 'Refunds',
+      description: 'd',
+      surfaces: [],
+      personas: [],
+      resources: [],
+      entities: [],
+      acceptanceCriteria: [
+        {
+          id: asAcceptanceCriterionId('ac1'),
+          title: 'Refund within the return window',
+          given: 'an order delivered 20 days ago',
+          when: 'the customer requests a refund',
+          then: 'the refund is approved',
+          expectedOutcome: 'success'
+        }
+      ],
+      createdAt: 'x',
+      updatedAt: 'x'
+    } as unknown as Feature;
+    const acDocs = byKind(
+      buildSearchDocs({
+        projects: [{ id: 'p', name: 'P', description: 'd', tags: [], featureIds: ['refunds'] }],
+        features: [feature],
+        domains: []
+      }),
+      'acceptance-criterion'
+    );
+    expect(acDocs).toHaveLength(1);
+    expect(acDocs[0]!.title).toBe('Refund within the return window');
+    // Prose (which has no tag fallback) is in the haystack.
+    expect(acDocs[0]!.haystack).toContain('delivered 20 days ago');
+    expect(acDocs[0]!.nav.href).toContain('tab=acceptance');
   });
 });

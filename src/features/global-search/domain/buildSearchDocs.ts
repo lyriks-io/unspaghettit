@@ -247,6 +247,26 @@ export const buildSearchDocs = (input: SearchModelInput): SearchDoc[] => {
         nav: { href: featureHref(ctx.featureId, { tab: 'invariants' }) }
       });
     }
+
+    // Prose acceptance criteria — the report's "searchable" facet. Their
+    // Given/When/Then text has no tag fallback, so index it explicitly.
+    for (const criterion of feature.acceptanceCriteria ?? []) {
+      push({
+        id: `acceptance-criterion:${ctx.featureId}:${criterion.id}`,
+        kind: 'acceptance-criterion',
+        title: criterion.title,
+        subtitle: criterion.then || criterion.description,
+        ...featureCrumb(ctx),
+        haystack: corpus(
+          criterion.title,
+          criterion.given,
+          criterion.when,
+          criterion.then,
+          criterion.description
+        ),
+        nav: { href: featureHref(ctx.featureId, { tab: 'acceptance' }) }
+      });
+    }
   }
 
   return docs;

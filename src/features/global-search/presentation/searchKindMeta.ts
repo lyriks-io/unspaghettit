@@ -102,6 +102,11 @@ const META: Record<SearchEntityKind, SearchKindMeta> = {
     label: 'Scenario',
     icon: 'M9 3v6l-5 8.5A2 2 0 0 0 6 21h12a2 2 0 0 0 2-3.5L15 9V3 M8 3h8',
     accent: 'text-green-600'
+  },
+  'acceptance-criterion': {
+    label: 'Acceptance criterion',
+    icon: 'M6 3h9l4 4v14H6z M14 3v4h4 M9 13l2 2 4-4',
+    accent: 'text-sky-600'
   }
 };
 
