@@ -1,3 +1,4 @@
+import type { AcceptanceCriterion } from '../../entities/AcceptanceCriterion';
 import type { Constant } from '../../entities/Constant';
 import type { Dependency } from '../../entities/Dependency';
 import type { Entity, EntityField } from '../../entities/Entity';
@@ -8,6 +9,7 @@ import type { ReachabilityGoal } from '../../entities/ReachabilityGoal';
 import type { Resource } from '../../entities/Resource';
 import type { ValueSet } from '../../entities/ValueSet';
 import type {
+  AcceptanceCriterionId,
   ConstantId,
   DependencyId,
   EntityFieldId,
@@ -49,6 +51,42 @@ export const removeReachabilityGoal = (
 ): Feature => ({
   ...feature,
   reachabilityGoals: (feature.reachabilityGoals ?? []).filter((g) => g.id !== goalId)
+});
+
+// ─── Acceptance criteria ───────────────────────────────────────────────────────
+// Feature-level prose acceptance tests (Given/When/Then), the documentation
+// complement to the model-checked action-level Scenario. Same optional
+// add/update/remove shape against `feature.acceptanceCriteria` as the
+// reachability trio — but never fed to the scorer or model checker.
+
+export const addAcceptanceCriterion = (
+  feature: Feature,
+  criterion: AcceptanceCriterion
+): Feature => ({
+  ...feature,
+  acceptanceCriteria: [...(feature.acceptanceCriteria ?? []), criterion]
+});
+
+export const updateAcceptanceCriterion = (
+  feature: Feature,
+  criterionId: AcceptanceCriterionId,
+  patch: Partial<AcceptanceCriterion>
+): Feature => ({
+  ...feature,
+  acceptanceCriteria: mustMap(
+    feature.acceptanceCriteria ?? [],
+    String(criterionId),
+    'acceptanceCriterion',
+    (c) => ({ ...c, ...patch })
+  )
+});
+
+export const removeAcceptanceCriterion = (
+  feature: Feature,
+  criterionId: AcceptanceCriterionId
+): Feature => ({
+  ...feature,
+  acceptanceCriteria: (feature.acceptanceCriteria ?? []).filter((c) => c.id !== criterionId)
 });
 
 // ─── Personas ────────────────────────────────────────────────────────────────

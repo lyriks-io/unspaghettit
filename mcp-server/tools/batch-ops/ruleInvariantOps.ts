@@ -3,6 +3,7 @@ import type { Feature } from '../../../src/features/behavior-model/domain/entiti
 import type { Rule } from '../../../src/features/behavior-model/domain/entities/Rule';
 import type { Effect } from '../../../src/features/behavior-model/domain/value-objects/Effect';
 import {
+  asAcceptanceCriterionId,
   asActionId,
   asEffectId,
   asInvariantId,
@@ -11,6 +12,8 @@ import {
   asSurfaceId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
 import {
+  buildAcceptanceCriterion,
+  buildAcceptanceCriterionPatch,
   buildInvariant as buildInvariantBody,
   buildInvariantPatch,
   buildReachabilityGoal,
@@ -266,6 +269,33 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       exp = T.removeReachabilityGoal(
         exp,
         asReachabilityGoalId(op.goalId as string)
+      );
+      break;
+
+    // ── Acceptance criteria ─────────────────────────────────────────
+    // Feature-level prose acceptance tests (Given/When/Then), the
+    // documentation complement to the model-checked action-level Scenario.
+    // Not simulated or scored; the only hard rule is a non-empty title.
+    case 'add_acceptance_criterion': {
+      const criterion = buildAcceptanceCriterion(
+        (op.criterion as Record<string, unknown>) ?? op,
+        mintId
+      );
+      exp = T.addAcceptanceCriterion(exp, criterion);
+      remember(op.ref, criterion.id);
+      break;
+    }
+    case 'update_acceptance_criterion':
+      exp = T.updateAcceptanceCriterion(
+        exp,
+        asAcceptanceCriterionId(op.criterionId as string),
+        buildAcceptanceCriterionPatch((op.patch as Record<string, unknown>) ?? {})
+      );
+      break;
+    case 'remove_acceptance_criterion':
+      exp = T.removeAcceptanceCriterion(
+        exp,
+        asAcceptanceCriterionId(op.criterionId as string)
       );
       break;
 

@@ -1,5 +1,6 @@
 import type { DevContext } from '../value-objects/DevContext';
 import type { FeatureId } from '../value-objects/ids';
+import type { AcceptanceCriterion } from './AcceptanceCriterion';
 import type { Constant } from './Constant';
 import type { Dependency } from './Dependency';
 import type { Entity } from './Entity';
@@ -63,6 +64,14 @@ export type Feature = {
    * downstream code reads `feature.reachabilityGoals ?? []`.
    */
   readonly reachabilityGoals?: readonly ReachabilityGoal[];
+  /**
+   * Prose acceptance criteria (Given/When/Then) — the spec/documentation facet,
+   * the complement to the model-checked action-level Scenario. Feature-level,
+   * like reachabilityGoals. Optional and additive; downstream code reads
+   * `feature.acceptanceCriteria ?? []`. Not model-checked (free-text prose), so
+   * it never affects maturity/verification scores.
+   */
+  readonly acceptanceCriteria?: readonly AcceptanceCriterion[];
   /**
    * Registered events with optional payload schemas. Actions still
    * declare `emittedEvents: EventName[]` and emit_event effects still fire

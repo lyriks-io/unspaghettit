@@ -38,6 +38,7 @@ describe('MCP server', () => {
     const { client, server } = await setup();
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'add_acceptance_criterion',
       'add_action',
       'add_action_invariant',
       'add_action_rule',
@@ -110,6 +111,7 @@ describe('MCP server', () => {
       'propose_evolution',
       'record_element_span',
       'record_element_spans',
+      'remove_acceptance_criterion',
       'remove_action',
       'remove_action_invariant',
       'remove_action_rule',
@@ -151,6 +153,7 @@ describe('MCP server', () => {
       'stage_candidate',
       'stage_candidates',
       'sync_from_index',
+      'update_acceptance_criterion',
       'update_action',
       'update_action_invariant',
       'update_action_rule',

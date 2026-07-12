@@ -35,6 +35,7 @@ import { registerPersonaTools } from './tools/persona';
 import { registerProjectTools } from './tools/project';
 import { registerProvenanceTools } from './tools/provenance';
 import { registerReachabilityGoalTools } from './tools/reachabilityGoal';
+import { registerAcceptanceCriterionTools } from './tools/acceptanceCriterion';
 import { registerQueueTools } from './tools/queue';
 import { registerReadTools } from './tools/read';
 import { registerReorderTools } from './tools/reorder';
@@ -186,6 +187,7 @@ export const buildServer = (repo: FeatureRepository, deps: BuildServerDeps = {})
   registerEventTools(toolDeps);
   registerInvariantTools(toolDeps);
   registerReachabilityGoalTools(toolDeps);
+  registerAcceptanceCriterionTools(toolDeps);
   registerTransitionTools(toolDeps);
   registerPersonaTools(toolDeps);
   registerValueSetTools(toolDeps);

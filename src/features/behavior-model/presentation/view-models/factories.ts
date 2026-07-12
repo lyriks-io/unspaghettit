@@ -1,4 +1,5 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
+import type { AcceptanceCriterion } from '$features/behavior-model/domain/entities/AcceptanceCriterion';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type {
   ReachabilityGoal,
@@ -10,6 +11,7 @@ import type { Surface, SurfaceType } from '$features/behavior-model/domain/entit
 import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
 import type { Operator } from '$features/behavior-model/domain/value-objects/Operator';
 import {
+  asAcceptanceCriterionId,
   asActionId,
   asDependencyId,
   asEffectId,
@@ -186,4 +188,16 @@ export const newReachabilityGoal = (
   },
   description: '',
   message: ''
+});
+
+export const newAcceptanceCriterion = (
+  ids: IdGenerator,
+  init?: { title?: string }
+): AcceptanceCriterion => ({
+  id: asAcceptanceCriterionId(ids()),
+  title: init?.title ?? 'New acceptance criterion',
+  given: '',
+  when: '',
+  then: '',
+  expectedOutcome: 'success'
 });

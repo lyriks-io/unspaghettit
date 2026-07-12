@@ -21,6 +21,11 @@
  */
 
 import type {
+  AcceptanceCriterion,
+  AcceptanceOutcome
+} from '../../src/features/behavior-model/domain/entities/AcceptanceCriterion';
+import { ALL_ACCEPTANCE_OUTCOMES } from '../../src/features/behavior-model/domain/entities/AcceptanceCriterion';
+import type {
   Invariant
 } from '../../src/features/behavior-model/domain/entities/Invariant';
 import type { ReachabilityGoal } from '../../src/features/behavior-model/domain/entities/ReachabilityGoal';
@@ -32,6 +37,7 @@ import type {
 } from '../../src/features/behavior-model/domain/entities/Scenario';
 import type { Effect } from '../../src/features/behavior-model/domain/value-objects/Effect';
 import {
+  asAcceptanceCriterionId,
   asActionId,
   asEffectId,
   asInvariantId,
@@ -323,6 +329,57 @@ export const buildReachabilityGoalPatch = (input: Raw): Partial<ReachabilityGoal
     ? { condition: input.condition as ReachabilityGoal['condition'] }
     : {}),
   ...(typeof input.message === 'string' ? { message: input.message } : {}),
+  ...(typeof input.description === 'string' ? { description: input.description } : {})
+});
+
+// ─── Acceptance criterion ─────────────────────────────────────────────────────
+// Feature-level prose acceptance test (Given/When/Then). Lenient by design: the
+// only hard requirement (enforced by the validator) is a non-empty title;
+// given/when/then default to "" and expectedOutcome is repaired to "success"
+// when absent or not one of the three allowed values, so a malformed input can
+// never reach disk as an out-of-enum outcome.
+
+const asAcceptanceOutcome = (raw: unknown): AcceptanceOutcome =>
+  ALL_ACCEPTANCE_OUTCOMES.includes(raw as AcceptanceOutcome)
+    ? (raw as AcceptanceOutcome)
+    : 'success';
+
+const asProse = (raw: unknown): string => (typeof raw === 'string' ? raw : '');
+
+export const buildAcceptanceCriterion = (
+  input: Raw,
+  mintId: () => string
+): AcceptanceCriterion => ({
+  id: asAcceptanceCriterionId(mintId()),
+  title: typeof input.title === 'string' ? input.title : '',
+  given: asProse(input.given),
+  when: asProse(input.when),
+  then: asProse(input.then),
+  expectedOutcome: asAcceptanceOutcome(input.expectedOutcome),
+  ...(typeof input.relatedSurfaceId === 'string' && input.relatedSurfaceId.length > 0
+    ? { relatedSurfaceId: input.relatedSurfaceId }
+    : {}),
+  ...(typeof input.description === 'string' ? { description: input.description } : {})
+});
+
+/** Build an AcceptanceCriterion patch. Only keys the caller sent are included. */
+export const buildAcceptanceCriterionPatch = (input: Raw): Partial<AcceptanceCriterion> => ({
+  ...(typeof input.title === 'string' ? { title: input.title } : {}),
+  ...(typeof input.given === 'string' ? { given: input.given } : {}),
+  ...(typeof input.when === 'string' ? { when: input.when } : {}),
+  ...(typeof input.then === 'string' ? { then: input.then } : {}),
+  ...(input.expectedOutcome !== undefined
+    ? { expectedOutcome: asAcceptanceOutcome(input.expectedOutcome) }
+    : {}),
+  // `relatedSurfaceId: null` clears the link; a non-empty string sets it.
+  ...(input.relatedSurfaceId !== undefined
+    ? {
+        relatedSurfaceId:
+          typeof input.relatedSurfaceId === 'string' && input.relatedSurfaceId.length > 0
+            ? input.relatedSurfaceId
+            : undefined
+      }
+    : {}),
   ...(typeof input.description === 'string' ? { description: input.description } : {})
 });
 

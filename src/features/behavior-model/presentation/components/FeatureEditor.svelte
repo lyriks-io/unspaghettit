@@ -20,6 +20,7 @@
   import EventsManager from './EventsManager.svelte';
   import FeatureInvariantsEditor from './FeatureInvariantsEditor.svelte';
   import ReachabilityGoalsEditor from './ReachabilityGoalsEditor.svelte';
+  import AcceptanceCriteriaEditor from './AcceptanceCriteriaEditor.svelte';
   import TransitionsManager from './TransitionsManager.svelte';
   import { buildEventCatalog } from '$features/behavior-model/domain/services/EventCatalog';
   import { buildTransitionCatalog } from '$features/behavior-model/domain/services/TransitionCatalog';
@@ -34,7 +35,8 @@
     'events',
     'transitions',
     'invariants',
-    'goals'
+    'goals',
+    'acceptance'
   ]);
   const VALID_PANEL_TABS = new Set([
     'actions',
@@ -56,7 +58,8 @@
     | 'events'
     | 'transitions'
     | 'invariants'
-    | 'goals';
+    | 'goals'
+    | 'acceptance';
   // Top-level tab is now in the editor store so deep-link navigation can
   // jump back to "Build" when fixing an issue from elsewhere.
   const activeTab = $derived<TopTab>(editorStore.topLevelTab);
@@ -240,6 +243,11 @@
       key: 'goals',
       label: 'Reachability goals',
       count: feature.reachabilityGoals?.length ?? 0
+    },
+    {
+      key: 'acceptance',
+      label: 'Acceptance criteria',
+      count: feature.acceptanceCriteria?.length ?? 0
     }
   ]);
 
@@ -380,6 +388,10 @@
       {:else if activeTab === 'goals'}
         <section class="rounded-lg border border-hairline bg-white p-4">
           <ReachabilityGoalsEditor {feature} />
+        </section>
+      {:else if activeTab === 'acceptance'}
+        <section class="rounded-lg border border-hairline bg-white p-4">
+          <AcceptanceCriteriaEditor {feature} />
         </section>
       {:else}
         <section class="rounded-lg border border-hairline bg-white p-4">

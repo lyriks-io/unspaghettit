@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAcceptanceCriterion,
+  buildAcceptanceCriterionPatch,
   buildInvariant,
   buildInvariantPatch,
   buildScenario,
@@ -121,5 +123,64 @@ describe('_entity_builders.buildInvariant + buildInvariantPatch', () => {
   it('omits description from the patch when not sent', () => {
     const patch = buildInvariantPatch({ name: 'rename only' });
     expect(Object.keys(patch)).toEqual(['name']);
+  });
+});
+
+describe('_entity_builders.buildAcceptanceCriterion', () => {
+  it('builds a full criterion from complete input', () => {
+    const ac = buildAcceptanceCriterion(
+      {
+        title: 'Refund within window',
+        given: 'delivered 20 days ago',
+        when: 'refund requested',
+        then: 'refund approved',
+        expectedOutcome: 'success',
+        relatedSurfaceId: 'srf-1',
+        description: 'note'
+      },
+      ids
+    );
+    expect(ac.title).toBe('Refund within window');
+    expect(ac.expectedOutcome).toBe('success');
+    expect(ac.relatedSurfaceId).toBe('srf-1');
+    expect(ac.id).toMatch(/^id-/);
+  });
+
+  it('defaults given/when/then to empty strings when absent (prose is optional)', () => {
+    const ac = buildAcceptanceCriterion({ title: 'Only a title' }, ids);
+    expect(ac.given).toBe('');
+    expect(ac.when).toBe('');
+    expect(ac.then).toBe('');
+  });
+
+  it('repairs a missing or out-of-enum expectedOutcome to "success"', () => {
+    expect(buildAcceptanceCriterion({ title: 't' }, ids).expectedOutcome).toBe('success');
+    expect(
+      buildAcceptanceCriterion({ title: 't', expectedOutcome: 'nonsense' }, ids).expectedOutcome
+    ).toBe('success');
+  });
+
+  it('omits an empty relatedSurfaceId rather than storing ""', () => {
+    const ac = buildAcceptanceCriterion({ title: 't', relatedSurfaceId: '' }, ids);
+    expect('relatedSurfaceId' in ac).toBe(false);
+  });
+});
+
+describe('_entity_builders.buildAcceptanceCriterionPatch', () => {
+  it('omits keys the caller did not send', () => {
+    const patch = buildAcceptanceCriterionPatch({ title: 'renamed' });
+    expect(Object.keys(patch)).toEqual(['title']);
+  });
+
+  it('repairs an out-of-enum expectedOutcome in a patch', () => {
+    expect(buildAcceptanceCriterionPatch({ expectedOutcome: 'weird' }).expectedOutcome).toBe(
+      'success'
+    );
+  });
+
+  it('clears the surface link with relatedSurfaceId: null', () => {
+    const patch = buildAcceptanceCriterionPatch({ relatedSurfaceId: null });
+    expect('relatedSurfaceId' in patch).toBe(true);
+    expect(patch.relatedSurfaceId).toBeUndefined();
   });
 });

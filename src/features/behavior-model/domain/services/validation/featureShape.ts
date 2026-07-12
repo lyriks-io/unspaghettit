@@ -452,6 +452,25 @@ export const validateFeature = (feature: Feature): ValidationResult => {
     }
   }
 
+  // Acceptance criteria are prose documentation, not checkable assertions, so
+  // validation is deliberately lenient (see AcceptanceCriterion): require only
+  // a unique id and a non-empty title. `given`/`when`/`then`/`description` may
+  // be empty, `expectedOutcome` is not enforced here (the builder repairs it),
+  // and `relatedSurfaceId` is never resolved — a dangling ref must not hard-fail
+  // because a platform writer may point it at a sibling feature's surface. The
+  // `?? []` guards against the malformed/absent-array class of bug that has
+  // crashed get_feature before.
+  const acceptanceCriterionIds = new Set<string>();
+  for (const ac of feature.acceptanceCriteria ?? []) {
+    if (acceptanceCriterionIds.has(String(ac.id))) {
+      errors.push(`Duplicate acceptance criterion id "${ac.id}"`);
+    }
+    acceptanceCriterionIds.add(String(ac.id));
+    if (!ac.title || ac.title.trim().length === 0) {
+      errors.push(`Acceptance criterion ${ac.id} is missing a title.`);
+    }
+  }
+
   // Walk every event-name slot on actions: emittedEvents[] and any
   // emit_event effect's `event` field (action.effects, action.onBlockedEffects,
   // and rule effects). Names that fail isEventName silently saved before but
