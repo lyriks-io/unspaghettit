@@ -84,6 +84,7 @@ Point your AI agent at whatever you already have: a design screenshot, a product
 ## What you get
 
 - **Scenarios as spec tests**: the deterministic simulator runs every scenario, whole multi-step flows included, and reports pass or fail per assertion.
+- **Prose acceptance criteria**: capture feature-level Given/When/Then edge cases as documentation, the honest complement to model-checked scenarios. Rendered, searchable, and carried in the model; never simulated or scored, because prose is not a formal assertion.
 - **Bounded model checking**: explores the reachable state space for the paths you *didn't* write scenarios for: invariant counterexamples with the action path that reaches them, dead actions, deadlocks, and liveness goals ("done stays reachable"), drawing action inputs from their domains (enum values, booleans, numeric bounds) so input-gated branches are explored too.
 - **Model what actually happens**: typed action outcomes (declined, timed out, partial), external dependencies + `invoke_operation` calls with their timeout / retry / idempotency contract, event delivery guarantees (a `required` handler failure fails the emitter; `transactional` rolls it back), and scoped invariant relaxation for repair actions.
 - **Maturity scoring**: per-area scores plus an honest confidence matrix (the weakest dimension is the headline, so a strong score can't hide a zero); `get_spec_gaps` also proves rule-set contradictions and flags external calls with no timeout.
@@ -93,6 +94,7 @@ Point your AI agent at whatever you already have: a design screenshot, a product
 - **Generated TypeScript contracts**: state, event, and parameter types your implementation imports, so the compiler catches divergence first.
 - **Diagrams & provenance**: project the model as a statechart, sequence, ER, flowchart, or mindmap (export Mermaid, DOT, SVG/PNG), and trace every element back to the exact source span it was extracted from.
 - **Source trust & completeness**: rank sources by authority, record two that contradict each other as a first-class conflict (resolved by authority, not reading order), and measure the share of each source's behavior that actually reached the model, so "what might we be missing?" has an answer.
+- **Core features**: declare a project's product pillars once and group features under them, so you filter and navigate by core feature precisely instead of by a sea of tags.
 - **A live dashboard**: editor, simulator, behavior graph, verify view with navigable counterexample traces, implementation coverage, global search (⌘K).
 - **Multi-agent ready**: real-time sync for several humans and AI agents editing at once, with per-agent attribution.
 - **Local-first**: plain JSON on your disk. No accounts, no telemetry, no hosted service.
