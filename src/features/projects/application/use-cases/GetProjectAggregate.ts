@@ -1,6 +1,13 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import type { FeatureRepository } from '$features/behavior-model/application/ports/FeatureRepository';
+import type { CoreFeature } from '$features/projects/domain/entities/CoreFeature';
+import {
+  coreFeatureReport,
+  type CoreFeatureGroup,
+  type CoreFeatureMemberRef,
+  type CoreFeatureWarning
+} from '$features/projects/domain/services/coreFeatures';
 import type { ProjectId } from '$features/projects/domain/value-objects/ids';
 import type { ProjectRepository } from '../ports/ProjectRepository';
 
@@ -49,6 +56,14 @@ export type ProjectAggregateRead = {
   readonly data: readonly AggregatedData[];
   readonly events: readonly AggregatedEvent[];
   readonly transitions: readonly AggregatedTransition[];
+  /** The project's declared core-feature registry (the controlled vocabulary). */
+  readonly coreFeatures: readonly CoreFeature[];
+  /** Each declared core feature with the member features tagged into it. */
+  readonly coreFeatureGroups: readonly CoreFeatureGroup[];
+  /** Features carrying no core: tag. */
+  readonly coreFeatureUncategorized: readonly CoreFeatureMemberRef[];
+  /** Soft warnings: a core: tag naming an undeclared value, or more than one. */
+  readonly coreFeatureWarnings: readonly CoreFeatureWarning[];
 };
 
 export const getProjectAggregateUseCase = (deps: {
@@ -121,6 +136,8 @@ export const getProjectAggregateUseCase = (deps: {
       }
     }
 
+    const core = coreFeatureReport(project, loaded);
+
     return {
       projectId: project.id,
       projectName: project.name,
@@ -130,7 +147,11 @@ export const getProjectAggregateUseCase = (deps: {
       resources,
       data,
       events,
-      transitions
+      transitions,
+      coreFeatures: project.coreFeatures ?? [],
+      coreFeatureGroups: core.groups,
+      coreFeatureUncategorized: core.uncategorized,
+      coreFeatureWarnings: core.warnings
     };
   };
 };

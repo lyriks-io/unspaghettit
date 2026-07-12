@@ -5,6 +5,7 @@ import { getBrowserContainer } from '$shared/infrastructure/browserContainer';
 import { projectsStore } from '$features/projects/presentation/stores/projectsStore.svelte';
 import { emit } from '$shared/events/eventBus';
 import { addTag, removeTag, type Tag } from '$shared/domain/Tags';
+import { setCoreTag } from '$shared/domain/coreFeatureTag';
 
 class FeaturesStore {
   loading = $state(true);
@@ -66,6 +67,21 @@ class FeaturesStore {
     await container.useCases.saveFeature({
       ...feature,
       tags: removeTag(feature.tags, tag)
+    });
+    await this.refreshSilent();
+  }
+
+  /**
+   * Assign the feature to one core feature (or clear it with `null`). Sets a
+   * reserved `core:` tag, enforcing at-most-one in a single save.
+   */
+  async setCore(id: string, value: string | null): Promise<void> {
+    const container = await getBrowserContainer();
+    const feature = await container.useCases.getFeature(id as never);
+    if (!feature) return;
+    await container.useCases.saveFeature({
+      ...feature,
+      tags: setCoreTag(feature.tags, value)
     });
     await this.refreshSilent();
   }

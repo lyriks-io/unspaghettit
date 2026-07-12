@@ -9,6 +9,7 @@ import { normalizeFeatureSharedState } from '../../src/features/behavior-model/d
 import { introducedValidationErrors } from '../../src/features/behavior-model/domain/services/FeatureValidator';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { addTag, normalizeTags, removeTag } from '../../src/shared/domain/Tags';
+import { setCoreTag } from '../../src/shared/domain/coreFeatureTag';
 import { ack, errorText, text, writeErrorText, type ToolDeps } from './_shared';
 import { expandFeatureId } from './short-ids';
 
@@ -160,6 +161,37 @@ export const registerFeatureTools = (deps: ToolDeps): void => {
           transform: (current) => ({
             ...current,
             tags: removeTag(current.tags, { type, value })
+          })
+        });
+        return text({ ...ack(result.id, result.updatedAt), tags: result.tags ?? [] });
+      } catch (e) {
+        return writeErrorText(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'set_feature_core',
+    {
+      description:
+        "Assign a feature to one of its project's declared CORE FEATURES (or clear it with value:null). Sets a reserved `core:<value>` tag, enforcing at-most-one: any existing core: tag is replaced. The value should match a core feature declared on the owning project (declare_core_feature); an undeclared value still saves but shows as a soft warning in the project aggregate. This is the precise way to group a feature under a product pillar — prefer it over add_feature_tag type:'core'.",
+      inputSchema: {
+        featureId: z.string(),
+        value: z
+          .string()
+          .min(1)
+          .nullable()
+          .describe('The core-feature value to assign, or null to clear the feature\'s core-feature membership.')
+      }
+    },
+    async ({ featureId, value }) => {
+      try {
+        featureId = await expandFeatureId(repo, featureId);
+        const result = await mutateFeature({
+          featureId: asFeatureId(featureId),
+          transform: (current) => ({
+            ...current,
+            tags: setCoreTag(current.tags, value)
           })
         });
         return text({ ...ack(result.id, result.updatedAt), tags: result.tags ?? [] });

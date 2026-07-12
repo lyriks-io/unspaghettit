@@ -13,6 +13,11 @@ import { asFeatureId } from '../../src/features/behavior-model/domain/value-obje
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { asDomainId } from '../../src/features/domains/domain/value-objects/ids';
 import type { Project } from '../../src/features/projects/domain/entities/Project';
+import {
+  declareCoreFeature,
+  removeCoreFeature,
+  updateCoreFeature
+} from '../../src/features/projects/domain/services/coreFeatures';
 import { addTag, normalizeTags, removeTag } from '../../src/shared/domain/Tags';
 import { buildInvariant as buildInvariantBody } from './_entity_builders';
 import { errorText, text, writeErrorText, type ToolDeps } from './_shared';
@@ -312,6 +317,81 @@ export const registerProjectTools = (deps: ToolDeps): void => {
           )
         });
         return text({ ok: true, id: invariantId, updatedAt: next.updatedAt });
+      } catch (e) {
+        return writeErrorText(e);
+      }
+    }
+  );
+
+  // ── Core features (the project's controlled vocabulary of product pillars) ──
+  // A curated registry that member features join via a reserved `core:<value>`
+  // tag, so features can be filtered/grouped by core feature precisely instead
+  // of by a sea of free-form tags. Membership itself is set with set_feature_core.
+  server.registerTool(
+    'declare_core_feature',
+    {
+      description:
+        'Declare a CORE FEATURE on a project: a curated product pillar (e.g. "auth", "billing") that member features are grouped under. This is the controlled vocabulary that makes core-feature tags precise — a feature only counts as belonging to a core feature when its `core:<value>` tag matches a declared value here. Idempotent upsert: re-declaring an existing value updates its description. Set a feature\'s membership with set_feature_core.',
+      inputSchema: {
+        projectId: z.string(),
+        value: z.string().min(1).describe('The core-feature key / tag value, e.g. "auth". Normalized lowercase.'),
+        description: z.string().min(1)
+      }
+    },
+    async ({ projectId, value, description }) => {
+      try {
+        projectId = await expandProjectId(projectRepo, projectId);
+        const current = await getProject(asProjectId(projectId));
+        if (!current) return errorText(`Project ${projectId} not found`);
+        const next = await saveProject(declareCoreFeature(current, { value, description }));
+        return text({ ok: true, id: next.id, updatedAt: next.updatedAt, coreFeatures: next.coreFeatures ?? [] });
+      } catch (e) {
+        return writeErrorText(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'update_core_feature',
+    {
+      description:
+        "Patch a declared core feature's description. The value is its key and is not renamed here (rename = remove_core_feature + declare_core_feature, then re-tag members). No-op if the value is not declared.",
+      inputSchema: {
+        projectId: z.string(),
+        value: z.string().min(1),
+        description: z.string().min(1)
+      }
+    },
+    async ({ projectId, value, description }) => {
+      try {
+        projectId = await expandProjectId(projectRepo, projectId);
+        const current = await getProject(asProjectId(projectId));
+        if (!current) return errorText(`Project ${projectId} not found`);
+        const next = await saveProject(updateCoreFeature(current, value, { description }));
+        return text({ ok: true, id: next.id, updatedAt: next.updatedAt, coreFeatures: next.coreFeatures ?? [] });
+      } catch (e) {
+        return writeErrorText(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'remove_core_feature',
+    {
+      description:
+        'Remove a core feature from a project\'s registry. Idempotent. Member features KEEP their `core:<value>` tag (removal never rewrites features); they become "undeclared" in the project aggregate\'s soft warnings until re-tagged. Clear a feature\'s membership with set_feature_core value:null.',
+      inputSchema: {
+        projectId: z.string(),
+        value: z.string().min(1)
+      }
+    },
+    async ({ projectId, value }) => {
+      try {
+        projectId = await expandProjectId(projectRepo, projectId);
+        const current = await getProject(asProjectId(projectId));
+        if (!current) return errorText(`Project ${projectId} not found`);
+        const next = await saveProject(removeCoreFeature(current, value));
+        return text({ ok: true, id: next.id, updatedAt: next.updatedAt, coreFeatures: next.coreFeatures ?? [] });
       } catch (e) {
         return writeErrorText(e);
       }

@@ -1,5 +1,10 @@
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import type { Project } from '$features/projects/domain/entities/Project';
+import {
+  declareCoreFeature,
+  removeCoreFeature,
+  updateCoreFeature
+} from '$features/projects/domain/services/coreFeatures';
 import type { ProjectId } from '$features/projects/domain/value-objects/ids';
 import { getBrowserContainer } from '$shared/infrastructure/browserContainer';
 import { dropRoomClient, getRoomClient, type YDocClient } from '$lib/client/sync';
@@ -9,6 +14,7 @@ import type { HistoryEntry } from '$lib/sync/protocol';
 
 export type ProjectPanel =
   | 'features'
+  | 'core'
   | 'sources'
   | 'resources'
   | 'data'
@@ -173,6 +179,37 @@ class ProjectStore {
         ...this.project,
         description: trimmed.length > 0 ? trimmed : undefined
       });
+      this.applyProject(next);
+    } catch (e) {
+      this.saveError = (e as Error).message;
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  // ── Core features (the project's controlled vocabulary of product pillars) ──
+  // Registry CRUD; each saves the whole project via the domain transform. A
+  // feature's membership is set separately (featuresStore.setCore).
+
+  async declareCoreFeature(value: string, description: string): Promise<void> {
+    await this.saveWith((project) => declareCoreFeature(project, { value, description }));
+  }
+
+  async updateCoreFeature(value: string, description: string): Promise<void> {
+    await this.saveWith((project) => updateCoreFeature(project, value, { description }));
+  }
+
+  async removeCoreFeature(value: string): Promise<void> {
+    await this.saveWith((project) => removeCoreFeature(project, value));
+  }
+
+  private async saveWith(transform: (project: Project) => Project): Promise<void> {
+    if (!this.project) return;
+    this.saving = true;
+    this.saveError = null;
+    try {
+      const container = await getBrowserContainer();
+      const next = await container.useCases.saveProject(transform(this.project));
       this.applyProject(next);
     } catch (e) {
       this.saveError = (e as Error).message;

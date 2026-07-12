@@ -7,6 +7,7 @@
   import { projectFeaturesStore } from '$features/projects/presentation/stores/projectFeaturesStore.svelte';
   import { featuresStore } from '$features/behavior-model/presentation/stores/featuresStore.svelte';
   import ProjectFeaturesPanel from './ProjectFeaturesPanel.svelte';
+  import ProjectCoreFeaturesPanel from './ProjectCoreFeaturesPanel.svelte';
   import ProjectResourcesPanel from './ProjectResourcesPanel.svelte';
   import ProjectEntitiesPanel from './ProjectEntitiesPanel.svelte';
   import ProjectEventsPanel from './ProjectEventsPanel.svelte';
@@ -37,6 +38,7 @@
 
   const PANELS: { id: ProjectPanel; label: string }[] = [
     { id: 'features', label: 'Features' },
+    { id: 'core', label: 'Core features' },
     { id: 'sources', label: 'Sources' },
     { id: 'resources', label: 'Resources' },
     { id: 'data', label: 'Entity' },
@@ -73,6 +75,8 @@
     switch (panel) {
       case 'features':
         return exps.length;
+      case 'core':
+        return projectStore.project?.coreFeatures?.length ?? 0;
       case 'sources':
         return projectSourcesStore.sources.length;
       case 'resources':
@@ -131,6 +135,15 @@
 
   async function handleRemoveFeature(id: FeatureId) {
     await projectStore.removeFeature(id);
+    if (projectStore.project) {
+      await projectFeaturesStore.load(projectStore.project.featureIds);
+    }
+  }
+
+  // Assign (or clear) a feature's core-feature membership, then reload the
+  // features so the grouping and warnings recompute.
+  async function handleAssignFeatureCore(id: FeatureId, value: string | null) {
+    await featuresStore.setCore(String(id), value);
     if (projectStore.project) {
       await projectFeaturesStore.load(projectStore.project.featureIds);
     }
@@ -329,7 +342,7 @@
       </nav>
     </div>
 
-    {#if projectStore.activePanel !== 'features' && projectStore.activePanel !== 'history'}
+    {#if projectStore.activePanel !== 'features' && projectStore.activePanel !== 'core' && projectStore.activePanel !== 'history'}
       <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <input
           type="search"
@@ -362,6 +375,16 @@
               onAddTag={handleAddFeatureTag}
               onRemoveTag={handleRemoveFeatureTag}
               onRemove={handleRemoveFeature}
+            />
+          {:else if projectStore.activePanel === 'core'}
+            <ProjectCoreFeaturesPanel
+              {project}
+              features={projectFeaturesStore.features}
+              saving={projectStore.saving}
+              onDeclare={(value, description) => projectStore.declareCoreFeature(value, description)}
+              onUpdate={(value, description) => projectStore.updateCoreFeature(value, description)}
+              onRemove={(value) => projectStore.removeCoreFeature(value)}
+              onAssign={handleAssignFeatureCore}
             />
           {:else if projectStore.activePanel === 'sources'}
             <ProjectSourcesPanel search={projectStore.search} />

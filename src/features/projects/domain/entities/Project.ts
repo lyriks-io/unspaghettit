@@ -3,6 +3,7 @@ import type { FeatureId } from '$features/behavior-model/domain/value-objects/id
 import type { DomainId } from '$features/domains/domain/value-objects/ids';
 import type { QueueItem } from '$features/implementation-queue/domain/entities/QueueItem';
 import type { Tag } from '$shared/domain/Tags';
+import type { CoreFeature } from './CoreFeature';
 import type { ProjectId } from '../value-objects/ids';
 
 export type Project = {
@@ -24,6 +25,18 @@ export type Project = {
    * Optional and additive; downstream reads `project.projectInvariants ?? []`.
    */
   readonly projectInvariants?: readonly Invariant[];
+  /**
+   * The project's declared CORE FEATURES: a curated registry of product pillars
+   * that member features are grouped under. A feature joins one by carrying a
+   * reserved `core:<value>` tag (CORE_TAG_TYPE); the tag only counts as a real
+   * core feature when its value resolves to an entry here, which is what keeps
+   * the core-feature vocabulary precise instead of a sea of free-form tags. A
+   * feature belongs to at most one. Optional and additive; downstream reads
+   * `project.coreFeatures ?? []`. A member tag naming an undeclared value (or a
+   * feature carrying more than one) is a SOFT warning surfaced in the project
+   * aggregate, never a save blocker.
+   */
+  readonly coreFeatures?: readonly CoreFeature[];
   /**
    * Optional parent Domain. Projects predating the Domain layer leave this
    * undefined. New projects created from Domain Editor get the active
