@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-12
+
 Make the model's own claims trustworthy, then start catching the defects a green model used to hide.
 
 ### Added
