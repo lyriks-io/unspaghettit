@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-13
+
+Five additive fixes found by dogfooding the engine through its own MCP: model checking now exercises the values a rule gates on, pure-UI surfaces stop dragging maturity, scope errors name the exact fix, and authoring a batch is cheaper to commit and easier to discover. No breaking changes.
+
+### Added
+
+- **Presentation surfaces are excluded from maturity scoring.** A consumer that projects UI screens as surfaces (nav/click actions, no rules, events, or scenarios) used to see a feature's maturity capped low even when its behavioral surfaces were fully modeled, because scoring a "Grade B" button has no payoff. A surface now carries an optional `presentation` flag; when set, `scoreFeature` and `scoreFeatureBreakdown` skip it in the rollup and in the empty-feature short-circuit (so a feature whose only surfaces are presentation ones reads as not built, 0%, rather than dragged down by empty bodies), while keeping it in the model and in the path-sharing context so cross-surface reads of state shared from it still resolve. `scoreSurface` is unchanged, so a presentation surface can still be scored on its own. Not inferred from `type: 'screen'` (a hand-authored screen can hold real behavior). Purely additive: a surface with no flag reads exactly as before.
+- **`apply_batch` dry runs return a reusable commit token.** `apply_batch` was stateless: `dryRun: true` validated and scored the result, then discarded it, so committing meant resending the whole `operations` array, real duplication for a large batch. A valid dry run now also returns a single-use `commitToken` (5-minute TTL); calling `apply_batch({ commit })` with no operations re-loads the current feature, re-applies and re-validates the cached ops, then saves. It never blind-saves the precomputed result: the feature may have changed since the dry run, so a stale batch is caught and asked to re-run rather than silently overwriting. An unknown or expired token returns a clear "re-run the dry run" error. The existing operations-carrying path is unchanged.
+- **`describe_operations`, and the operations reference is discoverable.** The dense `apply_batch` op and Expression schema (param-left vs state-left, composite all/any, the `add_resource` nested-`kind` gotcha) lives in the `unspa://operations` resource, but a one-line pointer in a tool description is easy to miss. That resource is now guaranteed in `resources/list` (not only resolvable by URI), joined by a new `describe_operations` tool that returns the schema for one op kind, or the list of known kinds when called with none, so an author can pull just what they need without loading the whole reference. It reads the same reference the resource serves, so the two never drift.
+
+### Fixed
+
+- **Model checking now tries the boundary values a rule gates on.** Bounded exploration builds a parameter grid per action; a required `number` parameter with no default and no min/max validation produced an empty grid, so the whole action was marked unexplorable and skipped, and any state it would produce (and any liveness goal or downstream action behind it) was falsely reported "never reached" or "dead". The explorer now mines boundary values from the numeric thresholds the in-scope conditions compare that parameter against, directly (an action rule's `{kind:"param"}` left) or via the state path it binds to (`bindToStatePath`, the route open to surface rules, surface invariants, and feature invariants). Each threshold T contributes T-1, T, and T+1, so both sides of every `>`/`>=`/`<`/`<=`/`==` guard are exercised: an "approve" action gated by `amount >= 500` is now explored at 499 and 500 instead of skipped. A required number that no condition references still stays honestly unexplored, since no invented value should give false confidence.
+
+### Changed
+
+- **The "not shared into surface" error names the surface and the fix.** Writing or binding a state path that is declared on another surface but not shared into this one hard-blocked the batch with a terse "...is not declared on surface X (or shared into it)", leaving the author to guess whether the path was undeclared everywhere or just unshared. When the path is declared on another surface, the effect-write and parameter `bindToStatePath` errors now name it and prescribe the exact edit: `...is declared on surface "srf-triage" but not shared into "srf-refund". Add "srf-refund" to that StateDefinition's sharedWith.` The genuinely-undeclared case keeps its existing wording. Still a hard block (nothing that was valid becomes invalid); only the message improves.
+
 ## [0.9.0] - 2026-07-12
 
 Make the model's own claims trustworthy, then start catching the defects a green model used to hide.
