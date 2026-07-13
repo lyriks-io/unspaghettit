@@ -73,6 +73,7 @@ describe('MCP server', () => {
       'delete_feature',
       'delete_project',
       'dequeue',
+      'describe_operations',
       'dispose_candidate',
       'dry_run_simulate',
       'enqueue',
@@ -233,6 +234,34 @@ describe('MCP server', () => {
     // available update; the update-availability fields appear only when the
     // (cache-only) check has recorded a newer release.
     expect(typeof payload.version).toBe('string');
+    await server.close();
+  });
+
+  it('lists the operations reference resource (not only resolvable by URI)', async () => {
+    const { client, server } = await setup();
+    const { resources } = await client.listResources();
+    expect(resources.map((r) => r.uri)).toContain('unspa://operations');
+    await server.close();
+  });
+
+  it('describe_operations returns a non-empty schema for a known op kind', async () => {
+    const { client, server } = await setup();
+    const result = await client.callTool({
+      name: 'describe_operations',
+      arguments: { kind: 'add_surface' }
+    });
+    const payload = parseTextContent(result) as { ok: boolean; kind: string; schema: string };
+    expect(payload.ok).toBe(true);
+    expect(payload.kind).toBe('add_surface');
+    expect(payload.schema.length).toBeGreaterThan(0);
+    expect(payload.schema).toContain('add_surface');
+
+    // No kind → the list of known kinds, so an author can discover them.
+    const listed = parseTextContent(
+      await client.callTool({ name: 'describe_operations', arguments: {} })
+    ) as { kinds: readonly string[] };
+    expect(listed.kinds).toContain('add_surface');
+    expect(listed.kinds).toContain('add_action');
     await server.close();
   });
 

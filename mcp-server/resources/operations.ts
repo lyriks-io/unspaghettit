@@ -1,6 +1,8 @@
+import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { text } from '../tools/_shared';
 
-const OPERATIONS_REFERENCE = `# apply_batch operations reference
+export const OPERATIONS_REFERENCE = `# apply_batch operations reference
 
 Each op: \`{ kind, ref?, ...kindArgs }\`. Add ops capture their new id under \`op.ref\`
 so later ops in the same batch can use \`*Ref\` strings instead of raw \`*Id\` values.
@@ -147,6 +149,41 @@ Evaluation semantics (matters for scenario assertions and rule ordering):
   after all effects + derived recomputation, and after any \`emit_event\` cascade
   (\`triggeredByEvent\` handlers) has settled.`;
 
+// Op signature lines in the reference look like "  add_surface  { ref?, ... }";
+// the notes that document an op start with ". " on the following lines.
+const OP_LINE_RE = /^\s{2,}([a-z_]+)\s+\{/;
+const NOTE_LINE_RE = /^\.\s/;
+
+/** Every op kind that has a dedicated signature line in the reference, sorted. */
+export const knownOpKinds = (): readonly string[] => {
+  const kinds: string[] = [];
+  for (const line of OPERATIONS_REFERENCE.split('\n')) {
+    const m = OP_LINE_RE.exec(line);
+    if (m) kinds.push(m[1]!);
+  }
+  return [...new Set(kinds)].sort();
+};
+
+/**
+ * The signature line for `kind` plus its trailing note lines, or undefined when
+ * the kind has no dedicated entry (e.g. every `remove_*`, which the reference
+ * collapses into one generic line). Lets `describe_operations` hand back just
+ * the slice an author needs instead of the whole resource.
+ */
+export const describeOpKind = (kind: string): string | undefined => {
+  const lines = OPERATIONS_REFERENCE.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const m = OP_LINE_RE.exec(lines[i]!);
+    if (!m || m[1] !== kind) continue;
+    const out = [lines[i]!.trim()];
+    for (let j = i + 1; j < lines.length && NOTE_LINE_RE.test(lines[j]!); j++) {
+      out.push(lines[j]!.trim());
+    }
+    return out.join('\n');
+  }
+  return undefined;
+};
+
 export const registerOperationsResource = (server: McpServer): void => {
   server.registerResource(
     'operations',
@@ -166,5 +203,35 @@ export const registerOperationsResource = (server: McpServer): void => {
         }
       ]
     })
+  );
+
+  // Companion tool: pull the schema for ONE op kind (or the kind list) without
+  // loading the whole unspa://operations resource. Registered here since it
+  // reads the same reference the resource serves.
+  server.registerTool(
+    'describe_operations',
+    {
+      description:
+        'Return the apply_batch op schema for ONE op kind, or the list of known kinds when none is given, so you can pull just what you need instead of loading the whole unspa://operations resource. Example: { kind: "add_surface" } returns that op\'s signature and notes.',
+      inputSchema: { kind: z.string().optional() }
+    },
+    async ({ kind }) => {
+      if (!kind) {
+        return text({
+          kinds: knownOpKinds(),
+          hint: 'Pass one of these as `kind`, or read the full unspa://operations resource.'
+        });
+      }
+      const schema = describeOpKind(kind);
+      if (schema === undefined) {
+        return text({
+          ok: false,
+          kind,
+          knownKinds: knownOpKinds(),
+          hint: `No dedicated entry for "${kind}". Every remove_* op shares one generic form; see the unspa://operations resource for those.`
+        });
+      }
+      return text({ ok: true, kind, schema });
+    }
   );
 };
