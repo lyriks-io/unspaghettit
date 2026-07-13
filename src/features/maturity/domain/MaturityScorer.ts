@@ -883,8 +883,15 @@ export const scoreFeature = (feature: Feature): MaturityReport => {
     {},
     featureChecks(feature)
   );
-  if (feature.surfaces.length === 0) return emptyFeatureReport(baseReport);
-  const childrenReport = feature.surfaces.reduce<MaturityReport>(
+  // Presentation surfaces are pure UI (see Surface.presentation): excluded from
+  // the behavior-maturity rollup and from the empty-feature short-circuit, so a
+  // feature whose only surfaces are presentation ones reads as not built (0%)
+  // rather than being dragged down by their empty behavioral bodies. They stay
+  // in the path-sharing context (full feature.surfaces) so cross-surface reads
+  // of state shared FROM a presentation surface don't misfire.
+  const behavioralSurfaces = feature.surfaces.filter((s) => !s.presentation);
+  if (behavioralSurfaces.length === 0) return emptyFeatureReport(baseReport);
+  const childrenReport = behavioralSurfaces.reduce<MaturityReport>(
     (acc, s) => combineReports(acc, scoreSurface(s, feature.surfaces)),
     emptyReport()
   );
@@ -967,15 +974,18 @@ export const scoreFeatureBreakdown = (
   // Same empty-feature short-circuit as scoreFeature — keep the global
   // bar at 0% and drop "passed" noise when no surfaces exist. The
   // featureLevel report still carries the "add a surface" critical
-  // issue so the user can act on it.
-  if (feature.surfaces.length === 0) {
+  // issue so the user can act on it. Presentation surfaces are excluded from
+  // the rollup (and this short-circuit) exactly as in scoreFeature, so the
+  // global percentage matches. The full feature.surfaces stays as path context.
+  const behavioralSurfaces = feature.surfaces.filter((s) => !s.presentation);
+  if (behavioralSurfaces.length === 0) {
     return {
       featureLevel,
       perSurface: [],
       global: emptyFeatureReport(featureLevel)
     };
   }
-  const perSurface = feature.surfaces.map((surface) => {
+  const perSurface = behavioralSurfaces.map((surface) => {
     const breakdown = scoreSurfaceBreakdown(surface, feature.surfaces);
     return {
       surface: breakdown.surface,

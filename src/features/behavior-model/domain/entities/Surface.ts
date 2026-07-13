@@ -66,6 +66,17 @@ export type Surface = {
   readonly invariants: readonly Invariant[];
   readonly transitions: readonly Transition[];
   /**
+   * Marks this as a pure UI/presentation surface: rendered and navigable but
+   * EXCLUDED from behavior-maturity scoring. Deeply modeling a nav/click screen
+   * with no rules/events/scenarios has no behavioral payoff, and scoring it only
+   * caps a feature's maturity for no reason. Do NOT infer this from
+   * `type: 'screen'` — a hand-authored screen can hold real behavior. Optional;
+   * downstream reads `surface.presentation ?? false`. Presentation surfaces stay
+   * in the model (and in path-sharing scope) and can still be scored on their own
+   * via `scoreSurface`; only the feature-level rollup skips them.
+   */
+  readonly presentation?: boolean;
+  /**
    * Optional parent surface id, used to group related surfaces in the
    * navigator. Purely organizational. The simulator and rule engine never
    * read it. A cycle (parent === self, or parent inside own subtree) is

@@ -511,6 +511,56 @@ describe('MaturityScorer', () => {
     expect(report.passedChecks.map((check) => check.area)).toContain('expressions');
   });
 
+  it('excludes presentation surfaces from feature maturity rollup', () => {
+    const workflow: Surface = {
+      id: asSurfaceId('flow'),
+      name: 'Checkout',
+      type: 'workflow',
+      stateDefinitions: [],
+      actions: [
+        { ...baseCapability, intent: 'place order', effects: [{ id: asEffectId('e'), type: 'allow_action' }] }
+      ],
+      rules: [],
+      invariants: [],
+      transitions: []
+    };
+    const presentation: Surface = {
+      id: asSurfaceId('screen'),
+      name: 'Landing',
+      type: 'screen',
+      presentation: true,
+      // A pure UI screen: navigable but with no modeled behavior. Without the
+      // exclusion its empty body would drag the feature score down.
+      stateDefinitions: [],
+      actions: [],
+      rules: [],
+      invariants: [],
+      transitions: []
+    };
+    const base = {
+      id: asFeatureId('e'),
+      name: 'Exp',
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z'
+    };
+    const withPresentation: Feature = { ...base, surfaces: [workflow, presentation] };
+    const workflowOnly: Feature = { ...base, surfaces: [workflow] };
+
+    const a = scoreFeature(withPresentation);
+    const b = scoreFeature(workflowOnly);
+    expect(a.score).toBe(b.score);
+    expect(a.maxScore).toBe(b.maxScore);
+    expect(a.percentage).toBe(b.percentage);
+
+    // The breakdown lists behavioral surfaces only, and its global matches.
+    const breakdown = scoreFeatureBreakdown(withPresentation);
+    expect(breakdown.perSurface.map((s) => String(s.surface.id))).toEqual(['flow']);
+    expect(breakdown.global.percentage).toBe(a.percentage);
+  });
+
   it('excludes Evolution proposals from scoring entirely', () => {
     const committed: Action = {
       ...baseCapability,
