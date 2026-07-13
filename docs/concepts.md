@@ -53,7 +53,7 @@ Scenarios test the paths you thought of. `model_check` exhaustively explores the
 
 Invariants come at three scopes: per-surface, feature-wide, and **cross-feature at the project level** (`projectInvariants`, e.g. "the orders feature's open count equals the billing feature's unpaid count" - something a feature invariant can't reference).
 
-Model checking draws each action's parameters from their **domains** - every enum value, both booleans, a number's declared bounds - rather than only their defaults, so branches gated on an input are actually explored. An action is reported *skipped* (never "dead") only when a required parameter has no enumerable domain, and a capped parameter grid marks the run truncated - so a green result is never mistaken for exhaustive.
+Model checking draws each action's parameters from their **domains** - every enum value, both booleans, a number's declared bounds, and the boundary values (T-1, T, T+1) around any threshold a rule or invariant compares the parameter against - rather than only their defaults, so branches gated on an input are actually explored (a value on both sides of an `amount >= 500` gate is tried even when the number declares no min/max). An action is reported *skipped* (never "dead") only when a required parameter has no enumerable domain and no rule references it, and a capped parameter grid marks the run truncated - so a green result is never mistaken for exhaustive.
 
 ## Maturity scoring
 
