@@ -14,7 +14,7 @@ import { evaluateCondition } from '$features/behavior-model/domain/services/Rule
 import { buildInitialSnapshot } from '$features/behavior-model/domain/services/StateSnapshot';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
 import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
-import { parameterCombinations } from './ParameterDomains';
+import { DEFAULT_MAX_COMBOS, parameterCombinations } from './ParameterDomains';
 import { simulate } from './SimulatorEngine';
 
 /**
@@ -167,7 +167,11 @@ export const exploreStateSpace = (
   for (const surface of feature.surfaces) {
     for (const action of surface.actions) {
       if (isEvolution(action)) continue;
-      const domains = parameterCombinations(action, feature.valueSets);
+      const domains = parameterCombinations(action, feature.valueSets, DEFAULT_MAX_COMBOS, {
+        surfaceRules: surface.rules,
+        surfaceInvariants: surface.invariants,
+        featureInvariants: feature.featureInvariants
+      });
       if (!domains.explorable) {
         skippedActions.push({
           surfaceId: String(surface.id),
