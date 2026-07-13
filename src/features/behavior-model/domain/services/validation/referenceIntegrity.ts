@@ -224,6 +224,32 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     return new Set([...own, ...shared, String(CLOCK_NOW_PATH)]);
   };
 
+  // Reverse index: which surface(s) DECLARE a given path in their own
+  // stateDefinitions (ignoring sharing). Lets an out-of-scope-path error name
+  // the surface that already declares it and the exact sharedWith fix, instead
+  // of the terse "not declared here" that leaves the author guessing.
+  const declaringSurfacesByPath = new Map<string, string[]>();
+  for (const s of feature.surfaces) {
+    for (const d of s.stateDefinitions) {
+      const key = String(d.path);
+      const owners = declaringSurfacesByPath.get(key) ?? [];
+      owners.push(String(s.id));
+      declaringSurfacesByPath.set(key, owners);
+    }
+  }
+  // When `path` is declared on ANOTHER surface but not shared into `surfaceId`,
+  // returns the prescriptive fix (names the declaring surface + the sharedWith
+  // edit). Returns undefined when it's declared nowhere else, so callers keep
+  // their existing "declared nowhere" wording for that genuinely-undeclared case.
+  const sharedWithFix = (path: string, surfaceId: string): string | undefined => {
+    const declaredElsewhere = (declaringSurfacesByPath.get(path) ?? []).filter(
+      (id) => id !== surfaceId
+    );
+    if (declaredElsewhere.length === 0) return undefined;
+    const owner = declaredElsewhere[0]!;
+    return `is declared on surface "${owner}" but not shared into "${surfaceId}". Add "${surfaceId}" to that StateDefinition's sharedWith.`;
+  };
+
   const KNOWN_EFFECT_TYPES = new Set([
     'set_state',
     'show_message',
@@ -365,8 +391,11 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     const checkTargetPath = (verb: string): void => {
       const path = effect.path as string | undefined;
       if (typeof path === 'string' && !paths.has(path)) {
+        const fix = sharedWithFix(path, surfaceId);
         errors.push(
-          `${label} effect ${effect.id}: ${verb} path "${path}" is not declared on surface ${surfaceId} (or shared into it).`
+          fix
+            ? `${label} effect ${effect.id}: ${verb} path "${path}" ${fix}`
+            : `${label} effect ${effect.id}: ${verb} path "${path}" is not declared on surface ${surfaceId} (or shared into it).`
         );
       }
       if (typeof path === 'string' && derivedPaths.has(path)) {
@@ -578,8 +607,12 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       // this surface — otherwise the write lands nowhere the rules can read.
       for (const param of cap.parameters) {
         if (param.bindToStatePath !== undefined && !paths.has(String(param.bindToStatePath))) {
+          const bound = String(param.bindToStatePath);
+          const fix = sharedWithFix(bound, String(surface.id));
           errors.push(
-            `Action ${cap.id} on surface ${surface.id}: parameter "${param.name}" bindToStatePath "${param.bindToStatePath}" is not a declared state path on this surface (or shared into it).`
+            fix
+              ? `Action ${cap.id} on surface ${surface.id}: parameter "${param.name}" bindToStatePath "${bound}" ${fix}`
+              : `Action ${cap.id} on surface ${surface.id}: parameter "${param.name}" bindToStatePath "${bound}" is not a declared state path on this surface (or shared into it).`
           );
         }
       }

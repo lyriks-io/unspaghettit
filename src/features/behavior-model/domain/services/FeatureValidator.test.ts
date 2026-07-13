@@ -1028,6 +1028,103 @@ describe('reference-integrity hardening (params, bindToStatePath, scenarios)', (
     }
   });
 
+  // A minimal, self-contained two-surface feature: surface "srf-a" declares
+  // `order.total` (unshared), surface "srf-b" references it. Exercises the
+  // prescriptive sharedWith message that names the declaring surface.
+  const crossSurfaceFeature = (b: { effects?: unknown[]; params?: unknown[] }): Feature => ({
+    id: asFeatureId('cross'),
+    name: 'Cross',
+    surfaces: [
+      {
+        id: asSurfaceId('srf-a'),
+        name: 'Triage',
+        type: 'screen',
+        description: 'Declares the total.',
+        stateDefinitions: [
+          {
+            id: asStateDefinitionId('a-total'),
+            path: asStatePath('order.total'),
+            type: 'number',
+            defaultValue: 0,
+            description: 'Order total.'
+          }
+        ],
+        rules: [],
+        invariants: [],
+        transitions: [],
+        actions: []
+      },
+      {
+        id: asSurfaceId('srf-b'),
+        name: 'Refund',
+        type: 'screen',
+        description: 'References the total without sharing it in.',
+        stateDefinitions: [],
+        rules: [],
+        invariants: [],
+        transitions: [],
+        actions: [
+          {
+            id: asActionId('b-act'),
+            name: 'Approve',
+            intent: 'Approve the refund.',
+            parameters: (b.params ?? []) as never,
+            requiredStates: [],
+            rules: [],
+            invariants: [],
+            effects: (b.effects ?? []) as never,
+            emittedEvents: [],
+            transitions: []
+          }
+        ]
+      }
+    ] as never,
+    personas: [],
+    resources: [],
+    entities: [],
+    createdAt: '2026-07-13T00:00:00.000Z',
+    updatedAt: '2026-07-13T00:00:00.000Z'
+  });
+
+  it('names the declaring surface and sharedWith when an effect writes an unshared path', () => {
+    const feat = crossSurfaceFeature({
+      effects: [
+        { id: asEffectId('b-set'), type: 'set_state', path: asStatePath('order.total'), value: 1 }
+      ]
+    });
+    const result = validateReferenceIntegrity(feat);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      const msg = result.errors.find((e) => e.includes('order.total') && /sharedWith/.test(e));
+      expect(msg).toBeDefined();
+      expect(msg).toContain('srf-a');
+      expect(msg).toContain('srf-b');
+    }
+  });
+
+  it('names the declaring surface and sharedWith for an unshared bindToStatePath', () => {
+    const feat = crossSurfaceFeature({
+      params: [
+        {
+          id: asParameterId('b-amount'),
+          name: 'amount',
+          type: 'number',
+          required: false,
+          defaultValue: 0,
+          description: 'Refund amount.',
+          bindToStatePath: asStatePath('order.total')
+        }
+      ]
+    });
+    const result = validateReferenceIntegrity(feat);
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      const msg = result.errors.find((e) => /bindToStatePath/.test(e) && /sharedWith/.test(e));
+      expect(msg).toBeDefined();
+      expect(msg).toContain('srf-a');
+    }
+  });
+
   const scenario = (over: Record<string, unknown>) => ({
     id: asScenarioId('inj-sc'),
     name: 'A scenario',
