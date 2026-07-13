@@ -853,6 +853,81 @@ describe('MCP server', () => {
     await server.close();
   });
 
+  it('apply_batch dryRun returns a commitToken that commits the batch without resending ops', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Commit token', description: 'Validates dry-run commit tokens.' }
+      })
+    ) as { id: string };
+
+    const dry = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          dryRun: true,
+          operations: [
+            {
+              kind: 'add_surface',
+              ref: 'screen',
+              name: 'Screen',
+              type: 'screen',
+              description: 'Screen used by the commit-token test.'
+            },
+            {
+              kind: 'add_action',
+              ref: 'go',
+              surfaceRef: 'screen',
+              name: 'Go',
+              intent: 'Run the action.'
+            }
+          ]
+        }
+      })
+    ) as { ok: boolean; dryRun: true; commitToken?: string };
+    expect(dry.ok).toBe(true);
+    expect(typeof dry.commitToken).toBe('string');
+    // The dry-run saved nothing.
+    expect((await repo.get(created.id as never))?.surfaces).toHaveLength(0);
+
+    // Commit with ONLY the token — no operations, no featureId resent.
+    const committed = parseTextContent(
+      await client.callTool({ name: 'apply_batch', arguments: { commit: dry.commitToken } })
+    ) as { ok: boolean; committed?: boolean; appliedCount: number };
+    expect(committed.ok).toBe(true);
+    expect(committed.committed).toBe(true);
+    expect(committed.appliedCount).toBe(2);
+
+    const persisted = await repo.get(created.id as never);
+    expect(persisted?.surfaces).toHaveLength(1);
+    expect(persisted?.surfaces[0]?.actions).toHaveLength(1);
+
+    // Tokens are single-use: replaying the same token now fails.
+    const replay = await client.callTool({
+      name: 'apply_batch',
+      arguments: { commit: dry.commitToken }
+    });
+    const rr = replay as { isError: boolean; content: { text: string }[] };
+    expect(rr.isError).toBe(true);
+    expect(rr.content[0]?.text).toMatch(/dryRun/);
+    await server.close();
+  });
+
+  it('apply_batch rejects a bogus commit token with a re-run-the-dry-run hint', async () => {
+    const { client, server } = await setup();
+    const result = await client.callTool({
+      name: 'apply_batch',
+      arguments: { commit: 'not-a-real-token' }
+    });
+    const r = result as { isError: boolean; content: { text: string }[] };
+    expect(r.isError).toBe(true);
+    expect(r.content[0]?.text).toMatch(/dryRun/);
+    expect(r.content[0]?.text).toMatch(/Unknown or expired/i);
+    await server.close();
+  });
+
   it('apply_batch dryRun reports typed default suggestions without saving', async () => {
     const { client, server, repo } = await setup();
     const created = parseTextContent(
