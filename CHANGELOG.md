@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-07-15
+
+Two engine fixes found by dogfooding through the MCP: a condition-less invariant can no longer silently evict a whole feature on the next load, and the digest's "Where you can go" stops duplicating and mislabelling navigation. No breaking changes.
+
 ### Fixed
 
 - **A condition-less invariant can no longer make a whole feature vanish.** `apply_batch`'s invariant ops (`add_surface_invariant` and the action / feature variants) accepted an invariant with a `description` but no `condition` and wrote it to disk; the standalone `add_*_invariant` tools already required one, so the write path and the read path disagreed. On the next cold load the expression normalizer walked that missing condition, threw, and the loader silently dropped the ENTIRE feature: `get_feature` returned "not found", the feature disappeared from `list_features` with no error, and a restart did not recover it. Three defenses now close this. The structural validator rejects a condition-less invariant at write time, so the batch path fails fast like the standalone tools and the poison never reaches disk. The expression normalizer tolerates a missing or malformed condition instead of crashing, so an already-poisoned snapshot loads and becomes fixable rather than staying evicted. And the loader warns to stderr when it skips an unreadable snapshot, so a dropped file is diagnosable instead of a feature silently going missing.
