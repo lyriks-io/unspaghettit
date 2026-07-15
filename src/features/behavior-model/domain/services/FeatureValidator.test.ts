@@ -13,6 +13,7 @@ import {
   asEntityId,
   asEventDefinitionId,
   asFeatureId,
+  asInvariantId,
   asParameterId,
   asPersonaId,
   asReachabilityGoalId,
@@ -149,6 +150,57 @@ describe('validateFeature', () => {
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.errors.some((e) => e.includes('BadName.X'))).toBe(true);
+    }
+  });
+
+  it('rejects a condition-less invariant at every scope (the apply_batch vanish bug)', () => {
+    // A condition-less invariant that reached disk via the lax apply_batch op
+    // path crashed importFeatureFromJson's expression normalizer on the next
+    // cold read, silently evicting the WHOLE feature from list_features. The
+    // structural validator must reject it on write so it can never persist.
+    const brokenInvariant = {
+      id: asInvariantId('test-no-cond'),
+      name: 'Title is non-empty',
+      message: 'A task always has a non-empty title.',
+      description: 'Une tâche a toujours un titre non vide.'
+      // no `condition`
+    } as never;
+
+    const surfaceScoped: Feature = {
+      ...storefrontFeature,
+      surfaces: storefrontFeature.surfaces.map((s, i) =>
+        i === 0 ? { ...s, invariants: [...s.invariants, brokenInvariant] } : s
+      )
+    };
+    const surfaceResult = validateFeature(surfaceScoped);
+    expect(surfaceResult.valid).toBe(false);
+    if (!surfaceResult.valid) {
+      expect(surfaceResult.errors.some((e) => e.includes('missing a condition'))).toBe(true);
+    }
+
+    const actionScoped: Feature = {
+      ...storefrontFeature,
+      surfaces: storefrontFeature.surfaces.map((s, i) =>
+        i === 0
+          ? {
+              ...s,
+              actions: s.actions.map((c, j) =>
+                j === 0 ? { ...c, invariants: [...c.invariants, brokenInvariant] } : c
+              )
+            }
+          : s
+      )
+    };
+    expect(validateFeature(actionScoped).valid).toBe(false);
+
+    const featureScoped: Feature = {
+      ...storefrontFeature,
+      featureInvariants: [brokenInvariant]
+    };
+    const featureResult = validateFeature(featureScoped);
+    expect(featureResult.valid).toBe(false);
+    if (!featureResult.valid) {
+      expect(featureResult.errors.some((e) => e.includes('missing a condition'))).toBe(true);
     }
   });
 

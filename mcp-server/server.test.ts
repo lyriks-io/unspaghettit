@@ -768,6 +768,68 @@ describe('MCP server', () => {
     await server.close();
   });
 
+  it('apply_batch rejects a condition-less surface invariant instead of persisting it (the vanish bug)', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: {
+          name: 'Vanish repro',
+          description: 'A condition-less invariant must never reach disk.'
+        }
+      })
+    ) as { id: string };
+
+    const surfaceAck = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            {
+              kind: 'add_surface',
+              ref: 'tasks',
+              name: 'Tasks',
+              type: 'screen',
+              description: 'Where tasks are managed.'
+            }
+          ]
+        }
+      })
+    ) as { refs: Record<string, string> };
+    const surfaceId = surfaceAck.refs.tasks!;
+
+    // The exact malformed op from the bug report: a description but no
+    // condition (nor name / message). It used to persist as { id, description }
+    // and crash the loader on the next cold read, silently evicting the whole
+    // feature. It must now be rejected at write time.
+    const result = await client.callTool({
+      name: 'apply_batch',
+      arguments: {
+        featureId: created.id,
+        operations: [
+          {
+            kind: 'add_surface_invariant',
+            surfaceId,
+            description: 'A task always has a non-empty title.'
+          }
+        ]
+      }
+    });
+    const r = parseTextContent(result) as {
+      ok: boolean;
+      validation?: { valid: boolean; errors?: string[] };
+    };
+    expect(r.ok).toBe(false);
+    expect(r.validation?.errors?.some((e) => e.includes('missing a condition'))).toBe(true);
+
+    // The poison never reached disk: the surface has no invariants and the
+    // feature still resolves on a fresh read.
+    const persisted = await repo.get(created.id as never);
+    expect(persisted?.surfaces[0]?.invariants ?? []).toHaveLength(0);
+    await server.close();
+  });
+
   it('apply_batch resolves sharedWith entries through refs created earlier in the batch', async () => {
     const { client, server, repo } = await setup();
     const created = parseTextContent(

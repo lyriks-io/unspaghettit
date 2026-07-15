@@ -126,9 +126,15 @@ export class JsonFolderFeatureRepository implements FeatureRepository {
           slug: file.slice(0, -FEATURE_SUFFIX.length),
           feature
         });
-      } catch {
-        // Malformed snapshots are skipped so one bad file can't kill the MCP;
-        // a future doctor tool will surface them.
+      } catch (error) {
+        // Malformed snapshots are skipped so one bad file can't kill the MCP.
+        // Warn to stderr (stdout is the JSON-RPC channel and must stay clean)
+        // so the drop is diagnosable — a silently-skipped file reads as data
+        // loss to authors: the feature just vanishes from list_features /
+        // get_feature with no trace. A future doctor tool will surface these.
+        console.warn(
+          `[unspa] skipped unreadable feature snapshot ${path}: ${(error as Error).message}`
+        );
       }
     }
     return out;

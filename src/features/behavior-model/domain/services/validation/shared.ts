@@ -56,3 +56,26 @@ export const requireDescription = (
 ): void => {
   if (!hasDescription(value)) errors.push(`${label} is missing a description.`);
 };
+
+/**
+ * Reject an invariant (or any condition-bearing element) whose `condition` is
+ * missing. A condition is the property that must hold true — an invariant
+ * without one is malformed. Beyond being meaningless, it is actively
+ * dangerous: `normalizeFeatureExpressions` walks `condition` on every read, so
+ * a condition-less invariant that reached disk (the lax `apply_batch` op path
+ * used to allow this) crashes `importFeatureFromJson` and silently evicts the
+ * WHOLE feature from the index on the next cold load. Catch it at write time so
+ * the poison can never be persisted. Mirrors the reachability-goal check in
+ * `referenceIntegrity`.
+ */
+export const requireCondition = (
+  errors: string[],
+  label: string,
+  value: { readonly condition?: unknown } | undefined
+): void => {
+  if (value?.condition == null) {
+    errors.push(
+      `${label} is missing a condition (the { left, operator, right? }, composite, or quantifier that must hold true).`
+    );
+  }
+};

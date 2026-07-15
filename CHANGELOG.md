@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+
+- **A condition-less invariant can no longer make a whole feature vanish.** `apply_batch`'s invariant ops (`add_surface_invariant` and the action / feature variants) accepted an invariant with a `description` but no `condition` and wrote it to disk; the standalone `add_*_invariant` tools already required one, so the write path and the read path disagreed. On the next cold load the expression normalizer walked that missing condition, threw, and the loader silently dropped the ENTIRE feature: `get_feature` returned "not found", the feature disappeared from `list_features` with no error, and a restart did not recover it. Three defenses now close this. The structural validator rejects a condition-less invariant at write time, so the batch path fails fast like the standalone tools and the poison never reaches disk. The expression normalizer tolerates a missing or malformed condition instead of crashing, so an already-poisoned snapshot loads and becomes fixable rather than staying evicted. And the loader warns to stderr when it skips an unreadable snapshot, so a dropped file is diagnosable instead of a feature silently going missing.
+- **The digest's "Where you can go" no longer duplicates or mislabels navigation.** A surface reachable more than one way (a declared transition plus one or more actions whose `transition_surface` effect opens the same surface) rendered one bullet per route, so N routes to a destination read as N destinations; an edge whose target did not resolve to a surface rendered as a bare "... to another surface". `get_digest`'s navigation section now collapses every route from a surface to a given destination into a single entry named on both ends, and drops any edge whose target is not a surface in the feature (such as an action-to-action sequence). Each place you can go is listed once.
+
 ## [0.10.0] - 2026-07-13
 
 Five additive fixes found by dogfooding the engine through its own MCP: model checking now exercises the values a rule gates on, pure-UI surfaces stop dragging maturity, scope errors name the exact fix, and authoring a batch is cheaper to commit and easier to discover. No breaking changes.

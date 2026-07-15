@@ -6,6 +6,7 @@ import { isStateValueAssignableTo } from '../../value-objects/StateValue';
 import {
   categoryHint,
   defaultValueHint,
+  requireCondition,
   requireDescription,
   VALID_RULE_CATEGORIES,
   type ValidationResult
@@ -196,6 +197,7 @@ export const validateFeature = (feature: Feature): ValidationResult => {
       }
       invariantIds.add(inv.id);
       requireDescription(errors, `Surface invariant ${inv.id} in surface ${surface.id}`, inv);
+      requireCondition(errors, `Surface invariant ${inv.id} in surface ${surface.id}`, inv);
     }
 
     const transitionIds = new Set<string>();
@@ -310,6 +312,7 @@ export const validateFeature = (feature: Feature): ValidationResult => {
         }
         capInvariantIds.add(inv.id);
         requireDescription(errors, `Invariant ${inv.id} in action ${cap.id}`, inv);
+        requireCondition(errors, `Invariant ${inv.id} in action ${cap.id}`, inv);
       }
 
       const scenarioIds = new Set<string>();
@@ -397,6 +400,19 @@ export const validateFeature = (feature: Feature): ValidationResult => {
         }
       }
     }
+  }
+
+  // Feature-level (cross-surface) invariants. Like their surface/action
+  // siblings, a condition is mandatory — a condition-less one crashes the
+  // expression normalizer on the next cold read and silently evicts the whole
+  // feature (the apply_batch write hole). Guard the id-uniqueness too.
+  const featureInvariantIds = new Set<string>();
+  for (const inv of feature.featureInvariants ?? []) {
+    if (featureInvariantIds.has(String(inv.id))) {
+      errors.push(`Duplicate feature invariant id "${inv.id}"`);
+    }
+    featureInvariantIds.add(String(inv.id));
+    requireCondition(errors, `Feature invariant ${inv.id}`, inv);
   }
 
   const resourceIds = new Set<string>();

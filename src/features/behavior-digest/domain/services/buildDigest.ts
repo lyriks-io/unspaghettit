@@ -183,30 +183,46 @@ const navigationSection = (
   featureId: string
 ): DigestSection | null => {
   const lines: DigestLine[] = [];
-  const nameOf = (id: string): string => surfaceNameById.get(id) ?? 'another surface';
 
   for (const surface of surfaces) {
     const from = surface.name;
     const surfaceId = String(surface.id);
-    for (const transition of surface.transitions) {
+    // Collapse every route from THIS surface to a given target surface into one
+    // "where you can go" entry: a declared transition and every action whose
+    // transition_surface effect opens the same surface are the same destination,
+    // not N places. Declared transitions are added first, so their label wins
+    // the deep-link when both exist.
+    const seenTargets = new Set<string>();
+    const add = (
+      target: string,
+      sourceElementId: string,
+      sourceElementType: NonNullable<DigestLine['sourceElementType']>,
+      label: string | undefined
+    ): void => {
+      // Only real surface-to-surface navigation belongs here. A target that
+      // does not resolve to a surface in this feature — a dangling id, or a
+      // non-navigation edge whose target is not a surface at all — is not a
+      // place the reader can go, so drop it rather than render a mislabelled
+      // "… to another surface" line (the old fallback produced N of those).
+      const targetName = surfaceNameById.get(target);
+      if (targetName === undefined || seenTargets.has(target)) return;
+      seenTargets.add(target);
       lines.push({
-        text: `${from} to ${nameOf(String(transition.target))}${transition.label ? ` (${transition.label})` : ''}`,
-        sourceElementId: String(transition.id),
-        sourceElementType: 'transition',
+        text: `${from} to ${targetName}${label ? ` (${label})` : ''}`,
+        sourceElementId,
+        sourceElementType,
         sourceFeatureId: featureId,
         sourceSurfaceId: surfaceId
       });
+    };
+
+    for (const transition of surface.transitions) {
+      add(String(transition.target), String(transition.id), 'transition', transition.label);
     }
     for (const action of committedActions(surface.actions)) {
       for (const effect of action.effects) {
         if (effect.type === 'transition_surface') {
-          lines.push({
-            text: `${from} to ${nameOf(String(effect.target))} (${action.name})`,
-            sourceElementId: String(action.id),
-            sourceElementType: 'action',
-            sourceFeatureId: featureId,
-            sourceSurfaceId: surfaceId
-          });
+          add(String(effect.target), String(action.id), 'action', action.name);
         }
       }
     }

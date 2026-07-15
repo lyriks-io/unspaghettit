@@ -86,6 +86,33 @@ describe('FeatureJson', () => {
     });
   });
 
+  it('survives a condition-less invariant instead of evicting the whole feature', () => {
+    // Regression: a condition-less invariant (written by a lax apply_batch op)
+    // used to crash importFeatureFromJson in the expression normalizer, so the
+    // feature silently vanished from list_features on the next cold load. Import
+    // must not throw; the malformed invariant is preserved for the validator to
+    // flag, not the whole feature dropped.
+    const withBadInvariant: Feature = {
+      ...sample,
+      surfaces: [
+        {
+          ...sample.surfaces[0]!,
+          invariants: [
+            {
+              id: 'bad' as never,
+              name: 'Title is non-empty',
+              message: 'A task always has a non-empty title.'
+              // no `condition`
+            } as never
+          ]
+        }
+      ]
+    };
+    const json = exportFeatureToJson(withBadInvariant);
+    expect(() => importFeatureFromJson(json)).not.toThrow();
+    expect(importFeatureFromJson(json).surfaces[0]!.invariants[0]!.id).toBe('bad');
+  });
+
   it('rejects payloads without the unspaghettit format flag', () => {
     expect(() => importFeatureFromJson('{}')).toThrow(/format/);
   });

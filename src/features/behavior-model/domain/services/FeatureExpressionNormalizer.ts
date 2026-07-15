@@ -76,6 +76,15 @@ const normalizeInvariant = (invariant: Invariant): Invariant => ({
 // Composite conditions normalize each inner condition recursively. Leaf
 // conditions normalize the Expression slot on `.right` as before.
 const normalizeCondition = (condition: RuleCondition): RuleCondition => {
+  // Defensive totality: a malformed snapshot can carry an invariant/rule whose
+  // `condition` is missing (undefined/null) or a non-object — most commonly a
+  // condition-less invariant that the lax apply_batch op path wrote to disk.
+  // Without this guard the `condition.right` access below throws, and because
+  // this normalizer runs inside `importFeatureFromJson`, that TypeError crashes
+  // the whole read and the feature silently vanishes from the index. Pass such a
+  // value through untouched; the validator (requireCondition) surfaces it as a
+  // fixable error instead of the feature disappearing.
+  if (condition === null || typeof condition !== 'object') return condition;
   if (isCompositeCondition(condition)) {
     if (condition.kind === 'not') {
       return { kind: 'not', condition: normalizeCondition(condition.condition) };

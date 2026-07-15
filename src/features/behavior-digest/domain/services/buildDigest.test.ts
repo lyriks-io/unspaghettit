@@ -267,4 +267,65 @@ describe('buildDigest', () => {
     const spec = buildDigest({ ...source, scope: { kind: 'feature', featureId: 'f-digest' } });
     expect(spec.detailLevel).toBe('standard');
   });
+
+  it('collapses a declared transition and an action effect to the same surface into one line', () => {
+    // exportPanel reaches `panel` two ways — its declared "Close" transition and
+    // the Close Export action's transition_surface effect — but that is one
+    // destination, not two. The declared transition, added first, wins the label.
+    const spec = buildDigest({ ...source, scope: { kind: 'feature', featureId: 'f-digest' }, detailLevel: 'full' });
+    const navigation = spec.sections.find((s) => s.kind === 'navigation');
+    const exportToPanel = navigation?.lines.filter((l) =>
+      l.text.startsWith('Digest Export to Digest Panel')
+    );
+    expect(exportToPanel).toHaveLength(1);
+    expect(exportToPanel?.[0]?.text).toBe('Digest Export to Digest Panel (Close)');
+    expect(exportToPanel?.[0]?.sourceElementType).toBe('transition');
+  });
+
+  it('dedupes routes to one destination and drops non-surface transition targets', () => {
+    // Reproduces the bug report: a surface with several transitions — some real
+    // surface links sharing one target, some action→action "sequence" edges whose
+    // target is an action, not a surface. The section must name the destination
+    // once, never emit N mislabelled "… to another surface" lines.
+    const tasks: Surface = {
+      id: asSurfaceId('srf-journey-tasks'),
+      name: 'Manage tasks',
+      type: 'screen',
+      description: 'Create, assign, and advance tasks.',
+      stateDefinitions: [],
+      actions: [],
+      rules: [],
+      invariants: [],
+      transitions: [
+        // action→action sequence: target is an action id, not a surface → dropped.
+        { id: asTransitionId('seq-step-create'), target: asSurfaceId('act-step-create') },
+        // three real navigations to the SAME surface → one deduped, named line.
+        { id: asTransitionId('lnk-step-create'), target: asSurfaceId('srf-screen-scr-tasks') },
+        { id: asTransitionId('lnk-step-assign'), target: asSurfaceId('srf-screen-scr-tasks') },
+        { id: asTransitionId('lnk-step-advance'), target: asSurfaceId('srf-screen-scr-tasks') }
+      ]
+    };
+    const screen: Surface = {
+      id: asSurfaceId('srf-screen-scr-tasks'),
+      name: 'Tasks',
+      type: 'screen',
+      description: 'The task board.',
+      stateDefinitions: [],
+      actions: [],
+      rules: [],
+      invariants: [],
+      transitions: []
+    };
+    const feat: Feature = { ...feature, id: asFeatureId('f-tasks'), surfaces: [tasks, screen] };
+
+    const spec = buildDigest({
+      features: [feat],
+      scope: { kind: 'feature', featureId: 'f-tasks' },
+      detailLevel: 'full'
+    });
+    const navigation = spec.sections.find((s) => s.kind === 'navigation');
+    expect(navigation?.lines).toHaveLength(1);
+    expect(navigation?.lines[0]?.text).toBe('Manage tasks to Tasks');
+    expect(navigation?.lines.every((l) => !l.text.includes('another surface'))).toBe(true);
+  });
 });
