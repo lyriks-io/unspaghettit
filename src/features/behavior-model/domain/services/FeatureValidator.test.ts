@@ -805,6 +805,136 @@ describe('validateReferenceIntegrity', () => {
     expect(introducedValidationErrors(stored, edited)).toEqual([]);
   });
 
+  // An enum names the CLOSED set of values a path may hold. That promise was only
+  // enforced on defaultValue; the values rules and effects actually push through
+  // the path went unchecked. This is the shape of a real defect: a plan enum of
+  // [free, premium] whose upgrade action writes "family" leaves every
+  // `plan == "premium"` gate silently denying a customer who paid MORE.
+  const planFeature = (over: {
+    enumValues?: string[];
+    effectValue?: string;
+    conditionRight?: string;
+  }): Feature => {
+    const s0 = storefrontFeature.surfaces[0];
+    return {
+      ...storefrontFeature,
+      surfaces: storefrontFeature.surfaces.map((s, i) =>
+        i === 0
+          ? {
+              ...s,
+              stateDefinitions: [
+                ...s.stateDefinitions,
+                {
+                  id: asStateDefinitionId('sd-plan'),
+                  path: asStatePath('user.plan'),
+                  type: 'enum',
+                  enumValues: over.enumValues ?? ['free', 'premium'],
+                  defaultValue: 'free',
+                  description: 'Entitlement tier.'
+                }
+              ],
+              actions: s0.actions.map((c, j) =>
+                j === 0
+                  ? {
+                      ...c,
+                      effects: [
+                        ...c.effects,
+                        {
+                          id: asEffectId('eff-upgrade'),
+                          type: 'set_state',
+                          path: asStatePath('user.plan'),
+                          value: over.effectValue ?? 'premium',
+                          description: 'Activate the plan.'
+                        }
+                      ],
+                      rules: [
+                        ...c.rules,
+                        {
+                          id: asRuleId('rule-gate'),
+                          category: 'billing_quota',
+                          description: 'Offline downloads require Premium.',
+                          condition: {
+                            left: asStatePath('user.plan'),
+                            operator: 'equals',
+                            right: over.conditionRight ?? 'premium'
+                          },
+                          effect: {
+                            id: asEffectId('eff-gate'),
+                            type: 'block_action',
+                            reason: 'Premium only.',
+                            description: 'Block.'
+                          }
+                        }
+                      ]
+                    }
+                  : c
+              )
+            }
+          : s
+      )
+    } as unknown as Feature;
+  };
+
+  it('flags a set_state that writes a value outside the enum domain', () => {
+    const result = validateReferenceIntegrity(planFeature({ effectValue: 'family' }));
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(
+        result.errors.some((e) =>
+          /set_state writes "family" is not one of the values "user\.plan" can hold \("free", "premium"\)/.test(e)
+        )
+      ).toBe(true);
+    }
+  });
+
+  it('flags a condition comparing against a value the path can never hold', () => {
+    const result = validateReferenceIntegrity(planFeature({ conditionRight: 'familly' }));
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(
+        result.errors.some((e) => /condition compares against "familly" is not one of/.test(e))
+      ).toBe(true);
+    }
+  });
+
+  it('accepts writes and comparisons inside the enum domain', () => {
+    expect(
+      validateReferenceIntegrity(
+        planFeature({ enumValues: ['free', 'premium', 'family'], effectValue: 'family', conditionRight: 'family' })
+      ).valid
+    ).toBe(true);
+  });
+
+  it('leaves non-enum paths and Expression values alone', () => {
+    // A string path with no enum declaration has no domain to violate, and an
+    // Expression resolves at run time so its value isn't knowable here.
+    const withExpr = planFeature({});
+    const s0 = withExpr.surfaces[0];
+    const exprFeature = {
+      ...withExpr,
+      surfaces: withExpr.surfaces.map((s, i) =>
+        i === 0
+          ? {
+              ...s,
+              actions: s0.actions.map((c, j) =>
+                j === 0
+                  ? {
+                      ...c,
+                      effects: c.effects.map((e) =>
+                        e.id === 'eff-upgrade'
+                          ? { ...e, value: { kind: 'state', path: asStatePath('user.plan') } }
+                          : e
+                      )
+                    }
+                  : c
+              )
+            }
+          : s
+      )
+    } as unknown as Feature;
+    expect(validateReferenceIntegrity(exprFeature).valid).toBe(true);
+  });
+
   it('flags an Expression on the right side that references an undeclared path', () => {
     const broken: Feature = {
       ...storefrontFeature,
