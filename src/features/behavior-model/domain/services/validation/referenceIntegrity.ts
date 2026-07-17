@@ -1,6 +1,7 @@
 import type { Feature } from '../../entities/Feature';
 import type { Expression } from '../../value-objects/Expression';
 import { isExpression } from '../../value-objects/Expression';
+import { ALL_OPERATORS, operatorRequiresRightOperand } from '../../value-objects/Operator';
 import { CLOCK_NOW_PATH } from '../../value-objects/SimulationClock';
 import {
   flattenLeafConditions,
@@ -466,6 +467,72 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     }
   };
 
+  /**
+   * The shape of a leaf comparison itself, independent of whether the paths it
+   * names resolve. `apply_batch` takes each op as an untyped bag, so the zod
+   * schemas the granular tools carry never run on it — a leaf can reach here
+   * with the operator under the wrong key, or naming an operator that does not
+   * exist, and every downstream consumer then reads `operator: undefined` and
+   * silently treats the comparison as never firing. That is a DEAD rule wearing
+   * a valid rule's clothes: `dry_run` reports `valid:true`, the batch commits,
+   * and the guard it was supposed to enforce simply is not there.
+   *
+   * The write gate is diff-aware (see introducedValidationErrors), so flagging
+   * these does not strand features that already store a malformed leaf: the
+   * same error appears in the baseline and the write still goes through. Only
+   * NEWLY authored breakage is rejected.
+   */
+  const checkLeafShape = (leaf: LeafRuleCondition, label: string): void => {
+    const known = new Set(['left', 'operator', 'right']);
+    const stray = Object.keys(leaf).filter((k) => !known.has(k));
+    if (stray.length > 0) {
+      // Name the likely intent rather than just the offending key: every one of
+      // these is an author reaching for a neighbouring vocabulary (the builder's
+      // {path, op, expected}, or a scenario assertion's {path, operator, value}).
+      const hint = stray.includes('op')
+        ? ' Did you mean "operator"? ("op" is the builder\'s visibility vocabulary, not the kernel\'s.)'
+        : stray.includes('value') || stray.includes('expected')
+          ? ' Did you mean "right"?'
+          : '';
+      errors.push(
+        `${label}: condition leaf has unknown key(s) ${stray.map((k) => `"${k}"`).join(', ')}; a leaf is { left, operator, right? }.${hint}`
+      );
+    }
+    if (!ALL_OPERATORS.includes(leaf.operator)) {
+      errors.push(
+        `${label}: condition.operator ${JSON.stringify(leaf.operator)} is not a known operator. Valid: ${ALL_OPERATORS.join(', ')}.`
+      );
+      return; // the arity check below is meaningless without a real operator
+    }
+    if (operatorRequiresRightOperand(leaf.operator) && leaf.right === undefined) {
+      errors.push(
+        `${label}: condition.operator "${leaf.operator}" needs a right operand. Use is_true/is_false/exists/does_not_exist for the unary checks.`
+      );
+    }
+  };
+
+  /**
+   * An Invariant is { name, condition, message } — its `condition` is the thing
+   * that must ALWAYS hold. Authors reaching for an implication routinely invent
+   * a second field for the consequent (`mustHold`, `then`, `implies`), which is
+   * silently dropped: the invariant collapses to "the antecedent must always be
+   * true" — the exact inversion of the intent, and typically false by default,
+   * so it fires on data that is perfectly legal. Name the real spelling instead:
+   * `A ⇒ B` is `any: [not(A), B]` (see RuleCondition).
+   */
+  const INVARIANT_CONSEQUENT_KEYS = ['mustHold', 'then', 'implies', 'ensure'];
+  const checkInvariantShape = (inv: unknown, label: string): void => {
+    if (!inv || typeof inv !== 'object') return;
+    const stray = Object.keys(inv).filter((k) =>
+      INVARIANT_CONSEQUENT_KEYS.includes(k)
+    );
+    if (stray.length > 0) {
+      errors.push(
+        `${label}: invariant has no ${stray.map((k) => `"${k}"`).join('/')} field — an invariant is { name, condition, message }, and its condition must ALWAYS hold. Writing the consequent separately silently inverts the invariant into "the antecedent must always be true". For "A implies B" use condition: { kind: "any", conditions: [{ kind: "not", condition: A }, B] }.`
+      );
+    }
+  };
+
   const checkCondition = (
     condition: RuleCondition | undefined,
     paths: Set<string>,
@@ -484,6 +551,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     // zero-or-more leaves. Each leaf gets the same left/right path-existence
     // check the flat shape used to get.
     for (const leaf of flattenLeafConditions(condition)) {
+      checkLeafShape(leaf, label);
       if (isParamLeft(leaf.left)) {
         if (!paramNames) {
           errors.push(
@@ -546,6 +614,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     }
 
     for (const inv of surface.invariants) {
+      checkInvariantShape(inv, `Surface ${surface.id} invariant ${inv.id}`);
       checkCondition(
         inv.condition,
         paths,
@@ -628,6 +697,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         );
       }
       for (const inv of cap.invariants) {
+        checkInvariantShape(inv, `Action ${cap.id} invariant ${inv.id}`);
         checkCondition(
           inv.condition,
           paths,
@@ -666,7 +736,13 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     for (const def of surface.stateDefinitions) anySurfacePaths.add(String(def.path));
   }
   for (const inv of feature.featureInvariants ?? []) {
+    checkInvariantShape(inv, `Feature invariant ${inv.id}`);
     for (const leaf of flattenLeafConditions(inv.condition)) {
+      // This loop walks leaves itself rather than going through checkCondition
+      // (feature invariants resolve paths across every surface), so the leaf
+      // shape check has to be repeated here or feature-level invariants would
+      // be the one place a malformed operator still slips through.
+      checkLeafShape(leaf, `Feature invariant ${inv.id}`);
       // Feature invariants have no parameter scope; param-left is invalid here.
       if (isParamLeft(leaf.left)) {
         errors.push(

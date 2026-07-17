@@ -652,6 +652,159 @@ describe('validateReferenceIntegrity', () => {
     }
   });
 
+  // The leaf SHAPE checks. apply_batch hands each op through as an untyped bag,
+  // so a leaf can arrive with the operator under the wrong key or naming an
+  // operator that doesn't exist; every consumer then reads `operator: undefined`
+  // and the comparison silently never fires — a dead rule that dry_run reports
+  // as valid. These cases are the ones observed in the wild.
+  const ruleWith = (condition: unknown): Feature => ({
+    ...storefrontFeature,
+    surfaces: storefrontFeature.surfaces.map((s, i) =>
+      i === 0
+        ? {
+            ...s,
+            rules: [
+              ...s.rules,
+              {
+                id: asRuleId('test-leaf-shape'),
+                category: 'business',
+                condition,
+                effect: {
+                  id: asEffectId('test-leaf-shape-effect'),
+                  type: 'block_action',
+                  reason: 'n/a'
+                }
+              }
+            ]
+          }
+        : s
+    )
+  } as unknown as Feature);
+
+  it('flags a leaf whose operator sits under the builder\'s "op" key', () => {
+    const result = validateReferenceIntegrity(
+      ruleWith({ left: asStatePath('cart.itemCount'), op: 'neq', right: 0 })
+    );
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /unknown key\(s\) "op"/.test(e))).toBe(true);
+      expect(result.errors.some((e) => /Did you mean "operator"\?/.test(e))).toBe(true);
+    }
+  });
+
+  it('flags a leaf naming an operator that does not exist', () => {
+    const result = validateReferenceIntegrity(
+      ruleWith({ left: asStatePath('cart.itemCount'), operator: 'neq', right: 0 })
+    );
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(
+        result.errors.some((e) => /"neq" is not a known operator/.test(e))
+      ).toBe(true);
+    }
+  });
+
+  it('flags a binary operator that was given no right operand', () => {
+    const result = validateReferenceIntegrity(
+      ruleWith({ left: asStatePath('cart.itemCount'), operator: 'equals' })
+    );
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /needs a right operand/.test(e))).toBe(true);
+    }
+  });
+
+  it('accepts unary operators with no right operand', () => {
+    expect(
+      validateReferenceIntegrity(
+        ruleWith({ left: asStatePath('cart.itemCount'), operator: 'exists' })
+      ).valid
+    ).toBe(true);
+  });
+
+  it('checks leaves nested inside composite conditions', () => {
+    const result = validateReferenceIntegrity(
+      ruleWith({
+        kind: 'any',
+        conditions: [
+          { kind: 'not', condition: { left: asStatePath('cart.itemCount'), op: 'eq', right: 0 } },
+          { left: asStatePath('cart.itemCount'), operator: 'equals', right: 1 }
+        ]
+      })
+    );
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.errors.some((e) => /unknown key\(s\) "op"/.test(e))).toBe(true);
+    }
+  });
+
+  // A fabricated consequent field is the worst of these: it is silently dropped,
+  // so "downloaded implies premium" becomes "downloaded must ALWAYS be true" —
+  // an inversion that then fires on perfectly legal data.
+  it('flags an invariant that carries a fabricated consequent field', () => {
+    for (const key of ['mustHold', 'then', 'implies']) {
+      const broken = {
+        ...storefrontFeature,
+        featureInvariants: [
+          {
+            id: asInvariantId(`inv-${key}`),
+            name: 'Implication written the wrong way',
+            message: 'x',
+            description: 'antecedent => consequent',
+            condition: {
+              left: asStatePath('cart.itemCount'),
+              operator: 'greater_than',
+              right: 0
+            },
+            [key]: { left: asStatePath('cart.itemCount'), operator: 'equals', right: 1 }
+          }
+        ]
+      } as unknown as Feature;
+      const result = validateReferenceIntegrity(broken);
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(
+          result.errors.some((e) => new RegExp(`no "${key}" field`).test(e))
+        ).toBe(true);
+        expect(result.errors.some((e) => /kind: "any"/.test(e))).toBe(true);
+      }
+    }
+  });
+
+  it('accepts an implication written the supported way', () => {
+    const good = {
+      ...storefrontFeature,
+      featureInvariants: [
+        {
+          id: asInvariantId('inv-implication'),
+          name: 'Implication',
+          message: 'x',
+          description: 'A implies B',
+          condition: {
+            kind: 'any',
+            conditions: [
+              {
+                kind: 'not',
+                condition: { left: asStatePath('cart.itemCount'), operator: 'greater_than', right: 0 }
+              },
+              { left: asStatePath('cart.itemCount'), operator: 'equals', right: 1 }
+            ]
+          }
+        }
+      ]
+    } as unknown as Feature;
+    expect(validateReferenceIntegrity(good).valid).toBe(true);
+  });
+
+  it('does not strand a feature that already stores a malformed leaf', () => {
+    // The write gate is diff-aware: a pre-existing bad leaf must stay editable
+    // (the error is in the baseline too), or shipping this check would make
+    // every feature authored through the lax path unwritable.
+    const stored = ruleWith({ left: asStatePath('cart.itemCount'), op: 'neq', right: 0 });
+    const edited: Feature = { ...stored, name: `${stored.name} (edited)` };
+    expect(introducedValidationErrors(stored, edited)).toEqual([]);
+  });
+
   it('flags an Expression on the right side that references an undeclared path', () => {
     const broken: Feature = {
       ...storefrontFeature,
