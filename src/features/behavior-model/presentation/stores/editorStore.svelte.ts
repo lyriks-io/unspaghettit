@@ -1,14 +1,14 @@
 import { browser } from '$app/environment';
-import type {
-  ActionId,
-  SurfaceId
-} from '$features/behavior-model/domain/value-objects/ids';
+import type { ActionId, SurfaceId } from '$features/behavior-model/domain/value-objects/ids';
 import type { SurfacePanelTab } from '$features/maturity/domain/MaturityReport';
 import { emit } from '$shared/events/eventBus';
 
 export type TopLevelTab =
   | 'build'
+  | 'states'
+  | 'surface-rules'
   | 'resources'
+  | 'personas'
   | 'data'
   | 'events'
   | 'transitions'

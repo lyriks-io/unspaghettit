@@ -9,13 +9,17 @@
   import { getEffectiveEntities } from '$features/behavior-model/domain/services/EffectiveEntities';
   import { withSharedStateDefinitions } from '$features/behavior-model/domain/services/SharedStateDefinitions';
   import type { SurfacePanelTab } from '$features/maturity/domain/MaturityReport';
+  import ContextSidebar from '$shared/presentation/components/ContextSidebar.svelte';
+  import { useFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import FeatureHeader from './FeatureHeader.svelte';
-  import FeatureHealthStrip from './FeatureHealthStrip.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
   import SurfaceList from './SurfaceList.svelte';
   import SurfacePanel from './SurfacePanel.svelte';
   import SidePanel from '$features/simulator/presentation/components/SidePanel.svelte';
   import ResourcesManager from './ResourcesManager.svelte';
+  import StatesOverview from './StatesOverview.svelte';
+  import SurfaceRulesOverview from './SurfaceRulesOverview.svelte';
+  import PersonasManager from './PersonasManager.svelte';
   import EntityManager from './EntityManager.svelte';
   import EventsManager from './EventsManager.svelte';
   import FeatureInvariantsEditor from './FeatureInvariantsEditor.svelte';
@@ -30,7 +34,10 @@
 
   const VALID_TOP_TABS = new Set([
     'build',
+    'states',
+    'surface-rules',
     'resources',
+    'personas',
     'data',
     'events',
     'transitions',
@@ -53,7 +60,10 @@
 
   type TopTab =
     | 'build'
+    | 'states'
+    | 'surface-rules'
     | 'resources'
+    | 'personas'
     | 'data'
     | 'events'
     | 'transitions'
@@ -63,6 +73,7 @@
   // Top-level tab is now in the editor store so deep-link navigation can
   // jump back to "Build" when fixing an issue from elsewhere.
   const activeTab = $derived<TopTab>(editorStore.topLevelTab);
+  const queueCtx = useFeatureQueueContext();
 
   const selectedSurface = $derived(
     feature.surfaces.find((s) => s.id === editorStore.selectedSurfaceId) ?? null
@@ -105,9 +116,7 @@
     const timers: ReturnType<typeof setTimeout>[] = [];
     // Clear any leftover highlight from a previous navigation so re-searching
     // never leaves two elements glowing at once.
-    document
-      .querySelectorAll('.focus-flash')
-      .forEach((el) => el.classList.remove('focus-flash'));
+    document.querySelectorAll('.focus-flash').forEach((el) => el.classList.remove('focus-flash'));
     const tryFocus = (attempt = 0) => {
       if (cancelled) return;
       const el = document.querySelector(`[data-focus-target="${CSS.escape(target)}"]`);
@@ -206,6 +215,13 @@
 
     untrack(() => {
       const params = new URLSearchParams();
+      // Preserve the iframe shell options while editor navigation updates its
+      // own deep-link parameters.
+      if (page.url.searchParams.get('embed') === '1') {
+        params.set('embed', '1');
+        const embeddedUser = page.url.searchParams.get('user');
+        if (embeddedUser) params.set('user', embeddedUser);
+      }
       if (tab !== 'build') params.set('tab', tab);
       if (surfaceId) params.set('surface', surfaceId);
       if (panel !== 'actions') params.set('panel', panel);
@@ -227,10 +243,19 @@
   const effectiveDataCount = $derived(getEffectiveEntities(feature).length);
   const eventsCount = $derived(buildEventCatalog(feature).length);
   const transitionsCount = $derived(buildTransitionCatalog(feature).length);
+  const statesCount = $derived(
+    feature.surfaces.reduce((count, surface) => count + surface.stateDefinitions.length, 0)
+  );
+  const surfaceRulesCount = $derived(
+    feature.surfaces.reduce((count, surface) => count + surface.rules.length, 0)
+  );
 
   const tabs: ReadonlyArray<{ key: TopTab; label: string; count?: number }> = $derived([
     { key: 'build', label: 'Build', count: feature.surfaces.length },
+    { key: 'states', label: 'States', count: statesCount },
+    { key: 'surface-rules', label: 'Surface rules', count: surfaceRulesCount },
     { key: 'resources', label: 'Resources', count: feature.resources.length },
+    { key: 'personas', label: 'Personas', count: feature.personas.length },
     { key: 'data', label: 'Entity', count: effectiveDataCount },
     { key: 'events', label: 'Events', count: eventsCount },
     { key: 'transitions', label: 'Transitions', count: transitionsCount },
@@ -250,6 +275,12 @@
       count: feature.acceptanceCriteria?.length ?? 0
     }
   ]);
+  const sidebarItems = $derived(tabs.map((tab) => ({ id: tab.key, label: tab.label })));
+  const backHref = $derived(queueCtx.project ? `/projects/${queueCtx.project.id}` : '/features');
+  const backLabel = $derived(
+    queueCtx.project ? `Back to ${queueCtx.project.name}` : 'Back to features'
+  );
+  const sidebarCount = (id: string): number => tabs.find((tab) => tab.key === id)?.count ?? 0;
 
   // Global undo/redo shortcuts. We deliberately ignore the event when focus
   // is in a text editor. Native input/textarea undo handles per-keystroke
@@ -278,132 +309,111 @@
     return () => window.removeEventListener('keydown', onKeydown);
   });
 
-  // Detect when the tab nav is pinned to the top of the viewport. A 1px
-  // sentinel sits just above the nav; when it scrolls out of view the nav has
-  // crossed top: 0 and we add a shadow to lift it off the content scrolling
-  // behind it.
-  let navStuck = $state(false);
-  let stuckSentinel = $state<HTMLDivElement | null>(null);
   let historyOpen = $state(false);
-
-  $effect(() => {
-    const el = stuckSentinel;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry) navStuck = !entry.isIntersecting;
-      },
-      { threshold: 0 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  });
 </script>
 
-<div class="relative flex">
-<div class="mx-auto flex max-w-400 flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
-  <FeatureHeader
-    {feature}
-    saving={featureStore.saving}
-    {historyOpen}
-    onToggleHistory={() => (historyOpen = !historyOpen)}
+<div class="relative mx-auto flex max-w-[117rem]">
+  <ContextSidebar
+    contextLabel="Feature"
+    contextName={feature.name}
+    {backHref}
+    {backLabel}
+    items={sidebarItems}
+    activeId={activeTab}
+    count={sidebarCount}
+    onSelect={(tab) => editorStore.setTopLevelTab(tab as TopTab)}
   />
+  <div class="mx-auto flex min-w-0 max-w-400 flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
+    <FeatureHeader
+      {feature}
+      saving={featureStore.saving}
+      {historyOpen}
+      onToggleHistory={() => (historyOpen = !historyOpen)}
+    />
 
-  <FeatureHealthStrip {feature} />
-
-  <div bind:this={stuckSentinel} aria-hidden="true" class="h-px"></div>
-
-  <nav
-    class="sticky top-16 z-20 -mx-4 flex flex-wrap gap-1 border-b border-hairline bg-canvas/95 px-4 backdrop-blur transition-shadow {navStuck
-      ? 'shadow-[0_4px_8px_-2px_rgba(15,23,42,0.08)]'
-      : ''}"
-  >
-    {#each tabs as tab (tab.key)}
-      <button
-        type="button"
-        class="-mb-px border-b-2 px-4 py-2 text-sm font-medium transition {activeTab === tab.key
-          ? 'border-brand-700 text-brand-800'
-          : 'border-transparent text-slate-600 hover:text-slate-900'}"
-        onclick={() => editorStore.setTopLevelTab(tab.key)}
+    {#key activeTab}
+      <div
+        in:fade={{ duration: 140, easing: cubicOut }}
+        class="motion-reduce:animate-none! motion-reduce:opacity-100!"
       >
-        {tab.label}{tab.count !== undefined ? ` (${tab.count})` : ''}
-      </button>
-    {/each}
-  </nav>
-
-  {#key activeTab}
-    <div in:fade={{ duration: 140, easing: cubicOut }} class="motion-reduce:animate-none! motion-reduce:opacity-100!">
-      {#if activeTab === 'build'}
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <aside
-            class="w-full shrink-0 lg:sticky lg:top-32 lg:max-h-[calc(100vh-8rem)] lg:w-[16rem] lg:overflow-y-auto xl:w-[18rem]"
-          >
-            <SurfaceList
-              {feature}
-              selectedId={editorStore.selectedSurfaceId}
-              onSelect={(id) => editorStore.selectSurface(id)}
-            />
-          </aside>
-          <section class="min-w-0 flex-1">
-            {#if selectedSurface}
-              <SurfacePanel
+        {#if activeTab === 'build'}
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <aside
+              class="w-full shrink-0 lg:sticky lg:top-32 lg:max-h-[calc(100vh-8rem)] lg:w-[16rem] lg:overflow-y-auto xl:w-[18rem]"
+            >
+              <SurfaceList
                 {feature}
-                surface={selectedSurface}
-                resources={feature.resources}
-                personas={feature.personas}
+                selectedId={editorStore.selectedSurfaceId}
+                onSelect={(id) => editorStore.selectSurface(id)}
               />
-            {:else}
-              <div
-                class="rounded-lg border border-dashed border-hairline bg-white p-8 text-center text-sm text-slate-500"
-              >
-                Add a surface to get started.
-              </div>
-            {/if}
+            </aside>
+            <section class="min-w-0 flex-1">
+              {#if selectedSurface}
+                <SurfacePanel
+                  {feature}
+                  surface={selectedSurface}
+                  resources={feature.resources}
+                  personas={feature.personas}
+                />
+              {:else}
+                <div
+                  class="rounded-lg border border-dashed border-hairline bg-white p-8 text-center text-sm text-slate-500"
+                >
+                  Add a surface to get started.
+                </div>
+              {/if}
+            </section>
+            <aside
+              class="w-full shrink-0 lg:sticky lg:top-32 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto {editorStore.railCollapsed
+                ? 'lg:w-12'
+                : 'lg:w-88 xl:w-104'}"
+            >
+              <SidePanel {feature} surface={selectedSurfaceForUse} />
+            </aside>
+          </div>
+        {:else if activeTab === 'resources'}
+          <section class="rounded-lg border border-hairline bg-white p-4">
+            <ResourcesManager {feature} />
           </section>
-          <aside
-            class="w-full shrink-0 lg:sticky lg:top-32 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto {editorStore.railCollapsed
-              ? 'lg:w-12'
-              : 'lg:w-88 xl:w-104'}"
-          >
-            <SidePanel {feature} surface={selectedSurfaceForUse} />
-          </aside>
-        </div>
-      {:else if activeTab === 'resources'}
-        <section class="rounded-lg border border-hairline bg-white p-4">
-          <ResourcesManager {feature} />
-        </section>
-      {:else if activeTab === 'data'}
-        <section class="rounded-lg border border-hairline bg-white p-4">
-          <EntityManager {feature} />
-        </section>
-      {:else if activeTab === 'events'}
-        <section class="rounded-lg border border-hairline bg-white p-4">
-          <EventsManager {feature} />
-        </section>
-      {:else if activeTab === 'invariants'}
-        <section class="rounded-lg border border-hairline bg-white p-4">
-          <FeatureInvariantsEditor {feature} />
-        </section>
-      {:else if activeTab === 'goals'}
-        <section class="rounded-lg border border-hairline bg-white p-4">
-          <ReachabilityGoalsEditor {feature} />
-        </section>
-      {:else if activeTab === 'acceptance'}
-        <section class="rounded-lg border border-hairline bg-white p-4">
-          <AcceptanceCriteriaEditor {feature} />
-        </section>
-      {:else}
-        <section class="rounded-lg border border-hairline bg-white p-4">
-          <TransitionsManager {feature} />
-        </section>
-      {/if}
-    </div>
-  {/key}
-</div>
-{#if historyOpen}
-  <div class="sticky top-0 z-30 h-screen self-start">
-    <HistoryPanel bind:open={historyOpen} />
+        {:else if activeTab === 'states'}
+          <StatesOverview features={[feature]} />
+        {:else if activeTab === 'surface-rules'}
+          <SurfaceRulesOverview features={[feature]} />
+        {:else if activeTab === 'personas'}
+          <section class="rounded-lg border border-hairline bg-white p-4">
+            <PersonasManager {feature} />
+          </section>
+        {:else if activeTab === 'data'}
+          <section class="rounded-lg border border-hairline bg-white p-4">
+            <EntityManager {feature} />
+          </section>
+        {:else if activeTab === 'events'}
+          <section class="rounded-lg border border-hairline bg-white p-4">
+            <EventsManager {feature} />
+          </section>
+        {:else if activeTab === 'invariants'}
+          <section class="rounded-lg border border-hairline bg-white p-4">
+            <FeatureInvariantsEditor {feature} />
+          </section>
+        {:else if activeTab === 'goals'}
+          <section class="rounded-lg border border-hairline bg-white p-4">
+            <ReachabilityGoalsEditor {feature} />
+          </section>
+        {:else if activeTab === 'acceptance'}
+          <section class="rounded-lg border border-hairline bg-white p-4">
+            <AcceptanceCriteriaEditor {feature} />
+          </section>
+        {:else}
+          <section class="rounded-lg border border-hairline bg-white p-4">
+            <TransitionsManager {feature} />
+          </section>
+        {/if}
+      </div>
+    {/key}
   </div>
-{/if}
+  {#if historyOpen}
+    <div class="sticky top-0 z-30 h-screen self-start">
+      <HistoryPanel bind:open={historyOpen} />
+    </div>
+  {/if}
 </div>

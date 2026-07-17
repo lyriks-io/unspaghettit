@@ -14,6 +14,11 @@ import type { HistoryEntry } from '$lib/sync/protocol';
 
 export type ProjectPanel =
   | 'features'
+  | 'surfaces'
+  | 'actions'
+  | 'states'
+  | 'surface-rules'
+  | 'personas'
   | 'core'
   | 'sources'
   | 'resources'

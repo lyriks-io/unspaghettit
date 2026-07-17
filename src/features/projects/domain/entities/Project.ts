@@ -5,6 +5,7 @@ import type { QueueItem } from '$features/implementation-queue/domain/entities/Q
 import type { Tag } from '$shared/domain/Tags';
 import type { CoreFeature } from './CoreFeature';
 import type { ProjectId } from '../value-objects/ids';
+import type { StateVariable } from './StateVariable';
 
 export type Project = {
   readonly id: ProjectId;
@@ -14,6 +15,8 @@ export type Project = {
   readonly customTagType?: string;
   readonly customTag?: string;
   readonly featureIds: readonly FeatureId[];
+  /** Canonical project-scoped state identities. Absent on legacy snapshots. */
+  readonly stateVariables?: readonly StateVariable[];
   /**
    * Cross-FEATURE invariants — safety properties that span the whole project,
    * referencing state paths declared in different member features (e.g. "the

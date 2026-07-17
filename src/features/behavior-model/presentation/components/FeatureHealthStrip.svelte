@@ -4,14 +4,15 @@
   import { computeImplementationBreakdown } from '$features/implementation-status/domain/ImplementationBreakdown';
   import { implementationStatusStore } from '$features/implementation-status/presentation/stores/implementationStatusStore.svelte';
   import { editorStore } from '$features/behavior-model/presentation/stores/editorStore.svelte';
+  import { rollupActions } from '$features/behavior-model/domain/services/ActionRollup';
+  import ActionStatsStrip from './ActionStatsStrip.svelte';
 
   type Props = { feature: Feature };
   let { feature }: Props = $props();
 
   const maturity = $derived(scoreFeatureBreakdown(feature).global);
-  const impl = $derived(
-    computeImplementationBreakdown(feature, implementationStatusStore.status)
-  );
+  const impl = $derived(computeImplementationBreakdown(feature, implementationStatusStore.status));
+  const actionRollup = $derived(rollupActions([feature]));
 
   function pctColor(percentage: number): string {
     const hue = (percentage / 100) * 120;
@@ -42,7 +43,9 @@
       {maturity.percentage}%
     </span>
     <span class="min-w-0">
-      <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Maturity</span>
+      <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+        >Maturity</span
+      >
       <span class="flex items-center gap-1.5 text-xs font-medium text-slate-700">
         {#if maturity.criticalIssues.length > 0}
           <span class="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
@@ -51,7 +54,9 @@
         {/if}
         {#if maturity.recommendedIssues.length > 0}
           <span class="rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">
-            {maturity.recommendedIssues.length} suggestion{maturity.recommendedIssues.length === 1 ? '' : 's'}
+            {maturity.recommendedIssues.length} suggestion{maturity.recommendedIssues.length === 1
+              ? ''
+              : 's'}
           </span>
         {/if}
         {#if maturity.criticalIssues.length === 0 && maturity.recommendedIssues.length === 0}
@@ -71,12 +76,16 @@
   >
     <span
       class="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white"
-      style="background-color: {impl.expectedCount === 0 ? 'hsl(220, 10%, 70%)' : pctColor(impl.percentage)}"
+      style="background-color: {impl.expectedCount === 0
+        ? 'hsl(220, 10%, 70%)'
+        : pctColor(impl.percentage)}"
     >
       {impl.expectedCount === 0 ? '-' : `${impl.percentage}%`}
     </span>
     <span class="min-w-0">
-      <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Implementation</span>
+      <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+        >Implementation</span
+      >
       <span class="text-xs font-medium text-slate-700">
         {#if !impl.hasReport}
           <span class="text-slate-500">no report yet</span>
@@ -98,13 +107,19 @@
     onclick={() => editorStore.openRail('simulator')}
     title="Open Simulator panel"
   >
-    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-100 text-brand-800" aria-hidden="true">
+    <span
+      class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-100 text-brand-800"
+      aria-hidden="true"
+    >
       <span class="text-sm">▶</span>
     </span>
     <span class="min-w-0">
-      <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Simulator</span>
+      <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+        >Simulator</span
+      >
       <span class="text-xs font-medium text-slate-700">Run an action</span>
     </span>
   </button>
-
 </div>
+
+<ActionStatsStrip rollup={actionRollup} label="Feature behavior across surfaces" />

@@ -11,15 +11,26 @@ import { promptForDisplayName } from '$features/app-shell/presentation/identityP
  * and reconciles orphan features. Idempotent on re-mount (each init guards
  * itself).
  */
-export async function bootstrapDashboard(): Promise<void> {
+type BootstrapDashboardOptions = {
+  /** Display name supplied by an embedding host for history attribution. */
+  readonly displayName?: string;
+  /** Embedded views have no identity menu, so never open the first-visit prompt. */
+  readonly suppressIdentityPrompt?: boolean;
+  /** Force the branded skin for this runtime without overwriting its saved preference. */
+  readonly forceLyriksSkin?: boolean;
+};
+
+export async function bootstrapDashboard(options: BootstrapDashboardOptions = {}): Promise<void> {
   // Hydrate the display-name store from localStorage before anything
   // tries to read identityStore.author (notably the YDocClient
   // building its WebSocket URL).
   identityStore.init();
+  if (options.displayName !== undefined) identityStore.setName(options.displayName);
   // Mirror the active colour theme from the <html data-theme> attribute
   // (server default + the inline head script's localStorage override) into
   // reactive state so the header switcher and chrome track it live.
   themeStore.init();
+  if (options.forceLyriksSkin) themeStore.setTransientTheme('lyriks');
   // Hydrate the optional dashboard auth token the same way. When
   // unset, every API/SSE/WS request goes out unauthenticated; the
   // first 401 from the server triggers `apiFetch`'s prompt-and-retry
@@ -36,7 +47,7 @@ export async function bootstrapDashboard(): Promise<void> {
   // The header avatar remains the explicit affordance to set/change
   // the name later. Deferred through queueMicrotask so the layout
   // has painted before the dialog opens.
-  if (!identityStore.name && !identityStore.hasBeenAsked) {
+  if (!options.suppressIdentityPrompt && !identityStore.name && !identityStore.hasBeenAsked) {
     identityStore.markAsked();
     queueMicrotask(() => {
       void promptForDisplayName();

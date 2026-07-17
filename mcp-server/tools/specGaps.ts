@@ -12,6 +12,10 @@ import { asFeatureId } from '../../src/features/behavior-model/domain/value-obje
 import { trackTokens } from '../metrics';
 import { errorText, text, type ToolDeps } from './_shared';
 import { expandFeatureId } from './short-ids';
+import {
+  projectStateVariables,
+  stateCoherenceIssues
+} from '../../src/features/projects/domain/services/stateRegistry';
 
 type Severity = 'critical' | 'recommended';
 type EntityKind = 'feature' | 'surface' | 'action';
@@ -33,16 +37,15 @@ const DECISION_FIX: Record<DecisionFindingKind, string> = {
     'Make the two conditions mutually exclusive, or reconcile the effects so the outcome does not depend on rule order.',
   'redundant-rule': 'Remove the duplicate rule.',
   'shadowed-rule': 'Move this rule before the unconditional block, or remove it.',
-  'always-blocked': 'Give the blocking rule a condition, or drop the success effects that can never run.'
+  'always-blocked':
+    'Give the blocking rule a condition, or drop the success effects that can never run.'
 };
 
 const hasLoadingOrErrorCoverage = (action: Action): boolean => {
   const scenarios = action.scenarios ?? [];
   return scenarios.some((sc) => {
     const overridePaths = sc.stateOverrides.map((o) => String(o.path).toLowerCase());
-    const assertionPaths = (sc.expectedAssertions ?? []).map((a) =>
-      String(a.path).toLowerCase()
-    );
+    const assertionPaths = (sc.expectedAssertions ?? []).map((a) => String(a.path).toLowerCase());
     const all = [...overridePaths, ...assertionPaths];
     return all.some((p) => p.includes('loading') || p.includes('error'));
   });
@@ -152,10 +155,7 @@ export const detectSpecGaps = (
   }
 
   feature.surfaces.forEach((surface: Surface, surfaceIndex: number) => {
-    if (
-      surface.stateDefinitions.length === 0 &&
-      !sharedIntoSurface.has(String(surface.id))
-    ) {
+    if (surface.stateDefinitions.length === 0 && !sharedIntoSurface.has(String(surface.id))) {
       critical.push({
         severity: 'critical',
         entityType: 'surface',
@@ -340,7 +340,8 @@ export const detectSpecGaps = (
           entityId: String(feature.id),
           entityName: feature.name,
           reason: `External operation "${dependency.name}.${operation.name}" has no documented failure modes.`,
-          suggestedFix: 'List how the call can fail (declined, timeout, unavailable), so recovery paths can be modeled.'
+          suggestedFix:
+            'List how the call can fail (declined, timeout, unavailable), so recovery paths can be modeled.'
         });
       }
     }
@@ -350,7 +351,7 @@ export const detectSpecGaps = (
 };
 
 export const registerSpecGapsTool = (deps: ToolDeps): void => {
-  const { server, repo, getImplementationStatus } = deps;
+  const { server, repo, projectRepo, getImplementationStatus } = deps;
 
   server.registerTool(
     'get_spec_gaps',
@@ -371,7 +372,37 @@ export const registerSpecGapsTool = (deps: ToolDeps): void => {
       const implementedIds = new Set<string>(
         (status?.actions ?? []).map((c) => String(c.actionId))
       );
-      const gaps = detectSpecGaps(exp, implementedIds);
+      const gaps = [...detectSpecGaps(exp, implementedIds)];
+      const projects = await projectRepo.list();
+      for (const summary of projects) {
+        const project = await projectRepo.get(summary.id);
+        if (!project?.featureIds.includes(exp.id)) continue;
+        const features = (await Promise.all(project.featureIds.map((id) => repo.get(id)))).filter(
+          (feature): feature is Feature => feature !== null
+        );
+        const states = projectStateVariables(project, features);
+        for (const issue of stateCoherenceIssues(states, features)) {
+          const state = states.find((candidate) => String(candidate.id) === issue.stateId);
+          if (
+            state &&
+            state.owner.featureId !== exp.id &&
+            state.links?.dataField?.featureId !== exp.id
+          )
+            continue;
+          gaps.push({
+            severity: issue.severity === 'error' ? 'critical' : 'recommended',
+            entityType: 'feature',
+            entityId: String(exp.id),
+            entityName: exp.name,
+            reason: `Canonical state "${issue.path}": ${issue.message}`,
+            suggestedFix:
+              issue.kind === 'missing-data-field'
+                ? 'Relink the state variable to an existing entity field, or clear the stale link.'
+                : 'Align the linked entity field type/valueSetId with the canonical state variable.'
+          });
+        }
+        break;
+      }
       return text(trackTokens('get_spec_gaps', { gaps }));
     }
   );

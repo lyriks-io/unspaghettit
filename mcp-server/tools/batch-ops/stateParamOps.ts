@@ -11,13 +11,8 @@ import {
   asValueSetId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../../src/features/behavior-model/domain/value-objects/StatePath';
-import {
-  directionDelta,
-  resolve,
-  resolveSharedWith,
-  type Op,
-  type OpContext
-} from './opHelpers';
+import { asStateVariableId } from '../../../src/features/projects/domain/value-objects/ids';
+import { directionDelta, resolve, resolveSharedWith, type Op, type OpContext } from './opHelpers';
 
 /**
  * State definition and Parameter op families. Returns the next Feature when
@@ -32,15 +27,14 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
       const sharedWith = resolveSharedWith(op, refs);
       const def: StateDefinition = {
         id: asStateDefinitionId(mintId()),
+        ...(typeof op.stateVariableId === 'string'
+          ? { stateVariableId: asStateVariableId(op.stateVariableId) }
+          : {}),
         path: asStatePath(op.path as string),
         type: op.type as StateDefinition['type'],
         defaultValue: op.defaultValue as StateDefinition['defaultValue'],
-        ...(Array.isArray(op.enumValues)
-          ? { enumValues: op.enumValues as readonly string[] }
-          : {}),
-        ...(typeof op.valueSetId === 'string'
-          ? { valueSetId: asValueSetId(op.valueSetId) }
-          : {}),
+        ...(Array.isArray(op.enumValues) ? { enumValues: op.enumValues as readonly string[] } : {}),
+        ...(typeof op.valueSetId === 'string' ? { valueSetId: asValueSetId(op.valueSetId) } : {}),
         ...(typeof op.description === 'string' ? { description: op.description } : {}),
         ...(sharedWith ? { sharedWith } : {})
       };
@@ -59,9 +53,7 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
         asStateDefinitionId(op.stateDefinitionId as string),
         {
           ...(typeof op.path === 'string' ? { path: asStatePath(op.path) } : {}),
-          ...(typeof op.type === 'string'
-            ? { type: op.type as StateDefinition['type'] }
-            : {}),
+          ...(typeof op.type === 'string' ? { type: op.type as StateDefinition['type'] } : {}),
           ...(op.defaultValue !== undefined
             ? { defaultValue: op.defaultValue as StateDefinition['defaultValue'] }
             : {}),
@@ -77,8 +69,7 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
           ...(typeof op.description === 'string' ? { description: op.description } : {}),
           ...(Array.isArray(op.sharedWith)
             ? {
-                sharedWith:
-                  op.sharedWith.length === 0 ? undefined : resolveSharedWith(op, refs)
+                sharedWith: op.sharedWith.length === 0 ? undefined : resolveSharedWith(op, refs)
               }
             : {})
         }
@@ -108,12 +99,8 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
         type: op.type as Parameter['type'],
         required: op.required as boolean,
         ...(typeof op.description === 'string' ? { description: op.description } : {}),
-        ...(Array.isArray(op.enumValues)
-          ? { enumValues: op.enumValues as readonly string[] }
-          : {}),
-        ...(typeof op.valueSetId === 'string'
-          ? { valueSetId: asValueSetId(op.valueSetId) }
-          : {}),
+        ...(Array.isArray(op.enumValues) ? { enumValues: op.enumValues as readonly string[] } : {}),
+        ...(typeof op.valueSetId === 'string' ? { valueSetId: asValueSetId(op.valueSetId) } : {}),
         ...(op.defaultValue !== undefined
           ? { defaultValue: op.defaultValue as Parameter['defaultValue'] }
           : {}),
@@ -123,9 +110,7 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
         ...(Array.isArray(op.validations)
           ? { validations: op.validations as unknown as Parameter['validations'] }
           : {}),
-        ...(typeof op.resourceId === 'string'
-          ? { resourceId: asResourceId(op.resourceId) }
-          : {})
+        ...(typeof op.resourceId === 'string' ? { resourceId: asResourceId(op.resourceId) } : {})
       };
       exp = T.addParameter(
         exp,

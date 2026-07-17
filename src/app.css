@@ -85,9 +85,10 @@ body {
    * token, so the header wordmark restyles with no markup change. */
   --font-brand: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
 
-  /* App semantic surfaces. A clearly lavender canvas so the body — not just the
-   * header — reads as themed; white cards float on top of it. */
-  --color-canvas: #eeeafb;
+  /* App background matches the Lyriks v3 platform canvas (#f8fafc, a neutral
+   * near-white) so an embedded unspa dashboard blends into the host; white
+   * cards and the floating sidebar still read as distinct surfaces on top. */
+  --color-canvas: #f8fafc;
   --color-surface-soft: #e6dff7;
   --color-surface-strong: #ddd4f1;
   --color-hairline: #e0d8f1;

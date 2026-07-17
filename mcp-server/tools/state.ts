@@ -12,21 +12,15 @@ import {
   asSurfaceId,
   asValueSetId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
+import { asStateVariableId } from '../../src/features/projects/domain/value-objects/ids';
 import type { SurfaceId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
-import { coerceScalarByType, runMutation, type ToolDeps } from './_shared';
+import { coerceScalarByType, errorText, runMutation, type ToolDeps } from './_shared';
 
-const stateTypeSchema = z.enum([
-  'string',
-  'number',
-  'boolean',
-  'enum',
-  'object',
-  'array'
-] as const);
+const stateTypeSchema = z.enum(['string', 'number', 'boolean', 'enum', 'object', 'array'] as const);
 
 export const registerStateDefinitionTools = (deps: ToolDeps): void => {
-  const { server, ids } = deps;
+  const { server, ids, projectRepo, repo } = deps;
 
   server.registerTool(
     'add_state_definition',
@@ -36,19 +30,21 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
-        path: z.string(),
-        type: stateTypeSchema,
-        defaultValue: z.unknown(),
+        stateVariableId: z.string().optional(),
+        path: z.string().optional(),
+        type: stateTypeSchema.optional(),
+        defaultValue: z.unknown().optional(),
         derived: z.unknown().optional(),
         enumValues: z.array(z.string()).optional(),
         valueSetId: z.string().optional(),
-        description: z.string().min(1),
+        description: z.string().min(1).optional(),
         sharedWith: z.array(z.string()).optional()
       }
     },
     async ({
       featureId,
       surfaceId,
+      stateVariableId,
       path,
       type,
       defaultValue,
@@ -58,15 +54,56 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
       description,
       sharedWith
     }) => {
+      let canonical:
+        | import('../../src/features/projects/domain/entities/StateVariable').StateVariable
+        | undefined;
+      if (stateVariableId) {
+        const summaries = await projectRepo.list();
+        for (const summary of summaries) {
+          const project = await projectRepo.get(summary.id);
+          if (!project?.featureIds.some((id) => String(id) === featureId)) continue;
+          canonical = (project.stateVariables ?? []).find(
+            (state) => String(state.id) === stateVariableId
+          );
+          if (canonical) break;
+        }
+        if (!canonical)
+          return errorText(
+            `State variable ${stateVariableId} does not resolve in the feature's project.`
+          );
+      }
+      const resolvedPath = canonical ? String(canonical.path) : path;
+      const resolvedType = canonical?.type ?? type;
+      const resolvedDefault = canonical?.defaultValue ?? defaultValue;
+      const resolvedDescription = canonical?.description ?? description;
+      if (!resolvedPath || !resolvedType || resolvedDefault === undefined || !resolvedDescription) {
+        return errorText(
+          'path, type, defaultValue, and description are required unless stateVariableId supplies them.'
+        );
+      }
+      let resolvedValueSetId =
+        canonical?.valueSetId ?? (valueSetId ? asValueSetId(valueSetId) : undefined);
+      let resolvedEnumValues = canonical?.enumValues ?? enumValues;
+      if (canonical?.valueSetId && String(canonical.owner.featureId) !== featureId) {
+        const ownerFeature = await repo.get(canonical.owner.featureId);
+        resolvedEnumValues = (ownerFeature?.valueSets ?? []).find(
+          (set) => set.id === canonical!.valueSetId
+        )?.values;
+        resolvedValueSetId = undefined;
+      }
       const def: StateDefinition = {
         id: asStateDefinitionId(ids()),
-        path: asStatePath(path),
-        type: type as StateType,
-        defaultValue: coerceScalarByType(defaultValue, type) as StateDefinition['defaultValue'],
+        ...(canonical ? { stateVariableId: asStateVariableId(stateVariableId!) } : {}),
+        path: asStatePath(resolvedPath),
+        type: resolvedType as StateType,
+        defaultValue: coerceScalarByType(
+          resolvedDefault,
+          resolvedType
+        ) as StateDefinition['defaultValue'],
         ...(derived !== undefined ? { derived: derived as StateDefinition['derived'] } : {}),
-        ...(enumValues ? { enumValues } : {}),
-        ...(valueSetId ? { valueSetId: asValueSetId(valueSetId) } : {}),
-        description,
+        ...(resolvedEnumValues ? { enumValues: resolvedEnumValues } : {}),
+        ...(resolvedValueSetId ? { valueSetId: resolvedValueSetId } : {}),
+        description: resolvedDescription,
         ...(sharedWith && sharedWith.length > 0
           ? { sharedWith: sharedWith.map((s) => asSurfaceId(s)) as readonly SurfaceId[] }
           : {})
@@ -85,7 +122,8 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
   server.registerTool(
     'update_state_definition',
     {
-      description: 'Patch StateDefinition fields. Path renames are not auto-rewritten. Run find_state_references first. sharedWith:[] clears all sharing entries. valueSetId references a feature-level value set (mutually exclusive with enumValues); valueSetId:null clears it. `derived` (an Expression) makes the path computed/read-only; derived:null clears it back to an authored path.',
+      description:
+        'Patch StateDefinition fields. Path renames are not auto-rewritten. Run find_state_references first. sharedWith:[] clears all sharing entries. valueSetId references a feature-level value set (mutually exclusive with enumValues); valueSetId:null clears it. `derived` (an Expression) makes the path computed/read-only; derived:null clears it back to an authored path.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -124,7 +162,9 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
               ...(path !== undefined ? { path: asStatePath(path) } : {}),
               ...(type !== undefined ? { type: type as StateType } : {}),
               ...(derived !== undefined
-                ? { derived: derived === null ? undefined : (derived as StateDefinition['derived']) }
+                ? {
+                    derived: derived === null ? undefined : (derived as StateDefinition['derived'])
+                  }
                 : {}),
               ...(defaultValue !== undefined
                 ? {
@@ -155,7 +195,8 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
   server.registerTool(
     'remove_state_definition',
     {
-      description: 'Delete StateDefinition. References left dangling. Run find_state_references first.',
+      description:
+        'Delete StateDefinition. References left dangling. Run find_state_references first.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -166,11 +207,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
       runMutation(deps, {
         featureId: asFeatureId(featureId),
         transform: (exp) =>
-          removeStateDefinition(
-            exp,
-            asSurfaceId(surfaceId),
-            asStateDefinitionId(stateDefinitionId)
-          )
+          removeStateDefinition(exp, asSurfaceId(surfaceId), asStateDefinitionId(stateDefinitionId))
       })
   );
 };

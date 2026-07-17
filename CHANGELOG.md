@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Canonical project state variables connect behavior across features.** Projects can now own stable state identities with explicit owners, readers, writers, and optional links to entity fields or Builder nodes. New MCP tools create, update, link, list, and remove them; `add_state_definition` can project a canonical variable onto a surface by id; project aggregates and spec-gap diagnostics report stale or incompatible data-field links. Legacy surface state remains readable and is grouped by path without rewriting snapshots.
+- **Behavior inventories now roll up from actions to features and projects.** The dashboard exposes searchable project and feature views for actions, surfaces, states, surface rules, and personas, with shared context sidebars and compact action statistics. Action rollups preserve feature/surface provenance and identify reusable cross-feature concepts such as state paths, events, resources, roles, parameters, value sets, and effect types.
+
+### Changed
+
+- **Entity enum fields can reference reusable value sets.** Entity and entity-field MCP tools now accept `valueSetId`, allowing canonical state and data-field coherence checks to compare shared enum vocabularies.
+- **The dashboard can run cleanly inside a Lyriks host.** `?embed=1` suppresses standalone chrome, onboarding, toasts, and floating widgets; an optional `user` query parameter supplies history attribution; and the embedded runtime applies the Lyriks skin without overwriting the browser's saved theme. Vite now selects the first available development port instead of requiring port 8173.
+
 ## [0.10.1] - 2026-07-15
 
 Two engine fixes found by dogfooding through the MCP: a condition-less invariant can no longer silently evict a whole feature on the next load, and the digest's "Where you can go" stops duplicating and mislabelling navigation. No breaking changes.

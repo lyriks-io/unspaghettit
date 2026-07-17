@@ -2,9 +2,12 @@ import type { Expression } from '../value-objects/Expression';
 import type { StateDefinitionId, SurfaceId, ValueSetId } from '../value-objects/ids';
 import type { StatePath } from '../value-objects/StatePath';
 import type { StateType, StateValue } from '../value-objects/StateValue';
+import type { StateVariableId } from '$features/projects/domain/value-objects/ids';
 
 export type StateDefinition = {
   readonly id: StateDefinitionId;
+  /** Stable project identity when this definition is a surface projection. */
+  readonly stateVariableId?: StateVariableId;
   readonly path: StatePath;
   readonly type: StateType;
   readonly defaultValue: StateValue;

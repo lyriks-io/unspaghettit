@@ -13,7 +13,8 @@ import {
   asEntityFieldId,
   asEntityId,
   asFeatureId,
-  asResourceId
+  asResourceId,
+  asValueSetId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
 import { runMutation, type ToolDeps } from './_shared';
@@ -32,6 +33,7 @@ type DataFieldInput = {
   description: string;
   required?: boolean;
   enumValues?: readonly string[];
+  valueSetId?: string;
   path?: string;
   fields?: readonly DataFieldInput[];
   items?: DataFieldInput;
@@ -44,6 +46,7 @@ const buildDataField = (ids: () => string, input: DataFieldInput): EntityField =
   description: input.description,
   ...(input.required !== undefined ? { required: input.required } : {}),
   ...(input.enumValues ? { enumValues: input.enumValues } : {}),
+  ...(input.valueSetId ? { valueSetId: asValueSetId(input.valueSetId) } : {}),
   ...(input.path ? { path: asStatePath(input.path) } : {}),
   ...(input.fields ? { fields: input.fields.map((f) => buildDataField(ids, f)) } : {}),
   ...(input.items ? { items: buildDataField(ids, input.items) } : {})
@@ -57,7 +60,8 @@ export const registerEntityTools = (deps: ToolDeps): void => {
   server.registerTool(
     'add_entity',
     {
-      description: 'Declare a Entity entity (named domain object). Field types: string|number|boolean|enum|object|array|date|timestamp|null|json. Recursive via fields/items for object/array.',
+      description:
+        'Declare a Entity entity (named domain object). Field types: string|number|boolean|enum|object|array|date|timestamp|null|json. Recursive via fields/items for object/array.',
       inputSchema: {
         featureId: z.string(),
         namespace: z.string().min(1),
@@ -88,7 +92,8 @@ export const registerEntityTools = (deps: ToolDeps): void => {
   server.registerTool(
     'update_entity',
     {
-      description: 'Patch Entity fields. Id fixed. When `fields` is provided it fully replaces (field ids regenerated). Use add_entity_field/update_entity_field for in-place field edits.',
+      description:
+        'Patch Entity fields. Id fixed. When `fields` is provided it fully replaces (field ids regenerated). Use add_entity_field/update_entity_field for in-place field edits.',
       inputSchema: {
         featureId: z.string(),
         entityId: z.string(),

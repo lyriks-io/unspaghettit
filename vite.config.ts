@@ -21,12 +21,8 @@ export default defineConfig({
     external: ['yjs', 'y-protocols', 'lib0']
   },
   server: {
-    // Default Vite port 5173 falls inside the TCP port ranges that WSL2 /
-    // Hyper-V reserves on Windows (verify with
-    //   netsh interface ipv4 show excludedportrange protocol=tcp).
-    // Binding a reserved port fails with EACCES even when nothing is using
-    // it. 8173 sits clear of those blocks.
-    port: 8173,
+    // Leave `port` unset: Vite tries its default and automatically advances
+    // to the next available port when it is already occupied.
     // Runtime data in unspa/ is written by Y.Doc persists. Watching it would
     // turn every save into a full-page reload, undoing the live sync. The
     // samples/ folder is source content (read-only at runtime), so we watch

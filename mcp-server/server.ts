@@ -45,6 +45,7 @@ import { registerRuleTools } from './tools/rule';
 import { registerScenarioTools } from './tools/scenario';
 import { registerSpecGapsTool } from './tools/specGaps';
 import { registerStateDefinitionTools } from './tools/state';
+import { registerStateVariableTools } from './tools/stateVariable';
 import { registerSurfaceTools } from './tools/surface';
 import { registerTransitionTools } from './tools/transition';
 import { registerValueSetTools } from './tools/valueSet';
@@ -102,7 +103,7 @@ export type BuildServerDeps = {
 // byte is paid once per session, but it offsets per-tool description bloat.
 const SERVER_INSTRUCTIONS = `Unspaghettit models software as executable behavior. The unit is a Feature: ONE coherent slice of behavior inside a Project (a flow, a screen, a capability), sized so you can hold it all in head at once. Rule of thumb: 1-15 surfaces, 30-100 actions. A Feature is NOT a whole product. "Add filter to results" is one Feature; "Spotify clone" is a Project that needs many Features. If a Feature grows past 15 surfaces, split it. Hierarchy: Domain tag > Project > Feature > Surface > Action > State/Rule/Effect. A Domain is only a project tag/grouping for filtering Projects, not its own modeling page.
 
-Feature shape: { id, name, surfaces[], personas[], resources[], entities[], events[], featureInvariants[], reachabilityGoals[], devContext? }. A Surface is one context (screen, terminal, workflow, canvas, ...) holding stateDefinitions[], actions[], rules[], invariants[], transitions[]. An Action is a user/AI-triggerable action with parameters[], rules[], effects[], invariants[], requiredStates[], emittedEvents[]. State lives at dotted paths ("cart.itemCount"); StateDefinition declares the schema (path, type, defaultValue, sharedWith?:other surfaces that also use it).
+Feature shape: { id, name, surfaces[], personas[], resources[], entities[], events[], featureInvariants[], reachabilityGoals[], devContext? }. A Surface is one context (screen, terminal, workflow, canvas, ...) holding stateDefinitions[], actions[], rules[], invariants[], transitions[]. An Action is a user/AI-triggerable action with parameters[], rules[], effects[], invariants[], requiredStates[], emittedEvents[]. State lives at dotted paths ("cart.itemCount"); StateDefinition declares a surface projection. Projects may own canonical stateVariables[] with stable identity across features; use list_state_variables and reference one from add_state_definition via stateVariableId.
 
 Naming convention: names are for humans first. Use short Title Case noun phrases for surfaces ("Checkout", "MCP Server") and verb phrases for actions ("Apply Batch", "Get Repo Context", "Manage Rules"). Let parent context carry repeated words: on the "MCP Server" surface, write "Create Feature" or "Manage Surfaces", not "Create Feature via MCP" or a repeated "MCP ..." prefix. Avoid boilerplate suffixes/prefixes across siblings; put technical identifiers, tool ids, file paths, HTTP verbs, or storage names in descriptions and implementation indexes unless the user-facing concept is literally that technical object.
 
@@ -201,6 +202,7 @@ export const buildServer = (repo: FeatureRepository, deps: BuildServerDeps = {})
   registerImplementationStatusTools(toolDeps);
   registerProvenanceTools(toolDeps);
   registerProjectTools(toolDeps);
+  registerStateVariableTools(toolDeps);
   registerQueueTools(toolDeps);
   registerSpecGapsTool(toolDeps);
   registerVerificationTools(toolDeps);

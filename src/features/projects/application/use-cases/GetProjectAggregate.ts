@@ -10,6 +10,18 @@ import {
 } from '$features/projects/domain/services/coreFeatures';
 import type { ProjectId } from '$features/projects/domain/value-objects/ids';
 import type { ProjectRepository } from '../ports/ProjectRepository';
+import type { StateVariable } from '$features/projects/domain/entities/StateVariable';
+import {
+  projectStateVariables,
+  stateCoherenceIssues,
+  type StateCoherenceIssue
+} from '$features/projects/domain/services/stateRegistry';
+import {
+  rollupActions,
+  type ActionCatalogEntry,
+  type ActionConcept,
+  type ActionStats
+} from '$features/behavior-model/domain/services/ActionRollup';
 
 export type AggregatedResource = {
   readonly featureId: FeatureId;
@@ -56,6 +68,11 @@ export type ProjectAggregateRead = {
   readonly data: readonly AggregatedData[];
   readonly events: readonly AggregatedEvent[];
   readonly transitions: readonly AggregatedTransition[];
+  readonly stateVariables: readonly StateVariable[];
+  readonly stateCoherenceIssues: readonly StateCoherenceIssue[];
+  readonly actionStats: ActionStats;
+  readonly actions: readonly ActionCatalogEntry[];
+  readonly actionConcepts: readonly ActionConcept[];
   /** The project's declared core-feature registry (the controlled vocabulary). */
   readonly coreFeatures: readonly CoreFeature[];
   /** Each declared core feature with the member features tagged into it. */
@@ -137,6 +154,8 @@ export const getProjectAggregateUseCase = (deps: {
     }
 
     const core = coreFeatureReport(project, loaded);
+    const stateVariables = projectStateVariables(project, loaded);
+    const actionRollup = rollupActions(loaded);
 
     return {
       projectId: project.id,
@@ -148,6 +167,11 @@ export const getProjectAggregateUseCase = (deps: {
       data,
       events,
       transitions,
+      stateVariables,
+      stateCoherenceIssues: stateCoherenceIssues(stateVariables, loaded),
+      actionStats: actionRollup.stats,
+      actions: actionRollup.actions,
+      actionConcepts: actionRollup.concepts,
       coreFeatures: project.coreFeatures ?? [],
       coreFeatureGroups: core.groups,
       coreFeatureUncategorized: core.uncategorized,

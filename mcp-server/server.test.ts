@@ -34,6 +34,81 @@ const parseTextContent = (result: unknown): unknown => {
 };
 
 describe('MCP server', () => {
+  it('creates canonical state and projects it into another feature by stable id', async () => {
+    const { client, server } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_project',
+        arguments: {
+          name: 'Returns',
+          description: 'Return lifecycle',
+          features: [
+            { name: 'Behavior', description: 'Canonical behavior' },
+            { name: 'Leaf', description: 'Leaf capability' }
+          ]
+        }
+      })
+    ) as { id: string; features: readonly { id: string }[] };
+    const behaviorId = created.features[0]!.id;
+    const leafId = created.features[1]!.id;
+    const behaviorSurface = parseTextContent(
+      await client.callTool({
+        name: 'add_surface',
+        arguments: {
+          featureId: behaviorId,
+          name: 'Journey',
+          type: 'screen',
+          description: 'Journey surface'
+        }
+      })
+    ) as { id: string };
+    const leafSurface = parseTextContent(
+      await client.callTool({
+        name: 'add_surface',
+        arguments: { featureId: leafId, name: 'Leaf', type: 'screen', description: 'Leaf surface' }
+      })
+    ) as { id: string };
+    const canonical = parseTextContent(
+      await client.callTool({
+        name: 'add_state_variable',
+        arguments: {
+          projectId: created.id,
+          path: 'rma.status',
+          type: 'string',
+          defaultValue: 'requested',
+          description: 'Canonical return lifecycle',
+          owner: { featureId: behaviorId, surfaceId: behaviorSurface.id }
+        }
+      })
+    ) as { id: string };
+
+    const projected = parseTextContent(
+      await client.callTool({
+        name: 'add_state_definition',
+        arguments: {
+          featureId: leafId,
+          surfaceId: leafSurface.id,
+          stateVariableId: canonical.id
+        }
+      })
+    ) as { ok: boolean };
+    const listed = parseTextContent(
+      await client.callTool({
+        name: 'list_state_variables',
+        arguments: { projectId: created.id }
+      })
+    ) as { stateVariables: readonly { id: string; readers: readonly { surfaceId: string }[] }[] };
+
+    expect(projected.ok).toBe(true);
+    expect(listed.stateVariables).toHaveLength(1);
+    expect(listed.stateVariables[0]).toMatchObject({ id: canonical.id });
+    expect(listed.stateVariables[0]!.readers).toContainEqual(
+      expect.objectContaining({ surfaceId: leafSurface.id })
+    );
+    await client.close();
+    await server.close();
+  });
+
   it('exposes the read tools and the phase-1 + phase-2 write tools', async () => {
     const { client, server } = await setup();
     const { tools } = await client.listTools();
@@ -58,6 +133,7 @@ describe('MCP server', () => {
       'add_resource',
       'add_scenario',
       'add_state_definition',
+      'add_state_variable',
       'add_surface',
       'add_surface_invariant',
       'add_surface_rule',
@@ -98,12 +174,14 @@ describe('MCP server', () => {
       'get_source_coverage',
       'get_spec_gaps',
       'get_surface',
+      'link_state_variable',
       'list_actions',
       'list_feature_ids',
       'list_features',
       'list_projects',
       'list_queue',
       'list_sources',
+      'list_state_variables',
       'model_check',
       'move_action',
       'move_feature_in_project',
@@ -135,6 +213,7 @@ describe('MCP server', () => {
       'remove_scenario',
       'remove_source',
       'remove_state_definition',
+      'remove_state_variable',
       'remove_surface',
       'remove_surface_invariant',
       'remove_surface_rule',
@@ -177,6 +256,7 @@ describe('MCP server', () => {
       'update_resource',
       'update_scenario',
       'update_state_definition',
+      'update_state_variable',
       'update_surface',
       'update_surface_invariant',
       'update_surface_rule',
@@ -1741,7 +1821,10 @@ describe('MCP server', () => {
     const created = parseTextContent(
       await client.callTool({
         name: 'create_feature',
-        arguments: { name: 'Param resource', description: 'Verifies parameter resourceId authoring.' }
+        arguments: {
+          name: 'Param resource',
+          description: 'Verifies parameter resourceId authoring.'
+        }
       })
     ) as { id: string };
     const batch = parseTextContent(
@@ -1879,7 +1962,9 @@ describe('MCP server', () => {
         arguments: { projectId: created.id, value: 'Auth', description: 'Sign-in and sessions.' }
       })
     ) as { coreFeatures: { value: string; description: string }[] };
-    expect(declared.coreFeatures).toEqual([{ value: 'auth', description: 'Sign-in and sessions.' }]);
+    expect(declared.coreFeatures).toEqual([
+      { value: 'auth', description: 'Sign-in and sessions.' }
+    ]);
 
     // Assign, then re-assign: at most one core tag survives.
     await client.callTool({
@@ -1942,7 +2027,10 @@ describe('MCP server', () => {
     const created = parseTextContent(
       await client.callTool({
         name: 'create_feature',
-        arguments: { name: 'Action transition', description: 'Verifies action-level transition authoring.' }
+        arguments: {
+          name: 'Action transition',
+          description: 'Verifies action-level transition authoring.'
+        }
       })
     ) as { id: string };
     const batch = parseTextContent(
@@ -1951,9 +2039,27 @@ describe('MCP server', () => {
         arguments: {
           featureId: created.id,
           operations: [
-            { kind: 'add_surface', ref: 'home', name: 'Home', type: 'screen', description: 'Home screen.' },
-            { kind: 'add_surface', ref: 'next', name: 'Next', type: 'screen', description: 'Next screen.' },
-            { kind: 'add_action', ref: 'go', surfaceRef: 'home', name: 'Go', intent: 'Advance to Next.' }
+            {
+              kind: 'add_surface',
+              ref: 'home',
+              name: 'Home',
+              type: 'screen',
+              description: 'Home screen.'
+            },
+            {
+              kind: 'add_surface',
+              ref: 'next',
+              name: 'Next',
+              type: 'screen',
+              description: 'Next screen.'
+            },
+            {
+              kind: 'add_action',
+              ref: 'go',
+              surfaceRef: 'home',
+              name: 'Go',
+              intent: 'Advance to Next.'
+            }
           ]
         }
       })

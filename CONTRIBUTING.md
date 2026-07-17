@@ -15,7 +15,7 @@ npm install
 npm run check     # svelte-check / typescript
 npm test          # vitest, ~400 tests
 npm run build     # SvelteKit production build
-npm run dev       # http://localhost:8173
+npm run dev       # URL is printed by Vite (first available port)
 ```
 
 The MCP server runs via `npm run mcp` (stdio). The CLI runs via `npm link` once, then `unspa init` / `unspa dashboard` / `unspa serve` from any repo.

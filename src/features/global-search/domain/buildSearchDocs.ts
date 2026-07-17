@@ -9,13 +9,7 @@ import { ruleCategoryLabel } from '$features/behavior-model/domain/value-objects
 import { humanizeStatePath } from '$features/behavior-model/domain/value-objects/humanize';
 import { tagLabel, type Tag } from '$shared/domain/Tags';
 import type { SearchDoc, SearchModelInput } from './SearchDoc';
-import {
-  actionFocus,
-  domainHref,
-  featureHref,
-  projectHref,
-  surfaceTabFocus
-} from './searchNav';
+import { actionFocus, domainHref, featureHref, projectHref, surfaceTabFocus } from './searchNav';
 
 /** Join defined, non-empty parts into one lowercased corpus string. */
 const corpus = (...parts: ReadonlyArray<string | undefined>): string =>
@@ -155,7 +149,6 @@ export const buildSearchDocs = (input: SearchModelInput): SearchDoc[] => {
     }
 
     for (const persona of feature.personas) {
-      const firstSurfaceId = feature.surfaces[0]?.id;
       push({
         id: `persona:${ctx.featureId}:${persona.id}`,
         kind: 'persona',
@@ -164,12 +157,7 @@ export const buildSearchDocs = (input: SearchModelInput): SearchDoc[] => {
         ...featureCrumb(ctx),
         haystack: corpus(persona.name, persona.description),
         nav: {
-          href: firstSurfaceId
-            ? featureHref(ctx.featureId, {
-                surface: String(firstSurfaceId),
-                panel: 'personas'
-              })
-            : featureHref(ctx.featureId)
+          href: featureHref(ctx.featureId, { tab: 'personas' })
         }
       });
     }
@@ -296,9 +284,7 @@ const collectSurface = (
     id: `surface:${ctx.featureId}:${surfaceId}`,
     kind: 'surface',
     title: surface.name,
-    subtitle: [surfaceTypeLabel(surface.type), surface.description]
-      .filter(Boolean)
-      .join(' · '),
+    subtitle: [surfaceTypeLabel(surface.type), surface.description].filter(Boolean).join(' · '),
     ...surfaceCrumb(ctx, surface),
     haystack: corpus(surface.name, surfaceTypeLabel(surface.type), surface.description),
     nav: { href: featureHref(ctx.featureId, { surface: surfaceId }) }
@@ -435,10 +421,7 @@ const collectAction = (
     });
   }
 
-  const effects: readonly Effect[] = [
-    ...action.effects,
-    ...(action.onBlockedEffects ?? [])
-  ];
+  const effects: readonly Effect[] = [...action.effects, ...(action.onBlockedEffects ?? [])];
   for (const effect of effects) {
     push({
       id: `effect:${ctx.featureId}:${actionId}:${effect.id}`,
@@ -468,9 +451,7 @@ const collectAction = (
       id: `scenario:${ctx.featureId}:${actionId}:${scenario.id}`,
       kind: 'scenario',
       title: scenario.name,
-      subtitle: [scenario.description, `${action.name} scenario`]
-        .filter(Boolean)
-        .join(' · '),
+      subtitle: [scenario.description, `${action.name} scenario`].filter(Boolean).join(' · '),
       ...surfaceCrumb(ctx, surface),
       haystack: corpus(scenario.name, scenario.description, action.name),
       nav: { href: actionHref }

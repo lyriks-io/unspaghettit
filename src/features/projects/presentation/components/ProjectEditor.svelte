@@ -12,6 +12,14 @@
   import ProjectEntitiesPanel from './ProjectEntitiesPanel.svelte';
   import ProjectEventsPanel from './ProjectEventsPanel.svelte';
   import ProjectTransitionsPanel from './ProjectTransitionsPanel.svelte';
+  import ProjectActionsPanel from './ProjectActionsPanel.svelte';
+  import ProjectSurfacesPanel from './ProjectSurfacesPanel.svelte';
+  import StatesOverview from '$features/behavior-model/presentation/components/StatesOverview.svelte';
+  import SurfaceRulesOverview from '$features/behavior-model/presentation/components/SurfaceRulesOverview.svelte';
+  import ProjectPersonasPanel from './ProjectPersonasPanel.svelte';
+  import ContextSidebar, {
+    type ContextSidebarItem
+  } from '$shared/presentation/components/ContextSidebar.svelte';
   import ProjectHistoryPanel from './ProjectHistoryPanel.svelte';
   import ProjectSourcesPanel from '$features/source-provenance/presentation/components/ProjectSourcesPanel.svelte';
   import { projectSourcesStore } from '$features/source-provenance/presentation/stores/projectSourcesStore.svelte';
@@ -36,8 +44,13 @@
   import KebabMenu from '$shared/presentation/components/KebabMenu.svelte';
   import MenuItem from '$shared/presentation/components/MenuItem.svelte';
 
-  const PANELS: { id: ProjectPanel; label: string }[] = [
+  const PANELS: readonly ContextSidebarItem[] = [
     { id: 'features', label: 'Features' },
+    { id: 'surfaces', label: 'Surfaces' },
+    { id: 'actions', label: 'Actions' },
+    { id: 'states', label: 'States' },
+    { id: 'surface-rules', label: 'Surface rules' },
+    { id: 'personas', label: 'Personas' },
     { id: 'core', label: 'Core features' },
     { id: 'sources', label: 'Sources' },
     { id: 'resources', label: 'Resources' },
@@ -75,6 +88,40 @@
     switch (panel) {
       case 'features':
         return exps.length;
+      case 'surfaces':
+        return exps.reduce((count, feature) => count + feature.surfaces.length, 0);
+      case 'actions':
+        return exps.reduce(
+          (count, feature) =>
+            count +
+            feature.surfaces.reduce(
+              (surfaceCount, surface) => surfaceCount + surface.actions.length,
+              0
+            ),
+          0
+        );
+      case 'states':
+        return exps.reduce(
+          (count, feature) =>
+            count +
+            feature.surfaces.reduce(
+              (surfaceCount, surface) => surfaceCount + surface.stateDefinitions.length,
+              0
+            ),
+          0
+        );
+      case 'surface-rules':
+        return exps.reduce(
+          (count, feature) =>
+            count +
+            feature.surfaces.reduce(
+              (surfaceCount, surface) => surfaceCount + surface.rules.length,
+              0
+            ),
+          0
+        );
+      case 'personas':
+        return exps.reduce((count, feature) => count + feature.personas.length, 0);
       case 'core':
         return projectStore.project?.coreFeatures?.length ?? 0;
       case 'sources':
@@ -187,232 +234,239 @@
 
 {#if projectStore.project}
   {@const project = projectStore.project}
-  <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-    <header class="mb-6 border-b border-slate-200 pb-6">
-      <div class="flex items-center justify-between gap-3">
-        <a
-          href="/projects"
-          class="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-brand-700 hover:underline"
-        >
-          <span aria-hidden="true">←</span>
-          Back to projects
-        </a>
-        <a
-          href={`/projects/${project.id}/digest`}
-          class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
-          title="Read a plain-language summary of the whole project"
-        >
-          Summary
-        </a>
-        <a
-          href={`/projects/${project.id}/graph`}
-          class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
-          title="Open the whole project behavior graph"
-        >
-          Graph
-        </a>
-        <a
-          href={`/projects/${project.id}/mcp`}
-          class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
-          title="Connect AI agents to this project's features via MCP"
-        >
-          MCP
-        </a>
-        <KebabMenu align="right" placement="down" label="Project actions">
-          {#snippet children(close)}
-            <MenuItem
-              disabled={exporting}
-              onclick={() => {
-                close();
-                handleExport();
-              }}
-            >
-              <span aria-hidden="true">⬇</span>
-              {exporting ? 'Exporting...' : 'Export .unspa'}
-            </MenuItem>
-          {/snippet}
-        </KebabMenu>
-      </div>
-      <div class="mt-3">
-        <div class="min-w-0">
-          {#if editingProject}
-            <div class="space-y-3">
-              <label class="block">
-                <span class="sr-only">Project name</span>
-                <input
-                  type="text"
-                  bind:value={nameDraft}
-                  class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-3xl font-semibold tracking-tight text-slate-950 outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-100 sm:text-4xl"
-                />
-              </label>
-              <label class="block">
-                <span class="sr-only">Project description</span>
-                <textarea
-                  bind:value={descriptionDraft}
-                  rows="3"
-                  placeholder="Describe what belongs in this project..."
-                  class="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-100"
-                ></textarea>
-              </label>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-                  onclick={saveProjectMetadata}
-                  disabled={projectStore.saving ||
-                    nameDraft.trim().length === 0 ||
-                    descriptionDraft.trim().length === 0}
-                >
-                  {projectStore.saving ? 'Saving...' : 'Save project'}
-                </button>
-                <button
-                  type="button"
-                  class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                  onclick={() => (editingProject = false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          {:else}
-            <h1 class="truncate text-4xl font-semibold tracking-tight text-slate-950">
-              {project.name}
-            </h1>
-            {#if project.description}
-              <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{project.description}</p>
-            {:else}
-              <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                A project that groups related behavior models and their implementation signals.
-              </p>
-            {/if}
-            {#if project.tags && project.tags.length > 0}
-              <div class="mt-3">
-                <TagDotStrip tags={project.tags} />
-              </div>
-            {/if}
-            <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
-              <button
-                class="font-medium text-brand-700 hover:underline"
-                onclick={() => (editingProject = true)}
+  <div class="mx-auto flex min-h-[calc(100vh-4rem)] max-w-[97rem] items-start">
+    <ContextSidebar
+      contextLabel="Project"
+      contextName={project.name}
+      backHref="/projects"
+      backLabel="Back to projects"
+      items={PANELS}
+      activeId={projectStore.activePanel}
+      count={(panel) => panelCount(panel as ProjectPanel)}
+      onSelect={(panel) => projectStore.setActivePanel(panel as ProjectPanel)}
+    />
+    <div class="mx-auto min-w-0 max-w-7xl flex-1 px-4 py-8 sm:px-6">
+      <header class="mb-6 border-b border-slate-200 pb-6">
+        <div class="flex items-center justify-end gap-3">
+          <a
+            href={`/projects/${project.id}/digest`}
+            class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
+            title="Read a plain-language summary of the whole project"
+          >
+            Summary
+          </a>
+          <a
+            href={`/projects/${project.id}/graph`}
+            class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
+            title="Open the whole project behavior graph"
+          >
+            Graph
+          </a>
+          <a
+            href={`/projects/${project.id}/mcp`}
+            class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
+            title="Connect AI agents to this project's features via MCP"
+          >
+            MCP
+          </a>
+          <KebabMenu align="right" placement="down" label="Project actions">
+            {#snippet children(close)}
+              <MenuItem
+                disabled={exporting}
+                onclick={() => {
+                  close();
+                  handleExport();
+                }}
               >
-                Edit project
-              </button>
-              <span>Updated {new Date(project.updatedAt).toLocaleString()}</span>
-              <span>{projectStore.saving ? 'Saving...' : 'Saved'}</span>
-            </div>
-          {/if}
+                <span aria-hidden="true">⬇</span>
+                {exporting ? 'Exporting...' : 'Export .unspa'}
+              </MenuItem>
+            {/snippet}
+          </KebabMenu>
         </div>
-      </div>
-      {#if projectStore.saveError}
-        <p class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {projectStore.saveError}
-          <button
-            type="button"
-            class="ml-2 underline"
-            onclick={() => projectStore.dismissSaveError()}
-          >
-            dismiss
-          </button>
-        </p>
-      {/if}
-    </header>
-
-    <div class="mb-4 rounded-xl border border-slate-200 bg-white p-1 shadow-sm shadow-slate-950/5">
-      <nav class="flex flex-wrap gap-1">
-        {#each PANELS as panel (panel.id)}
-          <button
-            type="button"
-            class="rounded-md px-3 py-1.5 text-sm font-medium transition {projectStore.activePanel ===
-            panel.id
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}"
-            onclick={() => projectStore.setActivePanel(panel.id)}
-          >
-            {panel.label}
-            <span
-              class="ml-1 rounded bg-white/80 px-1.5 py-0.5 text-xs {projectStore.activePanel ===
-              panel.id
-                ? 'text-brand-900'
-                : 'text-slate-600'}"
+        <div class="mt-3">
+          <div class="min-w-0">
+            {#if editingProject}
+              <div class="space-y-3">
+                <label class="block">
+                  <span class="sr-only">Project name</span>
+                  <input
+                    type="text"
+                    bind:value={nameDraft}
+                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-3xl font-semibold tracking-tight text-slate-950 outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-100 sm:text-4xl"
+                  />
+                </label>
+                <label class="block">
+                  <span class="sr-only">Project description</span>
+                  <textarea
+                    bind:value={descriptionDraft}
+                    rows="3"
+                    placeholder="Describe what belongs in this project..."
+                    class="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-100"
+                  ></textarea>
+                </label>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    onclick={saveProjectMetadata}
+                    disabled={projectStore.saving ||
+                      nameDraft.trim().length === 0 ||
+                      descriptionDraft.trim().length === 0}
+                  >
+                    {projectStore.saving ? 'Saving...' : 'Save project'}
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    onclick={() => (editingProject = false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            {:else}
+              <h1 class="truncate text-4xl font-semibold tracking-tight text-slate-950">
+                {project.name}
+              </h1>
+              {#if project.description}
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{project.description}</p>
+              {:else}
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                  A project that groups related behavior models and their implementation signals.
+                </p>
+              {/if}
+              {#if project.tags && project.tags.length > 0}
+                <div class="mt-3">
+                  <TagDotStrip tags={project.tags} />
+                </div>
+              {/if}
+              <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                <button
+                  class="font-medium text-brand-700 hover:underline"
+                  onclick={() => (editingProject = true)}
+                >
+                  Edit project
+                </button>
+                <span>Updated {new Date(project.updatedAt).toLocaleString()}</span>
+                <span>{projectStore.saving ? 'Saving...' : 'Saved'}</span>
+              </div>
+            {/if}
+          </div>
+        </div>
+        {#if projectStore.saveError}
+          <p class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {projectStore.saveError}
+            <button
+              type="button"
+              class="ml-2 underline"
+              onclick={() => projectStore.dismissSaveError()}
             >
-              {panelCount(panel.id)}
-            </span>
-          </button>
-        {/each}
-      </nav>
-    </div>
+              dismiss
+            </button>
+          </p>
+        {/if}
+      </header>
 
-    {#if projectStore.activePanel !== 'features' && projectStore.activePanel !== 'core' && projectStore.activePanel !== 'history'}
-      <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <input
-          type="search"
-          placeholder={`Search ${projectStore.activePanel}...`}
-          value={projectStore.search}
-          oninput={(e) => projectStore.setSearch((e.target as HTMLInputElement).value)}
-          class="h-10 w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-100"
-        />
-        <p class="text-xs text-slate-500">
-          {panelCount(projectStore.activePanel)}
-          {projectStore.activePanel} in this project
-        </p>
-      </div>
-    {/if}
-
-    {#if projectFeaturesStore.loading}
-      <p class="text-sm text-slate-500">Loading features...</p>
-    {:else}
-      {#key projectStore.activePanel}
-        <div
-          in:fade={{ duration: 140, easing: cubicOut }}
-          class="motion-reduce:animate-none! motion-reduce:opacity-100!"
-        >
-          {#if projectStore.activePanel === 'features'}
-            <ProjectFeaturesPanel
-              features={projectFeaturesStore.features}
-              search={projectStore.search}
-              onSearch={(query) => projectStore.setSearch(query)}
-              onCreate={handleCreateFeature}
-              onAddTag={handleAddFeatureTag}
-              onRemoveTag={handleRemoveFeatureTag}
-              onRemove={handleRemoveFeature}
-            />
-          {:else if projectStore.activePanel === 'core'}
-            <ProjectCoreFeaturesPanel
-              {project}
-              features={projectFeaturesStore.features}
-              saving={projectStore.saving}
-              onDeclare={(value, description) => projectStore.declareCoreFeature(value, description)}
-              onUpdate={(value, description) => projectStore.updateCoreFeature(value, description)}
-              onRemove={(value) => projectStore.removeCoreFeature(value)}
-              onAssign={handleAssignFeatureCore}
-            />
-          {:else if projectStore.activePanel === 'sources'}
-            <ProjectSourcesPanel search={projectStore.search} />
-          {:else if projectStore.activePanel === 'resources'}
-            <ProjectResourcesPanel
-              features={projectFeaturesStore.features}
-              search={projectStore.search}
-            />
-          {:else if projectStore.activePanel === 'data'}
-            <ProjectEntitiesPanel
-              features={projectFeaturesStore.features}
-              search={projectStore.search}
-            />
-          {:else if projectStore.activePanel === 'events'}
-            <ProjectEventsPanel
-              features={projectFeaturesStore.features}
-              search={projectStore.search}
-            />
-          {:else if projectStore.activePanel === 'transitions'}
-            <ProjectTransitionsPanel
-              features={projectFeaturesStore.features}
-              search={projectStore.search}
-            />
-          {:else if projectStore.activePanel === 'history'}
-            <ProjectHistoryPanel />
-          {/if}
+      {#if projectStore.activePanel !== 'features' && projectStore.activePanel !== 'core' && projectStore.activePanel !== 'history'}
+        <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <input
+            type="search"
+            placeholder={`Search ${projectStore.activePanel}...`}
+            value={projectStore.search}
+            oninput={(e) => projectStore.setSearch((e.target as HTMLInputElement).value)}
+            class="h-10 w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-100"
+          />
+          <p class="text-xs text-slate-500">
+            {panelCount(projectStore.activePanel)}
+            {projectStore.activePanel} in this project
+          </p>
         </div>
-      {/key}
-    {/if}
+      {/if}
+
+      {#if projectFeaturesStore.loading}
+        <p class="text-sm text-slate-500">Loading features...</p>
+      {:else}
+        {#key projectStore.activePanel}
+          <div
+            in:fade={{ duration: 140, easing: cubicOut }}
+            class="motion-reduce:animate-none! motion-reduce:opacity-100!"
+          >
+            {#if projectStore.activePanel === 'features'}
+              <ProjectFeaturesPanel
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+                onSearch={(query) => projectStore.setSearch(query)}
+                onCreate={handleCreateFeature}
+                onAddTag={handleAddFeatureTag}
+                onRemoveTag={handleRemoveFeatureTag}
+                onRemove={handleRemoveFeature}
+              />
+            {:else if projectStore.activePanel === 'surfaces'}
+              <ProjectSurfacesPanel
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+              />
+            {:else if projectStore.activePanel === 'actions'}
+              <ProjectActionsPanel
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+              />
+            {:else if projectStore.activePanel === 'states'}
+              <StatesOverview
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+              />
+            {:else if projectStore.activePanel === 'surface-rules'}
+              <SurfaceRulesOverview
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+              />
+            {:else if projectStore.activePanel === 'personas'}
+              <ProjectPersonasPanel
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+              />
+            {:else if projectStore.activePanel === 'core'}
+              <ProjectCoreFeaturesPanel
+                {project}
+                features={projectFeaturesStore.features}
+                saving={projectStore.saving}
+                onDeclare={(value, description) =>
+                  projectStore.declareCoreFeature(value, description)}
+                onUpdate={(value, description) =>
+                  projectStore.updateCoreFeature(value, description)}
+                onRemove={(value) => projectStore.removeCoreFeature(value)}
+                onAssign={handleAssignFeatureCore}
+              />
+            {:else if projectStore.activePanel === 'sources'}
+              <ProjectSourcesPanel search={projectStore.search} />
+            {:else if projectStore.activePanel === 'resources'}
+              <ProjectResourcesPanel
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+              />
+            {:else if projectStore.activePanel === 'data'}
+              <ProjectEntitiesPanel
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+              />
+            {:else if projectStore.activePanel === 'events'}
+              <ProjectEventsPanel
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+              />
+            {:else if projectStore.activePanel === 'transitions'}
+              <ProjectTransitionsPanel
+                features={projectFeaturesStore.features}
+                search={projectStore.search}
+              />
+            {:else if projectStore.activePanel === 'history'}
+              <ProjectHistoryPanel />
+            {/if}
+          </div>
+        {/key}
+      {/if}
+    </div>
   </div>
 {/if}

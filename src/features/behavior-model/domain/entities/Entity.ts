@@ -1,5 +1,5 @@
 import type { EntityFieldType } from '../value-objects/EntityFieldType';
-import type { EntityFieldId, EntityId, ResourceId } from '../value-objects/ids';
+import type { EntityFieldId, EntityId, ResourceId, ValueSetId } from '../value-objects/ids';
 import type { StatePath } from '../value-objects/StatePath';
 
 /**
@@ -18,6 +18,8 @@ export type EntityField = {
   readonly description?: string;
   readonly required?: boolean;
   readonly enumValues?: readonly string[];
+  /** Reusable enum identity, including project-linked cross-feature value sets. */
+  readonly valueSetId?: ValueSetId;
   /**
    * Optional state path. Set on top-level fields that map to a real
    * StateDefinition. Nested fields (children of an object, or the items

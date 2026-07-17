@@ -15,11 +15,15 @@ import type { SurfacePanelTab } from '$features/maturity/domain/MaturityReport';
 
 export type FeatureTopTab =
   | 'build'
+  | 'states'
+  | 'surface-rules'
   | 'resources'
+  | 'personas'
   | 'data'
   | 'events'
   | 'transitions'
   | 'invariants'
+  | 'goals'
   | 'acceptance';
 
 export type FeatureHrefOptions = {
@@ -30,10 +34,7 @@ export type FeatureHrefOptions = {
 };
 
 /** Build a feature-editor deep link, omitting params left at their defaults. */
-export const featureHref = (
-  featureId: string,
-  options: FeatureHrefOptions = {}
-): string => {
+export const featureHref = (featureId: string, options: FeatureHrefOptions = {}): string => {
   const params = new URLSearchParams();
   // Mirror FeatureEditor's store→URL effect: 'build' and 'actions' are the
   // implicit defaults, so leave them out for clean, stable URLs.
@@ -48,8 +49,7 @@ export const featureHref = (
 export const projectHref = (projectId: string): string =>
   `/projects/${encodeURIComponent(projectId)}`;
 
-export const domainHref = (domainId: string): string =>
-  `/domains/${encodeURIComponent(domainId)}`;
+export const domainHref = (domainId: string): string => `/domains/${encodeURIComponent(domainId)}`;
 
 /** Focus token for an action's editor card (`data-focus-target` in ActionEditor). */
 export const actionFocus = (actionId: string): string => `action:${actionId}`;

@@ -41,13 +41,19 @@ class ThemeStore {
     this.current = parseThemeId(document.documentElement.dataset.theme);
   }
 
-  /** Apply a theme live: reactive state + the <html> attribute + localStorage. */
-  setTheme(next: DashboardThemeId): void {
+  /** Apply a theme for this runtime without changing the saved browser choice. */
+  setTransientTheme(next: DashboardThemeId): void {
     const id = parseThemeId(next);
     this.current = id;
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.theme = id;
     }
+  }
+
+  /** Apply a theme live: reactive state + the <html> attribute + localStorage. */
+  setTheme(next: DashboardThemeId): void {
+    const id = parseThemeId(next);
+    this.setTransientTheme(id);
     if (typeof localStorage === 'undefined') return;
     // Persist every explicit choice. The CLI default (PUBLIC_UNSPA_THEME) may
     // itself be a non-default theme, so even picking the default theme here is

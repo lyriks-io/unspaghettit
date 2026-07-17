@@ -12,7 +12,8 @@ import {
 import {
   asEntityFieldId,
   asEntityId,
-  asFeatureId
+  asFeatureId,
+  asValueSetId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
 import { runMutation, type ToolDeps } from './_shared';
@@ -27,6 +28,7 @@ type DataFieldInput = {
   description: string;
   required?: boolean;
   enumValues?: readonly string[];
+  valueSetId?: string;
   path?: string;
   fields?: readonly DataFieldInput[];
   items?: DataFieldInput;
@@ -39,6 +41,7 @@ const buildDataField = (ids: () => string, input: DataFieldInput): EntityField =
   description: input.description,
   ...(input.required !== undefined ? { required: input.required } : {}),
   ...(input.enumValues ? { enumValues: input.enumValues } : {}),
+  ...(input.valueSetId ? { valueSetId: asValueSetId(input.valueSetId) } : {}),
   ...(input.path ? { path: asStatePath(input.path) } : {}),
   ...(input.fields ? { fields: input.fields.map((f) => buildDataField(ids, f)) } : {}),
   ...(input.items ? { items: buildDataField(ids, input.items) } : {})
@@ -50,7 +53,8 @@ export const registerEntityFieldTools = (deps: ToolDeps): void => {
   server.registerTool(
     'add_entity_field',
     {
-      description: 'Append top-level EntityField. fields/items recurse for object/array. path maps to a state path.',
+      description:
+        'Append top-level EntityField. fields/items recurse for object/array. path maps to a state path; enum fields may reference a reusable valueSetId.',
       inputSchema: {
         featureId: z.string(),
         entityId: z.string(),
@@ -59,6 +63,7 @@ export const registerEntityFieldTools = (deps: ToolDeps): void => {
         description: z.string().min(1),
         required: z.boolean().optional(),
         enumValues: z.array(z.string()).optional(),
+        valueSetId: z.string().optional(),
         path: z.string().optional(),
         fields: z.array(z.record(z.string(), z.unknown())).optional(),
         items: z.record(z.string(), z.unknown()).optional()
@@ -72,6 +77,7 @@ export const registerEntityFieldTools = (deps: ToolDeps): void => {
       description,
       required,
       enumValues,
+      valueSetId,
       path,
       fields,
       items
@@ -82,6 +88,7 @@ export const registerEntityFieldTools = (deps: ToolDeps): void => {
         description,
         required,
         enumValues,
+        valueSetId,
         path,
         fields: fields as readonly DataFieldInput[] | undefined,
         items: items as DataFieldInput | undefined
@@ -100,7 +107,7 @@ export const registerEntityFieldTools = (deps: ToolDeps): void => {
   server.registerTool(
     'update_entity_field',
     {
-      description: 'Patch EntityField. Id fixed. Subset: name/type/description/required/enumValues/path/fields/items.',
+      description: 'Patch EntityField. Id fixed. Subset includes enumValues/valueSetId and path.',
       inputSchema: {
         featureId: z.string(),
         entityId: z.string(),
@@ -134,8 +141,7 @@ export const registerEntityFieldTools = (deps: ToolDeps): void => {
     async ({ featureId, entityId, fieldId }) =>
       runMutation(deps, {
         featureId: asFeatureId(featureId),
-        transform: (exp) =>
-          removeEntityField(exp, asEntityId(entityId), asEntityFieldId(fieldId))
+        transform: (exp) => removeEntityField(exp, asEntityId(entityId), asEntityFieldId(fieldId))
       })
   );
 };

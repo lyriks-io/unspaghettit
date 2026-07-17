@@ -8,7 +8,8 @@ import {
   asEffectId,
   asEntityFieldId,
   asRuleId,
-  asSurfaceId
+  asSurfaceId,
+  asValueSetId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../../src/features/behavior-model/domain/value-objects/StatePath';
 
@@ -163,6 +164,7 @@ export const buildDataField = (mintId: () => string, raw: Record<string, unknown
     ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
     ...(typeof raw.required === 'boolean' ? { required: raw.required } : {}),
     ...(Array.isArray(raw.enumValues) ? { enumValues: raw.enumValues as readonly string[] } : {}),
+    ...(typeof raw.valueSetId === 'string' ? { valueSetId: asValueSetId(raw.valueSetId) } : {}),
     ...(typeof raw.path === 'string' ? { path: asStatePath(raw.path) } : {}),
     ...(fields ? { fields: fields.map((f) => buildDataField(mintId, f)) } : {}),
     ...(items ? { items: buildDataField(mintId, items) } : {})

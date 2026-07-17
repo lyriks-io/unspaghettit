@@ -18,12 +18,18 @@
 
   let { children } = $props();
 
-  onMount(() => {
-    void bootstrapDashboard();
-  });
-
   const builderActive = $derived(isBuilderRoute(page.url.pathname));
-  const lyriks = $derived(themeStore.isLyriks);
+  const embedded = $derived(page.url.searchParams.get('embed') === '1');
+  const lyriks = $derived(embedded || themeStore.isLyriks);
+  const requestedUser = $derived(page.url.searchParams.get('user') ?? undefined);
+
+  onMount(() => {
+    void bootstrapDashboard({
+      displayName: requestedUser,
+      suppressIdentityPrompt: embedded,
+      forceLyriksSkin: embedded
+    });
+  });
 
   // The route key drives the transition. Including the dynamic params (e.g.
   // /projects/abc to /projects/xyz) so navigation between sibling pages also
@@ -36,15 +42,21 @@
     ? 'bg-[linear-gradient(180deg,#e6ddfa_0%,#eeeafb_220px,#eeeafb_100%)]'
     : 'bg-[linear-gradient(180deg,#f0fdfa_0%,#f8fafc_220px,#f8fafc_100%)]'}"
 >
-  <AppHeader />
+  {#if !embedded}
+    <AppHeader />
+  {/if}
   <!-- Newer-release strip. Sits under the header, appears only when the
        server-side check reports an update, and remembers its dismissal per
        target version. -->
-  <UpdateBanner />
+  {#if !embedded}
+    <UpdateBanner />
+  {/if}
   <!-- First-run onboarding strip. Sits outside the route transition so it
        doesn't re-fade on every navigation; hides itself permanently once
        the tour is completed or the user dismisses it. -->
-  <GettingStartedBanner />
+  {#if !embedded}
+    <GettingStartedBanner />
+  {/if}
   <main class="flex-1 bg-[#152ffd0a]">
     {#key routeKey}
       <div
@@ -60,11 +72,13 @@
 <!-- Always-in-corner implementation queue for the default view. Builder mode
      ships its own dark, project-scoped queue widget, so suppress this one there
      to avoid two stacked widgets in the same corner. -->
-{#if !builderActive}
+{#if !embedded && !builderActive}
   <FloatingQueueWidget />
 {/if}
 
 <AppDialog />
-<FlyingSpaghettiEasterEgg />
-<SyncToast />
-<TourOverlay />
+{#if !embedded}
+  <FlyingSpaghettiEasterEgg />
+  <SyncToast />
+  <TourOverlay />
+{/if}
