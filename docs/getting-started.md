@@ -30,7 +30,7 @@ Requires Node.js 20.10 or newer.
 
 ```bash
 unspa init        # register the MCP GLOBALLY with your detected AI clients
-unspa dashboard   # opens http://localhost:3000
+unspa dashboard   # opens the dashboard (prints its URL; default port 43171)
 ```
 
 `unspa init` registers the MCP server **globally by default**: it writes each client's user-level config (`~/.claude.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, ...), so the tools attach in **every** repo after a single install, including clients with no per-project scope (Claude Desktop, Windsurf). Then **restart your IDE** so the client picks up the new tools. Your LLM now has the runtime's full tool surface.

@@ -54,7 +54,7 @@ npm run build       # builds the SvelteKit dashboard
 npm link            # exposes `unspa` and `unspaghettit` globally pointing at this clone
 ```
 
-After source changes, re-run `npm run build` so `unspa dashboard` picks them up. The CLI itself runs through `tsx` at invocation time, so CLI changes don't need a rebuild.
+After source changes, re-run `npm run build` so `unspa dashboard` picks them up - or run `npm run dev` for the Vite dev server with live HMR, handy while iterating on the UI. The CLI itself runs through `tsx` at invocation time, so CLI changes don't need a rebuild.
 
 ## Uninstall
 
@@ -90,34 +90,34 @@ If `unspa` still resolves after `npm uninstall -g unspaghettit`, you hit the orp
 
 ### Multiple projects
 
-`unspa uninstall` only cleans the project it's run in. If you ran `unspa init` in several repos on this machine, every one of them has an MCP server entry pointing at the (now-deleted) CLI. The AI clients will log "MCP server failed to start" until those entries are cleaned. Either run `unspa uninstall` inside each project *before* removing the clone, or hand-edit the MCP config files listed in the [AI client support](#ai-client-support) table.
+`unspa uninstall` only cleans the project it's run in. If you ran `unspa init` in several repos on this machine, every one of them has an MCP server entry pointing at the (now-deleted) CLI. The AI clients will log "MCP server failed to start" until those entries are cleaned. Either run `unspa uninstall` inside each project _before_ removing the clone, or hand-edit the MCP config files listed in the [AI client support](#ai-client-support) table.
 
 ## Command surface
 
 Setup, run, verify, and codegen.
 
-| Command                       | What it does                                                                              |
-| ----------------------------- | ----------------------------------------------------------------------------------------- |
-| `unspa init`                  | Scaffold `unspa/`, register the MCP with picked AI clients (entry targets `unspa-mcp`), seed `CLAUDE.md`/`AGENTS.md`, install skills. Idempotent. |
-| `unspa serve`                 | Run the bundled MCP server on stdio (kept for manual debugging; init's entry uses `unspa-mcp` directly). |
-| `unspa dashboard`             | Boot the SvelteKit dashboard from the `unspa/` folder discovered by walking up from cwd. `--view <ids>` enables opt-in views for the run. |
-| `unspa check`                 | **CI gate.** Run the verification spine headlessly (scenarios + maturity + reachability + optional model checking + spec→code drift + cross-feature event coherence) and **exit non-zero on failure**. `--json` for CI dashboards. |
-| `unspa ci`                    | Scaffold a GitHub Actions workflow (`.github/workflows/unspaghettit.yml`) that runs `unspa check` on every push / PR. |
-| `unspa coverage ingest`       | **[experimental]** Read a Vitest JSON report of the generated scenario spec and mark actions whose scenarios passed as **verified** in `.unspa.json` (proven against the spec). Gate with `unspa check --min-verified`. |
-| `unspa view`                  | Manage opt-in dashboard views (Expert is always on): `view list`, `view add <id>` (e.g. `builder`), `view remove <id>`. Persists in `<snapshots>/views.json`. |
-| `unspa list`                  | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload. |
-| `unspa link`                  | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding. |
-| `unspa adopt`                 | **Code → spec on-ramp.** Print the paste-ready agent prompt that models an existing codebase through the MCP with full provenance (code sources + spans), then seeds `.unspa.json` coverage from the spans (`seed_index_from_analysis`). `--prompt-only` for piping. |
-| `unspa scenarios export`      | **[experimental]** Generate a Vitest spec from a feature's authored scenarios, using the deterministic simulator as the oracle. |
-| `unspa scenarios adapter`     | **[experimental]** Scaffold the `UnspaAdapter` stub the export needs - a case per scenario-bearing action, pre-seeded with `.unspa.json` implementation locations. |
-| `unspa uninstall`             | Reverse `init`: strip the MCP entry from picked clients, remove the unspa blocks from `.gitignore` / `CLAUDE.md` / `AGENTS.md`, uninstall skills, optionally purge `unspa/` and unlink the CLI globally. |
+| Command                   | What it does                                                                                                                                                                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unspa init`              | Scaffold `unspa/`, register the MCP with picked AI clients (entry targets `unspa-mcp`), seed `CLAUDE.md`/`AGENTS.md`, install skills. Idempotent.                                                                                                                    |
+| `unspa serve`             | Run the bundled MCP server on stdio (kept for manual debugging; init's entry uses `unspa-mcp` directly).                                                                                                                                                             |
+| `unspa dashboard`         | Boot the SvelteKit dashboard against the discovered model (walk-up `unspa/`, else the shared hub). Starts on port 43171 (advances if taken; prints the URL). `--view <ids>` enables opt-in views for the run.                                                        |
+| `unspa check`             | **CI gate.** Run the verification spine headlessly (scenarios + maturity + reachability + optional model checking + spec→code drift + cross-feature event coherence) and **exit non-zero on failure**. `--json` for CI dashboards.                                   |
+| `unspa ci`                | Scaffold a GitHub Actions workflow (`.github/workflows/unspaghettit.yml`) that runs `unspa check` on every push / PR.                                                                                                                                                |
+| `unspa coverage ingest`   | **[experimental]** Read a Vitest JSON report of the generated scenario spec and mark actions whose scenarios passed as **verified** in `.unspa.json` (proven against the spec). Gate with `unspa check --min-verified`.                                              |
+| `unspa view`              | Manage opt-in dashboard views (Expert is always on): `view list`, `view add <id>` (e.g. `builder`), `view remove <id>`. Persists in `<snapshots>/views.json`.                                                                                                        |
+| `unspa list`              | List the projects in the local `unspa/` folder. `--json` prints a scriptable payload.                                                                                                                                                                                |
+| `unspa link`              | Bind this repo to one project via `.unspa.json` so the MCP scopes its queries to that project. `--unlink` removes the binding.                                                                                                                                       |
+| `unspa adopt`             | **Code → spec on-ramp.** Print the paste-ready agent prompt that models an existing codebase through the MCP with full provenance (code sources + spans), then seeds `.unspa.json` coverage from the spans (`seed_index_from_analysis`). `--prompt-only` for piping. |
+| `unspa scenarios export`  | **[experimental]** Generate a Vitest spec from a feature's authored scenarios, using the deterministic simulator as the oracle.                                                                                                                                      |
+| `unspa scenarios adapter` | **[experimental]** Scaffold the `UnspaAdapter` stub the export needs - a case per scenario-bearing action, pre-seeded with `.unspa.json` implementation locations.                                                                                                   |
+| `unspa uninstall`         | Reverse `init`: strip the MCP entry from picked clients, remove the unspa blocks from `.gitignore` / `CLAUDE.md` / `AGENTS.md`, uninstall skills, optionally purge `unspa/` and unlink the CLI globally.                                                             |
 
 ## Quick start (in any repo)
 
 ```bash
 cd path/to/your-app
 unspa init           # interactive: scaffold + register MCP + context + skills
-unspa dashboard      # open the dashboard at http://localhost:3000
+unspa dashboard      # open the dashboard (prints its URL; default port 43171)
 ```
 
 That's it. Your AI client spawns
@@ -165,6 +165,7 @@ What it does:
    `.cursor/mcp.json`, …) that travels with the repo in git instead. The entry
    targets `unspa-mcp` (the dedicated MCP bin, faster startup than going through
    `unspa serve`):
+
    - macOS / Linux: `{ "type": "stdio", "command": "unspa-mcp", "args": [] }`
    - Windows: `{ "type": "stdio", "command": "cmd", "args": ["/c", "unspa-mcp"] }`
      because AI clients spawn without a shell, and Node refuses to execute
@@ -174,6 +175,7 @@ What it does:
 
    Merged into existing entries, your other servers stay intact: a `mcpServers.*`
    JSON block for every client, or a `[mcp_servers.unspa]` TOML table for Codex.
+
 3. **Adds a `# >>> unspa` block to `.gitignore`** for hot-reload artefacts.
 4. **Inserts a `<!-- >>> unspa -->` block into `CLAUDE.md` and `AGENTS.md`**
    so any AI assistant working in the repo learns:
@@ -225,14 +227,32 @@ unspa serve --snapshots ./elsewhere  # override the folder
 Boots the SvelteKit dashboard pointing at this repo's `unspa/` folder.
 
 ```bash
-unspa dashboard               # default port 3000
-unspa dashboard --port 4000
+unspa dashboard               # starts on port 43171 (advances if busy; prints the URL)
+unspa dashboard --port 4000   # pin a port (fails loudly if it's taken)
 unspa dashboard --host 127.0.0.1
 unspa dashboard --view builder  # enable opt-in views for this run (see `unspa view`)
 ```
 
 Requires `npm run build` to have been run once in the Unspaghettit repo (this
 generates the `build/` folder the CLI ships).
+
+**Port**: with no `--port` the dashboard starts on the uncommon default `43171`
+(chosen so it doesn't collide with the usual `3000` / `5173` / `8080`) and
+advances to the next free port if that one is taken, printing the URL it bound
+in the startup banner. `npm run dev` (the Vite dev server) starts on the same
+default.
+
+**Live edits from the MCP**: after each write the MCP server pushes a reload to
+the dashboard, so open editors refresh without a page reload and a toast shows
+what changed. It locates the dashboard from the URL the running dashboard
+publishes to `~/.unspa-hub/.dashboard.json`, falling back to probing the known
+loopback ports - so this works with zero config regardless of which port the
+dashboard landed on. Set `UNSPA_SYNC_URL=http://127.0.0.1:<port>` in the MCP
+server's env (`.mcp.json#env`) only if you run the dashboard somewhere unusual
+(e.g. behind a WSL2 / Docker port relay). Non-loopback overrides are rejected.
+Because `unspa dashboard` serves the production **build**, UI source changes
+need a `npm run build` (or use `npm run dev`); model edits show up live either
+way.
 
 **Default**: binds `127.0.0.1` (loopback only) with no auth. Single-machine
 trust boundary. Appropriate for solo dev.
@@ -244,8 +264,9 @@ set the auth env vars before launching:
 # Generate a strong shared token (any random string works):
 export UNSPA_AUTH_TOKEN=$(node -e "console.log(crypto.randomBytes(24).toString('base64url'))")
 
-# Optional but recommended: close cross-site browser CSRF:
-export UNSPA_ALLOWED_ORIGIN=http://<your-host>:3000
+# Optional but recommended: close cross-site browser CSRF (use the port the
+# dashboard prints on startup - 43171 by default):
+export UNSPA_ALLOWED_ORIGIN=http://<your-host>:43171
 
 # Then bind on the LAN interface:
 unspa dashboard --host 0.0.0.0
@@ -257,8 +278,8 @@ the token. The startup banner shows the configured posture
 the MCP server's env** (`.mcp.json#env`) so `notifySyncReload` calls from
 the MCP authenticate too.
 
-Don't expose `0.0.0.0:3000` to the public internet. The OSS install is
-built for trusted networks; for SSO / RBAC / audit trails / encryption at
+Don't expose the dashboard on `0.0.0.0` to the public internet. The OSS install
+is built for trusted networks; for SSO / RBAC / audit trails / encryption at
 rest you've outgrown the OSS tier. See `SECURITY.md` for the threat model
 and the enterprise pointer.
 
@@ -333,7 +354,12 @@ export const adapter: UnspaAdapter = {
   invoke: async (input) => {
     // input.actionId / input.parameters / input.initialState tell you which
     // scenario is running. Call your real code, return:
-    return { status: 'success', finalState: { /* dotted-path state */ } };
+    return {
+      status: 'success',
+      finalState: {
+        /* dotted-path state */
+      }
+    };
     // or { status: 'blocked', finalState: input.initialState } when a guard
     // rejected the call. The generator emits exactly one shape per scenario.
   }
@@ -397,14 +423,14 @@ when its description matches the user's task. Four skills are core and
 install by default; two are opt-in and only land when fun mode is on
 (invoke as `unspaghettit init`, pass `--fun`, or tick the box).
 
-| Skill                | Default | Triggers when                                              |
-| -------------------- | :-----: | ---------------------------------------------------------- |
-| `unspa-edit`         | ✓       | User wants to edit the model (add/change action, etc.)     |
-| `unspa-implement`    | ✓       | User is writing code that backs an Unspaghettit entity     |
-| `unspa-audit`        | ✓       | User asks "what's implemented" / "what's missing"          |
-| `unspa-adopt`        | ✓       | User wants an existing codebase turned into a model (code → spec, with provenance + seeded coverage) |
-| `unspa-worldbuild`   | opt-in  | Modeling a fictional/interactive world (text adventure, RPG quest, narrative environment) |
-| `unspa-worldplay`    | opt-in  | Walking a player through a world built with `unspa-worldbuild` |
+| Skill              | Default | Triggers when                                                                                        |
+| ------------------ | :-----: | ---------------------------------------------------------------------------------------------------- |
+| `unspa-edit`       |    ✓    | User wants to edit the model (add/change action, etc.)                                               |
+| `unspa-implement`  |    ✓    | User is writing code that backs an Unspaghettit entity                                               |
+| `unspa-audit`      |    ✓    | User asks "what's implemented" / "what's missing"                                                    |
+| `unspa-adopt`      |    ✓    | User wants an existing codebase turned into a model (code → spec, with provenance + seeded coverage) |
+| `unspa-worldbuild` | opt-in  | Modeling a fictional/interactive world (text adventure, RPG quest, narrative environment)            |
+| `unspa-worldplay`  | opt-in  | Walking a player through a world built with `unspa-worldbuild`                                       |
 
 The core skills tell the AI to: use the MCP tools instead of regenerating
 JSON, record implementations in the `.unspa.json` behavioral index rather
@@ -420,15 +446,15 @@ full pitch. Skills live in the project so they version with the codebase.
 default** (one install, attached in every repo); `--scope project` writes the
 per-repo entry instead.
 
-| Client                   | Global scope (default)                          | Project scope (`--scope project`) |
-| ------------------------ | ----------------------------------------------- | --------------------------------- |
-| Claude Code (CLI + VSC)  | `~/.claude.json`                                | `.mcp.json`                       |
-| Claude Desktop           | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) | n/a *(no per-project config)* |
-| Cursor                   | `~/.cursor/mcp.json`                            | `.cursor/mcp.json`                |
-| Gemini Code Assist / CLI | `~/.gemini/settings.json`                       | `.gemini/settings.json`           |
-| Windsurf                 | `~/.codeium/windsurf/mcp_config.json`           | n/a                               |
-| Kiro                     | `~/.kiro/settings/mcp.json`                     | `.kiro/settings/mcp.json`         |
-| Codex (CLI + VS Code)    | `~/.codex/config.toml`                          | `.codex/config.toml` *(trusted projects only)* |
+| Client                   | Global scope (default)                                                                                                              | Project scope (`--scope project`)              |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Claude Code (CLI + VSC)  | `~/.claude.json`                                                                                                                    | `.mcp.json`                                    |
+| Claude Desktop           | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) | n/a _(no per-project config)_                  |
+| Cursor                   | `~/.cursor/mcp.json`                                                                                                                | `.cursor/mcp.json`                             |
+| Gemini Code Assist / CLI | `~/.gemini/settings.json`                                                                                                           | `.gemini/settings.json`                        |
+| Windsurf                 | `~/.codeium/windsurf/mcp_config.json`                                                                                               | n/a                                            |
+| Kiro                     | `~/.kiro/settings/mcp.json`                                                                                                         | `.kiro/settings/mcp.json`                      |
+| Codex (CLI + VS Code)    | `~/.codex/config.toml`                                                                                                              | `.codex/config.toml` _(trusted projects only)_ |
 
 The Codex CLI and VS Code extension share `~/.codex/config.toml`, so one write
 covers both. All writes are **merging**: your existing `mcpServers.*` JSON
@@ -442,8 +468,11 @@ on the machine, so no config folders are created for tools you don't use.
 
 ```markdown
 <!-- >>> unspa -->
+
 ## Unspaghettit (auto-managed by `unspa` CLI)
+
 ...
+
 <!-- <<< unspa -->
 ```
 
@@ -485,6 +514,23 @@ your-app/
     └── ...                          ← your code (no tags; index does the mapping)
 ```
 
+## Environment variables
+
+Everything works with zero configuration; these override behavior when you need it. The MCP server and `unspa dashboard` read them from their own process env (for the MCP, the `env` block of its client entry, e.g. `.mcp.json#env`).
+
+| Variable                        | Applies to      | What it does                                                                                                                                                                                                     |
+| ------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UNSPA_SNAPSHOTS`               | MCP + dashboard | Absolute path to the snapshots folder, overriding walk-up discovery and the hub. Written automatically only by `unspa init --hub <path>`.                                                                        |
+| `PORT`                          | dashboard       | Port to bind (default `43171`; advances to the next free port if taken). Prefer the `--port` flag, which sets this.                                                                                              |
+| `HOST`                          | dashboard       | Interface to bind (default `127.0.0.1`). Prefer `--host`. Binding `0.0.0.0` exposes the dashboard on the LAN and needs `UNSPA_AUTH_TOKEN`.                                                                       |
+| `UNSPA_SYNC_URL`                | MCP             | Pin the loopback URL the MCP posts live reloads to. Normally unset — the MCP reads the URL the dashboard published (`~/.unspa-hub/.dashboard.json`) and falls back to probing. Non-loopback values are rejected. |
+| `UNSPA_AUTH_TOKEN`              | dashboard + MCP | LAN-share token. When set, every REST + WebSocket request must carry it; set the **same** value on both the dashboard and the MCP env so the reload POSTs authenticate.                                          |
+| `UNSPA_ALLOWED_ORIGIN`          | dashboard       | Extra browser `Origin` allowed for state-changing requests (CSRF allowlist), e.g. `http://host:43171`.                                                                                                           |
+| `UNSPA_ALLOWED_HOSTS`           | dashboard       | Comma list of extra `Host` header values the anti-DNS-rebinding guard accepts, beyond loopback.                                                                                                                  |
+| `PUBLIC_UNSPA_VIEWS`            | dashboard       | Enabled views beyond Expert. Normally managed by `unspa view` / `--view`, not set by hand.                                                                                                                       |
+| `PUBLIC_UNSPA_THEME`            | dashboard       | Colour theme id. Normally managed by `unspa theme` / `--theme`.                                                                                                                                                  |
+| `UNSPA_DASHBOARD_ENDPOINT_FILE` | dashboard + MCP | Advanced / testing: override the path of the live-sync rendezvous file (default `~/.unspa-hub/.dashboard.json`).                                                                                                 |
+
 ## Troubleshooting
 
 **`unspa: command not found`**. The global shim isn't on the shell's
@@ -524,6 +570,23 @@ copied into npm's global tree and no symlink is involved.
 **`Dashboard build missing`**. Run `npm run build` in the Unspaghettit repo
 once. The CLI re-uses the resulting `build/` folder.
 
+**Dashboard doesn't refresh after an MCP edit** (you have to restart it to see
+changes). The MCP posts a live reload to the dashboard after every write; if it
+can't reach it, edits only appear on the next load. In order of likelihood:
+
+1. **The dashboard is on an unexpected port.** A WSL2 / Docker port relay can
+   squat the default and push the dashboard onto another port. Check the
+   dashboard's startup banner for the URL it actually bound, then set
+   `UNSPA_SYNC_URL=http://127.0.0.1:<that-port>` in the MCP server's env
+   (`.mcp.json#env`) and restart the MCP. (New dashboards publish their URL to
+   `~/.unspa-hub/.dashboard.json` automatically, so this is only needed for an
+   older dashboard or a stubborn relay.)
+2. **UI code edits don't appear at all.** `unspa dashboard` serves the
+   production build; run `npm run build` and relaunch, or use `npm run dev`.
+   Model edits refresh live regardless.
+3. **Token mismatch.** If the dashboard runs with `UNSPA_AUTH_TOKEN`, the same
+   token must be set in the MCP env or its reload POSTs are rejected.
+
 **Claude Desktop on macOS shows no Unspaghettit tools** (`spawn unspa-mcp
 ENOENT` in `~/Library/Logs/Claude/mcp-server-unspa.log`). GUI apps on macOS
 launch with a **minimal PATH** (`/usr/bin:/bin:/usr/sbin:/sbin`) that excludes
@@ -556,13 +619,23 @@ Two fixes, in order of preference:
    - macOS / Linux (absolute paths; find node with `which node`, and the
      script at `$(npm root -g)/unspaghettit/mcp-server/bin.cjs`):
      ```json
-     { "mcpServers": { "unspa": { "type": "stdio", "command": "/usr/local/bin/node", "args": ["/usr/local/lib/node_modules/unspaghettit/mcp-server/bin.cjs"] } } }
+     {
+       "mcpServers": {
+         "unspa": {
+           "type": "stdio",
+           "command": "/usr/local/bin/node",
+           "args": ["/usr/local/lib/node_modules/unspaghettit/mcp-server/bin.cjs"]
+         }
+       }
+     }
      ```
      A bare `"command": "unspa-mcp"` also works for Claude Code in a terminal
      (it has your shell PATH), but not for a minimal-PATH GUI like Claude Desktop.
    - Windows:
      ```json
-     { "mcpServers": { "unspa": { "type": "stdio", "command": "cmd", "args": ["/c", "unspa-mcp"] } } }
+     {
+       "mcpServers": { "unspa": { "type": "stdio", "command": "cmd", "args": ["/c", "unspa-mcp"] } }
+     }
      ```
 
 If the MCP fails on **0.1.2+**, the most likely cause is a missing module

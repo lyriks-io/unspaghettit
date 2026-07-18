@@ -1242,7 +1242,8 @@ claude mcp list`}
       {#snippet children()}
         <p>
           Default install is <strong>loopback-only</strong> with no auth. The
-          dashboard binds <span class="mono">127.0.0.1:3000</span> and only your
+          dashboard binds <span class="mono">127.0.0.1</span> (default port
+          <span class="mono">43171</span>, printed on startup) and only your
           machine can reach it. That's the right stance for solo dev on a trusted
           workstation; the user is the trust boundary.
         </p>
@@ -1258,7 +1259,7 @@ TOKEN=$(node -e "console.log(crypto.randomBytes(24).toString('base64url'))")
 # Set on both the dashboard env AND every MCP server that talks to it:
 export UNSPA_AUTH_TOKEN=$TOKEN
 # Optional but recommended: lock cross-site browser requests
-export UNSPA_ALLOWED_ORIGIN=http://192.168.1.10:3000
+export UNSPA_ALLOWED_ORIGIN=http://192.168.1.10:43171
 
 unspa dashboard --host 0.0.0.0`}
         />
@@ -1276,7 +1277,7 @@ unspa dashboard --host 0.0.0.0`}
         </p>
         <Callout
           tone="warning"
-          title="Do not expose 0.0.0.0:3000 to the public internet"
+          title="Do not expose the dashboard to the public internet"
         >
           {#snippet children()}
             The OSS install is built for trusted networks. Public exposure

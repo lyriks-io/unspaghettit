@@ -124,7 +124,7 @@ If you already have Node.js 20.10+:
 ```bash
 npm install -g unspaghettit
 unspa init        # registers the MCP globally with your detected AI clients
-unspa dashboard   # http://localhost:3000
+unspa dashboard   # prints its URL on startup (default port 43171)
 ```
 
 `unspa init` registers the MCP **globally by default**, so the tools attach in every repo after one install. Inside a project it also seeds `CLAUDE.md`/`AGENTS.md` and skills. Want the entry to live in the repo instead? `unspa init --scope project` (pairs with `--local`).

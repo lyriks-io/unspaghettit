@@ -1,12 +1,13 @@
 <!-- >>> unspa -->
+
 ## Unspaghettit (auto-managed by `unspa` CLI)
 
 This repo models its software as executable behavior with [Unspaghettit](https://unspaghettit.dev).
 The model lives in your Unspaghettit snapshots folder: the shared hub
 (`~/.unspa-hub/unspa`) by default, or this repo's `unspa/` folder for a
 per-repo install (`unspa init --local`). Open the dashboard with
-`unspa dashboard` (http://localhost:3000) to see surfaces, actions, simulator,
-maturity, and implementation coverage.
+`unspa dashboard` (it prints its URL on startup; default port 43171) to see
+surfaces, actions, simulator, maturity, and implementation coverage.
 
 When using the CLI hub, treat `~/.unspa-hub/unspa` as the source of truth.
 Dashboard localhost ports are only views over that folder and may change per

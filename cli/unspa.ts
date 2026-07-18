@@ -139,8 +139,8 @@ program
 
 program
   .command('dashboard')
-  .description('Boot the bundled SvelteKit dashboard. Defaults to the shared hub (~/.unspa-hub/unspa); a per-repo unspa/ found by walking up from CWD wins when present.')
-  .option('-p, --port <port>', 'Port to bind (default: 3000).', (v) => Number.parseInt(v, 10))
+  .description('Boot the bundled SvelteKit dashboard. Defaults to the shared hub (~/.unspa-hub/unspa); a per-repo unspa/ found by walking up from CWD wins when present. Starts on port 43171 (advances to the next free port if taken) and prints the URL it bound.')
+  .option('-p, --port <port>', 'Port to bind (default: 43171; advances to the next free port if taken unless pinned here).', (v) => Number.parseInt(v, 10))
   .option('-h, --host <host>', 'Host to bind (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN; the dashboard has no auth, so do this only on trusted networks.')
   .option('-s, --snapshots <dir>', 'Point the dashboard at a specific snapshots folder (sets UNSPA_SNAPSHOTS for this run). Handy for a one-off look at a custom hub or another repo.')
   .option('--view <ids>', 'Comma list of optional views to enable beyond Expert (e.g. "builder"). Expert is always on and is the default; with no extra views the header shows no switcher.')
