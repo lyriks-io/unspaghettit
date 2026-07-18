@@ -1,18 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DEFAULT_DASHBOARD_PORT } from '../src/lib/server/sync/dashboardEndpoint';
 
 /**
  * The notifier carries module-level state (sticky URL, failure cooldown), so
  * each test re-imports a fresh copy via `vi.resetModules()` and stubs the
  * global `fetch`. We assert on the request URLs the notifier chose, not on a
- * live server.
+ * live server. The rendezvous file is pointed at an isolated temp path so the
+ * probing tests are deterministic regardless of any real dashboard on the box.
  */
 
 const RELOAD = '/api/sync/reload';
-const PROD = 'http://127.0.0.1:3000';
-const DEV6 = 'http://[::1]:8173';
-const DEV4 = 'http://127.0.0.1:8173';
+const D4 = `http://127.0.0.1:${DEFAULT_DASHBOARD_PORT}`; // uncommon default (IPv4)
+const D6 = `http://[::1]:${DEFAULT_DASHBOARD_PORT}`; // uncommon default (IPv6)
+const PROD = 'http://127.0.0.1:3000'; // legacy prod
+const DEV6 = 'http://[::1]:8173'; // legacy dev (IPv6)
 
 const urlOf = (call: unknown[]): string => String(call[0]);
+
+let tmpDir: string;
+let endpointFile: string;
 
 const loadFresh = async () => {
   vi.resetModules();
@@ -22,42 +31,61 @@ const loadFresh = async () => {
 beforeEach(() => {
   delete process.env.UNSPA_SYNC_URL;
   delete process.env.UNSPA_AUTH_TOKEN;
+  tmpDir = mkdtempSync(join(tmpdir(), 'unspa-sync-'));
+  endpointFile = join(tmpDir, '.dashboard.json');
+  // Isolated (initially missing) rendezvous file: probing tests behave the same
+  // whether or not a real dashboard has published one on this machine.
+  process.env.UNSPA_DASHBOARD_ENDPOINT_FILE = endpointFile;
   // Silence the one-shot stderr failure log so test output stays clean.
   vi.spyOn(process.stderr, 'write').mockReturnValue(true);
 });
 
 afterEach(() => {
+  delete process.env.UNSPA_DASHBOARD_ENDPOINT_FILE;
+  try {
+    rmSync(tmpDir, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-describe('notifySyncReload port fallback', () => {
-  it('reaches an IPv6-only Vite dev server (the npm run dev / Windows case)', async () => {
-    // Production is down and only [::1]:8173 answers — exactly how
-    // `localhost`-bound Vite presents on Windows (Node 20+ resolves
-    // localhost to ::1 first, so Vite binds the IPv6 loopback).
+describe('notifySyncReload discovery', () => {
+  it('prefers the URL the dashboard published to the rendezvous file', async () => {
+    const PUB = 'http://127.0.0.1:55550';
+    writeFileSync(endpointFile, JSON.stringify({ url: PUB, pid: 1, boundAt: 'x' }));
     const fetchMock = vi.fn(async (url: string) =>
-      url.startsWith(DEV6)
-        ? ({ ok: true } as Response)
-        : Promise.reject(new Error('ECONNREFUSED'))
+      url.startsWith(PUB) ? ({ ok: true } as Response) : Promise.reject(new Error('nope'))
     );
     vi.stubGlobal('fetch', fetchMock);
 
     const { notifySyncReload } = await loadFresh();
     await notifySyncReload('project', 'abc', { name: 'Demo', op: 'save' });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(urlOf(fetchMock.mock.calls[0])).toBe(`${PROD}${RELOAD}`);
-    expect(urlOf(fetchMock.mock.calls[1])).toBe(`${DEV6}${RELOAD}`);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(urlOf(fetchMock.mock.calls[0])).toBe(`${PUB}${RELOAD}`);
   });
 
-  it('falls through to the IPv4 dev port when the IPv6 bind refuses', async () => {
-    // A dev server started with an explicit IPv4 host (vite --host 127.0.0.1)
-    // refuses the ::1 probe; the IPv4 literal on the same port must catch it.
+  it('probes the uncommon default and reaches an IPv6 dev bind', async () => {
+    // No published file; the IPv4 default refuses, the IPv6 default answers
+    // (how a `localhost`-bound Vite presents on Windows / Node 20+).
     const fetchMock = vi.fn(async (url: string) =>
-      url.startsWith(DEV4)
-        ? ({ ok: true } as Response)
-        : Promise.reject(new Error('ECONNREFUSED'))
+      url.startsWith(D6) ? ({ ok: true } as Response) : Promise.reject(new Error('ECONNREFUSED'))
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { notifySyncReload } = await loadFresh();
+    await notifySyncReload('project', 'abc');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(urlOf(fetchMock.mock.calls[0])).toBe(`${D4}${RELOAD}`);
+    expect(urlOf(fetchMock.mock.calls[1])).toBe(`${D6}${RELOAD}`);
+  });
+
+  it('still reaches an older dashboard on the legacy prod port', async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url.startsWith(PROD) ? ({ ok: true } as Response) : Promise.reject(new Error('ECONNREFUSED'))
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -65,23 +93,21 @@ describe('notifySyncReload port fallback', () => {
     await notifySyncReload('project', 'abc');
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(urlOf(fetchMock.mock.calls[0])).toBe(`${PROD}${RELOAD}`);
-    expect(urlOf(fetchMock.mock.calls[1])).toBe(`${DEV6}${RELOAD}`);
-    expect(urlOf(fetchMock.mock.calls[2])).toBe(`${DEV4}${RELOAD}`);
+    expect(urlOf(fetchMock.mock.calls[0])).toBe(`${D4}${RELOAD}`);
+    expect(urlOf(fetchMock.mock.calls[1])).toBe(`${D6}${RELOAD}`);
+    expect(urlOf(fetchMock.mock.calls[2])).toBe(`${PROD}${RELOAD}`);
   });
 
   it('sticks to the last-known-good URL on subsequent notifies', async () => {
     const fetchMock = vi.fn(async (url: string) =>
-      url.startsWith(PROD)
-        ? Promise.reject(new Error('ECONNREFUSED'))
-        : ({ ok: true } as Response)
+      url.startsWith(DEV6) ? ({ ok: true } as Response) : Promise.reject(new Error('ECONNREFUSED'))
     );
     vi.stubGlobal('fetch', fetchMock);
 
     const { notifySyncReload } = await loadFresh();
-    await notifySyncReload('feature', 'one'); // discovers :8173 (2 calls)
+    await notifySyncReload('feature', 'one'); // discovers DEV6 after the earlier candidates fail
     fetchMock.mockClear();
-    await notifySyncReload('feature', 'two'); // should go straight to :8173
+    await notifySyncReload('feature', 'two'); // should go straight to DEV6
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(urlOf(fetchMock.mock.calls[0])).toBe(`${DEV6}${RELOAD}`);
@@ -89,6 +115,11 @@ describe('notifySyncReload port fallback', () => {
 
   it('uses only the explicit loopback override and skips probing', async () => {
     process.env.UNSPA_SYNC_URL = 'http://localhost:4321/';
+    // Even with a published file present, an explicit pin wins outright.
+    writeFileSync(
+      endpointFile,
+      JSON.stringify({ url: 'http://127.0.0.1:9', pid: 1, boundAt: 'x' })
+    );
     const fetchMock = vi.fn(async () => ({ ok: true }) as Response);
     vi.stubGlobal('fetch', fetchMock);
 
@@ -118,7 +149,7 @@ describe('notifySyncReload port fallback', () => {
 
     const { notifySyncReload } = await loadFresh();
     await notifySyncReload('project', 'abc'); // tries all candidates, all fail
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
 
     fetchMock.mockClear();
     await notifySyncReload('project', 'abc'); // within cooldown → skipped

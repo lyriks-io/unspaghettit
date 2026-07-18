@@ -6,13 +6,14 @@
  * disk we POST {kind,id} to /api/sync/reload so any open editor sees the
  * change without a refresh.
  *
- * With no override we probe 127.0.0.1:3000 (the port `unspa dashboard` —
- * the adapter-node production build — listens on), then both the IPv6 and
- * IPv4 literals on :8173 (the Vite dev port; dev binds `localhost`, which
- * resolves to ::1 first on Windows/Node 20+). So both `unspa dashboard` and
- * `npm run dev` get live refresh + toasts with zero config. Set
- * `UNSPA_SYNC_URL` to a single loopback URL to pin a non-default port and
- * skip the probe.
+ * With no override we FIRST read the URL the running dashboard published to the
+ * rendezvous file (~/.unspa-hub/.dashboard.json, see dashboardEndpoint.ts), which
+ * survives whatever port the dashboard advanced to. When that is absent we probe
+ * the uncommon shared default 43171 (both loopback families) and then the legacy
+ * ports (prod 3000, dev 8173) so an older dashboard is still reached. So both
+ * `unspa dashboard` and `npm run dev` get live refresh + toasts with zero config.
+ * Set `UNSPA_SYNC_URL` to a single loopback URL to pin an explicit port and skip
+ * discovery.
  *
  * Failures are swallowed: MCP must work even when no SvelteKit server is up.
  * A 1 s per-attempt timeout caps the cost of a slow listener. A dead loopback
@@ -27,6 +28,11 @@
  * would let a poisoned shell environment exfiltrate every spec change to
  * an arbitrary URL. Loopback-only keeps this a local IPC channel.
  */
+
+import {
+  DEFAULT_DASHBOARD_PORT,
+  readDashboardEndpoint
+} from '../src/lib/server/sync/dashboardEndpoint';
 
 const TIMEOUT_MS = 1000;
 
@@ -52,6 +58,12 @@ export type SyncKind = 'feature' | 'project' | 'implementation-status';
 // Literal addresses (not the `localhost` name) so we never pay the
 // resolve-wrong-family-then-time-out cost the name form incurs.
 const DEFAULT_SYNC_URLS = [
+  // The uncommon shared default the dashboard starts on (both loopback families,
+  // since dev may bind ::1 first on Windows).
+  `http://127.0.0.1:${DEFAULT_DASHBOARD_PORT}`,
+  `http://[::1]:${DEFAULT_DASHBOARD_PORT}`,
+  // Legacy defaults, kept so a new notifier still reaches an OLDER dashboard that
+  // predates the published-endpoint file (prod 3000, dev 8173).
   'http://127.0.0.1:3000',
   'http://[::1]:8173',
   'http://127.0.0.1:8173'
@@ -93,7 +105,13 @@ const candidateUrls = (): readonly string[] => {
       );
     }
   }
-  return DEFAULT_SYNC_URLS;
+  // With no explicit pin, prefer the URL the running dashboard published to the
+  // rendezvous file — that survives any port advance and needs zero config. Fall
+  // back to probing the known defaults when no dashboard has published one.
+  const published = readDashboardEndpoint();
+  return published
+    ? [published, ...DEFAULT_SYNC_URLS.filter((u) => u !== published)]
+    : DEFAULT_SYNC_URLS;
 };
 
 // Sticky last-known-good URL. Once a candidate answers we try it first on

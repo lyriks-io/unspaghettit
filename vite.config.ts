@@ -2,6 +2,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { unspaSyncPlugin } from './src/lib/server/sync/vitePlugin';
+import { DEFAULT_DASHBOARD_PORT } from './src/lib/server/sync/dashboardEndpoint';
 
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit(), unspaSyncPlugin()],
@@ -21,8 +22,11 @@ export default defineConfig({
     external: ['yjs', 'y-protocols', 'lib0']
   },
   server: {
-    // Leave `port` unset: Vite tries its default and automatically advances
-    // to the next available port when it is already occupied.
+    // Start on the uncommon shared default (so dev doesn't fight :5173/:3000);
+    // Vite still advances to the next free port if it's taken, and the sync
+    // plugin publishes whichever port it actually bound so the MCP notifier
+    // finds it (see src/lib/server/sync/dashboardEndpoint).
+    port: DEFAULT_DASHBOARD_PORT,
     // Runtime data in unspa/ is written by Y.Doc persists. Watching it would
     // turn every save into a full-page reload, undoing the live sync. The
     // samples/ folder is source content (read-only at runtime), so we watch

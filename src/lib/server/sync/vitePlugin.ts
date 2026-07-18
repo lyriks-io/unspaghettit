@@ -2,6 +2,11 @@ import type { Plugin, ViteDevServer, PreviewServer } from 'vite';
 import type { Server as HttpServer } from 'node:http';
 import { attachSyncWebSocket } from './wsServer';
 import { getSyncManager } from './index';
+import {
+  clearDashboardEndpoint,
+  loopbackUrlFor,
+  publishDashboardEndpoint
+} from './dashboardEndpoint';
 
 const attach = (server: ViteDevServer | PreviewServer): void => {
   // Vite's httpServer can be an HTTP/2 secure server depending on config; the
@@ -15,6 +20,19 @@ const attach = (server: ViteDevServer | PreviewServer): void => {
   (http as unknown as { __unspaSyncAttached: boolean }).__unspaSyncAttached = true;
   process.stderr.write(`[unspa-sync] WS attached  snapshots=${directory}\n`);
 
+  // Publish the URL Vite actually bound (it advances past a taken port on its
+  // own) so the MCP sync-notifier reaches this dev server without guessing.
+  const publish = (): void => {
+    const url = loopbackUrlFor(http.address());
+    if (url) {
+      publishDashboardEndpoint(url);
+      process.stderr.write(`[unspa-sync] endpoint ${url}\n`);
+    }
+  };
+  if (http.listening) publish();
+  else http.once('listening', publish);
+  http.once('close', clearDashboardEndpoint);
+
   const flush = async (): Promise<void> => {
     try {
       await Promise.all([manager.flush(), history.flush()]);
@@ -23,9 +41,11 @@ const attach = (server: ViteDevServer | PreviewServer): void => {
     }
   };
   process.once('SIGINT', () => {
+    clearDashboardEndpoint();
     void flush().finally(() => process.exit(0));
   });
   process.once('SIGTERM', () => {
+    clearDashboardEndpoint();
     void flush().finally(() => process.exit(0));
   });
 };
