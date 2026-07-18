@@ -18,7 +18,7 @@
   import SurfaceRulesOverview from '$features/behavior-model/presentation/components/SurfaceRulesOverview.svelte';
   import ProjectPersonasPanel from './ProjectPersonasPanel.svelte';
   import ContextSidebar, {
-    type ContextSidebarItem
+    type ContextSidebarGroup
   } from '$shared/presentation/components/ContextSidebar.svelte';
   import ProjectHistoryPanel from './ProjectHistoryPanel.svelte';
   import ProjectSourcesPanel from '$features/source-provenance/presentation/components/ProjectSourcesPanel.svelte';
@@ -44,20 +44,43 @@
   import KebabMenu from '$shared/presentation/components/KebabMenu.svelte';
   import MenuItem from '$shared/presentation/components/MenuItem.svelte';
 
-  const PANELS: readonly ContextSidebarItem[] = [
-    { id: 'features', label: 'Features' },
-    { id: 'surfaces', label: 'Surfaces' },
-    { id: 'actions', label: 'Actions' },
-    { id: 'states', label: 'States' },
-    { id: 'surface-rules', label: 'Surface rules' },
-    { id: 'personas', label: 'Personas' },
-    { id: 'core', label: 'Core features' },
-    { id: 'sources', label: 'Sources' },
-    { id: 'resources', label: 'Resources' },
-    { id: 'data', label: 'Entity' },
-    { id: 'events', label: 'Events' },
-    { id: 'transitions', label: 'Transitions' },
-    { id: 'history', label: 'History' }
+  // Grouped so the 13 sections read as four intents rather than one long list:
+  // how the project is ORGANIZED, its executable BEHAVIOR, the DOMAIN nouns the
+  // behavior operates on, and PROVENANCE (where it came from, what changed).
+  const PANEL_GROUPS: readonly ContextSidebarGroup[] = [
+    {
+      label: 'Organization',
+      items: [
+        { id: 'features', label: 'Features' },
+        { id: 'core', label: 'Core features' }
+      ]
+    },
+    {
+      label: 'Behavior',
+      items: [
+        { id: 'surfaces', label: 'Surfaces' },
+        { id: 'actions', label: 'Actions' },
+        { id: 'states', label: 'States' },
+        { id: 'surface-rules', label: 'Surface rules' },
+        { id: 'transitions', label: 'Transitions' }
+      ]
+    },
+    {
+      label: 'Domain',
+      items: [
+        { id: 'personas', label: 'Personas' },
+        { id: 'data', label: 'Entity' },
+        { id: 'resources', label: 'Resources' },
+        { id: 'events', label: 'Events' }
+      ]
+    },
+    {
+      label: 'Provenance',
+      items: [
+        { id: 'sources', label: 'Sources' },
+        { id: 'history', label: 'History' }
+      ]
+    }
   ];
 
   let editingProject = $state(false);
@@ -240,7 +263,7 @@
       contextName={project.name}
       backHref="/projects"
       backLabel="Back to projects"
-      items={PANELS}
+      groups={PANEL_GROUPS}
       activeId={projectStore.activePanel}
       count={(panel) => panelCount(panel as ProjectPanel)}
       onSelect={(panel) => projectStore.setActivePanel(panel as ProjectPanel)}
