@@ -25,6 +25,9 @@
   // The Lyriks theme paints the header with a saturated violet→fuchsia
   // gradient and the shell with a cool canvas. Cosmetic only.
   const lyriks = $derived(themeStore.isLyriks);
+  // Branding is independent from the colour theme. A host can request the
+  // Lyriks lockup explicitly without changing the rest of the dashboard.
+  const lyriksBrand = $derived(page.url.searchParams.get('brand') === 'lyriks');
   // Dark chrome while in Builder OR under the Lyriks gradient header, so the
   // header's foreground (logo, icons, switcher) stays legible on a dark/vivid
   // background. The dropdown panels keep their own white surface regardless.
@@ -45,7 +48,7 @@
       : 'max-w-7xl'}"
   >
     <div class="flex min-w-0 items-center gap-3">
-      <HeaderBrand {dark} />
+      <HeaderBrand {dark} brand={lyriksBrand ? 'lyriks' : 'unspaghettit'} />
       <ViewSwitcher {dark} />
       {#if !builderActive}
         <PrimaryNav {dark} {lyriks} />

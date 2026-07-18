@@ -31,6 +31,7 @@
   import { implementationStatusStore } from '$features/implementation-status/presentation/stores/implementationStatusStore.svelte';
   import { fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import { copyPersistentNavigationParams } from '$features/app-shell/presentation/navigationContext';
 
   const VALID_TOP_TABS = new Set([
     'build',
@@ -215,13 +216,8 @@
 
     untrack(() => {
       const params = new URLSearchParams();
-      // Preserve the iframe shell options while editor navigation updates its
-      // own deep-link parameters.
-      if (page.url.searchParams.get('embed') === '1') {
-        params.set('embed', '1');
-        const embeddedUser = page.url.searchParams.get('user');
-        if (embeddedUser) params.set('user', embeddedUser);
-      }
+      // Preserve host/session context while rebuilding editor deep-link state.
+      copyPersistentNavigationParams(page.url.searchParams, params);
       if (tab !== 'build') params.set('tab', tab);
       if (surfaceId) params.set('surface', surfaceId);
       if (panel !== 'actions') params.set('panel', panel);

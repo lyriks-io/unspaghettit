@@ -14,7 +14,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Changed
 
 - **Entity enum fields can reference reusable value sets.** Entity and entity-field MCP tools now accept `valueSetId`, allowing canonical state and data-field coherence checks to compare shared enum vocabularies.
-- **The dashboard can run cleanly inside a Lyriks host.** `?embed=1` suppresses standalone chrome, onboarding, toasts, and floating widgets; an optional `user` query parameter supplies history attribution; and the embedded runtime applies the Lyriks skin without overwriting the browser's saved theme. Vite now selects the first available development port instead of requiring port 8173.
+- **The dashboard can run cleanly inside a Lyriks host.** `?embed=1` hides the complete header and other standalone chrome, suppresses onboarding, toasts, and floating widgets, and applies the Lyriks skin without overwriting the browser's saved theme. Global host context (`embed`, optional `user` history attribution, and `brand`) now persists automatically across every same-origin navigation, while page-local deep-link state remains scoped to its page. Independently, `?brand=lyriks` keeps the header visible but replaces its Unspaghettit lockup with the official Lyriks v3 logo, wordmark, and a "Behavior editor" product label. Vite now selects the first available development port instead of requiring port 8173.
 
 ## [0.10.1] - 2026-07-15
 

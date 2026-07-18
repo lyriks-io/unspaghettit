@@ -101,7 +101,7 @@
   // (like the other header menus), regardless of the header background.
   const inputClass = $derived(
     dark
-      ? 'border-slate-700 bg-slate-900/70 text-white placeholder:text-slate-500 focus:border-brand-400'
+      ? 'border-slate-700 bg-slate-900/70 text-white placeholder:text-white/70 focus:border-brand-400'
       : 'border-slate-300 bg-white/90 text-slate-900 placeholder:text-slate-400 focus:border-brand-400'
   );
   const iconColor = $derived(dark ? 'text-slate-400' : 'text-slate-400');

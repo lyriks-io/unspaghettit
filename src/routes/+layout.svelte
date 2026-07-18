@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { beforeNavigate, goto } from '$app/navigation';
   import { page } from '$app/state';
   import { fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
@@ -14,6 +15,7 @@
   import { bootstrapDashboard } from '$features/app-shell/presentation/bootstrapDashboard';
   import { isBuilderRoute } from '$features/app-shell/presentation/routeContext';
   import { themeStore } from '$lib/theme/themeStore.svelte';
+  import { withPersistentNavigationParams } from '$features/app-shell/presentation/navigationContext';
   import '../app.css';
 
   let { children } = $props();
@@ -22,6 +24,20 @@
   const embedded = $derived(page.url.searchParams.get('embed') === '1');
   const lyriks = $derived(embedded || themeStore.isLyriks);
   const requestedUser = $derived(page.url.searchParams.get('user') ?? undefined);
+
+  // Host/session context belongs to the whole navigation session, not just
+  // the first URL. Page-local params remain owned by their destination.
+  beforeNavigate((navigation) => {
+    if (!navigation.to || navigation.willUnload) return;
+    const destination = navigation.to.url;
+    if (destination.origin !== page.url.origin) return;
+    const persistent = withPersistentNavigationParams(page.url, destination);
+    if (persistent.href === destination.href) return;
+    navigation.cancel();
+    queueMicrotask(() => {
+      void goto(`${persistent.pathname}${persistent.search}${persistent.hash}`);
+    });
+  });
 
   onMount(() => {
     void bootstrapDashboard({
