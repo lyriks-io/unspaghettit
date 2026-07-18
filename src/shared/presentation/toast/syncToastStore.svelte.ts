@@ -32,7 +32,7 @@ export type SyncToast = {
 };
 
 const MAX_VISIBLE = 4;
-const DEFAULT_TTL_MS = 5_000;
+const DEFAULT_TTL_MS = 10_000;
 
 const hrefFor = (evt: SyncEvent): string | undefined => {
   if (evt.op === 'delete') return undefined;
@@ -63,6 +63,13 @@ class SyncToastStore {
    * within DEDUPE_WINDOW_MS collapses into a single toast.
    */
   private recentKeys = new Map<string, number>();
+  /**
+   * Per-toast auto-dismiss deadline (epoch ms) and, while the pointer/focus is
+   * over a toast, the frozen time that was left — so hovering pauses the
+   * countdown and resumes it on leave instead of racing a fixed timer.
+   */
+  private deadlines = new Map<number, number>();
+  private paused = new Map<number, number>();
 
   /**
    * Idempotent. Call once from the root layout. Re-calls are no-ops, so
@@ -75,18 +82,54 @@ class SyncToastStore {
   }
 
   dismiss(id: number): void {
-    const timer = this.timers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      this.timers.delete(id);
-    }
+    this.clearTimers(id);
     this.toasts = this.toasts.filter((t) => t.id !== id);
+  }
+
+  /** Clear a toast's timer and all bookkeeping for its id. */
+  private clearTimers(id: number): void {
+    const timer = this.timers.get(id);
+    if (timer) clearTimeout(timer);
+    this.timers.delete(id);
+    this.deadlines.delete(id);
+    this.paused.delete(id);
+  }
+
+  /** (Re)arm the auto-dismiss timer for `ms` from now. */
+  private arm(id: number, ms: number): void {
+    const existing = this.timers.get(id);
+    if (existing) clearTimeout(existing);
+    this.deadlines.set(id, Date.now() + ms);
+    this.timers.set(
+      id,
+      setTimeout(() => this.dismiss(id), ms)
+    );
+  }
+
+  /** Freeze a toast's countdown while the pointer/focus is over it. */
+  pause(id: number): void {
+    const timer = this.timers.get(id);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.timers.delete(id);
+    const remaining = Math.max(1_000, (this.deadlines.get(id) ?? Date.now()) - Date.now());
+    this.paused.set(id, remaining);
+  }
+
+  /** Resume the countdown with the time that was left when it paused. */
+  resume(id: number): void {
+    if (!this.paused.has(id)) return;
+    const remaining = this.paused.get(id) ?? DEFAULT_TTL_MS;
+    this.paused.delete(id);
+    this.arm(id, remaining);
   }
 
   /** Test/teardown hook. Not used in production. */
   reset(): void {
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
+    this.deadlines.clear();
+    this.paused.clear();
     this.toasts = [];
     this.recentKeys.clear();
     if (this.unsubscribe) this.unsubscribe();
@@ -122,15 +165,11 @@ class SyncToastStore {
     // Evict the toasts that fell off the cap so their timers don't fire
     // a dismiss on a no-longer-rendered id.
     const surviving = new Set(next.map((t) => t.id));
-    for (const [oldId, timer] of this.timers) {
-      if (!surviving.has(oldId)) {
-        clearTimeout(timer);
-        this.timers.delete(oldId);
-      }
+    for (const oldId of new Set([...this.timers.keys(), ...this.paused.keys()])) {
+      if (!surviving.has(oldId)) this.clearTimers(oldId);
     }
     this.toasts = next;
-    const timer = setTimeout(() => this.dismiss(id), DEFAULT_TTL_MS);
-    this.timers.set(id, timer);
+    this.arm(id, DEFAULT_TTL_MS);
   }
 }
 

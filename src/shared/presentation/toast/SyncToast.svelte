@@ -110,15 +110,28 @@
     {#each syncToastStore.toasts as toast (toast.id)}
       {@const crumbs = breadcrumb(toast)}
       {@const target = viewHref(toast)}
+      <!-- Presentational toast container; the hover/focus handlers only pause the
+           auto-dismiss timer (progressive enhancement). Announcement comes from the
+           parent role="status" region and the real View/Dismiss controls below. -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
-        class="pointer-events-auto flex items-start gap-3 rounded-lg border px-3 py-2 shadow-md shadow-slate-950/10 {kindAccent(toast.kind)}"
+        class="pointer-events-auto flex items-start gap-3 rounded-lg border px-3 py-2 shadow-md shadow-slate-950/10 {kindAccent(
+          toast.kind
+        )}"
         in:fly={{ x: 24, duration: 180, easing: cubicOut }}
         out:fade={{ duration: 140 }}
+        onmouseenter={() => syncToastStore.pause(toast.id)}
+        onmouseleave={() => syncToastStore.resume(toast.id)}
+        onfocusin={() => syncToastStore.pause(toast.id)}
+        onfocusout={() => syncToastStore.resume(toast.id)}
       >
         <div class="min-w-0 flex-1">
-          <div class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] font-semibold uppercase tracking-wide">
+          <div
+            class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] font-semibold uppercase tracking-wide"
+          >
             <span class="text-slate-500">
-              MCP · {opLabel(toast)} {kindLabel(toast.kind)}
+              MCP · {opLabel(toast)}
+              {kindLabel(toast.kind)}
             </span>
             {#if toast.actingFor}
               <!-- AI driving on behalf of a named human. Purple chip
@@ -134,9 +147,7 @@
               {#if i > 0}
                 <span class="shrink-0 text-slate-400" aria-hidden="true">&rsaquo;</span>
               {/if}
-              <span
-                class="truncate {i === crumbs.length - 1 ? 'font-semibold' : 'text-slate-600'}"
-              >
+              <span class="truncate {i === crumbs.length - 1 ? 'font-semibold' : 'text-slate-600'}">
                 {segment}
               </span>
             {/each}

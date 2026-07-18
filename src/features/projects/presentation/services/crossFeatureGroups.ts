@@ -60,12 +60,9 @@ export type GroupedTransition = {
   readonly sources: readonly FeatureAttribution[];
 };
 
-const resourceKey = (r: Resource): string =>
-  `${r.kind}|${r.provider}|${r.name}`.toLowerCase();
+const resourceKey = (r: Resource): string => `${r.kind}|${r.provider}|${r.name}`.toLowerCase();
 
-export const groupResources = (
-  features: readonly Feature[]
-): readonly GroupedResource[] => {
+export const groupResources = (features: readonly Feature[]): readonly GroupedResource[] => {
   const map = new Map<string, GroupedResource & { sources: FeatureAttribution[] }>();
   for (const e of features) {
     for (const r of e.resources) {
@@ -91,12 +88,12 @@ export const groupResources = (
       });
     }
   }
-  return Array.from(map.values());
+  return Array.from(map.values()).sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  );
 };
 
-export const groupEntities = (
-  features: readonly Feature[]
-): readonly GroupedEntity[] => {
+export const groupEntities = (features: readonly Feature[]): readonly GroupedEntity[] => {
   const map = new Map<string, GroupedEntity & { sources: FeatureAttribution[] }>();
   for (const e of features) {
     for (const d of getEffectiveEntities(e)) {
@@ -126,12 +123,12 @@ export const groupEntities = (
       });
     }
   }
-  return Array.from(map.values());
+  return Array.from(map.values()).sort((a, b) =>
+    a.namespace.localeCompare(b.namespace, undefined, { sensitivity: 'base' })
+  );
 };
 
-export const groupEvents = (
-  features: readonly Feature[]
-): readonly GroupedEvent[] => {
+export const groupEvents = (features: readonly Feature[]): readonly GroupedEvent[] => {
   const map = new Map<string, GroupedEvent & { sources: FeatureAttribution[] }>();
   for (const e of features) {
     const registered = new Map((e.events ?? []).map((ev) => [String(ev.name), ev]));
@@ -152,8 +149,7 @@ export const groupEvents = (
           }
           const declaredFields = declared.payloadSchema?.length ?? 0;
           if (declaredFields > existing.payloadFieldCount) {
-            (existing as { payloadFieldCount: number }).payloadFieldCount =
-              declaredFields;
+            (existing as { payloadFieldCount: number }).payloadFieldCount = declaredFields;
           }
         }
         continue;
@@ -171,9 +167,7 @@ export const groupEvents = (
   return Array.from(map.values());
 };
 
-export const groupTransitions = (
-  features: readonly Feature[]
-): readonly GroupedTransition[] => {
+export const groupTransitions = (features: readonly Feature[]): readonly GroupedTransition[] => {
   const map = new Map<string, GroupedTransition & { sources: FeatureAttribution[] }>();
   for (const e of features) {
     for (const entry of buildTransitionCatalog(e)) {
