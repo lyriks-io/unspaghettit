@@ -37,9 +37,12 @@ a recorded span, so nothing can be invented without a source.
 1. **Scope.** `get_repo_context` once. If the repo is not linked, create the
    project (`create_project`), then have the user (or a terminal call) run
    `unspa link --project-id <id>`. The link must exist before seeding.
-2. **Split.** Explore the codebase and propose the feature split before
-   modeling: one coherent slice per feature (a flow, a screen, a capability),
-   1-15 surfaces each. Confirm the split with the user when it is not obvious.
+2. **Split.** Get the lay of the land, then propose the feature split before
+   modeling: `outline_repo` returns a bounded, noise-free sketch of the source
+   tree (skip it and read the tree with your own tools if the host gives you
+   file access). Cut one coherent slice per feature (a flow, a screen, a
+   capability), 1-15 surfaces each. Confirm the split with the user when it is
+   not obvious.
    Record the product's pillars as the project's core features
    (`declare_core_feature`), then group each feature under at most one with
    `set_feature_core` as you create it. This is where the taxonomy belongs:

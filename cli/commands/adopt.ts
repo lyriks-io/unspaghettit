@@ -24,7 +24,7 @@ export const buildAdoptPrompt = (link: RepoLink | null): string => {
   return `Adopt this codebase into Unspaghettit (code -> spec), using the Unspaghettit MCP tools.
 
 1. Call get_repo_context once. ${linkStep}
-2. Explore the codebase and split its behavior into features: one coherent slice each (a flow, a screen, a capability), sized 1-15 surfaces. Propose the split before modeling. Record the product's pillars as the project's core features (declare_core_feature) and group each feature under at most one (set_feature_core); the taxonomy belongs in the model, not re-derived from folder names each pass. An undeclared or doubled core tag is a soft warning, never a blocker.
+2. Explore the codebase and split its behavior into features: call outline_repo for a bounded, dependency-free sketch of the source tree (or read the tree yourself), then cut one coherent slice each (a flow, a screen, a capability), sized 1-15 surfaces. Propose the split before modeling. Record the product's pillars as the project's core features (declare_core_feature) and group each feature under at most one (set_feature_core); the taxonomy belongs in the model, not re-derived from folder names each pass. An undeclared or doubled core tag is a soft warning, never a blocker.
 3. For each feature, work surface by surface:
    a. Read the source files that implement it.
    b. attach_source_path with the file's repo-relative path (the server reads the file itself; fall back to attach_source_file kind:"code" with the exact content if it reports no repo context).

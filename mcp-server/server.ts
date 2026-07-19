@@ -40,6 +40,7 @@ import { registerQueueTools } from './tools/queue';
 import { registerReadTools } from './tools/read';
 import { registerReorderTools } from './tools/reorder';
 import { registerRepoContextTool } from './tools/repoContext';
+import { registerRepoOutlineTool } from './tools/repoOutline';
 import { registerResourceTools } from './tools/resource';
 import { registerRuleTools } from './tools/rule';
 import { registerScenarioTools } from './tools/scenario';
@@ -176,6 +177,7 @@ export const buildServer = (repo: FeatureRepository, deps: BuildServerDeps = {})
   registerGuideResource(server);
   registerOperationsResource(server);
   registerRepoContextTool(toolDeps);
+  registerRepoOutlineTool(toolDeps);
   registerBehavioralIndexTools(toolDeps);
   registerReadTools(toolDeps);
   registerFeatureTools(toolDeps);

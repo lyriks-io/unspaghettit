@@ -188,6 +188,7 @@ describe('MCP server', () => {
       'move_parameter',
       'move_state_definition',
       'move_surface',
+      'outline_repo',
       'propose_evolution',
       'record_element_span',
       'record_element_spans',
