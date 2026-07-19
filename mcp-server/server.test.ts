@@ -1152,6 +1152,99 @@ describe('MCP server', () => {
     await server.close();
   });
 
+  it('apply_batch folds an int type synonym onto number so a counter default of 0 is valid', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Counter', description: 'A feature with an integer counter.' }
+      })
+    ) as { id: string };
+
+    const result = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            {
+              kind: 'add_surface',
+              ref: 'screen',
+              name: 'Screen',
+              type: 'screen',
+              description: 'Screen holding the counter.'
+            },
+            {
+              kind: 'add_state_definition',
+              surfaceRef: 'screen',
+              path: 'counter.value',
+              type: 'int',
+              defaultValue: 0,
+              description: 'How many times the counter has advanced.'
+            }
+          ]
+        }
+      })
+    ) as { ok: boolean };
+    expect(result.ok).toBe(true);
+
+    const persisted = await repo.get(created.id as never);
+    // The `int` synonym is folded to the canonical `number` type.
+    expect(persisted?.surfaces[0]?.stateDefinitions[0]?.type).toBe('number');
+    expect(persisted?.surfaces[0]?.stateDefinitions[0]?.defaultValue).toBe(0);
+    await server.close();
+  });
+
+  it('reports a clear error when a scenario expectedAssertion omits its path', async () => {
+    const { client, server } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Assert shape', description: 'Validates assertion shape errors.' }
+      })
+    ) as { id: string };
+
+    const result = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          dryRun: true,
+          operations: [
+            {
+              kind: 'add_surface',
+              ref: 'screen',
+              name: 'Screen',
+              type: 'screen',
+              description: 'Screen used by the assertion-shape test.'
+            },
+            {
+              kind: 'add_action',
+              ref: 'act',
+              surfaceRef: 'screen',
+              name: 'Do It',
+              intent: 'Perform the action under test.'
+            },
+            {
+              kind: 'add_scenario',
+              surfaceRef: 'screen',
+              actionRef: 'act',
+              name: 'Bad assertion',
+              description: 'Uses the rule-condition shape by mistake.',
+              expectedStatus: 'success',
+              // Wrong shape: rule-condition {left, operator, right} instead of
+              // {path, operator, value, description}. `path` ends up undefined.
+              expectedAssertions: [{ left: 'counter.value', operator: 'equals', right: 0 }]
+            }
+          ]
+        }
+      })
+    ) as { ok: boolean; validation: { valid: boolean; errors: readonly string[] } };
+    expect(result.ok).toBe(false);
+    expect(result.validation.errors.join('\n')).toContain('is missing a "path"');
+    await server.close();
+  });
+
   describe('get_spec_gaps', () => {
     type Gap = {
       severity: 'critical' | 'recommended';

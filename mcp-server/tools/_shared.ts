@@ -104,6 +104,53 @@ export const ack = (featureId: string, updatedAt: string, createdId?: string): M
  * The declared type comes from the surrounding context (e.g. the state
  * definition's `type` field), not from inspecting the value itself.
  */
+/**
+ * The six canonical scalar/collection types the core model knows, plus the
+ * synonyms an LLM most often reaches for (`int`, `bool`, `str`, ...). The
+ * standalone tools accept the whole list at the Zod boundary; every write path
+ * runs the value through `normalizeStateType` first, so a natural `type:"int"`
+ * lands as `number` instead of bouncing off the validator. This directly
+ * removes the "type:int rejects zero" friction (there was no `int` type, so a
+ * counter with `defaultValue:0` could never be declared).
+ */
+export const STATE_TYPE_INPUT_VALUES = [
+  'string',
+  'number',
+  'boolean',
+  'enum',
+  'object',
+  'array',
+  'int',
+  'integer',
+  'float',
+  'double',
+  'long',
+  'decimal',
+  'bool',
+  'str',
+  'text'
+] as const;
+
+const STATE_TYPE_ALIASES: Readonly<Record<string, string>> = {
+  int: 'number',
+  integer: 'number',
+  float: 'number',
+  double: 'number',
+  long: 'number',
+  decimal: 'number',
+  bool: 'boolean',
+  str: 'string',
+  text: 'string'
+};
+
+/**
+ * Map a state/param type alias onto its canonical form. Canonical types and
+ * anything unrecognized pass through unchanged, so the downstream validator
+ * still reports a genuinely bogus type.
+ */
+export const normalizeStateType = (type: unknown): unknown =>
+  typeof type === 'string' && type in STATE_TYPE_ALIASES ? STATE_TYPE_ALIASES[type] : type;
+
 export const coerceScalarByType = (value: unknown, type: string | undefined): unknown => {
   if (value === null || value === undefined) return value;
   if (typeof value !== 'string') return value;

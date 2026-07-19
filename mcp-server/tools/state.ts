@@ -15,9 +15,19 @@ import {
 import { asStateVariableId } from '../../src/features/projects/domain/value-objects/ids';
 import type { SurfaceId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
-import { coerceScalarByType, errorText, runMutation, type ToolDeps } from './_shared';
+import {
+  coerceScalarByType,
+  errorText,
+  normalizeStateType,
+  runMutation,
+  STATE_TYPE_INPUT_VALUES,
+  type ToolDeps
+} from './_shared';
 
-const stateTypeSchema = z.enum(['string', 'number', 'boolean', 'enum', 'object', 'array'] as const);
+// Accepts the canonical six types plus the common synonyms (int, bool, str,
+// ...); normalizeStateType folds an alias onto its canonical form before the
+// value reaches the core model.
+const stateTypeSchema = z.enum(STATE_TYPE_INPUT_VALUES);
 
 export const registerStateDefinitionTools = (deps: ToolDeps): void => {
   const { server, ids, projectRepo, repo } = deps;
@@ -26,7 +36,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
     'add_state_definition',
     {
       description:
-        'Declare schema for a state path on a Surface (path, type, default). When type=enum, supply EITHER inline enumValues OR a valueSetId referencing a feature-level value set (add_value_set) — not both. sharedWith[] lists other surfaces that also read/write this path. Declarative only (the runtime snapshot is global), but it lets the dashboard render cross-surface state sharing honestly. Pass `derived` (an Expression, same AST as set_state.value) to make the path COMPUTED: the engine recomputes it after every mutation, so e.g. cart.subtotal stays correct without any action re-setting it. Derived paths are read-only — effects that write them are rejected. defaultValue is still required (used before the first compute / when the expression cannot evaluate). Example: derived:{ kind:"sum_pluck", operand:{kind:"state",path:"cart.lines"}, field:"amount" }.',
+        'Declare schema for a state path on a Surface (path, type, default). type is one of string | number | boolean | enum | object | array; common synonyms (int/integer → number, bool → boolean, str/text → string) are accepted and folded to the canonical type, so a counter with type:"int", defaultValue:0 works. When type=enum, supply EITHER inline enumValues OR a valueSetId referencing a feature-level value set (add_value_set) — not both. sharedWith[] lists other surfaces that also read/write this path. Declarative only (the runtime snapshot is global), but it lets the dashboard render cross-surface state sharing honestly. Pass `derived` (an Expression, same AST as set_state.value) to make the path COMPUTED: the engine recomputes it after every mutation, so e.g. cart.subtotal stays correct without any action re-setting it. Derived paths are read-only — effects that write them are rejected. defaultValue is still required (used before the first compute / when the expression cannot evaluate). Example: derived:{ kind:"sum_pluck", operand:{kind:"state",path:"cart.lines"}, field:"amount" }.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -73,7 +83,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
           );
       }
       const resolvedPath = canonical ? String(canonical.path) : path;
-      const resolvedType = canonical?.type ?? type;
+      const resolvedType = (canonical?.type ?? normalizeStateType(type)) as StateType | undefined;
       const resolvedDefault = canonical?.defaultValue ?? defaultValue;
       const resolvedDescription = canonical?.description ?? description;
       if (!resolvedPath || !resolvedType || resolvedDefault === undefined || !resolvedDescription) {
@@ -160,7 +170,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
             asStateDefinitionId(stateDefinitionId),
             {
               ...(path !== undefined ? { path: asStatePath(path) } : {}),
-              ...(type !== undefined ? { type: type as StateType } : {}),
+              ...(type !== undefined ? { type: normalizeStateType(type) as StateType } : {}),
               ...(derived !== undefined
                 ? {
                     derived: derived === null ? undefined : (derived as StateDefinition['derived'])
@@ -170,7 +180,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
                 ? {
                     defaultValue: coerceScalarByType(
                       defaultValue,
-                      type
+                      normalizeStateType(type) as string | undefined
                     ) as StateDefinition['defaultValue']
                   }
                 : {}),

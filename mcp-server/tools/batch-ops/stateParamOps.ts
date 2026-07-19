@@ -12,6 +12,7 @@ import {
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../../src/features/behavior-model/domain/value-objects/StatePath';
 import { asStateVariableId } from '../../../src/features/projects/domain/value-objects/ids';
+import { normalizeStateType } from '../_shared';
 import { directionDelta, resolve, resolveSharedWith, type Op, type OpContext } from './opHelpers';
 
 /**
@@ -31,7 +32,11 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
           ? { stateVariableId: asStateVariableId(op.stateVariableId) }
           : {}),
         path: asStatePath(op.path as string),
-        type: op.type as StateDefinition['type'],
+        // Normalize a type synonym (int → number, ...) but do NOT coerce the
+        // default: the batch path preserves JSON types end-to-end, so a
+        // string default here is a genuine mistake the validator should flag
+        // ("Use 0 instead of \"0\"") rather than silently coerce.
+        type: normalizeStateType(op.type) as StateDefinition['type'],
         defaultValue: op.defaultValue as StateDefinition['defaultValue'],
         ...(Array.isArray(op.enumValues) ? { enumValues: op.enumValues as readonly string[] } : {}),
         ...(typeof op.valueSetId === 'string' ? { valueSetId: asValueSetId(op.valueSetId) } : {}),
@@ -53,7 +58,9 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
         asStateDefinitionId(op.stateDefinitionId as string),
         {
           ...(typeof op.path === 'string' ? { path: asStatePath(op.path) } : {}),
-          ...(typeof op.type === 'string' ? { type: op.type as StateDefinition['type'] } : {}),
+          ...(typeof op.type === 'string'
+            ? { type: normalizeStateType(op.type) as StateDefinition['type'] }
+            : {}),
           ...(op.defaultValue !== undefined
             ? { defaultValue: op.defaultValue as StateDefinition['defaultValue'] }
             : {}),

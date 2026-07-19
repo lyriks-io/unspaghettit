@@ -347,9 +347,16 @@ export const validateFeature = (feature: Feature): ValidationResult => {
           }
         }
         for (const assertion of scenario.expectedAssertions ?? []) {
+          const assertionPath = (assertion as { readonly path?: unknown }).path;
+          if (typeof assertionPath !== 'string' || assertionPath.trim().length === 0) {
+            errors.push(
+              `Scenario ${scenario.id}: an expectedAssertion is missing a "path". Items are { path, operator, value, description } — the state path, NOT the rule-condition { left, operator, right } shape.`
+            );
+            continue;
+          }
           requireDescription(
             errors,
-            `Scenario assertion for "${assertion.path}" in scenario ${scenario.id}`,
+            `Scenario assertion for "${assertionPath}" in scenario ${scenario.id}`,
             assertion
           );
         }
@@ -391,9 +398,16 @@ export const validateFeature = (feature: Feature): ValidationResult => {
             }
           }
           for (const assertion of step.expectedAssertions ?? []) {
+            const assertionPath = (assertion as { readonly path?: unknown }).path;
+            if (typeof assertionPath !== 'string' || assertionPath.trim().length === 0) {
+              errors.push(
+                `Scenario ${scenario.id} step ${stepIdx}: an expectedAssertion is missing a "path". Items are { path, operator, value, description } — the state path, NOT the rule-condition { left, operator, right } shape.`
+              );
+              continue;
+            }
             requireDescription(
               errors,
-              `Scenario ${scenario.id} step ${stepIdx} assertion for "${assertion.path}"`,
+              `Scenario ${scenario.id} step ${stepIdx} assertion for "${assertionPath}"`,
               assertion
             );
           }
