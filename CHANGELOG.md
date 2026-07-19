@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-19
+
 Authoring-friction fixes surfaced by a five-project QA pass through the MCP. The highest-priority items in that report (the scenario runner ignoring state seeding, action invariants checked before their own effects, and `block_action` not enforced in the scenario runner) did not reproduce: they were already fixed on the current engine, confirmed by running the exact cases through `run_all_scenarios` and `model_check`. What remained were real reference and vocabulary gaps, fixed here. No breaking changes.
 
 ### Added
