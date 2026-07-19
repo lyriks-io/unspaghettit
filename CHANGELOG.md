@@ -6,10 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-19
+
+Canonical project state variables become first-class. A project can own stable state identities, now authored directly in the dashboard's state registry and referenced from surfaces by id, with coherence diagnostics flagging stale or incompatible links across features. The dashboard also gains searchable behavior inventories, agrees a port with the MCP automatically (the default moves off `3000` to `43171`), runs cleanly embedded in a Lyriks host, and lets entity enum fields reference reusable value sets. Codebase adoption now steers an extractor toward the right taxonomy and an honest hard-vs-soft split, and gains `outline_repo`, a bounded map of the source tree so a feature split starts from real structure. No breaking changes: legacy surface state stays readable and no snapshots are rewritten.
+
 ### Added
 
 - **Canonical project state variables connect behavior across features.** Projects can now own stable state identities with explicit owners, readers, writers, and optional links to entity fields or Builder nodes. New MCP tools create, update, link, list, and remove them; `add_state_definition` can project a canonical variable onto a surface by id; project aggregates and spec-gap diagnostics report stale or incompatible data-field links. Legacy surface state remains readable and is grouped by path without rewriting snapshots.
 - **Behavior inventories now roll up from actions to features and projects.** The dashboard exposes searchable project and feature views for actions, surfaces, states, surface rules, and personas, with shared context sidebars and compact action statistics. Action rollups preserve feature/surface provenance and identify reusable cross-feature concepts such as state paths, events, resources, roles, parameters, value sets, and effect types.
+- **`outline_repo` gives codebase adoption a map of the source.** A new MCP tool returns a bounded outline of the repository's source tree - directories, a file count per directory, and a file-type histogram - with `node_modules`, build output, caches, and dot-directories skipped and the walk capped by `depth` and `maxEntries`. The server reads the tree from disk itself (the same access behind `attach_source_path`), so an LLM can ground a feature split in real structure even on a host that gives it no filesystem tools of its own. It surfaces structure only and never decides the taxonomy - you still name the features and confirm the split. Scope a monorepo package with `subPath`. The bundled `unspa-adopt` skill and the `unspa adopt` prompt now point at it.
 
 ### Changed
 
