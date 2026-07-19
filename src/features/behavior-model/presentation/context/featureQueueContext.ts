@@ -6,6 +6,7 @@ import type {
   FeatureId,
   SurfaceId
 } from '$features/behavior-model/domain/value-objects/ids';
+import type { StateVariable } from '$features/projects/domain/entities/StateVariable';
 
 /**
  * Opaque queue-entry id. Structurally identical to implementation-queue's
@@ -38,6 +39,13 @@ export interface FeatureQueueContext {
   readonly isInProject: boolean;
   /** The containing project (id + name) for navigation, or null. */
   readonly project: QueueHostProject | null;
+  /**
+   * The containing project's canonical, authored state variables — the
+   * "reuse from project" source for a surface's state editor. Empty when the
+   * feature is standalone or the project declares none. Read-only here; only
+   * the project itself (via its MCP tools / registry panel) mints them.
+   */
+  readonly projectStateVariables: readonly StateVariable[];
   isActionQueued(featureId: FeatureId, actionId: ActionId): boolean;
   isSurfaceQueued(featureId: FeatureId, surfaceId: SurfaceId): boolean;
   enqueueAction(featureId: FeatureId, actionId: ActionId): Promise<boolean>;
@@ -58,6 +66,7 @@ const NULL_CONTEXT: FeatureQueueContext = {
   siblings: [],
   isInProject: false,
   project: null,
+  projectStateVariables: [],
   isActionQueued: () => false,
   isSurfaceQueued: () => false,
   enqueueAction: async () => false,

@@ -68,6 +68,16 @@ class ProjectContextStore {
   }
 
   /**
+   * The containing project's authored canonical state variables — the source
+   * a surface's state editor offers under "reuse from project". Only the
+   * explicitly-declared registry (not the read-side legacy grouping) is
+   * exposed, since those are the entries a user can meaningfully bind to.
+   */
+  get projectStateVariables() {
+    return this.project?.stateVariables ?? [];
+  }
+
+  /**
    * True when the containing project's queue already holds an entry for
    * this action. Used to flip the hover button from "+ queue" to "queued".
    * Computed against the local store snapshot so it's synchronous and

@@ -15,6 +15,7 @@
   import ProjectActionsPanel from './ProjectActionsPanel.svelte';
   import ProjectSurfacesPanel from './ProjectSurfacesPanel.svelte';
   import StatesOverview from '$features/behavior-model/presentation/components/StatesOverview.svelte';
+  import ProjectStateRegistryPanel from './ProjectStateRegistryPanel.svelte';
   import SurfaceRulesOverview from '$features/behavior-model/presentation/components/SurfaceRulesOverview.svelte';
   import ProjectPersonasPanel from './ProjectPersonasPanel.svelte';
   import ContextSidebar, {
@@ -436,6 +437,14 @@
                 search={projectStore.search}
               />
             {:else if projectStore.activePanel === 'states'}
+              <ProjectStateRegistryPanel
+                features={projectFeaturesStore.features}
+                stateVariables={project.stateVariables ?? []}
+                saving={projectStore.saving}
+                onDeclare={(input) => projectStore.declareStateVariable(input)}
+                onUpdate={(id, patch) => projectStore.updateStateVariable(id, patch)}
+                onRemove={(id) => projectStore.removeStateVariable(id)}
+              />
               <StatesOverview
                 features={projectFeaturesStore.features}
                 search={projectStore.search}

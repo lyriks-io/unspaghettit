@@ -1,9 +1,11 @@
 <script lang="ts">
   import type { Surface } from '$features/behavior-model/domain/entities/Surface';
+  import type { StateDefinition } from '$features/behavior-model/domain/entities/StateDefinition';
   import type {
     StateDefinitionId,
     SurfaceId
   } from '$features/behavior-model/domain/value-objects/ids';
+  import { asStateDefinitionId } from '$features/behavior-model/domain/value-objects/ids';
   import type { StateType } from '$features/behavior-model/domain/value-objects/StateValue';
   import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
   import { isStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
@@ -19,10 +21,52 @@
     humanizeStatePath,
     statePathFromName
   } from '$features/behavior-model/domain/value-objects/humanize';
+  import { useFeatureQueueContext } from '$features/behavior-model/presentation/context/featureQueueContext';
   import { emit } from '$shared/events/eventBus';
 
   type Props = { surface: Surface; surfaces?: readonly Surface[] };
   let { surface, surfaces = [surface] }: Props = $props();
+
+  const queueCtx = useFeatureQueueContext();
+
+  // Canonical project state variables not already projected onto THIS surface
+  // (by explicit back-ref id or by matching path) — the "reuse from project"
+  // source. Binding one inherits its schema; it cannot diverge locally.
+  const reusable = $derived.by(() => {
+    const boundIds = new Set(
+      surface.stateDefinitions.flatMap((d) => (d.stateVariableId ? [String(d.stateVariableId)] : []))
+    );
+    const paths = new Set(surface.stateDefinitions.map((d) => String(d.path)));
+    return queueCtx.projectStateVariables.filter(
+      (sv) => !boundIds.has(String(sv.id)) && !paths.has(String(sv.path))
+    );
+  });
+
+  let reuseChoice = $state('');
+
+  async function reuse() {
+    const id = reuseChoice;
+    if (!id) return;
+    const sv = queueCtx.projectStateVariables.find((s) => String(s.id) === id);
+    if (!sv) return;
+    const def: StateDefinition = {
+      id: asStateDefinitionId(cryptoIdGenerator()),
+      stateVariableId: sv.id,
+      path: sv.path,
+      type: sv.type,
+      defaultValue: sv.defaultValue,
+      description: sv.description,
+      ...(sv.valueSetId ? { valueSetId: sv.valueSetId } : {}),
+      ...(sv.enumValues ? { enumValues: sv.enumValues } : {})
+    };
+    await featureStore.mutate((current) => addStateDefinition(current, surface.id, def));
+    emit('editor.state.added', {
+      surfaceId: String(surface.id),
+      path: String(sv.path),
+      type: sv.type
+    });
+    reuseChoice = '';
+  }
 
   let nameDraft = $state('');
   let typeDraft = $state<StateType>('string');
@@ -212,6 +256,29 @@
     {/if}
   </div>
 
+  {#if reusable.length > 0}
+    <div class="flex flex-col gap-2 rounded-lg border border-violet-200 bg-violet-50/50 p-2.5 sm:flex-row sm:items-center">
+      <span class="text-[11px] font-medium text-violet-800">Reuse from project</span>
+      <select
+        bind:value={reuseChoice}
+        class="h-9 min-w-0 flex-1 rounded-md border border-violet-300 bg-white px-2 text-sm text-slate-800 outline-none focus:border-violet-600"
+      >
+        <option value="">Pick a canonical state…</option>
+        {#each reusable as sv (sv.id)}
+          <option value={String(sv.id)}>{sv.path} · {sv.type}</option>
+        {/each}
+      </select>
+      <button
+        type="button"
+        class="h-9 inline-flex items-center gap-1 rounded-md bg-violet-600 px-3 text-xs font-medium text-white transition hover:bg-violet-700 disabled:opacity-50"
+        onclick={reuse}
+        disabled={!reuseChoice}
+      >
+        Bind
+      </button>
+    </div>
+  {/if}
+
   {#if surface.stateDefinitions.length === 0}
     <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50/30 p-6 text-center">
       <p class="text-sm font-medium text-slate-700">No state defined yet</p>
@@ -226,14 +293,26 @@
         <li class="px-3 py-2 text-sm">
           <div class="flex items-center gap-2">
             <div class="min-w-0 flex-1">
-              <div class="truncate text-slate-950">{humanizeStatePath(def.path)}</div>
+              <div class="flex items-center gap-1.5">
+                <span class="truncate text-slate-950">{humanizeStatePath(def.path)}</span>
+                {#if def.stateVariableId}
+                  <span
+                    class="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-700"
+                    title="Bound to a canonical project state variable — its schema is inherited"
+                  >
+                    from project
+                  </span>
+                {/if}
+              </div>
               <div class="mono truncate text-[10px] text-slate-400" title="Canonical state path">
                 {def.path}
               </div>
             </div>
             <select
-              class="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs"
+              class="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-60"
               value={def.type}
+              disabled={!!def.stateVariableId}
+              title={def.stateVariableId ? 'Inherited from the project state variable' : undefined}
               onchange={(e) => updateType(def.id, (e.target as HTMLSelectElement).value as StateType)}
             >
               <option value="string">string</option>
@@ -245,8 +324,9 @@
             </select>
             {#if def.type === 'boolean'}
               <select
-                class="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs"
+                class="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-60"
                 value={String(def.defaultValue)}
+                disabled={!!def.stateVariableId}
                 onchange={(e) => updateDefault(def.id, (e.target as HTMLSelectElement).value, def.type)}
               >
                 <option value="false">false</option>
@@ -254,15 +334,17 @@
               </select>
             {:else if def.type === 'object' || def.type === 'array'}
               <textarea
-                class="mono min-h-16 w-48 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+                class="mono min-h-16 w-48 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs disabled:opacity-60"
                 value={JSON.stringify(def.defaultValue ?? defaultForType(def.type), null, 2)}
+                disabled={!!def.stateVariableId}
                 onchange={(e) =>
                   updateDefault(def.id, (e.target as HTMLTextAreaElement).value, def.type)}
               ></textarea>
             {:else}
               <input
                 type={def.type === 'number' ? 'number' : 'text'}
-                class="w-32 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs"
+                disabled={!!def.stateVariableId}
+                class="w-32 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-60"
                 value={String(def.defaultValue ?? '')}
                 onchange={(e) => updateDefault(def.id, (e.target as HTMLInputElement).value, def.type)}
               />

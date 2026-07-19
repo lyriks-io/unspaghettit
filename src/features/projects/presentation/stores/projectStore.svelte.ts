@@ -1,10 +1,23 @@
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
+import type { StateType, StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
+import { asStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
+import { cryptoIdGenerator } from '$shared/domain/IdGenerator';
 import type { Project } from '$features/projects/domain/entities/Project';
+import type {
+  StateVariable,
+  StateVariableProjection
+} from '$features/projects/domain/entities/StateVariable';
 import {
   declareCoreFeature,
   removeCoreFeature,
   updateCoreFeature
 } from '$features/projects/domain/services/coreFeatures';
+import {
+  declareStateVariable,
+  removeStateVariable,
+  updateStateVariable
+} from '$features/projects/domain/services/stateRegistry';
+import { asStateVariableId } from '$features/projects/domain/value-objects/ids';
 import type { ProjectId } from '$features/projects/domain/value-objects/ids';
 import { getBrowserContainer } from '$shared/infrastructure/browserContainer';
 import { dropRoomClient, getRoomClient, type YDocClient } from '$lib/client/sync';
@@ -206,6 +219,46 @@ class ProjectStore {
 
   async removeCoreFeature(value: string): Promise<void> {
     await this.saveWith((project) => removeCoreFeature(project, value));
+  }
+
+  // ── Canonical state variables (the project's reusable state identities) ──────
+  // Authored here on the project page; a surface's state editor binds to one via
+  // `stateVariableId`. Mirrors the MCP add/update/remove_state_variable tools so
+  // the dashboard and the LLM share one registry.
+
+  async declareStateVariable(input: {
+    path: string;
+    type: StateType;
+    defaultValue: StateValue;
+    description: string;
+    owner: StateVariableProjection;
+    valueSetId?: StateVariable['valueSetId'];
+    enumValues?: readonly string[];
+  }): Promise<void> {
+    const state: StateVariable = {
+      id: asStateVariableId(cryptoIdGenerator()),
+      path: asStatePath(input.path),
+      type: input.type,
+      defaultValue: input.defaultValue,
+      description: input.description,
+      ...(input.valueSetId ? { valueSetId: input.valueSetId } : {}),
+      ...(input.enumValues && input.enumValues.length > 0 ? { enumValues: input.enumValues } : {}),
+      owner: input.owner,
+      readers: [],
+      writers: []
+    };
+    await this.saveWith((project) => declareStateVariable(project, state));
+  }
+
+  async updateStateVariable(
+    id: string,
+    patch: Partial<Omit<StateVariable, 'id'>>
+  ): Promise<void> {
+    await this.saveWith((project) => updateStateVariable(project, id, patch));
+  }
+
+  async removeStateVariable(id: string): Promise<void> {
+    await this.saveWith((project) => removeStateVariable(project, id));
   }
 
   private async saveWith(transform: (project: Project) => Project): Promise<void> {

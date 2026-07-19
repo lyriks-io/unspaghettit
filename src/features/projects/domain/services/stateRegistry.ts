@@ -96,6 +96,40 @@ export const projectStateVariables = (
   return [...registered, ...legacy.values()];
 };
 
+// ─── Registry transforms ───────────────────────────────────────────────────────
+// Pure add/update/remove over `project.stateVariables`, mirroring the MCP
+// `add/update/remove_state_variable` tools so the dashboard authoring panel and
+// the LLM share one canonical registry. The caller mints the id and builds the
+// entry (owner/path/type/default); these transforms only splice the array.
+
+/** Append a freshly-minted canonical state variable to the project registry. */
+export const declareStateVariable = (project: Project, state: StateVariable): Project => ({
+  ...project,
+  stateVariables: [...(project.stateVariables ?? []), state]
+});
+
+/** Patch a registered state variable by id (the stable id itself is immutable). */
+export const updateStateVariable = (
+  project: Project,
+  id: string,
+  patch: Partial<Omit<StateVariable, 'id'>>
+): Project => ({
+  ...project,
+  stateVariables: (project.stateVariables ?? []).map((state) =>
+    String(state.id) === id ? { ...state, ...patch } : state
+  )
+});
+
+/**
+ * Remove a registered canonical identity. Surface projections keep their
+ * `stateVariableId` back-ref, which simply stops resolving (the projection
+ * falls back to legacy path-grouping) — removal never rewrites features.
+ */
+export const removeStateVariable = (project: Project, id: string): Project => ({
+  ...project,
+  stateVariables: (project.stateVariables ?? []).filter((state) => String(state.id) !== id)
+});
+
 export type StateCoherenceIssue = {
   readonly severity: 'error' | 'warning';
   readonly stateId: string;
