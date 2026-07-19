@@ -24,11 +24,11 @@ export const buildAdoptPrompt = (link: RepoLink | null): string => {
   return `Adopt this codebase into Unspaghettit (code -> spec), using the Unspaghettit MCP tools.
 
 1. Call get_repo_context once. ${linkStep}
-2. Explore the codebase and split its behavior into features: one coherent slice each (a flow, a screen, a capability), sized 1-15 surfaces. Propose the split before modeling.
+2. Explore the codebase and split its behavior into features: one coherent slice each (a flow, a screen, a capability), sized 1-15 surfaces. Propose the split before modeling. Record the product's pillars as the project's core features (declare_core_feature) and group each feature under at most one (set_feature_core); the taxonomy belongs in the model, not re-derived from folder names each pass. An undeclared or doubled core tag is a soft warning, never a blocker.
 3. For each feature, work surface by surface:
    a. Read the source files that implement it.
    b. attach_source_path with the file's repo-relative path (the server reads the file itself; fall back to attach_source_file kind:"code" with the exact content if it reports no repo context).
-   c. Model what the code ACTUALLY does (not what it should do) via apply_batch: surfaces, actions, parameters, state, rules, invariants, transitions, events, plus scenarios for the paths the code clearly handles.
+   c. Model what the code ACTUALLY does (not what it should do) via apply_batch: surfaces, actions, parameters, state, rules, invariants, transitions, events, plus scenarios for the paths the code clearly handles. Model a constraint as an invariant only when the code truly enforces it (rejects/throws); a check that merely warns and proceeds is a non-blocking rule, not a hard invariant.
    d. record_element_spans with ALL of a source's spans in one call, offsets pointing at the exact code each element was extracted from.
    e. finalize_analysis - it refuses until every element is traced, so nothing gets invented without a source.
    f. seed_index_from_analysis - every code span becomes a .unspa.json implementation entry - then sync_from_index to push coverage to the dashboard.

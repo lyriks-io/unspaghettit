@@ -40,6 +40,12 @@ a recorded span, so nothing can be invented without a source.
 2. **Split.** Explore the codebase and propose the feature split before
    modeling: one coherent slice per feature (a flow, a screen, a capability),
    1-15 surfaces each. Confirm the split with the user when it is not obvious.
+   Record the product's pillars as the project's core features
+   (`declare_core_feature`), then group each feature under at most one with
+   `set_feature_core` as you create it. This is where the taxonomy belongs:
+   capture it in the model once, rather than re-deriving it from folder names
+   every pass. An undeclared or doubled `core:` tag is a soft warning in the
+   project aggregate, never a save blocker.
 3. **Per feature, per surface:**
    a. Read the source files that implement the surface.
    b. `attach_source_path` with the file's repo-relative path: the server
@@ -83,6 +89,14 @@ a recorded span, so nothing can be invented without a source.
 
 State paths come from what the code persists or branches on, not from UI
 copy. Enum unions in the code become value sets.
+
+Model a constraint as an **Invariant** only when the code truly enforces it:
+it rejects, throws, or refuses to persist the violating state. A reachable
+invariant violation fails the verdict by default, so an advisory check dressed
+as an invariant claims a hard guarantee the code never made. When the code
+only warns and carries on (a "should", a lint, a non-blocking policy), model
+it as a **Rule** with no blocking effect, not an Invariant. Getting hard vs
+soft right is what keeps the model and the code honest with each other.
 
 ## Recording spans that survive refactors
 
