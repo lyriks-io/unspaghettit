@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-07-20
+
 ### Changed
 
 - **The project behavior inventories collapse repeated rows by name.** The Surface rules, Transitions, and Actions panels listed one row per definition, repeating the same name across every feature and surface it appears in, so a shared rule or a common source surface was hard to read at a glance. Each now groups so a name reads once: surface rules group by rule name with every feature/surface that defines it underneath (sorted by feature then surface); transitions group by source surface with each destination underneath (sorted by target); and actions gain a surface sub-level (feature → surface → actions) that removes the repeating Surface column, with surfaces and their actions sorted alphabetically.
