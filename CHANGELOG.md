@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- **The project behavior inventories collapse repeated rows by name.** The Surface rules, Transitions, and Actions panels listed one row per definition, repeating the same name across every feature and surface it appears in, so a shared rule or a common source surface was hard to read at a glance. Each now groups so a name reads once: surface rules group by rule name with every feature/surface that defines it underneath (sorted by feature then surface); transitions group by source surface with each destination underneath (sorted by target); and actions gain a surface sub-level (feature → surface → actions) that removes the repeating Surface column, with surfaces and their actions sorted alphabetically.
+- **"Reusable action concepts" is renamed to "Reusable concepts" and ordered by name.** The section lists reuse candidates - states, events, resources, roles, parameters, value sets, and effect types - none of which are Unspa Actions, so the old label clashed with the first-class Action entity. The chips are now sorted by name instead of grouped by kind.
+
 ## [0.12.0] - 2026-07-19
 
 Authoring-friction fixes surfaced by a five-project QA pass through the MCP. The highest-priority items in that report (the scenario runner ignoring state seeding, action invariants checked before their own effects, and `block_action` not enforced in the scenario runner) did not reproduce: they were already fixed on the current engine, confirmed by running the exact cases through `run_all_scenarios` and `model_check`. What remained were real reference and vocabulary gaps, fixed here. No breaking changes.
