@@ -1,6 +1,6 @@
 {
   "name": "unspaghettit",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "type": "module",
   "description": "Executable specifications for AI-assisted software development. Local-first and MCP-native.",
   "author": {

@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-21
+
 ### Added
 
 - **Deep links can target a specific rule, not just its container.** Global search already indexed every surface rule and action rule, but selecting one only scrolled to its container: the whole "Surface rules" tab body, or the entire action card, leaving the reader to hunt for the rule itself. Every rule now renders a focus anchor, and `?focus=rule:<id>` resolves it from the id alone - a surface rule opens its surface's rules tab, an action rule expands its owning action's card - then pulses the exact rule into view. Rule search results point straight at the rule, and any external link (for example a Lyriks report referencing a rule) can do the same by carrying that one parameter.
