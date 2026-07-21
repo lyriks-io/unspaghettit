@@ -68,7 +68,18 @@ const surface: Surface = {
         }
       ],
       requiredStates: [],
-      rules: [],
+      rules: [
+        {
+          id: asRuleId('min-total'),
+          category: 'validation',
+          effect: {
+            id: asEffectId('block-below-min'),
+            type: 'block_action',
+            reason: 'Below minimum order'
+          },
+          description: 'Coupon needs a minimum cart total'
+        }
+      ],
       invariants: [],
       effects: [
         {
@@ -173,6 +184,18 @@ describe('buildSearchDocs', () => {
     expect(action.nav.href).toBe(
       '/features/commerce?surface=checkout&focus=action%3Aapply-coupon'
     );
+  });
+
+  it('anchors a surface rule on the rule itself, not the whole rules tab', () => {
+    const rule = byKind(docs, 'rule').find((d) => d.title.includes('empty'))!;
+    expect(rule.nav.href).toBe(
+      '/features/commerce?surface=checkout&panel=rules&focus=rule%3Arequire-items'
+    );
+  });
+
+  it('anchors an action rule on the rule itself, not the whole action card', () => {
+    const rule = byKind(docs, 'rule').find((d) => d.title.includes('minimum'))!;
+    expect(rule.nav.href).toBe('/features/commerce?surface=checkout&focus=rule%3Amin-total');
   });
 
   it('humanizes the state path for display but keeps the raw path searchable', () => {

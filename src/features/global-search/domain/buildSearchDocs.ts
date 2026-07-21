@@ -9,7 +9,14 @@ import { ruleCategoryLabel } from '$features/behavior-model/domain/value-objects
 import { humanizeStatePath } from '$features/behavior-model/domain/value-objects/humanize';
 import { tagLabel, type Tag } from '$shared/domain/Tags';
 import type { SearchDoc, SearchModelInput } from './SearchDoc';
-import { actionFocus, domainHref, featureHref, projectHref, surfaceTabFocus } from './searchNav';
+import {
+  actionFocus,
+  domainHref,
+  featureHref,
+  projectHref,
+  ruleFocus,
+  surfaceTabFocus
+} from './searchNav';
 
 /** Join defined, non-empty parts into one lowercased corpus string. */
 const corpus = (...parts: ReadonlyArray<string | undefined>): string =>
@@ -325,7 +332,7 @@ const collectSurface = (
         href: featureHref(ctx.featureId, {
           surface: surfaceId,
           panel: 'rules',
-          focus: surfaceTabFocus(surfaceId, 'rules')
+          focus: ruleFocus(String(rule.id))
         })
       }
     });
@@ -417,7 +424,15 @@ const collectAction = (
         ruleCategoryLabel(rule.category),
         effectSummary(rule.effect)
       ),
-      nav: { href: actionHref }
+      // Anchor on the rule itself, not the whole action card: the editor
+      // expands the owning action and pulses this exact rule.
+      nav: {
+        href: featureHref(ctx.featureId, {
+          surface: surfaceId,
+          panel: 'actions',
+          focus: ruleFocus(String(rule.id))
+        })
+      }
     });
   }
 

@@ -54,6 +54,14 @@ export const domainHref = (domainId: string): string => `/domains/${encodeURICom
 /** Focus token for an action's editor card (`data-focus-target` in ActionEditor). */
 export const actionFocus = (actionId: string): string => `action:${actionId}`;
 
+/**
+ * Focus token for a specific rule's editor card (`data-focus-target` in
+ * RuleEditor). A rule id is unique within a feature, so the editor resolves the
+ * owning surface — and, for an action rule, the owning action — from the id
+ * alone. The deep link still carries `surface`/`panel` for a clean, stable URL.
+ */
+export const ruleFocus = (ruleId: string): string => `rule:${ruleId}`;
+
 /** Focus token for a surface-panel tab body (`data-focus-target` in SurfacePanel). */
 export const surfaceTabFocus = (surfaceId: string, panel: SurfacePanelTab): string =>
   `tab:${surfaceId}:${panel}`;

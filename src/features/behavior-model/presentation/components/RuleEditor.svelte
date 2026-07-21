@@ -187,7 +187,15 @@
   }
 </script>
 
-<div class="space-y-2 rounded-md border border-slate-200 bg-white p-3">
+<!-- `data-focus-target` makes this rule a first-class deep-link anchor: a
+     `?focus=rule:<id>` link (global search, or a cross-repo consumer linking to
+     a specific rule) resolves to this element, scrolls it into view, and pulses
+     it. `scroll-mt-24` keeps the pulse clear of the sticky header. Works for
+     both surface rules and an action's rules — both render through here. -->
+<div
+  data-focus-target={`rule:${rule.id}`}
+  class="scroll-mt-24 space-y-2 rounded-md border border-slate-200 bg-white p-3"
+>
   <div class="flex items-center gap-2">
     <select
       class="rounded-md border border-slate-300 px-2 py-1 text-xs"

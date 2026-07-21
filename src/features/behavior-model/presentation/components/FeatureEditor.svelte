@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
   import { asActionId, asSurfaceId } from '$features/behavior-model/domain/value-objects/ids';
+  import { locateRule } from '$features/behavior-model/domain/services/RuleLocation';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import { editorStore } from '$features/behavior-model/presentation/stores/editorStore.svelte';
   import { getEffectiveEntities } from '$features/behavior-model/domain/services/EffectiveEntities';
@@ -200,6 +201,27 @@
         const actionMatch = /^action:(.+)$/.exec(focusParam);
         if (actionMatch?.[1]) {
           editorStore.selectCapability(asActionId(actionMatch[1]));
+        }
+        // A `rule:<id>` focus can land on either a surface rule or an action
+        // rule, and the URL need not say which. Resolve the rule's home from
+        // the id and reveal it: a surface rule opens the surface panel's "rules"
+        // tab; an action rule opens "actions" and expands its owning card so the
+        // RuleEditor is on screen for the observer to scroll to. Guard the
+        // surface re-select so we don't wipe the capability we're about to set.
+        const ruleMatch = /^rule:(.+)$/.exec(focusParam);
+        if (ruleMatch?.[1]) {
+          const location = locateRule(feature, ruleMatch[1]);
+          if (location) {
+            if (editorStore.selectedSurfaceId !== location.surfaceId) {
+              editorStore.selectSurface(location.surfaceId);
+            }
+            if (location.kind === 'action') {
+              editorStore.setSurfacePanelTab('actions');
+              editorStore.selectCapability(location.actionId);
+            } else {
+              editorStore.setSurfacePanelTab('rules');
+            }
+          }
         }
         // Bump the token so re-navigating to the same target still re-fires the
         // focus observer; writes propagate even from inside untrack.
