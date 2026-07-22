@@ -27,6 +27,29 @@ Features. When the user says "I'm adding X to the existing app", create a new
 Feature inside the existing Project. Do not put X into an existing Feature
 unless it is genuinely the same slice of behavior.
 
+### The project library (define once, reference everywhere)
+
+A Project owns a CANONICAL LIBRARY of entities, resources, and personas that
+several of its Features share. A Feature REFERENCES one via
+\`entityRefs\` / \`resourceRefs\` / \`personaRefs\` instead of carrying its own
+copy, and the reference is resolved into the Feature on every read — so the
+Feature is still verifiable in isolation, while the definition is stored once
+and cannot drift between Features.
+
+Do NOT re-author the same entity in each Feature that touches it. Instead:
+
+  list_project_library         see what the project already defines (real ids)
+  promote_to_project_library   move one Feature's copy into the library AND
+                               collapse identical copies in sibling Features
+  link_project_definition      make another Feature reference it
+  unlink_project_definition    stop referencing it (drops the resolved copy too)
+  remove_project_definition    delete from the library
+
+Editing a referenced entity from ANY member Feature (update_entity,
+add_entity_field) writes back to the canonical definition — that is what
+canonical means. A ref the project cannot satisfy is a per-Feature validation
+error naming the fix; the Feature still loads.
+
 ## Entity model
 
 Feature

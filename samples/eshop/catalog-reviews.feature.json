@@ -946,24 +946,7 @@
               }
             ],
             "requiredStates": [],
-            "rules": [
-              {
-                "id": "15ef098f",
-                "category": "validation",
-                "condition": {
-                  "left": "reviews.sortBy",
-                  "operator": "equals",
-                  "right": ""
-                },
-                "effect": {
-                  "type": "block_action",
-                  "reason": "Pick a supported sort order.",
-                  "id": "c1520400",
-                  "description": "Effect block_action from a validation rule on action Sort reviews."
-                },
-                "description": "Sort key must be supported."
-              }
-            ],
+            "rules": [],
             "invariants": [],
             "effects": [
               {

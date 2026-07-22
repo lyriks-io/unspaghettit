@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Load samples` works again.** The bundled eShop "Catalog & reviews" sample carried a validation rule comparing `reviews.sortBy` against `""` — a value outside that enum's domain, so the guard was provably dead. 0.14.1's enum-domain check correctly rejects it, but samples are written as BRAND-NEW features, where the diff-aware gate offers no protection (every error counts as introduced), so the save 400'd and the button silently failed with `Snapshot save failed (400)`. The rule is removed rather than the check weakened: the action's `sortBy` parameter is a required enum already restricted to the same four values, so the parameter validator rejects unsupported input before any rule runs — the guard was dead AND redundant. Caught by the end-to-end suite; a scan now covers every shipped sample against the write gate.
+
+### Known limitation
+
+The dashboard's feature EDITOR does not yet resolve project-library references. It is backed by the live Y.Doc room, which reads and writes the stored snapshot directly rather than going through the repository, so after a `promote_to_project_library` a member feature's Entities / Resources / Personas tabs will not list the referenced definitions. Nothing is corrupted — references survive the round-trip intact, and the editor cannot turn one back into an inline copy — and every other consumer resolves them (MCP tools, `unspa check`, `GET /api/snapshots/:id`, the verify endpoint, digests). Promotion is opt-in per project, so this is latent until you use it. Dashboard read-resolution and a library authoring panel are the follow-up.
+
 ## [0.14.1] - 2026-07-22
 
 Lands the two validation fixes that were open as PRs #22 and #23 before the 0.14.0 shape-validation rewrite, rebased onto it. All three close gaps where a malformed guard committed silently and then never fired. The write gate stays diff-aware, so existing snapshots remain editable and only newly authored breakage is refused.
