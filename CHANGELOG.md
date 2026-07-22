@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-07-22
+
+Lands the two validation fixes that were open as PRs #22 and #23 before the 0.14.0 shape-validation rewrite, rebased onto it. All three close gaps where a malformed guard committed silently and then never fired. The write gate stays diff-aware, so existing snapshots remain editable and only newly authored breakage is refused.
+
+### Fixed
+
+- **A condition leaf with the operator under the wrong key is named, with the fix.** `apply_batch` takes each op as an untyped bag, so a leaf could arrive as `{ left, op: "neq", right }` (a host UI's visibility vocabulary): every consumer read `operator: undefined` and the comparison never fired, while dry_run reported valid. The shape pass now rejects unknown leaf keys and names the likely intent: "Did you mean \"operator\"?" for `op`, "Did you mean \"right\"?" for `value`/`expected`. Works at every depth of a composite condition.
+- **A fabricated invariant consequent is rejected instead of silently inverting the invariant.** An invariant is `{ name, condition, message }`; authors writing an implication routinely invent a consequent field (`mustHold`, `then`, `implies`, `ensure`), which the builders cherry-picked away, collapsing "A implies B" into "A must always be true": the exact inverse of the intent, firing on legal data. `buildInvariant` / `buildInvariantPatch` now throw against the raw input, naming the supported spelling (`condition: { kind: "any", conditions: [{ kind: "not", condition: A }, B] }`); the shape pass flags any key that survived into a stored snapshot; and the operations resource plus the rule schema description document the invariant shape and the operator vocabulary up front, which is what invited the wrong guess.
+- **Enum domains are enforced on the values that actually flow through a path.** An enum state definition names the CLOSED set of values a path may hold, but only `defaultValue` was checked: a `set_state` could write a value outside the domain, and a condition could compare against one, a comparison that is provably dead. Both are now flagged in reference integrity (effects, rule and invariant conditions, feature-level invariants included), resolved through `valueSets` exactly like the defaultValue check. Raw string literals only: an Expression resolves at run time, so it is left alone rather than guessed at. The driving defect: a plan enum of [free, premium] whose upgrade action wrote "family" left every `plan == "premium"` gate silently denying the customer who paid the most.
+
 ## [0.14.0] - 2026-07-22
 
 Reference-over-copy for project-canonical definitions, plus a round of write/read symmetry fixes, driven by what the Lyriks platform needs from the engine. A project can now own entities, resources, and personas once and have member features REFERENCE them, so the copy-per-feature pattern (and the twin-collapsing heuristics it forces on readers) can go away. The maturity heuristic ships as a callable function so it stops being hand-copied across repos, `verify` reports per-scenario results machine-readably, and three classes of silently-wrong write are now rejected or rolled back.
