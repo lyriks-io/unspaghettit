@@ -8,6 +8,7 @@ import {
 import type { DigestScopeRef } from '$features/behavior-digest/domain/ports/DigestProjector';
 import { buildDigest } from '$features/behavior-digest/domain/services/buildDigest';
 import { markdownDigestExporter } from '$features/behavior-digest/infrastructure/exporters/MarkdownDigestExporter';
+import { computeFeatureMaturity } from '$features/maturity/domain/computeFeatureMaturity';
 
 /** How the digest comes back: the structured spec (default) or serialized Markdown. */
 export type DigestFormat = 'spec' | 'markdown';
@@ -22,9 +23,36 @@ export type GetDigestInput = {
   readonly format?: DigestFormat;
 };
 
+/**
+ * The engine's maturity number for each feature in scope, carried on the
+ * digest so a consumer that already fetches digests doesn't have to make a
+ * second call — or worse, reimplement the weights — to show how complete a
+ * feature is. Identical to `computeFeatureMaturity` / `score_feature`; there is
+ * one formula.
+ */
+export type DigestMaturity = {
+  readonly featureId: string;
+  readonly featureName: string;
+  readonly score: number;
+  readonly maxScore: number;
+  readonly percentage: number;
+  readonly criticalIssueCount: number;
+  readonly recommendedIssueCount: number;
+};
+
 export type GetDigestOutput =
-  | { readonly format: 'spec'; readonly hasContent: boolean; readonly digest: DigestSpec }
-  | { readonly format: 'markdown'; readonly hasContent: boolean; readonly markdown: string };
+  | {
+      readonly format: 'spec';
+      readonly hasContent: boolean;
+      readonly digest: DigestSpec;
+      readonly maturity: readonly DigestMaturity[];
+    }
+  | {
+      readonly format: 'markdown';
+      readonly hasContent: boolean;
+      readonly markdown: string;
+      readonly maturity: readonly DigestMaturity[];
+    };
 
 /**
  * Project one scope of the behavior model into its plain-language digest — the
@@ -46,7 +74,19 @@ export const getDigestTool = (input: GetDigestInput): GetDigestOutput => {
     ...(input.detailLevel ? { detailLevel: input.detailLevel } : {})
   });
   const hasContent = digestHasContent(spec);
+  const maturity = input.features.map((feature) => {
+    const scored = computeFeatureMaturity(feature);
+    return {
+      featureId: scored.featureId,
+      featureName: scored.featureName,
+      score: scored.score,
+      maxScore: scored.maxScore,
+      percentage: scored.percentage,
+      criticalIssueCount: scored.criticalIssues.length,
+      recommendedIssueCount: scored.recommendedIssues.length
+    };
+  });
   return input.format === 'markdown'
-    ? { format: 'markdown', hasContent, markdown: markdownDigestExporter.export(spec) }
-    : { format: 'spec', hasContent, digest: spec };
+    ? { format: 'markdown', hasContent, markdown: markdownDigestExporter.export(spec), maturity }
+    : { format: 'spec', hasContent, digest: spec, maturity };
 };

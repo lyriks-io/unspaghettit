@@ -33,6 +33,17 @@ const parseTextContent = (result: unknown): unknown => {
   return JSON.parse(first.text);
 };
 
+/** The id of the one entity a freshly-seeded test feature carries. */
+const addOrderId = async (
+  repo: InMemoryFeatureRepository,
+  featureId: string
+): Promise<string> => {
+  const feature = await repo.get(featureId as never);
+  const entity = feature?.entities[0];
+  if (!entity) throw new Error(`feature ${featureId} has no entity`);
+  return String(entity.id);
+};
+
 describe('MCP server', () => {
   it('creates canonical state and projects it into another feature by stable id', async () => {
     const { client, server } = await setup();
@@ -174,10 +185,12 @@ describe('MCP server', () => {
       'get_source_coverage',
       'get_spec_gaps',
       'get_surface',
+      'link_project_definition',
       'link_state_variable',
       'list_actions',
       'list_feature_ids',
       'list_features',
+      'list_project_library',
       'list_projects',
       'list_queue',
       'list_sources',
@@ -189,6 +202,7 @@ describe('MCP server', () => {
       'move_state_definition',
       'move_surface',
       'outline_repo',
+      'promote_to_project_library',
       'propose_evolution',
       'record_element_span',
       'record_element_spans',
@@ -207,6 +221,7 @@ describe('MCP server', () => {
       'remove_feature_tag',
       'remove_parameter',
       'remove_persona',
+      'remove_project_definition',
       'remove_project_invariant',
       'remove_project_tag',
       'remove_reachability_goal',
@@ -237,6 +252,7 @@ describe('MCP server', () => {
       'stage_candidate',
       'stage_candidates',
       'sync_from_index',
+      'unlink_project_definition',
       'update_acceptance_criterion',
       'update_action',
       'update_action_invariant',
@@ -549,9 +565,12 @@ describe('MCP server', () => {
       ok: true;
       tags: readonly { type: string; value: string }[];
     };
-    expect(addedAck.tags).toEqual([{ type: 'team', value: 'growth' }]);
+    // Authored casing survives byte-for-byte (external consumers match tag
+    // values exactly), so "Team: Growth" is stored as typed, not lowercased.
+    expect(addedAck.tags).toEqual([{ type: 'Team', value: 'Growth' }]);
 
-    // Case-insensitive dedupe via tagKey; normalized to lowercase on save.
+    // Identity is still case-insensitive (tagKey), so a differently-cased
+    // re-add dedupes into the existing entry and does NOT rewrite its casing.
     await client.callTool({
       name: 'add_project_tag',
       arguments: { projectId, type: 'team', value: 'GROWTH' }
@@ -561,7 +580,7 @@ describe('MCP server', () => {
       arguments: { projectId }
     });
     const project = parseTextContent(fetched) as { tags?: readonly unknown[] };
-    expect(project.tags).toEqual([{ type: 'team', value: 'growth' }]);
+    expect(project.tags).toEqual([{ type: 'Team', value: 'Growth' }]);
 
     const removed = await client.callTool({
       name: 'remove_project_tag',
@@ -585,17 +604,17 @@ describe('MCP server', () => {
       tags: readonly { type: string; value: string }[];
     };
     expect(addedAck.ok).toBe(true);
-    expect(addedAck.tags).toEqual([{ type: 'domain', value: 'commerce' }]);
+    expect(addedAck.tags).toEqual([{ type: 'Domain', value: 'Commerce' }]);
 
     // Idempotent: re-adding the same tag is a no-op (deduped by tagKey).
-    // Tags are normalized to lowercase so a re-add with different casing is
-    // structurally identical to the first add.
+    // Identity ignores case, but the stored spelling stays as first authored —
+    // a lowercase re-add must not silently rewrite "Commerce" to "commerce".
     await client.callTool({
       name: 'add_feature_tag',
       arguments: { featureId: storefrontFeature.id, type: 'domain', value: 'commerce' }
     });
     const afterDuplicate = await repo.get(storefrontFeature.id);
-    expect(afterDuplicate?.tags).toEqual([{ type: 'domain', value: 'commerce' }]);
+    expect(afterDuplicate?.tags).toEqual([{ type: 'Domain', value: 'Commerce' }]);
 
     const removed = await client.callTool({
       name: 'remove_feature_tag',
@@ -908,6 +927,93 @@ describe('MCP server', () => {
     // feature still resolves on a fresh read.
     const persisted = await repo.get(created.id as never);
     expect(persisted?.surfaces[0]?.invariants ?? []).toHaveLength(0);
+    await server.close();
+  });
+
+  it('apply_batch dryRun deep-validates rule shapes instead of reporting valid:true', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: {
+          name: 'Shape gate',
+          description: 'Malformed rules must fail the dry run, not just later.'
+        }
+      })
+    ) as { id: string };
+
+    const scaffold = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            {
+              kind: 'add_surface',
+              ref: 'cart',
+              name: 'Cart',
+              type: 'screen',
+              description: 'Where the cart is shown.'
+            },
+            {
+              kind: 'add_state_definition',
+              surfaceRef: 'cart',
+              path: 'cart.itemCount',
+              type: 'number',
+              defaultValue: 0,
+              description: 'How many items are in the cart.'
+            },
+            {
+              kind: 'add_action',
+              ref: 'checkout',
+              surfaceRef: 'cart',
+              name: 'Checkout',
+              intent: 'pay for the cart'
+            }
+          ]
+        }
+      })
+    ) as { refs: Record<string, string> };
+
+    // Batch ops are an untyped record, so Zod never sees this condition. The
+    // operator "gte" is not in the runtime vocabulary: the evaluator would fall
+    // through to `false` and the rule would silently never fire.
+    const malformed = {
+      kind: 'add_action_rule',
+      surfaceRef: 'cart',
+      actionId: scaffold.refs.checkout,
+      category: 'validation',
+      description: 'Cart must not be empty.',
+      condition: { left: 'cart.itemCount', operator: 'gte', right: 1 },
+      effect: { type: 'block_action', reason: 'Cart is empty', description: 'Stop.' }
+    };
+
+    const dry = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          dryRun: true,
+          operations: [{ ...malformed, surfaceId: scaffold.refs.cart, surfaceRef: undefined }]
+        }
+      })
+    ) as { ok: boolean; validation?: { valid: boolean; errors?: string[] } };
+    expect(dry.ok).toBe(false);
+    expect(dry.validation?.errors?.some((e) => e.includes('unknown operator "gte"'))).toBe(true);
+
+    // And the same batch is refused on commit, so dry-run and write agree.
+    const written = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [{ ...malformed, surfaceId: scaffold.refs.cart, surfaceRef: undefined }]
+        }
+      })
+    ) as { ok: boolean };
+    expect(written.ok).toBe(false);
+    const persisted = await repo.get(created.id as never);
+    expect(persisted?.surfaces[0]?.actions[0]?.rules ?? []).toHaveLength(0);
     await server.close();
   });
 
@@ -2424,6 +2530,137 @@ describe('MCP server', () => {
     const persisted = await repo.get(created.id as never);
     const scenario = persisted?.surfaces[0]?.actions[0]?.scenarios?.[0];
     expect(scenario?.expectedTransition).toBe(ack.refs.next);
+    await server.close();
+  });
+  it('stores a shared entity once and resolves it from every referencing feature', async () => {
+    const { client, server, repo } = await setup();
+
+    const project = parseTextContent(
+      await client.callTool({
+        name: 'create_project',
+        arguments: {
+          name: 'Commerce',
+          description: 'Ordering and fulfilment.',
+          features: [
+            { name: 'Data Model', description: 'Canonical domain objects.' },
+            { name: 'Checkout', description: 'Pay for a cart.' },
+            { name: 'Fulfilment', description: 'Ship what was paid for.' }
+          ]
+        }
+      })
+    ) as { id: string; features: readonly { id: string }[] };
+    const [dataModelId, checkoutId, fulfilmentId] = project.features.map((f) => f.id) as [
+      string,
+      string,
+      string
+    ];
+
+    // The copy-per-feature pattern this feature exists to kill: the same Order
+    // entity authored identically in three features.
+    const addOrder = async (featureId: string) =>
+      parseTextContent(
+        await client.callTool({
+          name: 'add_entity',
+          arguments: {
+            featureId,
+            namespace: 'order',
+            description: 'A customer order.',
+            fields: [
+              { name: 'total', type: 'number', description: 'Order total in cents.' }
+            ]
+          }
+        })
+      ) as { id: string };
+    await addOrder(dataModelId);
+    await addOrder(checkoutId);
+    await addOrder(fulfilmentId);
+
+    const promoted = parseTextContent(
+      await client.callTool({
+        name: 'promote_to_project_library',
+        arguments: { featureId: dataModelId, kind: 'entity', id: (await addOrderId(repo, dataModelId)) }
+      })
+    ) as { ok: boolean; id: string; rewrittenFeatures: readonly string[] };
+    expect(promoted.ok).toBe(true);
+    // All three features were collapsed onto the one canonical definition.
+    expect(promoted.rewrittenFeatures.sort()).toEqual(
+      [dataModelId, checkoutId, fulfilmentId].sort()
+    );
+
+    // Stored ONCE: the project holds the definition, the features hold refs.
+    const stored = await repo.get(checkoutId as never);
+    expect(stored?.entities).toHaveLength(0);
+    expect(stored?.entityRefs).toEqual([promoted.id]);
+
+    // …and every consumer still sees it as if it were local. get_feature runs
+    // through the same project-scoped repository verify and model_check do.
+    const index = parseTextContent(
+      await client.callTool({ name: 'get_feature', arguments: { featureId: fulfilmentId } })
+    ) as { entities: readonly { id: string }[] };
+    expect(index.entities.map((e) => e.id)).toEqual([promoted.id]);
+
+    const verdict = parseTextContent(
+      await client.callTool({ name: 'verify', arguments: { featureId: checkoutId } })
+    ) as { passed: boolean; features: readonly { checks: readonly { status: string }[] }[] };
+    expect(verdict.features[0]?.checks.every((c) => c.status !== 'fail')).toBe(true);
+
+    await server.close();
+  });
+
+  it('reports a dangling library ref per feature instead of losing the feature', async () => {
+    const { client, server, repo } = await setup();
+    const project = parseTextContent(
+      await client.callTool({
+        name: 'create_project',
+        arguments: {
+          name: 'Billing',
+          description: 'Invoices.',
+          features: [{ name: 'Invoices', description: 'Issue invoices.' }]
+        }
+      })
+    ) as { id: string; features: readonly { id: string }[] };
+    const featureId = project.features[0]!.id;
+
+    await client.callTool({
+      name: 'add_entity',
+      arguments: {
+        featureId,
+        namespace: 'invoice',
+        description: 'A bill.',
+        fields: []
+      }
+    });
+    const entityId = await addOrderId(repo, featureId);
+    const promoted = parseTextContent(
+      await client.callTool({
+        name: 'promote_to_project_library',
+        arguments: { featureId, kind: 'entity', id: entityId }
+      })
+    ) as { id: string };
+
+    await client.callTool({
+      name: 'remove_project_definition',
+      arguments: { projectId: project.id, kind: 'entity', id: promoted.id }
+    });
+
+    // The feature still LOADS (never a whole-query failure) and names the fix.
+    const stillThere = parseTextContent(
+      await client.callTool({ name: 'list_features', arguments: {} })
+    ) as readonly unknown[];
+    expect(stillThere.length).toBeGreaterThan(0);
+
+    const verdict = parseTextContent(
+      await client.callTool({ name: 'get_spec_gaps', arguments: { featureId } })
+    ) as unknown;
+    expect(verdict).toBeDefined();
+
+    const library = parseTextContent(
+      await client.callTool({ name: 'list_project_library', arguments: { projectId: project.id } })
+    ) as { dangling: readonly { kind: string; id: string; featureId: string }[] };
+    expect(library.dangling).toEqual([
+      { kind: 'entity', id: promoted.id, featureId }
+    ]);
+
     await server.close();
   });
 });

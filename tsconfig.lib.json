@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "dist/types",
+    "baseUrl": ".",
+    "paths": {
+      "$features/*": ["src/features/*"],
+      "$shared/*": ["src/shared/*"],
+      "$lib/*": ["src/lib/*"]
+    }
+  },
+  "include": ["src/lib-entry/index.ts"]
+}

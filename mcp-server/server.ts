@@ -15,6 +15,7 @@ import { getImplementationStatusUseCase } from '../src/features/implementation-s
 import { reportImplementationStatusUseCase } from '../src/features/implementation-status/application/use-cases/ReportImplementationStatus';
 import type { ProjectRepository } from '../src/features/projects/application/ports/ProjectRepository';
 import { InMemoryProjectRepository } from '../src/features/projects/infrastructure/persistence/InMemoryProjectRepository';
+import { withProjectLibrary } from '../src/features/projects/infrastructure/persistence/ProjectScopedFeatureRepository';
 import { systemClock, type Clock } from '../src/shared/domain/Clock';
 import { cryptoIdGenerator, type IdGenerator } from '../src/shared/domain/IdGenerator';
 import { registerGuideResource } from './resources/guide';
@@ -33,6 +34,7 @@ import { registerInvariantTools } from './tools/invariant';
 import { registerParameterTools } from './tools/parameter';
 import { registerPersonaTools } from './tools/persona';
 import { registerProjectTools } from './tools/project';
+import { registerProjectLibraryTools } from './tools/projectLibrary';
 import { registerProvenanceTools } from './tools/provenance';
 import { registerReachabilityGoalTools } from './tools/reachabilityGoal';
 import { registerAcceptanceCriterionTools } from './tools/acceptanceCriterion';
@@ -104,7 +106,7 @@ export type BuildServerDeps = {
 // byte is paid once per session, but it offsets per-tool description bloat.
 const SERVER_INSTRUCTIONS = `Unspaghettit models software as executable behavior. The unit is a Feature: ONE coherent slice of behavior inside a Project (a flow, a screen, a capability), sized so you can hold it all in head at once. Rule of thumb: 1-15 surfaces, 30-100 actions. A Feature is NOT a whole product. "Add filter to results" is one Feature; "Spotify clone" is a Project that needs many Features. If a Feature grows past 15 surfaces, split it. Hierarchy: Domain tag > Project > Feature > Surface > Action > State/Rule/Effect. A Domain is only a project tag/grouping for filtering Projects, not its own modeling page.
 
-Feature shape: { id, name, surfaces[], personas[], resources[], entities[], events[], featureInvariants[], reachabilityGoals[], devContext? }. A Surface is one context (screen, terminal, workflow, canvas, ...) holding stateDefinitions[], actions[], rules[], invariants[], transitions[]. An Action is a user/AI-triggerable action with parameters[], rules[], effects[], invariants[], requiredStates[], emittedEvents[]. State lives at dotted paths ("cart.itemCount"); StateDefinition declares a surface projection. Projects may own canonical stateVariables[] with stable identity across features; use list_state_variables and reference one from add_state_definition via stateVariableId.
+Feature shape: { id, name, surfaces[], personas[], resources[], entities[], events[], featureInvariants[], reachabilityGoals[], devContext? }. A Surface is one context (screen, terminal, workflow, canvas, ...) holding stateDefinitions[], actions[], rules[], invariants[], transitions[]. An Action is a user/AI-triggerable action with parameters[], rules[], effects[], invariants[], requiredStates[], emittedEvents[]. State lives at dotted paths ("cart.itemCount"); StateDefinition declares a surface projection. Projects may own canonical stateVariables[] with stable identity across features; use list_state_variables and reference one from add_state_definition via stateVariableId. A project also owns a canonical LIBRARY of entities/resources/personas defined ONCE and referenced from member features via entityRefs/resourceRefs/personaRefs, instead of copied into each: read it with list_project_library, move an existing inline copy into it with promote_to_project_library (which also collapses identical copies in sibling features), and attach/detach with link_project_definition / unlink_project_definition. References resolve into the feature on every read, so a feature is still verifiable in isolation.
 
 Naming convention: names are for humans first. Use short Title Case noun phrases for surfaces ("Checkout", "MCP Server") and verb phrases for actions ("Apply Batch", "Get Repo Context", "Manage Rules"). Let parent context carry repeated words: on the "MCP Server" surface, write "Create Feature" or "Manage Surfaces", not "Create Feature via MCP" or a repeated "MCP ..." prefix. Avoid boilerplate suffixes/prefixes across siblings; put technical identifiers, tool ids, file paths, HTTP verbs, or storage names in descriptions and implementation indexes unless the user-facing concept is literally that technical object.
 
@@ -139,13 +141,21 @@ Never invent domain logic. A vague description is a prompt to ask, not a license
 
 Implementation quality. The spec is WHAT; the host repo is HOW. Probe before writing: sample a few existing files (one piece of logic, one I/O path, one UI surface, one test) and produce code indistinguishable in quality and style from what's already there. Match the test framework, naming, layout, and level of layering even where you'd have chosen differently - consistency beats local optimization. If the repo is greenfield/empty, scale structure to the work: one file for a script, flat module for a small feature (~3 actions), folders separating logic/IO/UI for a medium feature (~5-15 actions), formal ports+adapters only when the feature is big enough that "where does this go" becomes a recurring question. Three principles always hold regardless of layering: (1) pure logic doesn't import I/O - time, IDs, network, file system are passed in, not reached for; (2) UI doesn't contain business logic - conditions and transforms belong in a function the UI calls; (3) external dependencies are substitutable - storage, time, network, randomness are injected so tests can fake them. The bar is "a senior reviewer would accept without rewriting from scratch", not perfection - the user will refactor further. Full checklist in unspa://guide § Implementation quality.`;
 
-export const buildServer = (repo: FeatureRepository, deps: BuildServerDeps = {}): McpServer => {
+export const buildServer = (
+  featureRepo: FeatureRepository,
+  deps: BuildServerDeps = {}
+): McpServer => {
   const clock = deps.clock ?? systemClock;
   const ids = deps.ids ?? cryptoIdGenerator;
   const statusRepo = deps.statusRepo ?? new InMemoryImplementationStatusRepository();
   const provenanceRepo = deps.provenanceRepo ?? new InMemoryProvenanceRepository();
   const sourceRepo = deps.sourceRepo ?? new InMemoryProjectSourceRepository();
   const projectRepo = deps.projectRepo ?? new InMemoryProjectRepository();
+  // Every tool below reads features through this wrapper, so a feature that
+  // REFERENCES project-canonical entities/resources/personas arrives with them
+  // already materialized. Nothing downstream (verify, model_check, scenarios,
+  // digests, scoring) has to know references exist; saves strip them back out.
+  const repo = withProjectLibrary(featureRepo, projectRepo);
   const mutateFeature = mutateFeatureUseCase({ repository: repo, clock });
   const reportImplementationStatus = reportImplementationStatusUseCase({
     features: repo,
@@ -204,6 +214,7 @@ export const buildServer = (repo: FeatureRepository, deps: BuildServerDeps = {})
   registerImplementationStatusTools(toolDeps);
   registerProvenanceTools(toolDeps);
   registerProjectTools(toolDeps);
+  registerProjectLibraryTools(toolDeps);
   registerStateVariableTools(toolDeps);
   registerQueueTools(toolDeps);
   registerSpecGapsTool(toolDeps);

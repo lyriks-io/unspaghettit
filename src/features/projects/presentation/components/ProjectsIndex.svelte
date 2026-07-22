@@ -35,6 +35,7 @@
   import { tourStore } from '$features/tutorial/presentation/stores/tourStore.svelte';
   import { firstFeatureTour } from '$features/tutorial/infrastructure/tours/firstFeatureTour';
   import { runLoadSamplesFlow } from '$features/behavior-model/presentation/loadSamplesFlow';
+  import AppVersion from '$features/app-shell/presentation/components/AppVersion.svelte';
 
   type TaggedProject = {
     readonly tags?: readonly Tag[];
@@ -497,6 +498,10 @@
       </ul>
     {/if}
   </section>
+
+  <!-- Build stamp, bottom-left of the projects container. Parked here for now
+       until the shell grows a real footer. -->
+  <AppVersion class="mt-8" />
 </div>
 
 {#if createOpen}

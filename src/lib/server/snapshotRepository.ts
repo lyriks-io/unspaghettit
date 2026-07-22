@@ -7,10 +7,13 @@ import { migrateEmbeddedSourceDocsAndLog } from '$features/source-provenance/inf
 import { JsonFolderProjectRepository } from '$features/projects/infrastructure/persistence/JsonFolderProjectRepository';
 import { JsonFolderDomainRepository } from '$features/domains/infrastructure/persistence/JsonFolderDomainRepository';
 import { JsonFileTagPaletteRepository } from '$features/tag-palette/infrastructure/persistence/JsonFileTagPaletteRepository';
+import { withProjectLibrary } from '$features/projects/infrastructure/persistence/ProjectScopedFeatureRepository';
+import type { FeatureRepository } from '$features/behavior-model/application/ports/FeatureRepository';
 import { migrateFlatLayoutAndLog } from '$shared/infrastructure/persistence/snapshotLayout';
 
 let cached: {
   repo: JsonFolderFeatureRepository;
+  featureRepo: FeatureRepository;
   statusRepo: JsonFolderImplementationStatusRepository;
   provenanceRepo: JsonFolderProvenanceRepository;
   sourceRepo: JsonFolderProjectSourceRepository;
@@ -20,8 +23,17 @@ let cached: {
   directory: string;
 } | null = null;
 
+/**
+ * `repo` is the raw on-disk feature store; `featureRepo` is the same store seen
+ * THROUGH the owning project's canonical library, so a feature that references
+ * project-scoped entities/resources/personas arrives with them resolved (and
+ * saves strip them back to refs). Behavior reads and writes should use
+ * `featureRepo`; the raw `repo` is for import/export paths that deliberately
+ * want the stored shape byte-for-byte.
+ */
 export const getSnapshotRepository = (): {
   repo: JsonFolderFeatureRepository;
+  featureRepo: FeatureRepository;
   statusRepo: JsonFolderImplementationStatusRepository;
   provenanceRepo: JsonFolderProvenanceRepository;
   sourceRepo: JsonFolderProjectSourceRepository;
@@ -44,6 +56,7 @@ export const getSnapshotRepository = (): {
   const tagPaletteRepo = new JsonFileTagPaletteRepository(directory);
   cached = {
     repo,
+    featureRepo: withProjectLibrary(repo, projectRepo),
     statusRepo,
     provenanceRepo,
     sourceRepo,

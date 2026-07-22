@@ -209,3 +209,126 @@ describe('aggregateFeatureVerdict', () => {
     expect(checkById(strict, 'skipped-actions')?.status).toBe('fail');
   });
 });
+
+describe('aggregateFeatureVerdict — per-scenario results', () => {
+  const richScenarios = (): RunScenariosOutput => ({
+    featureId: 'f',
+    featureName: 'F',
+    total: 2,
+    passed: 1,
+    failed: 1,
+    results: [
+      {
+        surfaceId: 's1',
+        actionId: 'a1',
+        actionName: 'Checkout',
+        scenarioId: 'sc-pass',
+        scenarioName: 'Happy path',
+        personaId: null,
+        personaName: null,
+        pass: true,
+        actualStatus: 'success',
+        expectedStatus: 'success',
+        statusMatches: true,
+        assertions: [
+          { path: 'cart.itemCount', operator: 'equals', held: true },
+          { path: 'order.placed', operator: 'is_true', held: true }
+        ],
+        steps: [],
+        transitionCheck: null,
+        parameterErrors: [],
+        invariantViolations: [],
+        summary: 'pass. success, 2 assertions held'
+      },
+      {
+        surfaceId: 's1',
+        actionId: 'a1',
+        actionName: 'Checkout',
+        scenarioId: 'sc-fail',
+        scenarioName: 'Coupon then pay',
+        personaId: null,
+        personaName: null,
+        pass: false,
+        actualStatus: 'blocked',
+        expectedStatus: 'success',
+        statusMatches: false,
+        assertions: [
+          { path: 'order.placed', operator: 'is_true', held: null, skipped: true }
+        ],
+        steps: [
+          {
+            index: 0,
+            surfaceId: 's1',
+            actionId: 'a0',
+            actionName: 'Add to cart',
+            description: null,
+            actualStatus: 'success',
+            expectedStatus: 'success',
+            statusMatches: true,
+            assertions: [],
+            parameterErrors: [],
+            invariantViolations: [],
+            pass: true,
+            summary: 'pass. success'
+          },
+          {
+            index: 1,
+            surfaceId: 's1',
+            actionId: 'a2',
+            actionName: 'Apply coupon',
+            description: null,
+            actualStatus: 'blocked',
+            expectedStatus: 'success',
+            statusMatches: false,
+            assertions: [],
+            parameterErrors: [],
+            invariantViolations: [],
+            pass: false,
+            summary: 'status was blocked but expected success'
+          }
+        ],
+        transitionCheck: null,
+        parameterErrors: [],
+        invariantViolations: [],
+        summary: 'fail. step 1 (Apply coupon): status was blocked but expected success'
+      }
+    ] as unknown as readonly ScenarioRunResult[]
+  });
+
+  it('reports every scenario, passing ones included', () => {
+    const verdict = aggregateFeatureVerdict(base({ scenarios: richScenarios() }));
+    expect(verdict.scenarios.map((s) => s.scenarioId)).toEqual(['sc-pass', 'sc-fail']);
+    expect(verdict.scenarios.map((s) => s.passed)).toEqual([true, false]);
+  });
+
+  it('carries the identity a consumer needs to trace criterion → scenario → result', () => {
+    const [passing] = aggregateFeatureVerdict(base({ scenarios: richScenarios() })).scenarios;
+    expect(passing).toMatchObject({
+      scenarioId: 'sc-pass',
+      scenarioName: 'Happy path',
+      surfaceId: 's1',
+      actionId: 'a1',
+      actionName: 'Checkout',
+      assertionsEvaluated: 2,
+      assertionsFailed: 0,
+      assertionsSkipped: 0,
+      reason: null
+    });
+  });
+
+  it('names the first failing step and the reason, without parsing prose', () => {
+    const failing = aggregateFeatureVerdict(base({ scenarios: richScenarios() })).scenarios[1]!;
+    expect(failing.firstFailingStep).toBe(1);
+    expect(failing.firstFailingStepAction).toBe('Apply coupon');
+    expect(failing.stepCount).toBe(2);
+    expect(failing.expectedStatus).toBe('success');
+    expect(failing.actualStatus).toBe('blocked');
+    expect(failing.assertionsSkipped).toBe(1);
+    // The "fail." verdict prefix is stripped: `passed` already carries it.
+    expect(failing.reason).toBe('step 1 (Apply coupon): status was blocked but expected success');
+  });
+
+  it('is an empty array, not absent, when the feature authors no scenarios', () => {
+    expect(aggregateFeatureVerdict(base({ scenarios: scenarios(0, 0) })).scenarios).toEqual([]);
+  });
+});

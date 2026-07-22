@@ -1,4 +1,5 @@
 import type { Feature } from '../../entities/Feature';
+import { ALL_EFFECT_TYPES } from '../../value-objects/Effect';
 import type { Expression } from '../../value-objects/Expression';
 import { isExpression } from '../../value-objects/Expression';
 import { CLOCK_NOW_PATH } from '../../value-objects/SimulationClock';
@@ -250,18 +251,18 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     return `is declared on surface "${owner}" but not shared into "${surfaceId}". Add "${surfaceId}" to that StateDefinition's sharedWith.`;
   };
 
-  const KNOWN_EFFECT_TYPES = new Set([
-    'set_state',
-    'show_message',
-    'emit_event',
-    'block_action',
-    'allow_action',
-    'transition_surface',
-    'append_to_list',
-    'remove_from_list',
-    'update_list_item',
-    'advance_time'
-  ]);
+  // Taken from the effect value object, never re-listed here: a hand-copied
+  // list silently drifted once already (`invoke_operation` shipped in the write
+  // path and the simulator while this set still rejected it, so a legitimately
+  // authored boundary call failed validation on the way back in).
+  const KNOWN_EFFECT_TYPES = new Set<string>(ALL_EFFECT_TYPES);
+
+  // Dependency catalog for `invoke_operation`. Nothing validated these before:
+  // the effect type was rejected outright by the stale set above, so the case
+  // below was unreachable and the references it names went unchecked.
+  const dependencyById = new Map(
+    (feature.dependencies ?? []).map((dependency) => [String(dependency.id), dependency])
+  );
 
   // Scope-aware param-reference check. `paramNames` is the set of parameters in
   // scope (an action's own parameters), or undefined where no parameters exist
@@ -383,7 +384,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     // (which crashes on unknown effect types in its switch default).
     if (!KNOWN_EFFECT_TYPES.has(effect.type)) {
       errors.push(
-        `${label} effect ${effect.id}: unknown effect.type "${effect.type}". Valid: set_state, show_message, emit_event, block_action, allow_action, transition_surface, append_to_list, remove_from_list, update_list_item.`
+        `${label} effect ${effect.id}: unknown effect.type "${effect.type}". Valid: ${ALL_EFFECT_TYPES.join(', ')}.`
       );
       return;
     }
@@ -461,6 +462,55 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
             `${label} effect ${effect.id}: transition_surface target "${target}" is not a known surface id.`
           );
         }
+        return;
+      }
+      case 'invoke_operation': {
+        // The boundary call: its dependency and operation must exist, and its
+        // resultPath is a state WRITE, so it answers to the same scope rules as
+        // set_state (declared on or shared into this surface, never derived).
+        const dependencyId = effect.dependencyId as string | undefined;
+        const operation = effect.operation as string | undefined;
+        const dependency =
+          typeof dependencyId === 'string' ? dependencyById.get(dependencyId) : undefined;
+        if (typeof dependencyId === 'string' && !dependency) {
+          const known = [...dependencyById.values()]
+            .map((d) => `${d.name} (${String(d.id)})`)
+            .join(', ');
+          errors.push(
+            `${label} effect ${effect.id}: invoke_operation dependencyId "${dependencyId}" does not resolve to a dependency on this feature. ${
+              dependencyById.size === 0
+                ? 'The feature declares none — add one with add_dependency.'
+                : `Declared dependencies: ${known}.`
+            }`
+          );
+        }
+        if (dependency && typeof operation === 'string') {
+          const names = dependency.operations.map((op) => op.name);
+          if (!names.includes(operation)) {
+            errors.push(
+              `${label} effect ${effect.id}: invoke_operation "${operation}" is not an operation on dependency "${dependency.name}". Declared operations: ${
+                names.length === 0 ? '<none>' : names.join(', ')
+              }.`
+            );
+          }
+        }
+        if (effect.resultPath !== undefined) {
+          const path = effect.resultPath as string;
+          if (typeof path === 'string' && !paths.has(path)) {
+            const fix = sharedWithFix(path, surfaceId);
+            errors.push(
+              fix
+                ? `${label} effect ${effect.id}: invoke_operation resultPath "${path}" ${fix}`
+                : `${label} effect ${effect.id}: invoke_operation resultPath "${path}" is not declared on surface ${surfaceId} (or shared into it).`
+            );
+          }
+          if (typeof path === 'string' && derivedPaths.has(path)) {
+            errors.push(
+              `${label} effect ${effect.id}: invoke_operation writes derived path "${path}", which is computed from its \`derived\` expression and cannot be set by an effect.`
+            );
+          }
+        }
+        checkValuePaths('invoke_operation resultValue', effect.resultValue);
         return;
       }
     }

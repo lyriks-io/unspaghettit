@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
+  import { pageTitle } from '$features/app-shell/presentation/pageTitle';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import { implementationStatusStore } from '$features/implementation-status/presentation/stores/implementationStatusStore.svelte';
   import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
@@ -28,6 +29,10 @@
     };
   });
 </script>
+
+<svelte:head>
+  <title>{pageTitle($page.url, featureStore.feature?.name, 'Feature')}</title>
+</svelte:head>
 
 {#if featureStore.loading}
   <div class="mx-auto max-w-7xl px-4 py-10 text-sm text-neutral-500">Loading…</div>

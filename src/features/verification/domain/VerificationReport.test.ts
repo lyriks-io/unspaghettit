@@ -21,13 +21,13 @@ describe('mergeVerificationReports', () => {
   it('folds per-cohort reports into one aggregate', () => {
     const a = report({
       passed: true,
-      features: [{ featureId: 'a', featureName: 'A', passed: true, checks: [] }],
+      features: [{ featureId: 'a', featureName: 'A', passed: true, checks: [], scenarios: [] }],
       drift: { stale: [], unversioned: ['k1'], orphans: [], checked: 2 },
       summary: { featuresChecked: 1, featuresPassed: 1, featuresFailed: 0, scenariosRun: 3, scenariosFailed: 0, invariantViolations: 0 }
     });
     const b = report({
       passed: false,
-      features: [{ featureId: 'b', featureName: 'B', passed: false, checks: [] }],
+      features: [{ featureId: 'b', featureName: 'B', passed: false, checks: [], scenarios: [] }],
       drift: { stale: [], unversioned: [], orphans: [{ key: 'x', reason: 'gone' }], checked: 1 },
       summary: { featuresChecked: 1, featuresPassed: 0, featuresFailed: 1, scenariosRun: 4, scenariosFailed: 2, invariantViolations: 1 }
     });

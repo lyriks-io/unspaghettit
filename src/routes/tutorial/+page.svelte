@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page } from '$app/state';
+  import { pageTitle } from '$features/app-shell/presentation/pageTitle';
   import TutorialSection from "$features/tutorial/presentation/components/TutorialSection.svelte";
   import CodeBlock from "$features/tutorial/presentation/components/CodeBlock.svelte";
   import Callout from "$features/tutorial/presentation/components/Callout.svelte";
@@ -41,10 +43,23 @@
 </script>
 
 <svelte:head>
-  <title>Help &amp; Tutorial / Unspaghettit</title>
+  <title>{pageTitle(page.url, 'Help & Tutorial')}</title>
 </svelte:head>
 
-<div class="mx-auto grid max-w-7xl grid-cols-12 gap-8 px-4 py-8 sm:px-6">
+<div class="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
+  <!-- Explicit way back to the project list. Under a host brand (brand=lyriks)
+       the header's Projects nav is hidden, so this in-page link is the only
+       route back. `beforeNavigate` re-applies the brand/embed context. -->
+  <a
+    href="/projects"
+    class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-brand-700 transition hover:bg-brand-50 hover:text-brand-800"
+  >
+    <span aria-hidden="true">&larr;</span>
+    Back to projects
+  </a>
+</div>
+
+<div class="mx-auto grid max-w-7xl grid-cols-12 gap-8 px-4 pt-4 pb-8 sm:px-6">
   <aside class="col-span-12 lg:col-span-3">
     <nav
       class="sticky top-24 space-y-1 rounded-lg border border-hairline bg-white p-3 text-sm"

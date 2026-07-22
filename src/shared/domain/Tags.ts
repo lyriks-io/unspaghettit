@@ -3,7 +3,24 @@ export type Tag = {
   readonly value: string;
 };
 
-const normalizeField = (text: string): string => text.trim().toLowerCase();
+/**
+ * Trim only. Tag TEXT is stored byte-for-byte as authored: consumers outside
+ * the engine (the Lyriks platform keys its Features projection off `core:` /
+ * family / phase tag values) match tag values exactly, so lowercasing on the
+ * way to disk silently emptied their projection on any write that touched a
+ * tagged feature. IDENTITY stays case-insensitive (see `tagKey`), so
+ * "Data Model" and "data model" are still the same tag for dedupe, lookup,
+ * filtering, and rename — only the stored spelling is preserved.
+ */
+const normalizeField = (text: string): string => text.trim();
+
+/**
+ * Case-insensitive identity for a tag. Every dedupe, lookup, filter, and rename
+ * goes through this, which is what lets `normalizeTags` keep the authored
+ * spelling without splitting "Growth" and "growth" into two tags.
+ */
+export const tagKey = (tag: Tag): string =>
+  `${tag.type.trim().toLowerCase()}:${tag.value.trim().toLowerCase()}`;
 
 export const normalizeTags = (
   tags: readonly Tag[] | undefined,
@@ -14,12 +31,17 @@ export const normalizeTags = (
     const type = normalizeField(tag.type);
     const value = normalizeField(tag.value);
     if (!type || !value) continue;
-    byKey.set(`${type}:${value}`, { type, value });
+    // Keyed case-insensitively (dedupe is identity), but the FIRST spelling
+    // seen wins so a later duplicate in different case can't rewrite the
+    // authored casing out from under a consumer.
+    const key = tagKey({ type, value });
+    if (!byKey.has(key)) byKey.set(key, { type, value });
   }
   const legacyValue = normalizeField(legacy?.value ?? '');
   if (legacyValue) {
     const type = normalizeField(legacy?.type ?? '') || 'tag';
-    byKey.set(`${type}:${legacyValue}`, { type, value: legacyValue });
+    const key = tagKey({ type, value: legacyValue });
+    if (!byKey.has(key)) byKey.set(key, { type, value: legacyValue });
   }
   const normalized = [...byKey.values()];
   return normalized.length > 0 ? normalized : undefined;
@@ -48,10 +70,13 @@ export const removeTag = (
 };
 
 /**
- * Title-case a tag fragment for display. Tags are stored lowercase (see
- * `normalizeTags`) so the human-friendly casing is recomputed from the raw
- * value at render time. Splits on whitespace, hyphens, and underscores so
- * "user_role" and "user-role" both render as "User Role".
+ * Title-case a tag fragment for display. Splits on whitespace, hyphens, and
+ * underscores so "user_role" and "user-role" both render as "User Role".
+ *
+ * A segment that ALREADY carries an uppercase letter is passed through
+ * untouched: since `normalizeTags` preserves authored casing, down-casing here
+ * would render "MCP" as "Mcp" and "dataModel" as "Datamodel". Only all-lowercase
+ * segments (every legacy tag, and anything typed casually) get title-cased.
  */
 export const humanizeTagText = (text: string): string => {
   const trimmed = text.trim();
@@ -62,16 +87,14 @@ export const humanizeTagText = (text: string): string => {
       if (segment.length === 0) return segment;
       if (/^\s+$/.test(segment)) return ' ';
       if (segment === '-' || segment === '_') return ' ';
-      return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+      if (/[A-Z]/.test(segment)) return segment;
+      return segment.charAt(0).toUpperCase() + segment.slice(1);
     })
     .join('');
 };
 
 export const tagLabel = (tag: Tag): string =>
   `${humanizeTagText(tag.type)}: ${humanizeTagText(tag.value)}`;
-
-export const tagKey = (tag: Tag): string =>
-  `${tag.type.trim().toLowerCase()}:${tag.value.trim().toLowerCase()}`;
 
 /**
  * Returns a new tag list with any tag matching `from` rewritten to `to`.

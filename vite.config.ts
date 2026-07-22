@@ -3,9 +3,16 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { unspaSyncPlugin } from './src/lib/server/sync/vitePlugin';
 import { DEFAULT_DASHBOARD_PORT } from './src/lib/server/sync/dashboardEndpoint';
+import pkg from './package.json';
 
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit(), unspaSyncPlugin()],
+  define: {
+    // The running release, inlined at build time so the UI can show it without
+    // a fetch and without shipping package.json to the browser. Server code
+    // that needs it (the update check) keeps importing package.json directly.
+    __APP_VERSION__: JSON.stringify(pkg.version)
+  },
   ssr: {
     // Keep Yjs (and its companion CRDT packages) external in the SSR
     // build. The custom dashboard server (cli/dashboard-server.ts) runs

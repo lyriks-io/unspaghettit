@@ -6,7 +6,7 @@ import type {
 } from '$features/behavior-model/application/ports/FeatureRepository';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
-import { normalizeTags } from '$shared/domain/Tags';
+import { summarizeFeature as toSummary } from '$features/behavior-model/domain/services/featureSummary';
 import {
   exportFeatureToJson,
   importFeatureFromJson
@@ -30,16 +30,6 @@ type LoadedSnapshot = {
   readonly feature: Feature;
 };
 
-const toSummary = (e: Feature): FeatureSummary => ({
-  id: e.id,
-  name: e.name,
-  description: e.description,
-  tags: normalizeTags(e.tags),
-  surfaceCount: e.surfaces.length,
-  actionCount: e.surfaces.reduce((acc, s) => acc + s.actions.length, 0),
-  createdAt: e.createdAt,
-  updatedAt: e.updatedAt
-});
 
 const slugify = (name: string): string => {
   const base = name

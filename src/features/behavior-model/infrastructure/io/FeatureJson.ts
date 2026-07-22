@@ -73,8 +73,27 @@ export const importFeatureFromJson = (raw: string): Feature => {
   const expRaw = feature as unknown as {
     entities?: readonly unknown[];
     data?: readonly unknown[];
+    entityRefs?: unknown;
+    resourceRefs?: unknown;
+    personaRefs?: unknown;
   };
   const entities = (expRaw.entities ?? expRaw.data ?? []) as readonly Entity[];
+  // Project-library references. Normalized to string arrays on read so a
+  // hand-edited snapshot carrying `null` or a scalar can't reach the resolver
+  // as a non-iterable and take the whole feature down.
+  const refList = (raw: unknown): readonly string[] | undefined => {
+    if (!Array.isArray(raw)) return undefined;
+    const ids = raw.filter((id): id is string => typeof id === 'string' && id.length > 0);
+    return ids.length > 0 ? ids : undefined;
+  };
+  // All three keys are always written (as `undefined` when absent or malformed)
+  // so a bad raw value can never survive by falling through the `...feature`
+  // spread below. JSON.stringify drops the undefined ones on export.
+  const libraryRefs = {
+    entityRefs: refList(expRaw.entityRefs),
+    resourceRefs: refList(expRaw.resourceRefs),
+    personaRefs: refList(expRaw.personaRefs)
+  } as Pick<Feature, 'entityRefs' | 'resourceRefs' | 'personaRefs'>;
   // Normalize Expression trees and emittedEvents on import so legacy
   // snapshots load with healed-in-memory data. Expression normalization
   // wraps raw scalars in `{kind:"literal",value}`; emittedEvents normalization
@@ -88,7 +107,8 @@ export const importFeatureFromJson = (raw: string): Feature => {
           surfaces,
           personas: feature.personas ?? [],
           resources: feature.resources ?? [],
-          entities
+          entities,
+          ...libraryRefs
         })
       )
     )

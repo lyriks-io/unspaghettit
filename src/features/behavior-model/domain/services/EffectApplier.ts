@@ -1,4 +1,4 @@
-import type { Effect, ListItemMatch, SetStateEffect } from '../value-objects/Effect';
+import { ALL_EFFECT_TYPES, type Effect, type ListItemMatch, type SetStateEffect } from '../value-objects/Effect';
 import {
   deepEqualValue,
   isExpression,
@@ -355,8 +355,9 @@ export const applyEffect = (
       const unknown = effect as { type?: string };
       throw new Error(
         `EffectApplier: unknown effect type "${unknown.type ?? '<missing>'}". ` +
-          `Valid types: set_state, show_message, emit_event, block_action, allow_action, ` +
-          `transition_surface, append_to_list, remove_from_list, update_list_item, advance_time.`
+          // Read from the value object, not re-listed: the third copy of this
+          // list is what let `invoke_operation` go missing from the validator.
+          `Valid types: ${ALL_EFFECT_TYPES.join(', ')}.`
       );
     }
   }

@@ -21,7 +21,12 @@
     /** Sections split into labelled categories. Takes precedence over `items`. */
     groups?: readonly ContextSidebarGroup[];
     activeId: string;
-    count: (id: string) => number;
+    /**
+     * Badge number for a section. Return `null` for "not known yet" — rendered
+     * as a muted placeholder instead of a `0`, so a counter still resolving its
+     * data doesn't claim the section is empty.
+     */
+    count: (id: string) => number | null;
     onSelect: (id: string) => void;
   };
 
@@ -122,7 +127,7 @@
     <span
       class="min-w-6 rounded-full px-1.5 py-0.5 text-center text-[10px] font-semibold tabular-nums {active
         ? 'bg-violet-200 text-violet-700'
-        : 'bg-slate-100 text-slate-500'}">{count(item.id)}</span
+        : 'bg-slate-100 text-slate-500'}">{count(item.id) ?? '–'}</span
     >
   </button>
 {/snippet}

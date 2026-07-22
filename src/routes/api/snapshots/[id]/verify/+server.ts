@@ -17,7 +17,7 @@ export const prerender = false;
  */
 export const GET: RequestHandler = async ({ params, url }) => {
   const id = params.id as FeatureId;
-  const { repo, projectRepo } = getSnapshotRepository();
+  const { featureRepo, projectRepo } = getSnapshotRepository();
 
   let cohort: readonly FeatureId[] = [id];
   for (const summary of await projectRepo.list()) {
@@ -28,7 +28,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
     }
   }
 
-  const verify = verifyFeaturesUseCase({ features: repo, index: fileBehavioralIndexReader({}) });
+  const verify = verifyFeaturesUseCase({ features: featureRepo, index: fileBehavioralIndexReader({}) });
   const report = await verify({
     featureIds: cohort,
     modelCheck: url.searchParams.get('modelCheck') !== '0'

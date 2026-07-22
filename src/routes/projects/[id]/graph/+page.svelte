@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { pageTitle } from '$features/app-shell/presentation/pageTitle';
   import { onDestroy, onMount } from 'svelte';
   import { page } from '$app/stores';
   import { asFeatureId } from '$features/behavior-model/domain/value-objects/ids';
@@ -50,7 +51,7 @@
 </script>
 
 <svelte:head>
-  <title>Project Graph / Unspaghettit</title>
+  <title>{pageTitle($page.url, projectStore.project?.name, 'Graph')}</title>
 </svelte:head>
 
 {#if projectStore.loading}

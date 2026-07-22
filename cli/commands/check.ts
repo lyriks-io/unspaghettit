@@ -3,6 +3,7 @@ import pc from 'picocolors';
 import { discoverSnapshotDirectory } from '../../src/features/behavior-model/infrastructure/persistence/snapshot-discovery';
 import { JsonFolderFeatureRepository } from '../../src/features/behavior-model/infrastructure/persistence/JsonFolderFeatureRepository';
 import { JsonFolderProjectRepository } from '../../src/features/projects/infrastructure/persistence/JsonFolderProjectRepository';
+import { withProjectLibrary } from '../../src/features/projects/infrastructure/persistence/ProjectScopedFeatureRepository';
 import { asFeatureId, type FeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
@@ -143,7 +144,10 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
   const cohorts = await resolveCohorts(options, cwd, featureRepo, projectRepo);
 
   const verify = verifyFeaturesUseCase({
-    features: featureRepo,
+    // Read through the project library so a feature that REFERENCES canonical
+    // entities/resources/personas verifies with them resolved — CI and the
+    // in-chat `verify` tool must gate on exactly the same model.
+    features: withProjectLibrary(featureRepo, projectRepo),
     index: fileBehavioralIndexReader({ cwd })
   });
 

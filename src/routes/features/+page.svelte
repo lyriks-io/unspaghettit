@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page } from '$app/state';
+  import { pageTitle } from '$features/app-shell/presentation/pageTitle';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { featuresStore } from '$features/behavior-model/presentation/stores/featuresStore.svelte';
@@ -238,7 +240,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
-  <title>Features / Unspaghettit</title>
+  <title>{pageTitle(page.url, 'Features')}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">

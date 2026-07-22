@@ -1,5 +1,5 @@
 import type { DevContext } from '../value-objects/DevContext';
-import type { FeatureId } from '../value-objects/ids';
+import type { EntityId, FeatureId, PersonaId, ResourceId } from '../value-objects/ids';
 import type { AcceptanceCriterion } from './AcceptanceCriterion';
 import type { Constant } from './Constant';
 import type { Dependency } from './Dependency';
@@ -22,6 +22,32 @@ export type Feature = {
   readonly personas: readonly Persona[];
   readonly resources: readonly Resource[];
   readonly entities: readonly Entity[];
+  /**
+   * REFERENCES to entities defined once in the owning project's canonical
+   * library (`project.entities`), instead of copies carried here.
+   *
+   * The problem this exists for: a feature must be verifiable in isolation, so
+   * every consumer of a feature — validator, maturity scorer, simulator, model
+   * checker, digest, dashboard — reads `feature.entities`. That forced anyone
+   * modeling a shared domain object across N features to COPY it N times, and
+   * the copies drift, double-count in graphs, and need a "collapse twins"
+   * heuristic on the read side.
+   *
+   * How it works: the project-scoped repository decorator RESOLVES these into
+   * `entities[]` when the feature is loaded, so nothing downstream changes, and
+   * STRIPS them back out on save so the definition stays stored exactly once.
+   * A ref that resolves to nothing is a per-feature validation error (the
+   * feature still loads — degrading a query batch is never acceptable).
+   *
+   * Optional and additive; a feature with only inline `entities[]` keeps
+   * working forever. `promote_to_project_library` is the inline → ref
+   * migration.
+   */
+  readonly entityRefs?: readonly EntityId[];
+  /** Project-library references for resources. See `entityRefs`. */
+  readonly resourceRefs?: readonly ResourceId[];
+  /** Project-library references for personas. See `entityRefs`. */
+  readonly personaRefs?: readonly PersonaId[];
   /**
    * External systems the feature calls out to: services, datastores, queues,
    * devices, humans, filesystems. Distinct from `resources` (where DATA lives);

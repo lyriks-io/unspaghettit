@@ -6,7 +6,12 @@ import type { DriftEntry } from './DriftReport';
 import type { EventHandlerFinding } from './EventCoherenceReport';
 import type { VerifiedCoverage } from './verifiedCoverage';
 import type { VerificationThresholds } from './VerificationThresholds';
-import { verdictPassed, type FeatureVerdict, type VerdictCheck } from './VerificationVerdict';
+import {
+  verdictPassed,
+  type FeatureVerdict,
+  type ScenarioVerdict,
+  type VerdictCheck
+} from './VerificationVerdict';
 
 /**
  * Everything verifying one feature produced, plus the gate. The exploration and
@@ -242,12 +247,49 @@ const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
   return checks;
 };
 
+/**
+ * Flatten the scenario runner's rich result into the report's machine-readable
+ * row. Everything here is already computed by the runner; this only picks the
+ * fields a consumer needs to trace a criterion to its outcome without parsing
+ * the human summary string.
+ */
+const scenarioVerdicts = (scenarios: RunScenariosOutput): readonly ScenarioVerdict[] =>
+  scenarios.results.map((result) => {
+    // `?? []` because this walks data that can also arrive from a fixture or an
+    // older runner shape; a missing array must not take the whole verdict down.
+    const steps = result.steps ?? [];
+    const assertions = result.assertions ?? [];
+    const firstFailingStep = steps.find((step) => !step.pass);
+    const skipped = assertions.filter((a) => a.skipped).length;
+    const failed = assertions.filter((a) => !a.skipped && !a.held).length;
+    return {
+      scenarioId: String(result.scenarioId),
+      scenarioName: result.scenarioName,
+      surfaceId: String(result.surfaceId),
+      actionId: String(result.actionId),
+      actionName: result.actionName,
+      passed: result.pass,
+      expectedStatus: result.expectedStatus,
+      actualStatus: result.actualStatus,
+      assertionsEvaluated: assertions.length - skipped,
+      assertionsFailed: failed,
+      assertionsSkipped: skipped,
+      stepCount: steps.length,
+      firstFailingStep: firstFailingStep ? firstFailingStep.index : null,
+      firstFailingStepAction: firstFailingStep ? firstFailingStep.actionName : null,
+      // `summary` already reads "fail. <why>" — strip the verdict prefix so the
+      // machine field is the reason alone.
+      reason: result.pass ? null : (result.summary ?? 'failed').replace(/^fail\.\s*/, '')
+    };
+  });
+
 export const aggregateFeatureVerdict = (input: FeatureVerdictInput): FeatureVerdict => {
   const checks = aggregateChecks(input);
   return {
     featureId: input.featureId,
     featureName: input.featureName,
     passed: verdictPassed(checks),
-    checks
+    checks,
+    scenarios: scenarioVerdicts(input.scenarios)
   };
 };

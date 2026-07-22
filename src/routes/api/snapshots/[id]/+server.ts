@@ -5,6 +5,7 @@ import type { FeatureId } from '$features/behavior-model/domain/value-objects/id
 import { systemClock } from '$shared/domain/Clock';
 import { getSnapshotRepository } from '$lib/server/snapshotRepository';
 import { createSyncAwareFeatureRepository } from '$lib/server/syncAwareRepositories';
+import { withProjectLibrary } from '$features/projects/infrastructure/persistence/ProjectScopedFeatureRepository';
 import { getFeatureUseCase } from '$features/behavior-model/application/use-cases/GetFeature';
 import { saveFeatureUseCase } from '$features/behavior-model/application/use-cases/SaveFeature';
 import { deleteFeatureUseCase } from '$features/behavior-model/application/use-cases/DeleteFeature';
@@ -14,8 +15,8 @@ export const prerender = false;
 
 export const GET: RequestHandler = async ({ params }) => {
   const id = params.id as FeatureId;
-  const { repo } = getSnapshotRepository();
-  const feature = await getFeatureUseCase({ repository: repo })(id);
+  const { featureRepo } = getSnapshotRepository();
+  const feature = await getFeatureUseCase({ repository: featureRepo })(id);
   if (!feature) throw error(404, `Snapshot ${id} not found`);
   return json(feature);
 };
@@ -36,9 +37,14 @@ export const PUT: RequestHandler = async ({ params, request }) => {
   // Delegate validation + persistence to the use case (the same diff-aware gate
   // and sync-bridge write path the rest of the app saves through), instead of
   // re-implementing validateFeature here where it could drift.
-  const { repo } = getSnapshotRepository();
+  // Composition order matters: the library decorator must sit OUTSIDE the sync
+  // bridge. The bridge replaces the whole feature doc rather than delegating to
+  // a repository save, so stripping has to happen before the doc is handed to
+  // it — otherwise the dashboard would write the resolved copies back inline
+  // and quietly undo the reference.
+  const { repo, projectRepo } = getSnapshotRepository();
   const saveFeature = saveFeatureUseCase({
-    repository: createSyncAwareFeatureRepository(repo),
+    repository: withProjectLibrary(createSyncAwareFeatureRepository(repo), projectRepo),
     clock: systemClock
   });
   try {
@@ -54,7 +60,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 
 export const DELETE: RequestHandler = async ({ params }) => {
   const id = params.id as FeatureId;
-  const { repo } = getSnapshotRepository();
-  await deleteFeatureUseCase({ repository: repo })(id);
+  const { featureRepo } = getSnapshotRepository();
+  await deleteFeatureUseCase({ repository: featureRepo })(id);
   return new Response(null, { status: 204 });
 };

@@ -1,4 +1,7 @@
+import type { Entity } from '$features/behavior-model/domain/entities/Entity';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
+import type { Persona } from '$features/behavior-model/domain/entities/Persona';
+import type { Resource } from '$features/behavior-model/domain/entities/Resource';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import type { DomainId } from '$features/domains/domain/value-objects/ids';
 import type { QueueItem } from '$features/implementation-queue/domain/entities/QueueItem';
@@ -17,6 +20,25 @@ export type Project = {
   readonly featureIds: readonly FeatureId[];
   /** Canonical project-scoped state identities. Absent on legacy snapshots. */
   readonly stateVariables?: readonly StateVariable[];
+  /**
+   * The project's canonical ENTITY LIBRARY: domain objects defined once here
+   * and REFERENCED from member features via `feature.entityRefs`, instead of
+   * being copied into every feature that touches them. The same
+   * store-it-once-with-a-stable-id idea as `stateVariables`, extended from a
+   * single state path to a whole entity.
+   *
+   * The project-scoped repository decorator resolves each member feature's refs
+   * into its `entities[]` on load and strips them on save, so every downstream
+   * consumer (validator, model checker, digest, dashboard) sees a
+   * self-contained feature while the definition lives in exactly one place.
+   *
+   * Optional and additive; downstream reads `project.entities ?? []`.
+   */
+  readonly entities?: readonly Entity[];
+  /** Canonical resource library. See `entities`. */
+  readonly resources?: readonly Resource[];
+  /** Canonical persona library. See `entities`. */
+  readonly personas?: readonly Persona[];
   /**
    * Cross-FEATURE invariants — safety properties that span the whole project,
    * referencing state paths declared in different member features (e.g. "the

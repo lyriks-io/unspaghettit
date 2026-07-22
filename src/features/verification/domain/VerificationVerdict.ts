@@ -31,12 +31,48 @@ export type VerdictCheck = {
   readonly traces?: readonly VerdictTrace[];
 };
 
+/**
+ * One authored scenario's result, machine-readable.
+ *
+ * The `scenarios` CHECK carries a human summary ("3/7 failing") and a list of
+ * display strings; that is enough for a CLI, and nothing else. A consumer that
+ * wants to trace acceptance criteria → scenarios → results, or show which STEP
+ * of a multi-step flow broke, needs the identity and the first failure, which
+ * is what this is. Emitted for passing scenarios too: a report that only lists
+ * failures can't answer "was this criterion actually exercised?".
+ */
+export type ScenarioVerdict = {
+  readonly scenarioId: string;
+  readonly scenarioName: string;
+  readonly surfaceId: string;
+  readonly actionId: string;
+  readonly actionName: string;
+  readonly passed: boolean;
+  readonly expectedStatus: 'success' | 'blocked' | null;
+  readonly actualStatus: 'success' | 'blocked';
+  readonly assertionsEvaluated: number;
+  readonly assertionsFailed: number;
+  readonly assertionsSkipped: number;
+  readonly stepCount: number;
+  /** Index of the first failing step in a multi-step scenario, else null. */
+  readonly firstFailingStep: number | null;
+  /** Name of the action that first failing step invoked, else null. */
+  readonly firstFailingStepAction: string | null;
+  /** Why it failed, in one line. Null when it passed. */
+  readonly reason: string | null;
+};
+
 export type FeatureVerdict = {
   readonly featureId: string;
   readonly featureName: string;
   /** True when no check failed (warns are allowed). */
   readonly passed: boolean;
   readonly checks: readonly VerdictCheck[];
+  /**
+   * Per-scenario results, in run order. Always present (empty when the feature
+   * authors no scenarios) so consumers can index into it unconditionally.
+   */
+  readonly scenarios: readonly ScenarioVerdict[];
 };
 
 export const verdictPassed = (checks: readonly VerdictCheck[]): boolean =>

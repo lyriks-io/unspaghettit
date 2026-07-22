@@ -1195,3 +1195,149 @@ describe('simulate — invoke_operation', () => {
     expect((result.nextState.charge as { status: string }).status).toBe('ok');
   });
 });
+
+describe('simulate — a blocked action commits nothing', () => {
+  // A transfer screen: the amount arrives as a parameter bound into state so
+  // rules can gate on it, and a validation rule blocks an overdraft.
+  const buildTransferSurface = (): Surface => ({
+    id: asSurfaceId('sb'),
+    name: 'Transfer',
+    type: 'screen',
+    stateDefinitions: [
+      {
+        id: asStateDefinitionId('bd1'),
+        path: asStatePath('transfer.amount'),
+        type: 'number',
+        defaultValue: 0
+      },
+      {
+        id: asStateDefinitionId('bd2'),
+        path: asStatePath('account.balance'),
+        type: 'number',
+        defaultValue: 100
+      },
+      {
+        id: asStateDefinitionId('bd3'),
+        path: asStatePath('transfer.attempts'),
+        type: 'number',
+        defaultValue: 0
+      }
+    ],
+    actions: [],
+    rules: [],
+    invariants: [],
+    transitions: []
+  });
+
+  const submitTransfer: Action = {
+    id: asActionId('cb1'),
+    name: 'Submit transfer',
+    intent: 'move money',
+    parameters: [
+      {
+        id: asParameterId('pb1'),
+        name: 'amount',
+        type: 'number',
+        required: true,
+        bindToStatePath: asStatePath('transfer.amount')
+      }
+    ],
+    requiredStates: [],
+    rules: [
+      {
+        // Fires first and DOES write state: an audit counter bumped before the
+        // guard below runs. It must not survive the block either.
+        id: asRuleId('rb0'),
+        category: 'business',
+        condition: undefined,
+        effect: {
+          id: asEffectId('eb0'),
+          type: 'set_state',
+          path: asStatePath('transfer.attempts'),
+          value: 1
+        }
+      },
+      {
+        id: asRuleId('rb1'),
+        category: 'validation',
+        condition: {
+          left: asStatePath('transfer.amount'),
+          operator: 'greater_than',
+          right: { kind: 'state', path: asStatePath('account.balance') }
+        },
+        effect: { id: asEffectId('eb1'), type: 'block_action', reason: 'Insufficient funds' }
+      }
+    ],
+    invariants: [],
+    effects: [
+      {
+        id: asEffectId('eb2'),
+        type: 'set_state',
+        path: asStatePath('account.balance'),
+        value: 0
+      }
+    ],
+    emittedEvents: [],
+    transitions: []
+  };
+
+  it('does not leak a bound parameter into state when a rule blocks', () => {
+    const surface = buildTransferSurface();
+    const result = simulate({
+      surface,
+      action: submitTransfer,
+      snapshot: buildInitialSnapshot(surface.stateDefinitions),
+      parameters: { amount: 5000 }
+    });
+    expect(result.status).toBe('blocked');
+    // The rejected input never lands: the bind is visible to the rule that
+    // blocked, then rolled back with the rest of the run.
+    expect((result.nextState.transfer as { amount: number }).amount).toBe(0);
+  });
+
+  it('rolls back a set_state that fired before the blocking rule', () => {
+    const surface = buildTransferSurface();
+    const result = simulate({
+      surface,
+      action: submitTransfer,
+      snapshot: buildInitialSnapshot(surface.stateDefinitions),
+      parameters: { amount: 5000 }
+    });
+    expect((result.nextState.transfer as { attempts: number }).attempts).toBe(0);
+    expect((result.nextState.account as { balance: number }).balance).toBe(100);
+  });
+
+  it('still binds and commits on a run that is not blocked', () => {
+    const surface = buildTransferSurface();
+    const result = simulate({
+      surface,
+      action: submitTransfer,
+      snapshot: buildInitialSnapshot(surface.stateDefinitions),
+      parameters: { amount: 10 }
+    });
+    expect(result.status).toBe('success');
+    expect((result.nextState.transfer as { amount: number }).amount).toBe(10);
+    expect((result.nextState.transfer as { attempts: number }).attempts).toBe(1);
+  });
+
+  it('keeps the observability signal (messages, events, transition) on a block', () => {
+    const surface = buildTransferSurface();
+    const blockedWithFallback: Action = {
+      ...submitTransfer,
+      onBlockedEffects: [
+        { id: asEffectId('eb3'), type: 'emit_event', event: asEventName('transfer.rejected') },
+        { id: asEffectId('eb4'), type: 'show_message', message: 'Try a smaller amount' }
+      ]
+    };
+    const result = simulate({
+      surface,
+      action: blockedWithFallback,
+      snapshot: buildInitialSnapshot(surface.stateDefinitions),
+      parameters: { amount: 5000 }
+    });
+    expect(result.status).toBe('blocked');
+    expect(result.emittedEvents.map(String)).toContain('transfer.rejected');
+    expect(result.messages.map((m) => m.text)).toContain('Try a smaller amount');
+    expect((result.nextState.transfer as { amount: number }).amount).toBe(0);
+  });
+});

@@ -162,38 +162,50 @@
         {/each}
       </div>
 
+      <!-- Each picker carries a visible name: with two or three dropdowns side by
+           side (and features/surfaces that can share a name), an unlabeled select
+           doesn't say which level of the model it narrows. -->
       {#if hasProject && scopeKind !== 'project'}
-        <select
-          value={String(currentFeature?.id ?? '')}
-          onchange={(e) => (selectedFeatureId = e.currentTarget.value)}
-          class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/15"
-        >
-          {#each baseFeatures as f}
-            <option value={String(f.id)}>{f.name}</option>
-          {/each}
-        </select>
+        <label class="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+          Feature
+          <select
+            value={String(currentFeature?.id ?? '')}
+            onchange={(e) => (selectedFeatureId = e.currentTarget.value)}
+            class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/15"
+          >
+            {#each baseFeatures as f}
+              <option value={String(f.id)}>{f.name}</option>
+            {/each}
+          </select>
+        </label>
       {/if}
       {#if scopeKind === 'surface' || scopeKind === 'action'}
-        <select
-          value={String(currentSurface?.id ?? '')}
-          onchange={(e) => (selectedSurfaceId = e.currentTarget.value)}
-          class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/15"
-        >
-          {#each surfaces as s}
-            <option value={String(s.id)}>{s.name}</option>
-          {/each}
-        </select>
+        <label class="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+          Surface
+          <select
+            value={String(currentSurface?.id ?? '')}
+            onchange={(e) => (selectedSurfaceId = e.currentTarget.value)}
+            class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/15"
+          >
+            {#each surfaces as s}
+              <option value={String(s.id)}>{s.name}</option>
+            {/each}
+          </select>
+        </label>
       {/if}
       {#if scopeKind === 'action'}
-        <select
-          value={String(currentAction?.id ?? '')}
-          onchange={(e) => (selectedActionId = e.currentTarget.value)}
-          class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/15"
-        >
-          {#each currentActions as a}
-            <option value={String(a.id)}>{a.name}</option>
-          {/each}
-        </select>
+        <label class="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+          Action
+          <select
+            value={String(currentAction?.id ?? '')}
+            onchange={(e) => (selectedActionId = e.currentTarget.value)}
+            class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/15"
+          >
+            {#each currentActions as a}
+              <option value={String(a.id)}>{a.name}</option>
+            {/each}
+          </select>
+        </label>
       {/if}
 
       <div class="inline-flex overflow-hidden rounded-lg border border-slate-200">
@@ -273,7 +285,7 @@
                         >
                           {#if line.label}<span class="font-semibold text-slate-900 group-hover:text-brand-800"
                               >{line.label}</span
-                            >{#if line.text}: {/if}{/if}{#if line.text}<span class="text-slate-700">{line.text}</span
+                            >{#if line.text}{': '}{/if}{/if}{#if line.text}<span class="text-slate-700">{line.text}</span
                             >{/if}
                           <span
                             class="ml-0.5 text-brand-400 opacity-0 transition group-hover:opacity-100"
@@ -282,8 +294,9 @@
                         </a>
                       {:else}
                         <span class="flex-1 px-2 py-1 text-sm leading-6">
-                          {#if line.label}<span class="font-semibold text-slate-900">{line.label}</span>{#if line.text}:
-                            {/if}{/if}{#if line.text}<span class="text-slate-700">{line.text}</span>{/if}
+                          {#if line.label}<span class="font-semibold text-slate-900">{line.label}</span
+                            >{#if line.text}{': '}{/if}{/if}{#if line.text}<span class="text-slate-700">{line.text}</span
+                            >{/if}
                         </span>
                       {/if}
                     </div>

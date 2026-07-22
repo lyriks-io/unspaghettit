@@ -3,6 +3,7 @@ import { effectiveEnumValues } from '../EnumValues';
 import { isEventName } from '../../value-objects/EventName';
 import { parameterTypeToStateType } from '../../value-objects/ParameterType';
 import { isStateValueAssignableTo } from '../../value-objects/StateValue';
+import { validateElementShapes } from './elementShape';
 import {
   categoryHint,
   defaultValueHint,
@@ -463,6 +464,16 @@ export const validateFeature = (feature: Feature): ValidationResult => {
     for (const field of d.fields) checkEntityField(field);
   }
 
+  // Project-library references. By the time a feature reaches any consumer it
+  // has passed through the project-scoped repository, which materializes every
+  // resolvable ref into the matching array. So a ref with no matching entry
+  // here means the canonical definition is gone, or the feature isn't in a
+  // project at all — a real, per-feature error, reported with the fix rather
+  // than a reference silently evaporating.
+  checkLibraryRefs(errors, 'entityRefs', feature.entityRefs, dataIds);
+  checkLibraryRefs(errors, 'resourceRefs', feature.resourceRefs, resourceIds);
+  checkLibraryRefs(errors, 'personaRefs', feature.personaRefs, personaIds);
+
   const eventIds = new Set<string>();
   const eventNames = new Set<string>();
   for (const event of feature.events ?? []) {
@@ -546,7 +557,34 @@ export const validateFeature = (feature: Feature): ValidationResult => {
     }
   }
 
+  // Deep shape pass: operators, condition-tree node shapes, per-type required
+  // effect fields, scenario assertion/step shapes. Everything the evaluator
+  // would otherwise swallow into a silent `false` instead of failing loudly.
+  errors.push(...validateElementShapes(feature));
+
   return errors.length === 0 ? { valid: true } : { valid: false, errors };
+};
+
+/**
+ * A project-library ref must have been resolved into the feature's own list by
+ * the time validation runs. `kindLabel` is derived from the field name so the
+ * message names the tool that fixes it.
+ */
+const checkLibraryRefs = (
+  errors: string[],
+  field: 'entityRefs' | 'resourceRefs' | 'personaRefs',
+  refs: readonly string[] | undefined,
+  resolvedIds: ReadonlySet<string>
+): void => {
+  if (!refs || refs.length === 0) return;
+  const kind = field.slice(0, -4); // entityRefs → entity
+  for (const raw of refs) {
+    const ref = String(raw);
+    if (resolvedIds.has(ref)) continue;
+    errors.push(
+      `Feature ${field} references ${kind} "${ref}", which is not in the owning project's canonical library. Either the definition was removed (re-add it with add_project_${kind}, or drop the ref with unlink_project_definition), or this feature is not a member of any project (add it with add_feature_to_project so the library can resolve).`
+    );
+  }
 };
 
 const eventNameError = (name: string, where: string): string =>

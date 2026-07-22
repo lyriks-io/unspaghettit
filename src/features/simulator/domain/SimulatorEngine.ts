@@ -328,12 +328,36 @@ const simulateInternal = (
         };
       }
     }
-  } else if (action.onBlockedEffects && action.onBlockedEffects.length > 0) {
+  }
+
+  if (application.blocked) {
+    // A blocked action DID NOT HAPPEN, so nothing it touched may commit.
+    // Rewind the snapshot to the pre-action state, which undoes two classes of
+    // leak that survived the per-effect `blocked` guards in applyEffect:
+    //
+    //  1. Parameter `bindToStatePath` writes. Binds are applied BEFORE rules on
+    //     purpose (so a rule can gate on the incoming value), which meant a
+    //     rejected input was still written into state — a validation rule that
+    //     blocks "amount > balance" left `transfer.amount` set to the illegal
+    //     value. Rules still SEE the bound value while they evaluate; it just
+    //     doesn't survive the block.
+    //  2. `set_state` from a rule (or an earlier action effect) that fired
+    //     BEFORE the one that blocked. Half-applied state is worse than none:
+    //     the run is reported blocked either way, so the honest post-state is
+    //     the one we started from.
+    //
+    // Non-state outcomes (messages, emitted events, the recorded transition,
+    // block reasons, the applied-effect audit trail) are deliberately kept —
+    // they are the observability signal that the attempt happened. Invariant
+    // violations are NOT rewound: they are computed below against whatever the
+    // action actually produced, so the model checker still gets its
+    // counterexample state.
+    application = { ...application, snapshot: completeSnapshot };
     // Universal "what to do when something blocked" fallbacks. State mutations
     // still cannot land (applyEffect guards `set_state` itself), but transitions,
     // events, and messages do fire so the user gets a graceful redirect /
     // observability signal.
-    for (const effect of action.onBlockedEffects) {
+    for (const effect of action.onBlockedEffects ?? []) {
       application = applyEffect(application, effect, filledParams, constants);
       application = {
         ...application,

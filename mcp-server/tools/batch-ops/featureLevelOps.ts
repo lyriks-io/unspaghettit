@@ -22,6 +22,11 @@ import {
   asValueSetId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
 import {
+  linkLibraryRef,
+  unlinkLibraryRef,
+  type LibraryKind
+} from '../../../src/features/projects/domain/services/projectLibrary';
+import {
   buildDataField,
   buildOverrides,
   optional,
@@ -375,6 +380,19 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
         asEntityId(resolve(op, refs, 'dataRef', 'entityId')),
         asEntityFieldId(op.fieldId as string)
       );
+      break;
+
+    // Project-library references. Pure Feature → Feature, so they belong in the
+    // batch vocabulary even though the LIBRARY itself lives on the project: the
+    // ops only move ids on and off the feature's ref lists. The repository
+    // decorator resolves them on the next read, and validation reports a ref
+    // the owning project can't satisfy.
+    case 'link_project_definition':
+      exp = linkLibraryRef(exp, op.kind as LibraryKind, op.id as string);
+      break;
+
+    case 'unlink_project_definition':
+      exp = unlinkLibraryRef(exp, op.kind as LibraryKind, op.id as string);
       break;
 
     default:

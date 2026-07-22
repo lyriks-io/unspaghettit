@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { pageTitle } from '$features/app-shell/presentation/pageTitle';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { featuresStore } from '$features/behavior-model/presentation/stores/featuresStore.svelte';
@@ -533,7 +534,7 @@
 </script>
 
 <svelte:head>
-  <title>MCP / {currentProject ? currentProject.name : 'Project'} / Unspaghettit</title>
+  <title>{pageTitle(page.url, currentProject?.name, 'MCP')}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">

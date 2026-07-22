@@ -40,6 +40,7 @@
     groupTransitions
   } from '$features/projects/presentation/services/crossFeatureGroups';
   import type { Tag } from '$shared/domain/Tags';
+  import type { FeatureSummary } from '$features/behavior-model/application/ports/FeatureRepository';
   import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
   import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
   import KebabMenu from '$shared/presentation/components/KebabMenu.svelte';
@@ -102,19 +103,49 @@
     if (tags.length > 0) tagPaletteStore.registerTypes(tags.map((t) => t.type));
   });
 
+  // The project's own rows from the all-features summary pool. `loadAllSummaries`
+  // is ONE request and lands before the per-feature fetches, so this is what
+  // makes the counters correct on first paint.
+  const projectSummaries = $derived.by(() => {
+    const ids = new Set((projectStore.project?.featureIds ?? []).map(String));
+    return projectFeaturesStore.allSummaries.filter((s) => ids.has(String(s.id)));
+  });
+
+  // Sum a summary field, or null if any row predates it (older server): a
+  // partial total is worse than an honest "not known yet".
+  const sumSummaries = (pick: (s: FeatureSummary) => number | undefined): number | null => {
+    let total = 0;
+    for (const s of projectSummaries) {
+      const value = pick(s);
+      if (value === undefined) return null;
+      total += value;
+    }
+    return total;
+  };
+
   // Tab counters mirror what each panel actually renders. Resources / Entity /
   // Events / Transitions panels collapse duplicates that appear in multiple
   // features (same `users` table referenced from two flows shows once, not
   // twice), so the counters share that grouping logic instead of summing
   // per-feature lengths.
-  function panelCount(panel: ProjectPanel): number {
+  //
+  // Full features arrive as one request PER feature, so while that is in flight
+  // every counter used to read 0 — the sidebar looked empty until the last
+  // response landed. The SUMMABLE panels are answered from the summaries in the
+  // meantime (exact, not an estimate). The deduplicated ones can't be summed
+  // without overcounting, so they report null ("—") until the real data is in.
+  function panelCount(panel: ProjectPanel): number | null {
     const exps = projectFeaturesStore.features;
+    const pending = projectFeaturesStore.loading;
     switch (panel) {
       case 'features':
-        return exps.length;
+        return pending ? projectSummaries.length : exps.length;
       case 'surfaces':
-        return exps.reduce((count, feature) => count + feature.surfaces.length, 0);
+        return pending
+          ? sumSummaries((s) => s.surfaceCount)
+          : exps.reduce((count, feature) => count + feature.surfaces.length, 0);
       case 'actions':
+        if (pending) return sumSummaries((s) => s.actionCount);
         return exps.reduce(
           (count, feature) =>
             count +
@@ -125,6 +156,7 @@
           0
         );
       case 'states':
+        if (pending) return sumSummaries((s) => s.stateCount);
         return exps.reduce(
           (count, feature) =>
             count +
@@ -135,6 +167,7 @@
           0
         );
       case 'surface-rules':
+        if (pending) return sumSummaries((s) => s.surfaceRuleCount);
         return exps.reduce(
           (count, feature) =>
             count +
@@ -145,19 +178,23 @@
           0
         );
       case 'personas':
-        return exps.reduce((count, feature) => count + feature.personas.length, 0);
+        return pending
+          ? sumSummaries((s) => s.personaCount)
+          : exps.reduce((count, feature) => count + feature.personas.length, 0);
       case 'core':
         return projectStore.project?.coreFeatures?.length ?? 0;
       case 'sources':
         return projectSourcesStore.sources.length;
+      // Deduplicated across features — a sum would overcount, so stay silent
+      // rather than flash a wrong number.
       case 'resources':
-        return groupResources(exps).length;
+        return pending ? null : groupResources(exps).length;
       case 'data':
-        return groupEntities(exps).length;
+        return pending ? null : groupEntities(exps).length;
       case 'events':
-        return groupEvents(exps).length;
+        return pending ? null : groupEvents(exps).length;
       case 'transitions':
-        return groupTransitions(exps).length;
+        return pending ? null : groupTransitions(exps).length;
       case 'history':
         return projectStore.historyEntries.length;
     }

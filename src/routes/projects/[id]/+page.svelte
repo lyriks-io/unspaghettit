@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { pageTitle } from '$features/app-shell/presentation/pageTitle';
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { projectStore } from '$features/projects/presentation/stores/projectStore.svelte';
@@ -54,7 +55,7 @@
 </script>
 
 <svelte:head>
-  <title>Project / Unspaghettit</title>
+  <title>{pageTitle($page.url, projectStore.project?.name, 'Project')}</title>
 </svelte:head>
 
 {#if projectStore.loading}

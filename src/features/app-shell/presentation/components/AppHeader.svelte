@@ -50,7 +50,9 @@
     <div class="flex min-w-0 items-center gap-3">
       <HeaderBrand {dark} brand={lyriksBrand ? 'lyriks' : 'unspaghettit'} />
       <ViewSwitcher {dark} />
-      {#if !builderActive}
+      <!-- Under the Lyriks brand the host owns top-level navigation, so the
+           global Projects entry is dropped from the header. -->
+      {#if !builderActive && !lyriksBrand}
         <PrimaryNav {dark} {lyriks} />
       {/if}
       {#if builderProject}
@@ -80,10 +82,14 @@
       </div>
     {/if}
     <div class="flex shrink-0 items-center gap-1.5">
-      <ThemeMenu {dark} {lyriks} />
+      <!-- The Lyriks brand ships a fixed skin, so the theme switcher is hidden
+           and the identity avatar renders menuless (the host owns identity). -->
+      {#if !lyriksBrand}
+        <ThemeMenu {dark} {lyriks} />
+      {/if}
       <SettingsMenu {dark} {lyriks} />
       <HelpLink {dark} {lyriks} />
-      <IdentityMenu />
+      <IdentityMenu avatarOnly={lyriksBrand} />
     </div>
   </div>
   {#if builderActive}
