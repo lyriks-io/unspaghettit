@@ -142,6 +142,135 @@ describe('validateElementShapes — condition trees', () => {
     );
     expect(errors.some((e) => e.includes('SCENARIO assertion shape'))).toBe(true);
   });
+
+  // The leaf SHAPE checks. apply_batch hands each op through as an untyped bag,
+  // so a leaf can arrive with the operator under the wrong key; every consumer
+  // then reads `operator: undefined` and the comparison silently never fires —
+  // a dead rule that dry_run reports as valid. These are the shapes observed in
+  // the wild.
+  it('flags a leaf whose operator sits under the builder\'s "op" key', () => {
+    const errors = errorsFor(
+      withRuleCondition({ left: asStatePath('board.count'), op: 'neq', right: 0 })
+    );
+    expect(errors.some((e) => /unknown key\(s\) "op"/.test(e))).toBe(true);
+    expect(errors.some((e) => /Did you mean "operator"\?/.test(e))).toBe(true);
+  });
+
+  it('hints at "right" when the leaf carries a "value" or "expected" key', () => {
+    const errors = errorsFor(
+      withRuleCondition({ left: asStatePath('board.count'), operator: 'equals', value: 0 })
+    );
+    expect(errors.some((e) => /Did you mean "right"\?/.test(e))).toBe(true);
+  });
+
+  it('checks leaf keys nested inside composite conditions', () => {
+    const errors = errorsFor(
+      withRuleCondition({
+        kind: 'any',
+        conditions: [
+          { kind: 'not', condition: { left: asStatePath('board.count'), op: 'eq', right: 0 } },
+          { left: asStatePath('board.count'), operator: 'equals', right: 1 }
+        ]
+      })
+    );
+    expect(errors.some((e) => /unknown key\(s\) "op"/.test(e))).toBe(true);
+  });
+});
+
+describe('validateElementShapes — fabricated invariant consequents', () => {
+  // A fabricated consequent field is the worst of these: the builders drop it,
+  // so "downloaded implies premium" becomes "downloaded must ALWAYS be true" —
+  // an inversion that then fires on perfectly legal data. The MCP builders now
+  // reject it at write time; this covers snapshots where the key survived.
+  const withFeatureInvariant = (extra: Record<string, unknown>): Feature =>
+    ({
+      ...buildFeature(),
+      featureInvariants: [
+        {
+          id: asInvariantId('inv-1'),
+          name: 'Implication written the wrong way',
+          message: 'x',
+          description: 'antecedent => consequent',
+          condition: { left: asStatePath('board.count'), operator: 'greater_than', right: 0 },
+          ...extra
+        }
+      ]
+    }) as unknown as Feature;
+
+  it.each(['mustHold', 'then', 'implies', 'ensure'])(
+    'flags an invariant carrying a fabricated "%s" consequent',
+    (key) => {
+      const errors = errorsFor(
+        withFeatureInvariant({
+          [key]: { left: asStatePath('board.count'), operator: 'equals', right: 1 }
+        })
+      );
+      expect(errors.some((e) => new RegExp(`no "${key}" field`).test(e))).toBe(true);
+      expect(errors.some((e) => /kind: "any"/.test(e))).toBe(true);
+    }
+  );
+
+  it('flags the consequent on surface and action invariants too', () => {
+    const invariant = {
+      id: asInvariantId('inv-2'),
+      name: 'x',
+      message: 'x',
+      description: 'x',
+      condition: { left: asStatePath('board.count'), operator: 'exists' },
+      then: { left: asStatePath('board.count'), operator: 'equals', right: 1 }
+    };
+    const onSurface = buildFeature({ invariants: [invariant] } as unknown as Partial<Surface>);
+    expect(errorsFor(onSurface).some((e) => /no "then" field/.test(e))).toBe(true);
+    const onAction = buildFeature({
+      actions: [
+        {
+          id: asActionId('a1'),
+          name: 'Act',
+          intent: 'do something',
+          parameters: [],
+          requiredStates: [],
+          rules: [],
+          invariants: [invariant],
+          effects: [],
+          emittedEvents: [],
+          transitions: []
+        }
+      ]
+    } as unknown as Partial<Surface>);
+    expect(errorsFor(onAction).some((e) => /no "then" field/.test(e))).toBe(true);
+  });
+
+  it('accepts an implication written the supported way', () => {
+    const good = withFeatureInvariant({});
+    const withAnyNot = {
+      ...good,
+      featureInvariants: [
+        {
+          ...(good.featureInvariants ?? [])[0],
+          condition: {
+            kind: 'any',
+            conditions: [
+              {
+                kind: 'not',
+                condition: { left: asStatePath('board.count'), operator: 'greater_than', right: 0 }
+              },
+              { left: asStatePath('board.count'), operator: 'equals', right: 1 }
+            ]
+          }
+        }
+      ]
+    } as unknown as Feature;
+    expect(errorsFor(withAnyNot)).toEqual([]);
+  });
+
+  it('does not strand a feature that already stores a malformed leaf', () => {
+    // The write gate is diff-aware: a pre-existing bad leaf must stay editable
+    // (the error is in the baseline too), or shipping this check would make
+    // every feature authored through the lax path unwritable.
+    const stored = withRuleCondition({ left: asStatePath('board.count'), op: 'neq', right: 0 });
+    const edited: Feature = { ...stored, name: `${stored.name} (edited)` };
+    expect(introducedValidationErrors(stored, edited)).toEqual([]);
+  });
 });
 
 describe('validateElementShapes — effects', () => {

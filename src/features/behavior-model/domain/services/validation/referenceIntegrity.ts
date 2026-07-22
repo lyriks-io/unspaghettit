@@ -3,6 +3,7 @@ import { ALL_EFFECT_TYPES } from '../../value-objects/Effect';
 import type { Expression } from '../../value-objects/Expression';
 import { isExpression } from '../../value-objects/Expression';
 import { CLOCK_NOW_PATH } from '../../value-objects/SimulationClock';
+import { effectiveEnumValues } from '../EnumValues';
 import {
   flattenLeafConditions,
   isCompositeCondition,
@@ -198,6 +199,42 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       if (def.derived !== undefined) derivedPaths.add(String(def.path));
     }
   }
+
+  // Allowed values for every enum-typed path, resolved through valueSets. An
+  // enum names the CLOSED set of values a path may hold, but that promise was
+  // only enforced on `defaultValue` (see featureShape): nothing checked the
+  // values that rules and effects actually push through it. So a `set_state`
+  // could write a value outside the domain, and a condition could compare
+  // against one — a comparison that is then provably dead, since the path can
+  // never hold that value. Both read as ordinary behavior and cost real money:
+  // a plan enum of [free, premium] whose upgrade action writes "family" leaves
+  // every `plan == "premium"` gate silently denying a paying customer.
+  const enumDomainByPath = new Map<string, readonly string[]>();
+  for (const s of feature.surfaces) {
+    for (const def of s.stateDefinitions) {
+      if (def.type !== 'enum') continue;
+      const allowed = effectiveEnumValues(def, feature.valueSets);
+      if (allowed && allowed.length > 0) enumDomainByPath.set(String(def.path), allowed);
+    }
+  }
+  /**
+   * Check one literal against an enum path's domain. Only raw string literals
+   * are checkable: an Expression resolves at run time, so its value is not
+   * knowable here and is left alone rather than guessed at.
+   */
+  const checkEnumMember = (
+    path: unknown,
+    value: unknown,
+    label: string,
+    what: string
+  ): void => {
+    if (typeof path !== 'string' || typeof value !== 'string') return;
+    const allowed = enumDomainByPath.get(path);
+    if (!allowed || allowed.includes(value)) return;
+    errors.push(
+      `${label}: ${what} "${value}" is not one of the values "${path}" can hold (${allowed.map((v) => `"${v}"`).join(', ')}).`
+    );
+  };
 
   // Per-surface set of reachable paths: declared on this surface OR declared
   // on another surface whose stateDefinition.sharedWith includes this one.
@@ -419,6 +456,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       case 'set_state': {
         checkTargetPath('set_state');
         checkValuePaths('set_state value', effect.value);
+        // The write that puts a path outside its own declared domain.
+        checkEnumMember(effect.path, effect.value, `${label} effect ${effect.id}`, 'set_state writes');
         return;
       }
       case 'append_to_list': {
@@ -560,6 +599,10 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
         }
       }
+      // A comparison against a value outside the path's enum domain can never
+      // be true — the rule is dead on arrival. Typically a typo, or a value the
+      // author added to the product but not to the enum.
+      checkEnumMember(leaf.left, leaf.right, label, 'condition compares against');
       checkExpressionParams(leaf.right, paramNames, `${label}: condition.right`);
     }
     checkQuantifierBodies(condition, paths, label, paramNames);
@@ -736,6 +779,10 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
         }
       }
+      // Feature invariants walk their leaves inline (paths resolve across every
+      // surface), so the enum-domain check has to be repeated here or they would
+      // be the one place a dead comparison still slips through.
+      checkEnumMember(leaf.left, leaf.right, `Feature invariant ${inv.id}`, 'condition compares against');
       checkExpressionParams(leaf.right, undefined, `Feature invariant ${inv.id}: condition.right`);
     }
     checkQuantifierBodies(inv.condition, anySurfacePaths, `Feature invariant ${inv.id}`, undefined);

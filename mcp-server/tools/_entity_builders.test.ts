@@ -124,6 +124,43 @@ describe('_entity_builders.buildInvariant + buildInvariantPatch', () => {
     const patch = buildInvariantPatch({ name: 'rename only' });
     expect(Object.keys(patch)).toEqual(['name']);
   });
+
+  // This builder cherry-picks known fields, so a fabricated consequent would be
+  // dropped here and the invariant would silently become "the antecedent must
+  // always be true". Nothing downstream can see it — the evidence is gone by the
+  // time the validator runs — so it has to be rejected against the raw input.
+  it.each(['mustHold', 'then', 'implies', 'ensure'])(
+    'rejects an invariant carrying a fabricated "%s" consequent',
+    (key) => {
+      const input = {
+        name: 'offline copies imply premium',
+        condition: { left: 'album.downloaded', operator: 'is_true' },
+        message: 'downloaded while not premium',
+        [key]: { left: 'user.plan', operator: 'equals', right: 'premium' }
+      };
+      expect(() => buildInvariant(input, ids)).toThrow(new RegExp(`no "${key}" field`));
+      expect(() => buildInvariant(input, ids)).toThrow(/kind: "any"/);
+      expect(() => buildInvariantPatch(input)).toThrow(new RegExp(`no "${key}" field`));
+    }
+  );
+
+  it('still accepts an implication written as any[not(A), B]', () => {
+    const inv = buildInvariant(
+      {
+        name: 'offline copies imply premium',
+        message: 'downloaded while not premium',
+        condition: {
+          kind: 'any',
+          conditions: [
+            { kind: 'not', condition: { left: 'album.downloaded', operator: 'is_true' } },
+            { left: 'user.plan', operator: 'equals', right: 'premium' }
+          ]
+        }
+      },
+      ids
+    );
+    expect(inv.condition).toMatchObject({ kind: 'any' });
+  });
 });
 
 describe('_entity_builders.buildAcceptanceCriterion', () => {

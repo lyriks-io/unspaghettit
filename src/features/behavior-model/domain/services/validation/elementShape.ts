@@ -140,7 +140,24 @@ const checkCondition = (
     return;
   }
 
-  // Leaf form.
+  // Leaf form. A leaf is { left, operator, right? }; any other key is an author
+  // reaching for a neighbouring vocabulary (the builder's { path, op, expected },
+  // a scenario assertion's { path, operator, value }) and every consumer would
+  // read the real slots as undefined — a dead comparison wearing a valid one's
+  // clothes. Name the likely intent, not just the offending key.
+  const strayLeafKeys = Object.keys(raw).filter(
+    (k) => k !== 'left' && k !== 'operator' && k !== 'right'
+  );
+  if (strayLeafKeys.length > 0) {
+    const hint = strayLeafKeys.includes('op')
+      ? ' Did you mean "operator"? ("op" is a host UI\'s visibility vocabulary, not the kernel\'s.)'
+      : strayLeafKeys.includes('value') || strayLeafKeys.includes('expected')
+        ? ' Did you mean "right"?'
+        : '';
+    errors.push(
+      `${label}: condition leaf has unknown key(s) ${strayLeafKeys.map((k) => `"${k}"`).join(', ')}; a leaf is { left, operator, right? }.${hint}`
+    );
+  }
   if (raw.left === undefined) {
     errors.push(
       `${label}: condition leaf is missing "left" (a state path string, or { kind:"param", name } inside an action).${
@@ -211,6 +228,30 @@ const checkRule = (errors: string[], label: string, rule: unknown): void => {
   checkEffect(errors, label, raw.effect);
 };
 
+/**
+ * An Invariant is { name, condition, message } — its `condition` is the thing
+ * that must ALWAYS hold. Authors reaching for an implication routinely invent
+ * a second field for the consequent (`mustHold`, `then`, `implies`), which is
+ * silently dropped: the invariant collapses to "the antecedent must always be
+ * true" — the exact inversion of the intent, and typically false by default,
+ * so it fires on data that is perfectly legal. The MCP builders reject this
+ * against the raw input (see buildInvariant); this covers snapshots that were
+ * written by an older engine or edited by hand, where the key survived.
+ */
+const INVARIANT_CONSEQUENT_KEYS = ['mustHold', 'then', 'implies', 'ensure'];
+
+const checkInvariantShape = (errors: string[], label: string, inv: unknown): void => {
+  if (!inv || typeof inv !== 'object') return;
+  const stray = INVARIANT_CONSEQUENT_KEYS.filter(
+    (k) => (inv as Record<string, unknown>)[k] !== undefined
+  );
+  if (stray.length > 0) {
+    errors.push(
+      `${label}: invariant has no ${stray.map((k) => `"${k}"`).join('/')} field — an invariant is { name, condition, message }, and its condition must ALWAYS hold. Writing the consequent separately silently inverts the invariant into "the antecedent must always be true". For "A implies B" use condition: { kind: "any", conditions: [{ kind: "not", condition: A }, B] }.`
+    );
+  }
+};
+
 const checkAssertion = (errors: string[], label: string, assertion: unknown): void => {
   if (!assertion || typeof assertion !== 'object') {
     errors.push(
@@ -239,6 +280,7 @@ export const validateElementShapes = (feature: Feature): readonly string[] => {
   const errors: string[] = [];
 
   for (const inv of feature.featureInvariants ?? []) {
+    checkInvariantShape(errors, `Feature invariant ${inv.id}`, inv);
     checkCondition(errors, `Feature invariant ${inv.id}`, inv.condition);
   }
   for (const goal of feature.reachabilityGoals ?? []) {
@@ -250,6 +292,7 @@ export const validateElementShapes = (feature: Feature): readonly string[] => {
       checkRule(errors, `Surface rule ${rule.id} in surface ${surface.id}`, rule);
     }
     for (const inv of surface.invariants) {
+      checkInvariantShape(errors, `Surface invariant ${inv.id} in surface ${surface.id}`, inv);
       checkCondition(errors, `Surface invariant ${inv.id} in surface ${surface.id}`, inv.condition);
     }
 
@@ -258,6 +301,7 @@ export const validateElementShapes = (feature: Feature): readonly string[] => {
         checkRule(errors, `Rule ${rule.id} in action ${action.id}`, rule);
       }
       for (const inv of action.invariants) {
+        checkInvariantShape(errors, `Invariant ${inv.id} in action ${action.id}`, inv);
         checkCondition(errors, `Invariant ${inv.id} in action ${action.id}`, inv.condition);
       }
       for (const effect of action.effects) {

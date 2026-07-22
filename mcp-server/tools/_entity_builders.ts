@@ -292,16 +292,47 @@ export const buildRulePatch = (input: Raw, existing: Rule): Rule => ({
 
 // ─── Invariant ──────────────────────────────────────────────────────────────
 
-export const buildInvariant = (input: Raw, mintId: () => string): Invariant => ({
-  id: asInvariantId(mintId()),
-  name: input.name as string,
-  condition: input.condition as Invariant['condition'],
-  message: input.message as string,
-  ...(typeof input.description === 'string' ? { description: input.description } : {})
-});
+/**
+ * An Invariant is { name, condition, message }: `condition` is the property that
+ * must ALWAYS hold. Authors reaching for an implication routinely invent a field
+ * for the consequent (`mustHold`, `then`, …) — and because this builder
+ * cherry-picks known fields, that field is silently DROPPED. The invariant then
+ * collapses to "the antecedent must always be true", the exact inverse of the
+ * intent, and starts firing on legal data. Nothing downstream can catch it: by
+ * the time the validator sees the entity, the evidence is gone. So it has to be
+ * caught here, against the raw input, before the cherry-pick erases it.
+ *
+ * Throwing (rather than dropping) matches buildRule's stance on a missing
+ * effect, and surfaces through apply_batch as `op[N] (add_*_invariant): …`.
+ */
+const INVARIANT_CONSEQUENT_KEYS = ['mustHold', 'then', 'implies', 'ensure'];
+
+const rejectFabricatedConsequent = (input: Raw): void => {
+  const stray = INVARIANT_CONSEQUENT_KEYS.filter((k) => input[k] !== undefined);
+  if (stray.length === 0) return;
+  throw new Error(
+    `invariant has no ${stray.map((k) => `"${k}"`).join('/')} field — an invariant is { name, condition, message } and its condition must ALWAYS hold, so a separate consequent would be dropped and silently invert the invariant into "the antecedent must always be true". Write "A implies B" as condition: { kind: "any", conditions: [{ kind: "not", condition: A }, B] }.`
+  );
+};
+
+export const buildInvariant = (input: Raw, mintId: () => string): Invariant => {
+  rejectFabricatedConsequent(input);
+  return {
+    id: asInvariantId(mintId()),
+    name: input.name as string,
+    condition: input.condition as Invariant['condition'],
+    message: input.message as string,
+    ...(typeof input.description === 'string' ? { description: input.description } : {})
+  };
+};
 
 /** Build an Invariant patch. Caller supplies existing for id preservation. */
-export const buildInvariantPatch = (input: Raw): Partial<Invariant> => ({
+export const buildInvariantPatch = (input: Raw): Partial<Invariant> => {
+  rejectFabricatedConsequent(input);
+  return buildInvariantPatchBody(input);
+};
+
+const buildInvariantPatchBody = (input: Raw): Partial<Invariant> => ({
   ...(typeof input.name === 'string' ? { name: input.name } : {}),
   ...(input.condition !== undefined
     ? { condition: input.condition as Invariant['condition'] }
