@@ -12,11 +12,10 @@
     "emitDeclarationOnly": true,
     "rootDir": "src",
     "outDir": "dist/types",
-    "baseUrl": ".",
     "paths": {
-      "$features/*": ["src/features/*"],
-      "$shared/*": ["src/shared/*"],
-      "$lib/*": ["src/lib/*"]
+      "$features/*": ["./src/features/*"],
+      "$shared/*": ["./src/shared/*"],
+      "$lib/*": ["./src/lib/*"]
     }
   },
   "include": ["src/lib-entry/index.ts"]

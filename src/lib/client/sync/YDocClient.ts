@@ -40,7 +40,7 @@ export class YDocClient<T> {
   private closed = false;
   private backoffMs = BACKOFF_START_MS;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private buffered: Uint8Array[] = [];
+  private buffered: Uint8Array<ArrayBuffer>[] = [];
 
   constructor(readonly roomId: RoomId) {
     this.doc.on('update', (update: Uint8Array, origin: unknown) => {
@@ -143,7 +143,7 @@ export class YDocClient<T> {
     }, delay);
   }
 
-  private send(frame: Uint8Array): void {
+  private send(frame: Uint8Array<ArrayBuffer>): void {
     if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(frame);
       return;

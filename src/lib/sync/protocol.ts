@@ -71,7 +71,10 @@ export type SyncMessage =
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 
-const encodeJsonFrame = (type: number, body: unknown): Uint8Array => {
+// Frames are declared Uint8Array<ArrayBuffer> (not the ArrayBufferLike
+// default): every frame is a fresh `new Uint8Array(n)` over a plain
+// ArrayBuffer, and TS 6's DOM lib requires exactly that for WebSocket.send.
+const encodeJsonFrame = (type: number, body: unknown): Uint8Array<ArrayBuffer> => {
   const bytes = TEXT_ENCODER.encode(JSON.stringify(body));
   const out = new Uint8Array(1 + bytes.length);
   out[0] = type;
@@ -79,7 +82,7 @@ const encodeJsonFrame = (type: number, body: unknown): Uint8Array => {
   return out;
 };
 
-export const encode = (msg: SyncMessage): Uint8Array => {
+export const encode = (msg: SyncMessage): Uint8Array<ArrayBuffer> => {
   if (msg.kind === 'sync_step1') {
     const out = new Uint8Array(1 + msg.stateVector.length);
     out[0] = MSG_SYNC_STEP1;
