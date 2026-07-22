@@ -12,12 +12,14 @@
  * section name.
  */
 
+import { isLyriksBrand } from './hostBrand';
+
 export const UNSPAGHETTIT_TITLE = 'Unspaghettit';
 export const LYRIKS_TITLE = 'Lyriks - Behavior Editor';
 
 /** The product half of the title, chosen by the `brand` query parameter. */
 export const brandTitle = (url: URL | null | undefined): string =>
-  url?.searchParams.get('brand') === 'lyriks' ? LYRIKS_TITLE : UNSPAGHETTIT_TITLE;
+  isLyriksBrand(url) ? LYRIKS_TITLE : UNSPAGHETTIT_TITLE;
 
 /**
  * Compose a document title, most specific part first, product name last:

@@ -1,14 +1,16 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { enabledViews } from '$lib/views/enabled';
-  import { themeStore } from '$lib/theme/themeStore.svelte';
+  import { isLyriksBrand } from '$features/app-shell/presentation/hostBrand';
 
   /**
    * Expert/Builder view toggle. Views are registry-driven (Expert is the
    * always-on default; others like Builder are opt-in via PUBLIC_UNSPA_VIEWS).
    * Renders nothing unless more than one view is active - a toggle between one
-   * thing is meaningless - and hides under the Lyriks community edition, which
-   * presents a single, unswitched view.
+   * thing is meaningless - and hides under the Lyriks HOST (`?brand=lyriks`),
+   * which presents a single, unswitched view. Gated on the brand, not the
+   * theme: the Lyriks skin is the default theme, so keying off it hid the
+   * switcher from every standalone install (see hostBrand).
    */
   type Props = {
     dark: boolean;
@@ -17,7 +19,7 @@
   let { dark }: Props = $props();
 
   const views = $derived(enabledViews());
-  const show = $derived(views.length > 1 && !themeStore.isLyriks);
+  const show = $derived(views.length > 1 && !isLyriksBrand(page.url));
 </script>
 
 {#if show}
