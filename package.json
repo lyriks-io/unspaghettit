@@ -1,6 +1,6 @@
 {
   "name": "unspaghettit",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "type": "module",
   "description": "Executable specifications for AI-assisted software development. Local-first and MCP-native.",
   "author": {
@@ -36,6 +36,7 @@
     "dev": "vite dev",
     "dev:host": "vite dev --host",
     "build": "vite build",
+    "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json && node scripts/lib-types.cjs",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -54,15 +55,18 @@
     "skills:check": "node scripts/sync-skills.cjs --check",
     "bom:strip": "node scripts/strip-bom.cjs",
     "bom:check": "node scripts/strip-bom.cjs --check",
-    "prepublishOnly": "npm run skills:check && npm run bom:check && npm run lint && npm run build && npm test"
+    "prepublishOnly": "npm run skills:check && npm run bom:check && npm run lint && npm run build && npm run build:lib && npm test"
   },
   "bin": {
     "unspa": "./cli/unspa.cjs",
     "unspaghettit": "./cli/unspaghettit.cjs",
     "unspa-mcp": "./mcp-server/bin.cjs"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/types/lib-entry/index.d.ts",
   "files": [
     "build",
+    "dist",
     "cli",
     "mcp-server",
     "samples",
