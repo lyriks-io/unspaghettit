@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-07-22
+
+Two user-facing breaks found by running the end-to-end suite, both shipped in
+earlier releases and neither caught by the unit tests. No behavior or snapshot
+changes; nothing to migrate.
+
 ### Fixed
 
 - **The Expert | Builder switcher is visible again.** `ViewSwitcher` hid itself whenever the active THEME was Lyriks — but the Lyriks skin became the DEFAULT theme in 0.7.0, so the switcher silently disappeared for every install that had not opted into the classic theme, leaving Builder mode unreachable from the header even when `PUBLIC_UNSPA_VIEWS=builder` enabled it. Its intent was to hide under the Lyriks HOST, which is the `brand` query parameter, not the skin. Host detection is now one shared `isLyriksBrand` predicate used by the header lockup, the switcher, and the document title, so the three can't disagree. Caught by the end-to-end suite, which had been failing on this since the theme default flipped.
