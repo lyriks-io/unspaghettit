@@ -716,6 +716,65 @@ describe('MCP server', () => {
     await server.close();
   });
 
+  it('add_surface/update_surface set and clear the presentation flag (granular + batch)', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Presentation flag', description: 'Presentation flag authoring test.' }
+      })
+    ) as { id: string };
+
+    // Granular: born view-only...
+    await client.callTool({
+      name: 'add_surface',
+      arguments: {
+        featureId: created.id,
+        name: 'Landing',
+        type: 'screen',
+        description: 'View-only landing screen.',
+        presentation: true
+      }
+    });
+    let persisted = await repo.get(created.id as never);
+    const surfaceId = persisted!.surfaces[0]!.id;
+    expect(persisted!.surfaces[0]!.presentation).toBe(true);
+
+    // ...then re-included in scoring via presentation:false.
+    await client.callTool({
+      name: 'update_surface',
+      arguments: { featureId: created.id, surfaceId, presentation: false }
+    });
+    persisted = await repo.get(created.id as never);
+    expect(persisted!.surfaces[0]!.presentation).toBe(false);
+
+    // Batch vocabulary: add flagged, clear it, and flip the granular one back.
+    const batch = await client.callTool({
+      name: 'apply_batch',
+      arguments: {
+        featureId: created.id,
+        operations: [
+          {
+            kind: 'add_surface',
+            ref: 'nav',
+            name: 'Nav',
+            type: 'screen',
+            description: 'Presentation nav screen.',
+            presentation: true
+          },
+          { kind: 'update_surface', surfaceRef: 'nav', presentation: false },
+          { kind: 'update_surface', surfaceId, presentation: true }
+        ]
+      }
+    });
+    const ack = parseTextContent(batch) as { ok: true; refs: Record<string, string> };
+    expect(ack.ok).toBe(true);
+    persisted = await repo.get(created.id as never);
+    expect(persisted!.surfaces.find((s) => s.id === ack.refs.nav)?.presentation).toBe(false);
+    expect(persisted!.surfaces.find((s) => s.id === surfaceId)?.presentation).toBe(true);
+    await server.close();
+  });
+
   it('remove_surface_invariant returns a validation error when the feature would be invalid', async () => {
     const { client, server } = await setup();
     // The seed storefront feature already has surfaces; pick one and try to

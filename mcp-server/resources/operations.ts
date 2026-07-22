@@ -22,7 +22,8 @@ actionRef: a_new }\` works when only the action was minted in this batch.
 
 ## ADD ops
 
-  add_surface              { ref?, name, type, description, parentRef?|parentSurfaceId? }
+  add_surface              { ref?, name, type, description, parentRef?|parentSurfaceId?, presentation? }
+. \`presentation:true\` marks a view-only/presentation surface EXCLUDED from behavior-maturity scoring (rendered and navigable, but its empty body never drags the feature rollup). Do not infer it from type:"screen".
   add_action           { ref?, surfaceRef|surfaceId, name, intent, requiredStates?, emittedEvents?, bypassInvariants?, invariantRelaxation?, triggeredByEvent?, evolution? }
 . \`requiredStates\` is \`string[]\` of state paths declared on (or shared into) the action's surface - NOT condition objects. Use rules / invariants for value-level constraints.
 . \`invariantRelaxation: { invariantIds:[...], rationale, recoveryCondition? }\` is the scoped, preferred escape hatch for a repair/admin action: the simulator skips ONLY the named invariants after it runs, every other invariant is still enforced. Prefer it over \`bypassInvariants:true\`, which relaxes everything with no rationale. On update_action pass \`invariantRelaxation:null\` to clear it.
@@ -77,7 +78,8 @@ actionRef: a_new }\` works when only the action was minted in this batch.
 
 ## UPDATE ops
 
-  update_surface              { surfaceRef|surfaceId, name?, type?, description?, parentSurfaceId? }
+  update_surface              { surfaceRef|surfaceId, name?, type?, description?, parentSurfaceId?, presentation? }
+. \`presentation:true\` excludes the surface from behavior-maturity scoring; \`presentation:false\` re-includes it.
   update_action           { surfaceRef|surfaceId, actionRef|actionId, name?, intent?, requiredStates?, emittedEvents? }
   update_state_definition     { surfaceRef|surfaceId, stateDefinitionId, ...partial, sharedWith? }
   update_parameter            { surfaceRef|surfaceId, actionRef|actionId, parameterId, ...partial }

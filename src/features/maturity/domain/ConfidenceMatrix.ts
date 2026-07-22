@@ -55,8 +55,11 @@ export const computeConfidence = (
   feature: Feature,
   structural: { readonly passed: number; readonly total: number }
 ): ConfidenceMatrix => {
-  const actions = feature.surfaces.flatMap((surface) => committedActions(surface.actions));
-  const surfaces = feature.surfaces;
+  // Presentation surfaces are excluded from the feature rollup (same rule as
+  // MaturityScorer): scoring a view-only screen's actions would only skew the
+  // denominators without saying anything about the modeled behavior.
+  const surfaces = feature.surfaces.filter((s) => !(s.presentation ?? false));
+  const actions = surfaces.flatMap((surface) => committedActions(surface.actions));
   const featureInvariantCount = feature.featureInvariants?.length ?? 0;
 
   // Behavioral coverage: of the actions that actually do something worth an

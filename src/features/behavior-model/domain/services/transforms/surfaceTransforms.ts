@@ -253,7 +253,7 @@ export const surfaceDepth = (
 export const renameSurface = (
   feature: Feature,
   surfaceId: SurfaceId,
-  patch: Partial<Pick<Surface, 'name' | 'type' | 'description'>>
+  patch: Partial<Pick<Surface, 'name' | 'type' | 'description' | 'presentation'>>
 ): Feature => updateSurface(feature, surfaceId, (s) => ({ ...s, ...patch }));
 
 export const addStateDefinition = (

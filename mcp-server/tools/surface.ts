@@ -25,10 +25,16 @@ export const registerSurfaceTools = (deps: ToolDeps): void => {
         name: z.string().min(1),
         type: z.enum(ALL_SURFACE_TYPES as unknown as [SurfaceType, ...SurfaceType[]]),
         description: z.string().min(1),
-        parentSurfaceId: z.string().optional()
+        parentSurfaceId: z.string().optional(),
+        presentation: z
+          .boolean()
+          .optional()
+          .describe(
+            'Mark true for view-only/presentation surfaces excluded from behavior-maturity scoring.'
+          )
       }
     },
-    async ({ featureId, name, type, description, parentSurfaceId }) => {
+    async ({ featureId, name, type, description, parentSurfaceId, presentation }) => {
       const surface: Surface = {
         id: asSurfaceId(ids()),
         name,
@@ -39,6 +45,7 @@ export const registerSurfaceTools = (deps: ToolDeps): void => {
         rules: [],
         invariants: [],
         transitions: [],
+        ...(presentation !== undefined ? { presentation } : {}),
         ...(parentSurfaceId ? { parentSurfaceId: asSurfaceId(parentSurfaceId) } : {})
       };
       return runMutation(
@@ -55,17 +62,23 @@ export const registerSurfaceTools = (deps: ToolDeps): void => {
   server.registerTool(
     'update_surface',
     {
-      description: 'Patch name/type/description/parent. Description cannot be cleared; null parentSurfaceId unparents.',
+      description: 'Patch name/type/description/parent/presentation. Description cannot be cleared; null parentSurfaceId unparents.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
         name: z.string().min(1).optional(),
         type: z.enum(ALL_SURFACE_TYPES as unknown as [SurfaceType, ...SurfaceType[]]).optional(),
         description: z.string().min(1).optional(),
-        parentSurfaceId: z.string().nullable().optional()
+        parentSurfaceId: z.string().nullable().optional(),
+        presentation: z
+          .boolean()
+          .optional()
+          .describe(
+            'Mark true for view-only/presentation surfaces excluded from behavior-maturity scoring; false re-includes the surface.'
+          )
       }
     },
-    async ({ featureId, surfaceId, name, type, description, parentSurfaceId }) => {
+    async ({ featureId, surfaceId, name, type, description, parentSurfaceId, presentation }) => {
       const sId = asSurfaceId(surfaceId);
       const eId = asFeatureId(featureId);
       // Two transforms composed: meta patch via renameSurface, then parent via
@@ -76,7 +89,8 @@ export const registerSurfaceTools = (deps: ToolDeps): void => {
           let next = renameSurface(exp, sId, {
             ...(name !== undefined ? { name } : {}),
             ...(type !== undefined ? { type } : {}),
-            ...(description !== undefined ? { description } : {})
+            ...(description !== undefined ? { description } : {}),
+            ...(presentation !== undefined ? { presentation } : {})
           });
           if (parentSurfaceId !== undefined) {
             next = setSurfaceParent(

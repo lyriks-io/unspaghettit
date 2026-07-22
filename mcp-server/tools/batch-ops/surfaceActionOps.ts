@@ -27,6 +27,7 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
         name: op.name as string,
         type: op.type as Surface['type'],
         ...(typeof op.description === 'string' ? { description: op.description } : {}),
+        ...(typeof op.presentation === 'boolean' ? { presentation: op.presentation } : {}),
         stateDefinitions: [],
         actions: [],
         rules: [],
@@ -45,7 +46,8 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
       exp = T.renameSurface(exp, sid, {
         ...(typeof op.name === 'string' ? { name: op.name } : {}),
         ...(typeof op.type === 'string' ? { type: op.type as Surface['type'] } : {}),
-        ...(typeof op.description === 'string' ? { description: op.description } : {})
+        ...(typeof op.description === 'string' ? { description: op.description } : {}),
+        ...(typeof op.presentation === 'boolean' ? { presentation: op.presentation } : {})
       });
       if ('parentSurfaceId' in op || 'parentRef' in op) {
         const parent = optional(op, 'parentRef', 'parentSurfaceId', refs);

@@ -112,4 +112,49 @@ describe('computeConfidence', () => {
     expect(dim('consistency').score).toBe(50);
     expect(dim('consistency').detail).toContain('1 of 2');
   });
+
+  it('excludes presentation surfaces from every dimension', () => {
+    // A builder/navigation screen: unguarded, holding an action with an empty
+    // body (would drag executability) and a contradictory one (would drag
+    // behavioral coverage and consistency). Without the exclusion, the same
+    // rule as MaturityScorer's rollup, these would skew every denominator.
+    const emptyAction: Action = {
+      id: asActionId('open'),
+      name: 'Open',
+      intent: 'open',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [],
+      emittedEvents: [],
+      transitions: []
+    };
+    const presentationSurface: Surface = {
+      id: asSurfaceId('builder'),
+      name: 'Builder screen',
+      type: 'screen',
+      presentation: true,
+      stateDefinitions: [],
+      actions: [emptyAction, { ...contradictory, id: asActionId('bad-presentation') }],
+      rules: [],
+      invariants: [],
+      transitions: []
+    };
+    const withPresentation: Feature = {
+      ...feature,
+      surfaces: [...feature.surfaces, presentationSurface]
+    };
+
+    const a = computeConfidence(withPresentation, { passed: 8, total: 10 });
+    const b = computeConfidence(feature, { passed: 8, total: 10 });
+    expect(a).toEqual(b);
+
+    const dimA = (key: string) => a.dimensions.find((d) => d.key === key)!;
+    // Denominators count only the behavioral surface's 2 actions and 1 surface.
+    expect(dimA('behavioral').total).toBe(2);
+    expect(dimA('guardrails').total).toBe(1);
+    expect(dimA('executability').total).toBe(2);
+    expect(dimA('consistency').total).toBe(2);
+  });
 });
