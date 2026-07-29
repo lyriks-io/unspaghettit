@@ -6,6 +6,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-29
+
+One new opt-in capability for embedders, and one scoring fix. Nothing changes for
+a standalone `unspa dashboard`: the gate below is inert unless configured, and no
+dependency was added.
+
+### Added
+
+- **Optional session gate on `unspa dashboard`.** The dashboard has no
+  authentication of its own — whoever reaches the port can read *and edit* every
+  behavior model it serves. That is the right default for a local developer tool
+  on loopback, but not when it is embedded in an authenticated product: the
+  dashboard runs on its own origin and so sits outside the host application's
+  login entirely. In one such deployment it answered `200` on `/api/*` with no
+  credential while the host application was fully walled behind its own auth.
+  Set `UNSPA_SESSION_SECRET` to the host's session-signing secret and nothing is
+  served without a session cookie the host issued (HS256, verified with
+  `node:crypto` — no new dependency, which matters for air-gapped embedders).
+  `UNSPA_SESSION_COOKIE` renames the cookie, `UNSPA_SESSION_LOGIN_URL` tells an
+  unauthenticated visitor where to sign in. Unset, everything behaves exactly as
+  before.
+  Unauthenticated requests get **401**, not a redirect: the dashboard is a
+  single-page app whose fetches would follow a redirect and render a login page
+  inside themselves.
+  *Note for embedders:* a browser only sends the cookie to origins it is scoped
+  to. A dashboard on another **port** of the host's origin receives it; on a
+  different **subdomain** it does not, unless the host widens the cookie domain.
+  Enabling the gate where the cookie cannot arrive locks out legitimate users.
+  *Known gap:* this guards HTTP only. The Yjs sync WebSocket attaches its own
+  upgrade listener and remains ungated — reachable only by bypassing the UI,
+  since the SPA cannot load to open it.
+
+### Fixed
+
+- **Presentation surfaces stop dragging the confidence rollup.** `MaturityScorer`
+  already excluded them — they are pure UI, so scoring their actions says nothing
+  about modeled behavior — but `ConfidenceMatrix` still folded them into the
+  feature rollup, inflating denominators and reporting a view-only screen as
+  unmodeled behavior. Both now apply the same rule.
+- **`update_surface` can set `presentation`.** The field existed on the Surface
+  entity but no write path accepted it, so a surface authored through the MCP
+  could never be marked as presentation — making the exclusion above unreachable
+  for anything but hand-edited snapshots. Covered in the surface transforms, the
+  batch ops and the operations vocabulary resource.
+
 ## [0.14.2] - 2026-07-22
 
 Two user-facing breaks found by running the end-to-end suite, both shipped in
