@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
+import { createSessionGuard } from './session-guard';
 import { getSyncManager } from '../src/lib/server/sync';
 import { attachSyncWebSocket } from '../src/lib/server/sync/wsServer';
 import {
@@ -57,7 +58,16 @@ const main = async (): Promise<void> => {
     throw new Error(`Invalid PORT env: ${process.env.PORT}`);
   }
 
+  // Optional session gate. Inert unless the host sets UNSPA_SESSION_SECRET, so
+  // standalone `unspa dashboard` is unchanged; when set, nothing is served
+  // without a session cookie the host signed. See cli/session-guard.ts.
+  const guard = createSessionGuard();
+  if (guard.enabled) {
+    process.stderr.write('[unspa-dashboard] session gate enabled\n');
+  }
+
   const httpServer = createServer((req, res) => {
+    if (!guard(req, res)) return;
     handler(req, res, () => {
       // SvelteKit's handler always responds; the next() fallback only fires
       // on a route miss, in which case we send the default 404.
