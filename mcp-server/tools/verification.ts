@@ -6,7 +6,10 @@ import { asProjectId } from '../../src/features/projects/domain/value-objects/id
 import { detectDrift } from '../../src/features/verification/domain/detectDrift';
 import { verifyFeaturesUseCase } from '../../src/features/verification/application/use-cases/VerifyFeatures';
 import { fileBehavioralIndexReader } from '../../src/features/verification/infrastructure/persistence/FileBehavioralIndexReader';
-import { staticBehavioralIndexReader } from '../../src/features/verification/infrastructure/persistence/StaticBehavioralIndexReader';
+import {
+  inlineBehavioralIndexReader,
+  staticBehavioralIndexReader
+} from '../../src/features/verification/infrastructure/persistence/StaticBehavioralIndexReader';
 import type { BehavioralIndexReader } from '../../src/features/verification/application/ports/BehavioralIndexReader';
 import { strictThresholds } from '../../src/features/verification/domain/VerificationThresholds';
 import { trackTokens } from '../metrics';
@@ -18,10 +21,15 @@ import { expandFeatureId } from './short-ids';
  * the repo isn't linked, there is no index, and an empty reader keeps drift /
  * verify working (they just report no implementations to check).
  */
-const indexReader = (repoContext: ToolDeps['repoContext']): BehavioralIndexReader =>
-  repoContext?.linkPath
+const indexReader = (
+  repoContext: ToolDeps['repoContext'],
+  inlineIndex?: Record<string, unknown>
+): BehavioralIndexReader => {
+  if (inlineIndex) return inlineBehavioralIndexReader(inlineIndex);
+  return repoContext?.linkPath
     ? fileBehavioralIndexReader({ path: repoContext.linkPath })
     : staticBehavioralIndexReader([]);
+};
 
 /**
  * The cohort to verify plus the owning project's cross-feature invariants: one
@@ -31,7 +39,8 @@ const indexReader = (repoContext: ToolDeps['repoContext']): BehavioralIndexReade
  */
 const resolveCohort = async (
   deps: ToolDeps,
-  featureId?: string
+  featureId?: string,
+  explicitProjectId?: string
 ): Promise<{ features: Feature[]; projectInvariants: readonly Invariant[] }> => {
   const { repo, projectRepo, repoContext } = deps;
 
@@ -51,7 +60,11 @@ const resolveCohort = async (
     return { features: feature ? [feature] : [], projectInvariants };
   }
 
-  const projectId = repoContext?.link?.projectId;
+  // An explicit projectId is what a host passes when there is no `.unspa.json`
+  // to read one from. It is also a SCOPE: without either, the fallback below
+  // walks every feature in the store, which for a multi-project host means one
+  // project's answer quietly includes another's.
+  const projectId = explicitProjectId ?? repoContext?.link?.projectId;
   const project = projectId ? await projectRepo.get(asProjectId(projectId)) : null;
   const ids = project?.featureIds ?? null;
 
@@ -72,12 +85,26 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
     {
       description:
         'Spec→code drift: which implementations were audited against an OLDER version of the spec than the one now on disk, so the code may no longer match. Compares each `.unspa.json` entry\'s recorded specVersion against the owning feature\'s current updatedAt. Returns `stale` (re-audit these — the spec changed under them), `unversioned` (audited but never stamped, so drift can\'t be judged), and `orphans` (index keys that no longer resolve to any spec entity — renamed/removed). Scopes to a feature when given, else the linked project, else all. Run after editing a spec whose code you previously mapped, and in CI to block on silent drift.',
-      inputSchema: { featureId: z.string().optional() }
+      inputSchema: {
+        featureId: z.string().optional(),
+        index: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe(
+            'Behavioral index to judge drift against, INSTEAD of reading .unspa.json from disk. Pass this when the server has no access to the checkout.'
+          ),
+        projectId: z
+          .string()
+          .optional()
+          .describe(
+            'Scope the whole-project sweep to this project, when there is no .unspa.json to read the scope from. Without it (and without featureId) the sweep covers every feature the server can see.'
+          )
+      }
     },
-    async ({ featureId }) => {
+    async ({ featureId, index, projectId }) => {
       try {
-        const { features } = await resolveCohort(deps, featureId);
-        const entries = await indexReader(repoContext).read();
+        const { features } = await resolveCohort(deps, featureId, projectId);
+        const entries = await indexReader(repoContext, index).read();
         return text(trackTokens('get_drift', detectDrift(features, entries)));
       } catch (e) {
         return errorText(`get_drift failed: ${(e as Error).message}`);

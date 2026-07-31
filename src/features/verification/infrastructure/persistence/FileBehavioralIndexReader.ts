@@ -9,12 +9,34 @@ import type {
 const LINK_FILENAME = '.unspa.json';
 const VALID_STATUS = new Set<IndexedImplementationStatus>(['implemented', 'partial', 'missing']);
 
-type RawEntry = {
+export type RawIndexEntry = {
   readonly status?: string;
   readonly specVersion?: string;
   readonly verifiedAt?: string;
 };
-type RawLink = { readonly index?: Record<string, RawEntry> };
+type RawLink = { readonly index?: Record<string, RawIndexEntry> };
+
+/**
+ * Map the persisted `.unspa.json` index onto the domain's
+ * {@link IndexedImplementation}, dropping the fields drift doesn't need. Shared
+ * with the inline reader so an index handed over by a host maps identically to
+ * one read off disk — a divergence here would make drift depend on transport.
+ */
+export const toIndexedImplementations = (
+  index: Record<string, RawIndexEntry>
+): readonly IndexedImplementation[] =>
+  Object.entries(index).map(([key, raw]) => {
+    const status: IndexedImplementationStatus =
+      raw?.status && VALID_STATUS.has(raw.status as IndexedImplementationStatus)
+        ? (raw.status as IndexedImplementationStatus)
+        : 'missing';
+    return {
+      key,
+      status,
+      ...(typeof raw?.specVersion === 'string' ? { auditedSpecVersion: raw.specVersion } : {}),
+      ...(typeof raw?.verifiedAt === 'string' ? { verifiedAt: raw.verifiedAt } : {})
+    };
+  });
 
 /** Walk up from `cwd` to the nearest `.unspa.json`, mirroring the MCP/CLI link discovery. */
 const discover = (cwd: string): string | null => {
@@ -64,18 +86,6 @@ export const fileBehavioralIndexReader = (
       return [];
     }
 
-    const index = link.index ?? {};
-    return Object.entries(index).map(([key, raw]) => {
-      const status: IndexedImplementationStatus =
-        raw?.status && VALID_STATUS.has(raw.status as IndexedImplementationStatus)
-          ? (raw.status as IndexedImplementationStatus)
-          : 'missing';
-      return {
-        key,
-        status,
-        ...(typeof raw?.specVersion === 'string' ? { auditedSpecVersion: raw.specVersion } : {}),
-        ...(typeof raw?.verifiedAt === 'string' ? { verifiedAt: raw.verifiedAt } : {})
-      };
-    });
+    return toIndexedImplementations(link.index ?? {});
   }
 });

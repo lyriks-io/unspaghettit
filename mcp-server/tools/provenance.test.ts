@@ -953,8 +953,51 @@ describe('seed_index_from_analysis (codebase adoption)', () => {
     await server.close();
   });
 
+  it('previews without a repo link, returning the entries for the caller to write', async () => {
+    // The path for a host that runs this server away from the checkout: it holds
+    // .unspa.json, we hold the spec, so it needs the entry VALUES back — keys
+    // alone are not actionable when you have to persist the index yourself.
+    const bare = await setup();
+    const code = parse<{ sourceId: string }>(
+      await bare.client.callTool({
+        name: 'attach_source_file',
+        arguments: { featureId: 'feat-prov', fileName: 'src/cart.ts', content: CODE, kind: 'code' }
+      })
+    );
+    await bare.client.callTool({
+      name: 'record_element_span',
+      arguments: {
+        featureId: 'feat-prov',
+        elementId: 'act-1',
+        startOffset: 13,
+        endOffset: 48,
+        sourceId: code.sourceId
+      }
+    });
+
+    const preview = parse<{
+      ok: boolean;
+      dryRun: boolean;
+      entries: Record<string, { status: string; file: string; line: number; signature: string }>;
+    }>(
+      await bare.client.callTool({
+        name: 'seed_index_from_analysis',
+        arguments: { featureId: 'feat-prov', dryRun: true }
+      })
+    );
+    expect(preview.ok).toBe(true);
+    expect(preview.dryRun).toBe(true);
+    expect(preview.entries['action:act-1']).toMatchObject({
+      status: 'implemented',
+      file: 'src/cart.ts',
+      line: 2,
+      signature: 'export const addToCart = () => {};'
+    });
+    await bare.server.close();
+  });
+
   it('errors without a repo link and without recorded spans', async () => {
-    // No repoContext at all → actionable error.
+    // Writing still needs a link — only the preview is allowed without one.
     const bare = await setup();
     const noLink = await bare.client.callTool({
       name: 'seed_index_from_analysis',

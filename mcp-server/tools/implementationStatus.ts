@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import {
   asActionId,
@@ -22,6 +22,7 @@ import type {
 import { writeRepoLink, type BehavioralIndex, type IndexEntry, type RepoLink } from '../repo-link';
 import type { RepoContext } from '../server';
 import { errorText, text, type ToolDeps } from './_shared';
+import { inlineIndexSchema, isIndexSourceError, resolveIndexSource } from './_index-source';
 import { trackTokens } from '../metrics';
 import { expandFeatureId, expandIdInFeature } from './short-ids';
 
@@ -641,27 +642,22 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'sync_from_index',
     {
       description:
-        'Read .unspa.json and push a full implementation-status report for every action and surface in one call. No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
-      inputSchema: {}
+        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and code snippets are then skipped, since both need the real files). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
+      inputSchema: { ...inlineIndexSchema }
     },
-    async () => {
-      if (!repoContext?.linkPath) {
-        return errorText('No .unspa.json found. Cannot sync from index.');
-      }
+    async ({ index: inlineIndex, projectId: inlineProjectId }) => {
+      const source = resolveIndexSource(repoContext, {
+        index: inlineIndex,
+        projectId: inlineProjectId
+      });
+      if (isIndexSourceError(source)) return errorText(source.error);
 
-      let rawLink: { projectId?: string; index?: BehavioralIndex };
-      try {
-        rawLink = JSON.parse(readFileSync(repoContext.linkPath, 'utf8'));
-      } catch {
-        return errorText(`Could not read ${repoContext.linkPath}`);
-      }
-
-      if (!rawLink.projectId) {
+      if (!source.projectId) {
         return errorText('.unspa.json is missing projectId. Run `unspa link` first.');
       }
 
-      const project = await projectRepo.get(asProjectId(rawLink.projectId));
-      if (!project) return errorText(`Project ${rawLink.projectId} not found`);
+      const project = await projectRepo.get(asProjectId(source.projectId));
+      if (!project) return errorText(`Project ${source.projectId} not found`);
 
       // Walk every feature that belongs to the linked project. The index is
       // a flat keyed map (action:<id>, surface:<id>, ...) - ids are UUIDs
@@ -673,10 +669,12 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
         if (f) features.push(f);
       }
       if (features.length === 0) {
-        return errorText(`Project ${rawLink.projectId} has no features. Add one via add_feature_to_project.`);
+        return errorText(`Project ${source.projectId} has no features. Add one via add_feature_to_project.`);
       }
 
-      const repoRoot = dirname(repoContext.linkPath);
+      // `undefined`, not null: every location helper already treats an absent
+      // repo root as "no snippet, no staleness check" (see entryToLocation).
+      const repoRoot = source.repoRoot ?? undefined;
       const fileCache: FileCache = new Map();
 
       // Auto-heal: rewrite drifted line numbers in-memory, then persist the
@@ -684,13 +682,19 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       // That way callers don't have to hand-edit `.unspa.json` after every
       // refactor that shifts lines. Healed entries are surfaced in the
       // response so the caller can audit what changed.
-      const initialIndex: BehavioralIndex = rawLink.index ?? {};
-      const { healed, nextIndex } = healIndexLines(initialIndex, repoRoot, fileCache);
+      //
+      // Skipped entirely for an inline index: healing re-reads the source files
+      // to relocate a moved signature, and there is no checkout to read. The
+      // caller owns its own index file and heals on its side.
+      const { healed, nextIndex } =
+        repoRoot === undefined
+          ? { healed: [] as ReturnType<typeof healIndexLines>['healed'], nextIndex: source.index }
+          : healIndexLines(source.index, repoRoot, fileCache);
       const index: BehavioralIndex = nextIndex;
-      if (healed.length > 0) {
+      if (healed.length > 0 && repoContext?.linkPath) {
         try {
-          const nextLink: RepoLink = { ...rawLink, index } as RepoLink;
-          writeRepoLink(repoContext.linkPath, nextLink);
+          const rawLink = JSON.parse(readFileSync(repoContext.linkPath, 'utf8')) as RepoLink;
+          writeRepoLink(repoContext.linkPath, { ...rawLink, index } as RepoLink);
         } catch {
           // Persistence is best-effort. Next sync will heal again from the
           // same signatures if the write was blocked (e.g. EPERM on Windows

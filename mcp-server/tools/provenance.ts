@@ -554,7 +554,7 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
     'seed_index_from_analysis',
     {
       description:
-        "Turn a codebase-adoption analysis into implementation coverage: every span recorded against a kind:'code' source becomes a .unspa.json behavioral-index entry ({file, line, signature}, status implemented, specVersion stamped so drift detection starts armed). This is the code-to-spec bridge: one analysis pass yields the model, its provenance, AND the spec-to-code mapping. Every traced element is seeded, including entities, feature-level invariants, surface-declared transitions, and declared events; those kinds don't appear in the per-action coverage report but they document the location and arm drift detection. Existing index entries are never overwritten unless overwrite:true. Spans against pasted/file sources are counted but not seeded; only elements that no longer resolve in the feature land in `skipped`, with the reason. Requires the repo to be linked (.unspa.json via `unspa link`). Run sync_from_index afterwards to push the coverage report to the dashboard. Pass dryRun:true to preview without writing.",
+        "Turn a codebase-adoption analysis into implementation coverage: every span recorded against a kind:'code' source becomes a .unspa.json behavioral-index entry ({file, line, signature}, status implemented, specVersion stamped so drift detection starts armed). This is the code-to-spec bridge: one analysis pass yields the model, its provenance, AND the spec-to-code mapping. Every traced element is seeded, including entities, feature-level invariants, surface-declared transitions, and declared events; those kinds don't appear in the per-action coverage report but they document the location and arm drift detection. Existing index entries are never overwritten unless overwrite:true. Spans against pasted/file sources are counted but not seeded; only elements that no longer resolve in the feature land in `skipped`, with the reason. Writing needs the repo to be linked (.unspa.json via `unspa link`); dryRun:true works without a link and returns the same `entries` map for you to merge into your own .unspa.json — that is the path for a host running this server away from the checkout. Run sync_from_index afterwards to push the coverage report to the dashboard.",
       inputSchema: {
         featureId: z.string(),
         overwrite: z.boolean().optional(),
@@ -563,9 +563,13 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
     },
     async ({ featureId, overwrite, dryRun }) => {
       try {
-        if (!repoContext?.linkPath) {
+        // A link is needed to WRITE the index, not to compute it. Requiring one
+        // up front made the preview impossible for a host that runs this server
+        // away from the checkout — which is precisely the caller that needs the
+        // entries handed back so it can write them itself.
+        if (!repoContext?.linkPath && dryRun !== true) {
           return errorText(
-            'No .unspa.json found. Run `unspa link` first so there is a behavioral index to seed.'
+            'No .unspa.json found. Run `unspa link` first so there is a behavioral index to seed, or pass dryRun:true to receive the entries and write them yourself.'
           );
         }
         const fid = asFeatureId(await expandFeatureId(repo, featureId));
@@ -598,15 +602,19 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
           );
         }
 
-        let rawLink: RepoLink;
-        try {
-          rawLink = JSON.parse(readFileSync(repoContext.linkPath, 'utf8')) as RepoLink;
-        } catch {
-          return errorText(`Could not read ${repoContext.linkPath}`);
+        // Unlinked previews start from an empty index: there is no file to merge
+        // with, so every built entry is new and the caller merges on its side.
+        let rawLink: RepoLink | null = null;
+        if (repoContext?.linkPath) {
+          try {
+            rawLink = JSON.parse(readFileSync(repoContext.linkPath, 'utf8')) as RepoLink;
+          } catch {
+            return errorText(`Could not read ${repoContext.linkPath}`);
+          }
         }
 
-        const repoRoot = dirname(repoContext.linkPath);
-        const index: BehavioralIndex = { ...(rawLink.index ?? {}) };
+        const repoRoot = repoContext?.linkPath ? dirname(repoContext.linkPath) : null;
+        const index: BehavioralIndex = { ...(rawLink?.index ?? {}) };
         const written: string[] = [];
         const kept: string[] = [];
         const missingFiles = new Set<string>();
@@ -615,12 +623,15 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
             kept.push(e.key);
             continue;
           }
-          if (!existsSync(resolve(repoRoot, e.entry.file))) missingFiles.add(e.entry.file);
+          // Only checkable against a checkout we can see; skipped when unlinked.
+          if (repoRoot !== null && !existsSync(resolve(repoRoot, e.entry.file))) {
+            missingFiles.add(e.entry.file);
+          }
           index[e.key] = e.entry;
           written.push(e.key);
         }
 
-        if (dryRun !== true && written.length > 0) {
+        if (dryRun !== true && written.length > 0 && repoContext?.linkPath && rawLink) {
           writeRepoLink(repoContext.linkPath, { ...rawLink, index });
         }
 
@@ -630,6 +641,11 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
           dryRun: dryRun === true,
           written: written.length,
           writtenKeys: written,
+          // The entries themselves, keyed as they belong under `index` in
+          // .unspa.json. Keys alone are not actionable for a caller that has to
+          // persist the index itself — it needs the {file, line, signature,
+          // specVersion} values, which are the whole point of seeding.
+          entries: Object.fromEntries(built.entries.map((e) => [e.key, e.entry])),
           keptExisting: kept,
           skipped: built.skipped,
           nonCodeSpans: built.nonCodeSpanCount,

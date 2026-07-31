@@ -1,17 +1,9 @@
 import { z } from 'zod';
-import { readFileSync } from 'node:fs';
 import { type BehavioralIndex } from '../repo-link';
 import { errorText, text, type ToolDeps } from './_shared';
+import { inlineIndexSchema, isIndexSourceError, resolveIndexSource } from './_index-source';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { expandFeatureId } from './short-ids';
-
-const readCurrentLink = (linkPath: string) => {
-  try {
-    return JSON.parse(readFileSync(linkPath, 'utf8'));
-  } catch {
-    throw new Error(`Could not read ${linkPath}`);
-  }
-};
 
 const indexStats = (index: BehavioralIndex) => {
   const entries = Object.values(index);
@@ -33,31 +25,28 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
     'get_behavioral_index',
     {
       description:
-        'Returns entries from the behavioral index in .unspa.json. The index maps every spec entity (action, surface, state, rule, event, transition, invariant, surface_rule, surface_invariant, entity) to its resolved file + line + signature in the codebase. Defaults to a paginated slice of entries plus stats so the response never exceeds an LLM-friendly size; pass filters to narrow scope. Filter params: `key` (exact match, e.g. "action:abc-123"); `entityTypes` (subset of [action, surface, state, rule, event, transition, invariant, surface_rule, surface_invariant]); `status` (implemented | partial | missing). Pagination: `offset` + `limit` (default 50, max 200). Set `statsOnly: true` to return just the implemented/partial/missing tallies.',
+        'Returns entries from the behavioral index. The index maps every spec entity (action, surface, state, rule, event, transition, invariant, surface_rule, surface_invariant, entity) to its resolved file + line + signature in the codebase. Read from .unspa.json by default; pass `index` + `projectId` to query an index the caller holds instead (for hosts that run this server without access to the checkout). Defaults to a paginated slice of entries plus stats so the response never exceeds an LLM-friendly size; pass filters to narrow scope. Filter params: `key` (exact match, e.g. "action:abc-123"); `entityTypes` (subset of [action, surface, state, rule, event, transition, invariant, surface_rule, surface_invariant]); `status` (implemented | partial | missing). Pagination: `offset` + `limit` (default 50, max 200). Set `statsOnly: true` to return just the implemented/partial/missing tallies.',
       inputSchema: {
         key: z.string().optional(),
         entityTypes: z.array(z.string()).optional(),
         status: z.enum(['implemented', 'partial', 'missing']).optional(),
         offset: z.number().int().nonnegative().optional(),
         limit: z.number().int().positive().max(HARD_INDEX_CAP).optional(),
-        statsOnly: z.boolean().optional()
+        statsOnly: z.boolean().optional(),
+        ...inlineIndexSchema
       }
     },
-    async ({ key, entityTypes, status, offset, limit, statsOnly }) => {
-      if (!repoContext?.linkPath) {
-        return errorText(
-          'No .unspa.json found. The human must create it (via `unspa link`) to bind this folder to a project.'
-        );
-      }
-      const link = readCurrentLink(repoContext.linkPath);
-      const index: BehavioralIndex = link.index ?? {};
+    async ({ key, entityTypes, status, offset, limit, statsOnly, index: inlineIndex, projectId }) => {
+      const source = resolveIndexSource(repoContext, { index: inlineIndex, projectId });
+      if (isIndexSourceError(source)) return errorText(source.error);
+      const index = source.index;
       const stats = indexStats(index);
 
       // Exact key lookup short-circuits filters + pagination.
       if (key) {
         const entry = index[key];
         return text({
-          projectId: link.projectId,
+          projectId: source.projectId,
           stats,
           key,
           entry: entry ?? null
@@ -65,7 +54,7 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
       }
 
       if (statsOnly) {
-        return text({ projectId: link.projectId, stats });
+        return text({ projectId: source.projectId, stats });
       }
 
       const typeSet = entityTypes && entityTypes.length > 0 ? new Set(entityTypes) : null;
@@ -85,7 +74,7 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
       const nextOffset = off + page.length < entries.length ? off + page.length : undefined;
 
       return text({
-        projectId: link.projectId,
+        projectId: source.projectId,
         stats,
         filteredCount: entries.length,
         offset: off,
@@ -101,13 +90,12 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
     'get_implementation_gaps',
     {
       description:
-        'Cross-references the behavioral index (.unspa.json) against the feature spec to show which entities are missing from the index, which are partial, and which are fully implemented. Use after get_behavioral_index to know exactly what still needs to be located in the codebase. Each entry carries both the `key` used in .unspa.json (e.g. `state:cart.itemCount`) and the canonical `entityId` accepted by report_implementation_status — for states that\'s the 8-char hex id, distinct from the path. The response includes a `hints[]` block pointing at follow-up tools relevant to what was returned.',
-      inputSchema: { featureId: z.string() }
+        'Cross-references the behavioral index against the feature spec to show which entities are missing from the index, which are partial, and which are fully implemented. Read from .unspa.json by default; pass `index` + `projectId` to cross-reference an index the caller holds instead. Use after get_behavioral_index to know exactly what still needs to be located in the codebase. Each entry carries both the `key` used in .unspa.json (e.g. `state:cart.itemCount`) and the canonical `entityId` accepted by report_implementation_status — for states that\'s the 8-char hex id, distinct from the path. The response includes a `hints[]` block pointing at follow-up tools relevant to what was returned.',
+      inputSchema: { featureId: z.string(), ...inlineIndexSchema }
     },
-    async ({ featureId }) => {
-      if (!repoContext?.linkPath) {
-        return errorText('No .unspa.json found. Cannot compute implementation gaps.');
-      }
+    async ({ featureId, index: inlineIndex, projectId }) => {
+      const source = resolveIndexSource(repoContext, { index: inlineIndex, projectId });
+      if (isIndexSourceError(source)) return errorText(source.error);
       try {
         featureId = await expandFeatureId(repo, featureId);
       } catch (e) {
@@ -116,8 +104,7 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
       const exp = await repo.get(asFeatureId(featureId));
       if (!exp) return errorText(`Feature ${featureId} not found`);
 
-      const link = readCurrentLink(repoContext.linkPath);
-      const index: BehavioralIndex = link.index ?? {};
+      const index = source.index;
 
       type EntityRef = {
         key: string;
