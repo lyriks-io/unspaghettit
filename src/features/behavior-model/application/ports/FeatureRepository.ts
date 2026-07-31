@@ -1,39 +1,15 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
-import type { Tag } from '$shared/domain/Tags';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
+import type { FeatureSummary } from '$features/behavior-model/domain/services/featureSummary';
 
-export type FeatureSummary = {
-  readonly id: FeatureId;
-  readonly name: string;
-  readonly description?: string;
-  readonly tags?: readonly Tag[];
-  readonly surfaceCount: number;
-  readonly actionCount: number;
-  /**
-   * Rollup counts that are SUMMABLE across features, so a caller can render a
-   * total without fetching every full Feature.
-   *
-   * They exist because the project page's sidebar counters were derived from
-   * the fully-loaded features, which arrive as one request PER feature — so
-   * every counter read 0 until the last one landed. The summary is a single
-   * request and the repository already parses each file to build it, so these
-   * cost nothing extra on the server and make the counters correct on first
-   * paint.
-   *
-   * Deliberately only the summable ones: resources / entities / events /
-   * transitions are DEDUPLICATED across features when displayed (one `users`
-   * table referenced by two flows is one row), so a sum would overcount. Those
-   * stay exact-or-unknown rather than fast-and-wrong.
-   *
-   * Optional for back-compat: a summary from an older server omits them, and
-   * callers read `?? undefined` and fall back to "unknown".
-   */
-  readonly stateCount?: number;
-  readonly surfaceRuleCount?: number;
-  readonly personaCount?: number;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-};
+/**
+ * Re-exported so the many callers that import `FeatureSummary` from the port
+ * keep working. It is DEFINED in the domain, next to the one function that
+ * builds it: a summary is a projection of a Feature, not a property of how a
+ * Feature happens to be stored, and the domain builder must not have to import
+ * a port to describe its own return type.
+ */
+export type { FeatureSummary };
 
 export interface FeatureRepository {
   list(): Promise<readonly FeatureSummary[]>;

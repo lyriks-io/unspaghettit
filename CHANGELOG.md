@@ -6,6 +6,75 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-31
+
+The adoption chain (code → spec) no longer assumes the engine and the codebase
+share a filesystem, so a host that runs this server as a subprocess away from
+the developer's checkout can drive it. Plus a security-relevant scoping fix, a
+packaging fix, and a dead-code sweep.
+
+Nothing changes for a standalone `unspa dashboard` or `unspa` CLI: every new
+argument is optional and every existing call behaves exactly as before.
+
+### Added
+
+- **The behavioral index can travel as an argument.** `sync_from_index`,
+  `get_behavioral_index`, `get_implementation_gaps` and `get_drift` accept
+  `index` (plus `projectId`) and use it instead of reading `.unspa.json` off
+  disk. Resolution against the spec is unchanged — only where the index comes
+  from moves. Without those arguments each tool reads the linked `.unspa.json`
+  exactly as before.
+  This exists because the index half of adoption was unreachable for an
+  embedder: the agent holds the filesystem (it reads the code and owns
+  `.unspa.json`), the server holds only the spec, and there is no checkout
+  inside the host's container to read. One resolver decides for all four tools,
+  so the on-disk and inline paths cannot drift apart.
+  On the inline path, line-healing and code snippets are skipped — both need the
+  real files. Everything that needs only the index is unaffected.
+- **`seed_index_from_analysis --dryRun` works without a repo link, and returns
+  the entries.** A link is needed to *write* the index, not to compute it;
+  demanding one up front made the preview impossible for exactly the caller that
+  needs the entries handed back. The response now carries an `entries` map keyed
+  as they belong under `index` in `.unspa.json`. Keys alone were not actionable
+  for a caller that has to persist the index itself — the
+  `{file, line, signature, specVersion}` values are the point of seeding.
+
+### Fixed
+
+- **A whole-project drift sweep no longer spans every project on the server.**
+  `get_drift` with no `featureId` and no `.unspa.json` fell back to *every*
+  feature it could see. Harmless for a one-repo CLI, wrong for a host serving
+  many projects, where one project's report quietly included another's. It now
+  takes an explicit `projectId` as the scope. Unchanged when a link supplies one.
+- **`vis-data` is declared.** The behavior-graph renderer imports types from it
+  and it is a peer dependency of `vis-network`, but it was never listed — so the
+  peer went unmet on install and `tsc` reported a missing module on every run.
+  Runtime was unaffected (the `standalone` bundle inlines it), which is why it
+  survived this long.
+- **Three runtime dependencies that nothing imports are gone**
+  (`fast-json-patch`, `lib0`, `y-protocols`), along with the unused `tslib`
+  devDependency. `lib0` and `y-protocols` still arrive transitively for the Yjs
+  sync that needs them; they were simply never imported directly.
+
+### Removed
+
+- Dead code with no importers: `Result.ts`, `ResourceDeducer.ts`,
+  `sync/publish.ts`, an unused `domain/entities` barrel, and four unreferenced
+  Svelte components (`ActionStatsStrip`, `FeatureHealthStrip`, `StatePathInput`,
+  `TagPillBar`). No public export changes.
+
+### Changed
+
+- **Two type definitions moved to the layer that owns them**, each re-exported
+  from its old location so no import breaks. `FeatureSummary` is defined next to
+  `summarizeFeature` in the domain rather than in the repository port — a
+  summary is a projection of a Feature, not a property of how one is stored, and
+  the domain builder should not import a port to describe its own return type.
+  The path-safety rule (`isSafeSegment` / `assertSafeSegment` /
+  `UnsafePathSegmentError`) moved to `shared/domain/pathSegment`, so an
+  application use-case validating an imported bundle no longer pulls a
+  `node:fs` module into its import graph to ask a question about a regex.
+
 ## [0.15.0] - 2026-07-29
 
 One new opt-in capability for embedders, and one scoring fix. Nothing changes for

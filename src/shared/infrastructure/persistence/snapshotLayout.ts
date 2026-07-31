@@ -1,5 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync } from 'node:fs';
 import { join } from 'node:path';
+// Relative, not `$shared/...`: this module is reachable from vite.config.ts,
+// which Node loads before any SvelteKit alias exists. An alias here breaks
+// `vitest`/`vite` at config-load time, before a single test runs.
+import { assertSafeSegment } from '../../domain/pathSegment';
 
 /**
  * On-disk layout for the `unspa/` (or `lyriks/`) snapshot directory.
@@ -63,31 +67,12 @@ export const SOURCES_SUBFOLDER = 'sources';
  * `features[].id` reach `statusFilePath` / `provenanceFilePath` directly, and
  * the MCP standalone write path.
  */
-const SAFE_SEGMENT = /^[A-Za-z0-9_-]+$/;
-const MAX_SEGMENT_LEN = 128;
-
-export class UnsafePathSegmentError extends Error {
-  constructor(
-    readonly segment: string,
-    readonly label: string
-  ) {
-    super(`Unsafe ${label}: "${segment}" is not a valid path-safe identifier`);
-    this.name = 'UnsafePathSegmentError';
-  }
-}
-
-/** True when a value is safe to use as a single on-disk path component. */
-export const isSafeSegment = (segment: unknown): segment is string =>
-  typeof segment === 'string' &&
-  segment.length > 0 &&
-  segment.length <= MAX_SEGMENT_LEN &&
-  SAFE_SEGMENT.test(segment);
-
-/** Assert-and-return guard for a dynamic path component. Throws on traversal. */
-export const assertSafeSegment = (segment: string, label = 'path segment'): string => {
-  if (!isSafeSegment(segment)) throw new UnsafePathSegmentError(String(segment), label);
-  return segment;
-};
+// The rule itself is pure and lives in the domain, so a caller can validate an
+// identifier without importing a module that touches the filesystem. Re-exported
+// here because every path builder below enforces it and callers reach for it
+// alongside them.
+export { isSafeSegment, UnsafePathSegmentError } from '../../domain/pathSegment';
+export { assertSafeSegment };
 
 const ensureDir = (path: string): void => {
   if (!existsSync(path)) mkdirSync(path, { recursive: true });

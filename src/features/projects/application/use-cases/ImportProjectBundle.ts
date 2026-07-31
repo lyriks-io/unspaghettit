@@ -1,7 +1,7 @@
 import type { FeatureRepository } from '$features/behavior-model/application/ports/FeatureRepository';
 import type { ImplementationStatusRepository } from '$features/implementation-status/application/ports/ImplementationStatusRepository';
 import type { ProjectBundleV1 } from '$features/projects/domain/entities/ProjectBundle';
-import { isSafeSegment } from '$shared/infrastructure/persistence/snapshotLayout';
+import { isSafeSegment } from '$shared/domain/pathSegment';
 import type { ProjectRepository } from '../ports/ProjectRepository';
 
 export interface ImportProjectBundleResult {
