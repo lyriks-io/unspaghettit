@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { withBase } from '$shared/routing/appBase';
   import { page } from '$app/stores';
   import { asFeatureId } from '$features/behavior-model/domain/value-objects/ids';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
@@ -65,7 +66,7 @@
     <div class="py-10 text-sm text-red-600">{verificationStore.error}</div>
   {:else if !verdict}
     <div class="py-10 text-sm text-slate-500">
-      Nothing to verify. <a href="/projects" class="text-brand-700 underline">Back to projects</a>.
+      Nothing to verify. <a href={withBase('/projects')} class="text-brand-700 underline">Back to projects</a>.
     </div>
   {:else}
     <div class="space-y-4">

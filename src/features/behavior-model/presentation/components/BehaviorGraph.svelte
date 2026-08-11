@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { withBase } from '$shared/routing/appBase';
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
   import {
     ALL_BEHAVIOR_GRAPH_EDGE_KINDS,
@@ -75,7 +76,7 @@
       ? `The whole project behavior map across ${sourceFeatures.length} feature${sourceFeatures.length === 1 ? '' : 's'} from the shared Unspa hub.`
       : 'A connected map of the executable behavior model from the shared Unspa hub.'
   );
-  const backHref = $derived(project ? `/projects/${project.id}` : feature ? `/features/${feature.id}` : '/projects');
+  const backHref = $derived(withBase(project ? `/projects/${project.id}` : feature ? `/features/${feature.id}` : '/projects'));
   const backLabel = $derived(project ? 'Back to project' : 'Back to editor');
 
   const rawGraph = $derived(buildBehaviorGraph(sourceFeatures, project));
@@ -152,7 +153,7 @@
         },
         onNodeActivate: (id) => {
           const node = graph.nodeById.get(id);
-          if (node?.href) void goto(node.href);
+          if (node?.href) void goto(withBase(node.href));
         },
         onStabilizationProgress: (progress) => {
           stabilizationProgress = progress;
@@ -524,7 +525,7 @@
             {/if}
             <p class="mt-2 text-xs text-slate-500">{selectedNode.degree} graph links</p>
             {#if selectedNode.href}
-              <a class="mt-3 inline-flex text-sm font-medium text-brand-700 hover:underline" href={selectedNode.href}>
+              <a class="mt-3 inline-flex text-sm font-medium text-brand-700 hover:underline" href={withBase(selectedNode.href)}>
                 Open in editor
               </a>
             {/if}

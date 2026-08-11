@@ -1,4 +1,5 @@
 import { goto } from '$app/navigation';
+import { withBase } from '$shared/routing/appBase';
 import { featuresStore } from '$features/behavior-model/presentation/stores/featuresStore.svelte';
 import { alertDialog, chooseDialog } from '$shared/presentation/dialogs/dialogStore.svelte';
 import { formatSampleSummary } from '$features/behavior-model/presentation/loadSamplesMessage';
@@ -54,7 +55,7 @@ export async function runLoadSamplesFlow(): Promise<void> {
       tone: 'success'
     });
     if (chosenId) {
-      await goto(`/projects/${chosenId}`);
+      await goto(withBase(`/projects/${chosenId}`));
     }
     return;
   }

@@ -3,6 +3,7 @@
   import { pageTitle } from '$features/app-shell/presentation/pageTitle';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { withBase } from '$shared/routing/appBase';
   import { featuresStore } from '$features/behavior-model/presentation/stores/featuresStore.svelte';
   import { projectsStore } from '$features/projects/presentation/stores/projectsStore.svelte';
   import { alertDialog, chooseDialog, confirmDialog } from '$shared/presentation/dialogs/dialogStore.svelte';
@@ -26,7 +27,7 @@
 
   async function handleCreate(name: string, description: string) {
     const id = await featuresStore.create(name, description);
-    await goto(`/features/${id}`);
+    await goto(withBase(`/features/${id}`));
   }
 
   async function handleDelete(id: string) {
@@ -219,7 +220,7 @@
             tone: 'success'
           });
           if (chosenId) {
-            await goto(`/projects/${chosenId}`);
+            await goto(withBase(`/projects/${chosenId}`));
           }
         } else {
           await alertDialog({
@@ -362,7 +363,7 @@
         {/if}
       </div>
       <a
-        href="/projects"
+        href={withBase('/projects')}
         class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800"
         title="New features are created from a project"
       >
@@ -398,7 +399,7 @@
           <p class="text-xs">Features live inside projects. Start by opening or creating a project.</p>
           <div class="flex flex-wrap justify-center gap-2">
             <a
-              href="/projects"
+              href={withBase('/projects')}
               class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
             >
               Go to projects

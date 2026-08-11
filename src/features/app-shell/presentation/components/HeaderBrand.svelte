@@ -1,5 +1,6 @@
 <script lang="ts">
   import LyriksLogo from './LyriksLogo.svelte';
+  import { withBase } from '$shared/routing/appBase';
 
   /**
    * Header lockup. `brand=lyriks` selects the Lyriks v3 mark and wordmark;
@@ -35,12 +36,12 @@
   </a>
 {:else}
   <div class="flex shrink-0 items-center gap-2.5">
-    <a href="/" class="shrink-0" aria-label="Unspaghettit home">
-      <img src="/unspaghettit_logo.png" alt="Unspaghettit" class="h-12 w-auto" />
+    <a href={withBase('/')} class="shrink-0" aria-label="Unspaghettit home">
+      <img src={withBase('/unspaghettit_logo.png')} alt="Unspaghettit" class="h-12 w-auto" />
     </a>
     <div class="hidden flex-col items-start gap-1 sm:flex">
       <a
-        href="/"
+        href={withBase('/')}
         class="font-brand text-2xl font-semibold leading-none {dark
           ? 'text-white'
           : 'text-slate-950'}">Unspaghettit</a
@@ -56,7 +57,7 @@
           ? 'bg-white/10 text-white/80 ring-white/25 hover:bg-white/20 hover:text-white'
           : 'bg-slate-50 text-slate-500 ring-slate-200 hover:bg-slate-100 hover:text-slate-800'}"
       >
-        <img src="/lyriks_logo.svg" alt="" class="h-3 w-3 shrink-0" aria-hidden="true" />
+        <img src={withBase('/lyriks_logo.svg')} alt="" class="h-3 w-3 shrink-0" aria-hidden="true" />
         <span class="leading-none">Powered by <span class="font-bold">Lyriks.io</span></span>
       </a>
     </div>

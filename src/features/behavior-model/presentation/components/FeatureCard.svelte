@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FeatureCardModel } from '$features/behavior-model/application/use-cases/ListFeaturesWithMaturity';
+  import { withBase } from '$shared/routing/appBase';
   import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
   import ProgressBar from '$shared/presentation/components/ProgressBar.svelte';
 
@@ -84,7 +85,7 @@
       <!-- Stretched link: the ::after overlay makes the WHOLE card open the
            feature. Interactive elements inside the card opt out by sitting
            above it with `relative z-10`. -->
-      <a href={`/features/${summary.id}`} class="block min-w-0 flex-1 after:absolute after:inset-0">
+      <a href={withBase(`/features/${summary.id}`)} class="block min-w-0 flex-1 after:absolute after:inset-0">
         <h3 class="truncate text-base font-semibold text-slate-950 group-hover:text-brand-800">
           {summary.name}
         </h3>

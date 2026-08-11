@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+  import { withBase } from '$shared/routing/appBase';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
   import { tagPaletteStore } from '$features/tag-palette/presentation/stores/tagPaletteStore.svelte';
@@ -106,7 +107,7 @@
     >
       <div class="flex rounded-lg border border-hairline bg-white p-1">
         <a
-          href={`/features/${feature.id}/digest`}
+          href={withBase(`/features/${feature.id}/digest`)}
           title="Read a plain-language summary of this feature"
           aria-label="Open behavioral digest"
           class="rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
@@ -114,7 +115,7 @@
           Summary
         </a>
         <a
-          href={`/features/${feature.id}/graph`}
+          href={withBase(`/features/${feature.id}/graph`)}
           title="Open behavior graph"
           aria-label="Open behavior graph"
           class="rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
@@ -122,7 +123,7 @@
           Graph
         </a>
         <a
-          href={`/features/${feature.id}/verify`}
+          href={withBase(`/features/${feature.id}/verify`)}
           title="Verify this feature (scenarios, model check, drift)"
           aria-label="Verify this feature"
           class="rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
@@ -130,7 +131,7 @@
           Verify
         </a>
         <a
-          href={`/features/${feature.id}/provenance`}
+          href={withBase(`/features/${feature.id}/provenance`)}
           title="See the analyzed source file with each extracted element highlighted"
           aria-label="Open source provenance"
           class="rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { stripBasePath, withBase } from '$shared/routing/appBase';
   import { tourStore } from '$features/tutorial/presentation/stores/tourStore.svelte';
   import { onboardingStore } from '$features/tutorial/presentation/stores/onboardingStore.svelte';
   import { firstFeatureTour } from '$features/tutorial/infrastructure/tours/firstFeatureTour';
@@ -15,7 +16,8 @@
    */
 
   const onQuietRoute = $derived(
-    page.url.pathname.startsWith('/tutorial') || page.url.pathname.startsWith('/builder-mode')
+    stripBasePath(page.url.pathname).startsWith('/tutorial') ||
+      stripBasePath(page.url.pathname).startsWith('/builder-mode')
   );
   const visible = $derived(onboardingStore.showBanner && !tourStore.isActive && !onQuietRoute);
 
@@ -59,7 +61,7 @@
           {loadingSamples ? 'Loading...' : 'Load sample project'}
         </button>
         <a
-          href="/tutorial"
+          href={withBase('/tutorial')}
           class="rounded-md px-2 py-1.5 text-xs font-medium text-brand-800 underline-offset-2 transition hover:underline"
         >
           Read the guide

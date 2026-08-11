@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { withBase } from '$shared/routing/appBase';
 import { isEnabled } from '$lib/views/enabled';
 
 /**
@@ -8,5 +9,5 @@ import { isEnabled } from '$lib/views/enabled';
  * supposed to be off.
  */
 export const load = () => {
-  if (!isEnabled('builder')) throw redirect(307, '/projects');
+  if (!isEnabled('builder')) throw redirect(307, withBase('/projects'));
 };

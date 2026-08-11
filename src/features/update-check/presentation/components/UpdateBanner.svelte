@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { withBase } from '$shared/routing/appBase';
 
   /**
    * A slim, dismissible strip under the header that appears only when a newer
@@ -27,7 +28,7 @@
     } catch {
       dismissed = null;
     }
-    void fetch('/api/update-status')
+    void fetch(withBase('/api/update-status'))
       .then((res) => (res.ok ? (res.json() as Promise<UpdateStatus>) : null))
       .then((s) => {
         status = s;

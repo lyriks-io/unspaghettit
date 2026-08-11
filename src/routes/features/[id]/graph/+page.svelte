@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { withBase } from '$shared/routing/appBase';
   import { page } from '$app/stores';
   import { asFeatureId } from '$features/behavior-model/domain/value-objects/ids';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
@@ -31,7 +32,7 @@
   <div class="mx-auto max-w-7xl px-4 py-10 text-sm text-red-600">{featureStore.error}</div>
 {:else if !featureStore.feature}
   <div class="mx-auto max-w-7xl px-4 py-10 text-sm text-neutral-500">
-    Feature not found. <a href="/projects" class="text-brand-700 underline">Back to projects</a>.
+    Feature not found. <a href={withBase('/projects')} class="text-brand-700 underline">Back to projects</a>.
   </div>
 {:else}
   <!-- Fill exactly the space below whatever sits above (sticky header, the

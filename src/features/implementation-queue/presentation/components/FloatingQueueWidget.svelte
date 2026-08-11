@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
+  import { withBase } from '$shared/routing/appBase';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { projectStore } from '$features/projects/presentation/stores/projectStore.svelte';
@@ -179,7 +180,7 @@
               <div class="min-w-0 flex-1 truncate">
                 {#if view.item.kind === 'action'}
                   <a
-                    href={`/features/${view.item.featureId}`}
+                    href={withBase(`/features/${view.item.featureId}`)}
                     class="font-medium text-slate-900 hover:text-brand-800 hover:underline"
                   >
                     {view.actionName ?? '(unnamed action)'}
@@ -187,7 +188,7 @@
                   <span class="text-xs text-slate-500"> · {view.featureName}</span>
                 {:else if view.item.kind === 'surface'}
                   <a
-                    href={`/features/${view.item.featureId}`}
+                    href={withBase(`/features/${view.item.featureId}`)}
                     class="font-medium text-slate-900 hover:text-brand-800 hover:underline"
                   >
                     {view.surfaceName ?? '(unnamed surface)'}
@@ -195,7 +196,7 @@
                   <span class="text-xs text-slate-500"> · {view.featureName}</span>
                 {:else}
                   <a
-                    href={`/features/${view.item.featureId}`}
+                    href={withBase(`/features/${view.item.featureId}`)}
                     class="font-medium text-slate-900 hover:text-brand-800 hover:underline"
                   >
                     {view.featureName}

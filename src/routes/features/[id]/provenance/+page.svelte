@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { withBase } from '$shared/routing/appBase';
   import { page } from '$app/stores';
   import { asFeatureId } from '$features/behavior-model/domain/value-objects/ids';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
@@ -29,7 +30,7 @@
       </p>
     </div>
     {#if featureId}
-      <a href={`/features/${featureId}`} class="text-xs text-brand-700 underline">Back to feature</a
+      <a href={withBase(`/features/${featureId}`)} class="text-xs text-brand-700 underline">Back to feature</a
       >
     {/if}
   </div>
@@ -40,7 +41,7 @@
     <div class="py-10 text-sm text-red-600">{featureStore.error}</div>
   {:else if !featureStore.feature}
     <div class="py-10 text-sm text-slate-500">
-      Feature not found. <a href="/projects" class="text-brand-700 underline">Back to projects</a>.
+      Feature not found. <a href={withBase('/projects')} class="text-brand-700 underline">Back to projects</a>.
     </div>
   {:else}
     <SourceViewer

@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { withBase } from '$shared/routing/appBase';
 
 /**
  * The MCP playground is project-scoped now (/projects/[id]/mcp): the page
@@ -7,5 +8,5 @@ import { redirect } from '@sveltejs/kit';
  * deleted so bookmarks and older docs don't 404.
  */
 export const load = () => {
-  throw redirect(307, '/projects');
+  throw redirect(307, withBase('/projects'));
 };

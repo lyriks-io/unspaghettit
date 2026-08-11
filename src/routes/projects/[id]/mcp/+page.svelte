@@ -1,5 +1,6 @@
 <script lang="ts">
   import { pageTitle } from '$features/app-shell/presentation/pageTitle';
+  import { withBase } from '$shared/routing/appBase';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { featuresStore } from '$features/behavior-model/presentation/stores/featuresStore.svelte';
@@ -540,12 +541,12 @@
 <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
   {#if !loadingProject && !currentProject}
     <div class="py-10 text-sm text-slate-500">
-      Project not found. <a href="/projects" class="text-brand-700 underline">Back to projects</a>.
+      Project not found. <a href={withBase('/projects')} class="text-brand-700 underline">Back to projects</a>.
     </div>
   {:else}
     <header class="mb-6 border-b border-slate-200 pb-6">
       <a
-        href={`/projects/${projectId}`}
+        href={withBase(`/projects/${projectId}`)}
         class="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 transition hover:text-slate-900"
       >
         <span aria-hidden="true">←</span>
@@ -625,7 +626,7 @@
     {#if projectFeatures.length === 0 && !loadingProject && !featuresStore.loading}
       <div class="rounded-lg border border-dashed border-hairline bg-white p-6 text-sm text-slate-500">
         No features in this project yet.
-        <a href={`/projects/${projectId}`} class="text-brand-700 underline">Add one</a> first.
+        <a href={withBase(`/projects/${projectId}`)} class="text-brand-700 underline">Add one</a> first.
       </div>
     {:else if loadError}
       <p class="text-sm text-red-600">{loadError}</p>

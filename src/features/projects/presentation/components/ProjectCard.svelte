@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ProjectSummary } from '$features/projects/application/ports/ProjectRepository';
+  import { withBase } from '$shared/routing/appBase';
   import { projectsStore } from '$features/projects/presentation/stores/projectsStore.svelte';
   import TagDotStrip from '$features/tag-palette/presentation/components/TagDotStrip.svelte';
   import KebabMenu from '$shared/presentation/components/KebabMenu.svelte';
@@ -41,7 +42,7 @@
            project. Interactive elements inside the card opt out by sitting
            above it with `relative z-10`. -->
       <a
-        href={`/projects/${summary.id}`}
+        href={withBase(`/projects/${summary.id}`)}
         class="block min-w-0 flex-1 after:absolute after:inset-0"
         onclick={markOpened}
       >

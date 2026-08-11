@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
+  import { stripBasePath, withBase } from '$shared/routing/appBase';
   import { tourStore } from '$features/tutorial/presentation/stores/tourStore.svelte';
   import {
     createTargetTracker,
@@ -26,7 +27,7 @@
   const step = $derived(tourStore.currentStep);
   const onCorrectRoute = $derived.by(() => {
     if (!step?.route) return true;
-    return page.url?.pathname === step.route.pathname;
+    return stripBasePath(page.url?.pathname ?? '') === step.route.pathname;
   });
 
   // (Re)create the target tracker whenever the selector changes.
@@ -242,7 +243,7 @@
 
   function handleGoToRoute(): void {
     if (!step?.route) return;
-    void goto(step.route.pathname);
+    void goto(withBase(step.route.pathname));
   }
 </script>
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { withBase } from '$shared/routing/appBase';
   import type { SearchDoc } from '$features/global-search/domain/SearchDoc';
   import { globalSearchStore as store } from '$features/global-search/presentation/stores/globalSearchStore.svelte';
   import { searchKindMeta } from '$features/global-search/presentation/searchKindMeta';
@@ -28,7 +29,7 @@
   }
 
   function navigate(doc: SearchDoc): void {
-    void goto(doc.nav.href);
+    void goto(withBase(doc.nav.href));
     store.close();
     inputRef?.blur();
   }

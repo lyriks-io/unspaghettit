@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { withBase } from '$shared/routing/appBase';
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { syncToastStore, type SyncToast } from './syncToastStore.svelte';
@@ -161,7 +162,7 @@
         <div class="flex shrink-0 items-center gap-1">
           {#if target}
             <a
-              href={target}
+              href={withBase(target)}
               class="rounded-md bg-white/70 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-white hover:text-brand-800"
               onclick={() => syncToastStore.dismiss(toast.id)}
             >

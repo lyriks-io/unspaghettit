@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+  import { withBase } from '$shared/routing/appBase';
   import {
     groupTransitions,
     type FeatureAttribution
@@ -119,7 +120,7 @@
                     <div class="flex flex-wrap gap-1">
                       {#each t.sources as src (src.featureId)}
                         <a
-                          href={`/features/${src.featureId}`}
+                          href={withBase(`/features/${src.featureId}`)}
                           class="rounded-full border border-cyan-100 bg-cyan-50/60 px-2 py-0.5 text-brand-700 hover:bg-cyan-50 hover:underline"
                         >
                           {src.featureName}

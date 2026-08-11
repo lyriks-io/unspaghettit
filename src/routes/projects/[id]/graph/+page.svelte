@@ -1,5 +1,6 @@
 <script lang="ts">
   import { pageTitle } from '$features/app-shell/presentation/pageTitle';
+  import { withBase } from '$shared/routing/appBase';
   import { onDestroy, onMount } from 'svelte';
   import { page } from '$app/stores';
   import { asFeatureId } from '$features/behavior-model/domain/value-objects/ids';
@@ -60,7 +61,7 @@
   <p class="mx-auto max-w-7xl px-4 py-10 text-sm text-red-600">{projectStore.error}</p>
 {:else if !projectStore.project}
   <p class="mx-auto max-w-7xl px-4 py-10 text-sm text-neutral-500">
-    Project not found. <a href="/projects" class="text-brand-700 hover:underline"
+    Project not found. <a href={withBase('/projects')} class="text-brand-700 hover:underline"
       >Back to projects</a
     >
   </p>

@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Runtime base path.** The dashboard can be served under a URL prefix
+  (`unspa dashboard --base-path /behavior`, or `PUBLIC_UNSPA_BASE_PATH`),
+  decided when the server starts rather than when the build runs, so the one
+  prebuilt npm package serves any deployment. This is for path-routed
+  ingresses that put several apps behind a single hostname (e.g. a Cloudflare
+  Tunnel, which cannot route by port): pages, `/api/*`, assets and the Yjs
+  `/sync` WebSocket all answer under the prefix. Unprefixed paths keep working
+  (the prefix is additive), standalone `unspa dashboard` is unchanged, and an
+  invalid prefix falls back to no prefix rather than a half-broken app.
+  Internally the prefix is applied only at the browser edges (`withBase` /
+  `stripBasePath` around a pure `src/shared/routing/basePath.ts`), a reroute
+  hook maps prefixed URLs onto the routes, and the production server strips
+  the prefix in front of the SvelteKit handler; app-internal paths stay
+  app-rooted throughout.
+
 ## [0.16.0] - 2026-07-31
 
 The adoption chain (code → spec) no longer assumes the engine and the codebase

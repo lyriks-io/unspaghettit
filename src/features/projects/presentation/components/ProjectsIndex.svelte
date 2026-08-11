@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { withBase } from '$shared/routing/appBase';
   import { projectsStore } from '$features/projects/presentation/stores/projectsStore.svelte';
   import { featuresStore } from '$features/behavior-model/presentation/stores/featuresStore.svelte';
   import ProjectCard from '$features/projects/presentation/components/ProjectCard.svelte';
@@ -90,7 +91,7 @@
 
   async function handleCreate(name: string, description: string) {
     const id = await projectsStore.create(name, description);
-    await goto(`/projects/${id}`);
+    await goto(withBase(`/projects/${id}`));
   }
 
   let importing = $state(false);
@@ -138,7 +139,7 @@
         message: `Restored project with ${result.featuresImported} feature(s) and ${result.statusesImported} implementation-status sidecar(s).`,
         tone: 'success'
       });
-      await goto(`/projects/${result.projectId}`);
+      await goto(withBase(`/projects/${result.projectId}`));
     } catch (e) {
       const message =
         e instanceof MalformedEnvelopeError

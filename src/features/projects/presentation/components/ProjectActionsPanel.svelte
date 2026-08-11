@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+  import { withBase } from '$shared/routing/appBase';
   import {
     rollupActions,
     type ActionCatalogEntry
@@ -142,7 +143,7 @@
         <div class="overflow-hidden rounded-lg border border-hairline bg-white">
           <div class="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
             <a
-              href={`/features/${group.featureId}`}
+              href={withBase(`/features/${group.featureId}`)}
               class="font-medium text-brand-700 hover:underline">{group.featureName}</a
             >
             <span
@@ -180,7 +181,7 @@
                     <tr class="border-t border-slate-100 align-top">
                       <td class="px-3 py-2">
                         <a
-                          href={`/features/${action.featureId}?tab=build&surface=${action.surfaceId}&panel=actions&focus=action:${action.actionId}`}
+                          href={withBase(`/features/${action.featureId}?tab=build&surface=${action.surfaceId}&panel=actions&focus=action:${action.actionId}`)}
                           class="font-medium text-brand-700 hover:underline">{action.actionName}</a
                         >
                         <p class="mt-0.5 max-w-sm text-xs text-slate-500">{action.intent}</p>

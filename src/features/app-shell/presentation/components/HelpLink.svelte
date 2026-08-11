@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { withBase } from '$shared/routing/appBase';
+
   /** Question-mark icon linking to the tutorial / help page. */
   type Props = {
     dark: boolean;
@@ -9,7 +11,7 @@
 </script>
 
 <a
-  href="/tutorial"
+  href={withBase('/tutorial')}
   aria-label="Help & tutorial"
   title="Help & tutorial"
   class="grid h-9 w-9 place-items-center rounded-md transition {lyriks

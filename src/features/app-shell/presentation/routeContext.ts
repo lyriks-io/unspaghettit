@@ -1,4 +1,5 @@
 import { isEnabled } from '$lib/views/enabled';
+import { stripBasePath } from '$shared/routing/appBase';
 
 /**
  * Route-derived shell facts shared by the root layout and the header, so the
@@ -7,7 +8,7 @@ import { isEnabled } from '$lib/views/enabled';
 
 /** Builder is only "active" when it's both enabled and routed to. */
 export function isBuilderRoute(pathname: string): boolean {
-  return isEnabled('builder') && pathname.startsWith('/builder-mode');
+  return isEnabled('builder') && stripBasePath(pathname).startsWith('/builder-mode');
 }
 
 /**
@@ -16,5 +17,5 @@ export function isBuilderRoute(pathname: string): boolean {
  * so it always spans the same width as the content below.
  */
 export function usesWideContent(pathname: string): boolean {
-  return pathname.startsWith('/features/');
+  return stripBasePath(pathname).startsWith('/features/');
 }

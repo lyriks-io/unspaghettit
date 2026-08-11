@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FeatureVerdict, CheckStatus } from '$features/verification/domain/VerificationVerdict';
+  import { withBase } from '$shared/routing/appBase';
 
   let { verdict }: { verdict: FeatureVerdict } = $props();
 
@@ -49,7 +50,7 @@
                 {#if trace.actionId && trace.surfaceId}
                   <a
                     class="ml-1 whitespace-nowrap text-brand-700 hover:underline"
-                    href={`/features/${verdict.featureId}?surface=${trace.surfaceId}&panel=actions&focus=action:${trace.actionId}`}
+                    href={withBase(`/features/${verdict.featureId}?surface=${trace.surfaceId}&panel=actions&focus=action:${trace.actionId}`)}
                     title="Jump to the violating action"
                   >
                     open ↗

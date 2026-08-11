@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { stripBasePath, withBase } from '$shared/routing/appBase';
 
   /**
    * Primary navigation. Deliberately a single entry: Projects is the
@@ -35,9 +36,9 @@
 
 <nav aria-label="Primary" class="hidden shrink-0 items-center gap-0.5 md:flex">
   {#each primaryNav as item (item.href)}
-    {@const active = item.isActive(page.url.pathname)}
+    {@const active = item.isActive(stripBasePath(page.url.pathname))}
     <a
-      href={item.href}
+      href={withBase(item.href)}
       aria-current={active ? 'page' : undefined}
       class="rounded-md px-2.5 py-1.5 text-sm font-medium transition {active
         ? lyriks

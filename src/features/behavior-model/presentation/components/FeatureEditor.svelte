@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
+  import { withBase } from '$shared/routing/appBase';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
@@ -294,7 +295,7 @@
     }
   ]);
   const sidebarItems = $derived(tabs.map((tab) => ({ id: tab.key, label: tab.label })));
-  const backHref = $derived(queueCtx.project ? `/projects/${queueCtx.project.id}` : '/features');
+  const backHref = $derived(withBase(queueCtx.project ? `/projects/${queueCtx.project.id}` : '/features'));
   const backLabel = $derived(
     queueCtx.project ? `Back to ${queueCtx.project.name}` : 'Back to features'
   );

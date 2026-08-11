@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { withBase } from '$shared/routing/appBase';
   import {
     projectStore,
     type ProjectPanel
@@ -238,7 +239,7 @@
   async function handleCreateFeature(name: string, description: string) {
     const newId = await featuresStore.create(name, description);
     await projectStore.addFeature(newId as FeatureId);
-    await goto(`/features/${newId}`);
+    await goto(withBase(`/features/${newId}`));
   }
 
   async function handleRemoveFeature(id: FeatureId) {
@@ -299,7 +300,7 @@
     <ContextSidebar
       contextLabel="Project"
       contextName={project.name}
-      backHref="/projects"
+      backHref={withBase('/projects')}
       backLabel="Back to projects"
       groups={PANEL_GROUPS}
       activeId={projectStore.activePanel}
@@ -310,21 +311,21 @@
       <header class="mb-6 border-b border-slate-200 pb-6">
         <div class="flex items-center justify-end gap-3">
           <a
-            href={`/projects/${project.id}/digest`}
+            href={withBase(`/projects/${project.id}/digest`)}
             class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
             title="Read a plain-language summary of the whole project"
           >
             Summary
           </a>
           <a
-            href={`/projects/${project.id}/graph`}
+            href={withBase(`/projects/${project.id}/graph`)}
             class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
             title="Open the whole project behavior graph"
           >
             Graph
           </a>
           <a
-            href={`/projects/${project.id}/mcp`}
+            href={withBase(`/projects/${project.id}/mcp`)}
             class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-brand-300 hover:bg-cyan-50 hover:text-brand-800"
             title="Connect AI agents to this project's features via MCP"
           >

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import { withBase } from '$shared/routing/appBase';
   import { asFeatureId } from '$features/behavior-model/domain/value-objects/ids';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import { projectContextStore } from '$features/projects/presentation/stores/projectContextStore.svelte';
@@ -34,7 +35,7 @@
   <div class="mx-auto max-w-7xl px-4 py-10 text-sm text-red-600">{featureStore.error}</div>
 {:else if !featureStore.feature}
   <div class="mx-auto max-w-7xl px-4 py-10 text-sm text-neutral-500">
-    Feature not found. <a href="/projects" class="text-brand-700 underline">Back to projects</a>.
+    Feature not found. <a href={withBase('/projects')} class="text-brand-700 underline">Back to projects</a>.
   </div>
 {:else}
   <main class="w-full px-4 py-6">

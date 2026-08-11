@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { stripBasePath, withBase } from '$shared/routing/appBase';
   import { enabledViews } from '$lib/views/enabled';
   import { isLyriksBrand } from '$features/app-shell/presentation/hostBrand';
 
@@ -31,9 +32,9 @@
       : 'border-slate-200 bg-slate-100'}"
   >
     {#each views as view (view.id)}
-      {@const active = view.matches(page.url.pathname)}
+      {@const active = view.matches(stripBasePath(page.url.pathname))}
       <a
-        href={view.href}
+        href={withBase(view.href)}
         class="rounded-full px-2.5 py-0.5 transition {active
           ? dark
             ? 'bg-slate-700 text-white shadow-sm shadow-black/20'

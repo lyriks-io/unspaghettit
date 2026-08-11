@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { withBase } from '$shared/routing/appBase';
   import { pageTitle } from '$features/app-shell/presentation/pageTitle';
   import TutorialSection from "$features/tutorial/presentation/components/TutorialSection.svelte";
   import CodeBlock from "$features/tutorial/presentation/components/CodeBlock.svelte";
@@ -51,7 +52,7 @@
        the header's Projects nav is hidden, so this in-page link is the only
        route back. `beforeNavigate` re-applies the brand/embed context. -->
   <a
-    href="/projects"
+    href={withBase('/projects')}
     class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-brand-700 transition hover:bg-brand-50 hover:text-brand-800"
   >
     <span aria-hidden="true">&larr;</span>
@@ -97,7 +98,7 @@
           &rarr; Run interactive tutorial
         </button>
         <a
-          href="/projects"
+          href={withBase('/projects')}
           class="block w-full rounded-md bg-slate-900 px-3 py-2 text-center text-xs font-medium text-white"
         >
           Back to projects
@@ -1314,7 +1315,7 @@ unspa dashboard --host 0.0.0.0`}
       {#snippet children()}
         <ul class="ml-5 list-disc space-y-1">
           <li>
-            Open <a href="/projects" class="text-brand-700 underline"
+            Open <a href={withBase('/projects')} class="text-brand-700 underline"
               >your projects</a
             > and remix the e-commerce sample. Try modeling a returns/refunds surface.
           </li>

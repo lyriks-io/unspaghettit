@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+  import { withBase } from '$shared/routing/appBase';
   import { committedActions } from '$features/behavior-model/domain/entities/Action';
   import type { Project } from '$features/projects/domain/entities/Project';
   import {
@@ -277,7 +278,7 @@
                       <span class="mt-[0.6rem] h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" aria-hidden="true"></span>
                       {#if href}
                         <a
-                          {href}
+                          href={withBase(href)}
                           class="group flex-1 rounded-md px-2 py-1 text-sm leading-6 transition hover:bg-brand-50"
                           title={line.sourceElementType
                             ? `Open this ${line.sourceElementType} in the editor`

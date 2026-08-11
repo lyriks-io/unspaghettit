@@ -529,6 +529,7 @@ Everything works with zero configuration; these override behavior when you need 
 | `UNSPA_ALLOWED_HOSTS`           | dashboard       | Comma list of extra `Host` header values the anti-DNS-rebinding guard accepts, beyond loopback.                                                                                                                  |
 | `PUBLIC_UNSPA_VIEWS`            | dashboard       | Enabled views beyond Expert. Normally managed by `unspa view` / `--view`, not set by hand.                                                                                                                       |
 | `PUBLIC_UNSPA_THEME`            | dashboard       | Colour theme id. Normally managed by `unspa theme` / `--theme`.                                                                                                                                                  |
+| `PUBLIC_UNSPA_BASE_PATH`        | dashboard       | Serve the dashboard under a URL prefix (e.g. `/behavior`) for path-routed ingresses that put several apps behind one hostname. Prefer `--base-path`, which sets this. Unprefixed paths keep working, so localhost use never changes. Invalid values fall back to no prefix. |
 | `UNSPA_DASHBOARD_ENDPOINT_FILE` | dashboard + MCP | Advanced / testing: override the path of the live-sync rendezvous file (default `~/.unspa-hub/.dashboard.json`).                                                                                                 |
 
 ## Troubleshooting
