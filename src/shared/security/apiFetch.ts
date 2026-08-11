@@ -1,5 +1,6 @@
 import { authStore } from './authStore.svelte';
 import { promptDialog } from '$shared/presentation/dialogs/dialogStore.svelte';
+import { withBase } from '$shared/routing/appBase';
 
 /**
  * Wrapper around `fetch` that injects the dashboard auth token (when
@@ -54,8 +55,12 @@ export const apiFetch = async (
   input: RequestInfo,
   init?: RequestInit
 ): Promise<Response> => {
+  // Callers pass app-rooted paths ('/api/...'); the runtime base path (when
+  // the dashboard is served under a URL prefix) is applied here, at the one
+  // choke point every HTTP repository funnels through.
+  const target = typeof input === 'string' && input.startsWith('/') ? withBase(input) : input;
   const send = (token: string) =>
-    fetch(input, { ...init, headers: buildHeaders(init, token) });
+    fetch(target, { ...init, headers: buildHeaders(init, token) });
 
   const initialToken = authStore.token;
   const first = await send(initialToken);

@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { createSessionGuard } from './session-guard';
+import { normalizeBasePath, stripBaseFromRequestUrl } from '../src/shared/routing/basePath';
 import { getSyncManager } from '../src/lib/server/sync';
 import { attachSyncWebSocket } from '../src/lib/server/sync/wsServer';
 import {
@@ -66,7 +67,24 @@ const main = async (): Promise<void> => {
     process.stderr.write('[unspa-dashboard] session gate enabled\n');
   }
 
+  // Optional runtime URL prefix (e.g. /behavior) for path-routed ingresses
+  // that put several apps behind one hostname. Stripping here, in front of
+  // the SvelteKit handler, is what makes prefixed asset and API requests
+  // (/behavior/_app/..., /behavior/api/...) reach adapter-node's static
+  // serving and the routes; the client router handles its own side via the
+  // reroute hook in src/hooks.ts. Unprefixed paths pass through untouched,
+  // so the prefix is additive and localhost use never changes.
+  const basePath = normalizeBasePath(process.env.PUBLIC_UNSPA_BASE_PATH);
+  if (basePath.length > 0) {
+    process.stderr.write(
+      `[unspa-dashboard] base path: ${basePath} (unprefixed paths still served)\n`
+    );
+  }
+
   const httpServer = createServer((req, res) => {
+    if (basePath.length > 0 && req.url) {
+      req.url = stripBaseFromRequestUrl(basePath, req.url);
+    }
     if (!guard(req, res)) return;
     handler(req, res, () => {
       // SvelteKit's handler always responds; the next() fallback only fires

@@ -21,6 +21,7 @@ import {
   isOriginCheckEnabled
 } from '../security/auth';
 import { checkLocalUpgrade } from '../security/localGuard';
+import { normalizeBasePath, stripBaseFromRequestUrl } from '../../../shared/routing/basePath';
 
 export const SYNC_WS_PATH = '/sync';
 
@@ -207,6 +208,14 @@ export const attachSyncWebSocket = (
   if (history) wireHistoryFanout(manager, history);
 
   httpServer.on('upgrade', (req: IncomingMessage, socket, head) => {
+    // Same runtime base-path contract as the HTTP funnel in
+    // cli/dashboard-server.ts, which never sees upgrade requests: strip the
+    // prefix when present so /<base>/sync/... and /sync/... both reach the
+    // room logic below (and checkQueryAuth sees the canonical URL).
+    const basePath = normalizeBasePath(process.env.PUBLIC_UNSPA_BASE_PATH);
+    if (basePath.length > 0 && req.url) {
+      req.url = stripBaseFromRequestUrl(basePath, req.url);
+    }
     if (!req.url || !req.url.startsWith(SYNC_WS_PATH + '/')) return;
 
     // Default-on loopback guard: reject a DNS-rebinding page opening a Yjs

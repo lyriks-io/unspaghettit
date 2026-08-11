@@ -7,6 +7,7 @@ import {
   isOriginCheckEnabled
 } from '$lib/server/security/auth';
 import { checkLocalHost, checkLocalOrigin } from '$lib/server/security/localGuard';
+import { stripBasePath } from '$shared/routing/appBase';
 import { parseThemeId } from '$lib/theme/registry';
 
 /**
@@ -29,7 +30,11 @@ import { parseThemeId } from '$lib/theme/registry';
  * {@link checkLocalHost}.
  */
 export const handle: Handle = async ({ event, resolve }) => {
-  const path = event.url.pathname;
+  // In production the entry (cli/dashboard-server.ts) strips the runtime base
+  // path before SvelteKit sees the request, so this is a no-op there; it keeps
+  // the gate honest under `vite dev`/`preview` behind a prefixing proxy, where
+  // no strip runs in front.
+  const path = stripBasePath(event.url.pathname);
   if (path.startsWith('/api/')) {
     if (!checkLocalHost(event.request)) {
       return new Response('Forbidden: host not allowed', { status: 403 });

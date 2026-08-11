@@ -51,6 +51,7 @@ export const runDashboardCommand = async (
     readonly snapshots?: string;
     readonly views?: string;
     readonly theme?: string;
+    readonly basePath?: string;
   }
 ): Promise<number> => {
   const repoRoot = resolve(__dirname, '..', '..');
@@ -105,6 +106,9 @@ export const runDashboardCommand = async (
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (args.port !== undefined) env.PORT = String(args.port);
   env.HOST = host;
+  // URL prefix for path-routed ingresses. The server normalizes and logs it;
+  // an env-set PUBLIC_UNSPA_BASE_PATH still applies when the flag is absent.
+  if (args.basePath !== undefined) env.PUBLIC_UNSPA_BASE_PATH = args.basePath;
   // An explicit --snapshots wins over walk-up discovery for this run by
   // seeding UNSPA_SNAPSHOTS, which discoverSnapshotDirectory treats as the
   // top-priority override. Relative paths resolve against the child's cwd.

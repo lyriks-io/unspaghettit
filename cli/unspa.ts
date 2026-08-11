@@ -145,8 +145,9 @@ program
   .option('-s, --snapshots <dir>', 'Point the dashboard at a specific snapshots folder (sets UNSPA_SNAPSHOTS for this run). Handy for a one-off look at a custom hub or another repo.')
   .option('--view <ids>', 'Comma list of optional views to enable beyond Expert (e.g. "builder"). Expert is always on and is the default; with no extra views the header shows no switcher.')
   .option('--theme <id>', 'Colour theme to boot with (e.g. "classic"). Cosmetic only; overrides the persisted `unspa theme set` choice for this run. The in-app header switcher can still change it live.')
+  .option('--base-path <prefix>', 'Serve the dashboard under a URL prefix (e.g. "/behavior") for path-routed ingresses that put several apps behind one hostname. Sets PUBLIC_UNSPA_BASE_PATH for this run; unprefixed paths keep working.')
   .action(async (opts) => {
-    const code = await runDashboardCommand({ port: opts.port, host: opts.host, snapshots: opts.snapshots, views: opts.view, theme: opts.theme });
+    const code = await runDashboardCommand({ port: opts.port, host: opts.host, snapshots: opts.snapshots, views: opts.view, theme: opts.theme, basePath: opts.basePath });
     process.exit(code);
   });
 

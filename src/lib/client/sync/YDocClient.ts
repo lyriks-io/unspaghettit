@@ -3,6 +3,7 @@ import { decode, encode, type HistoryEntry, type HistoryView } from '../../sync/
 import { ROOM_DOC_FIELD, ROOM_DOC_MAP, type RoomId } from '../../sync/roomId';
 import { identityStore } from '$shared/identity/identityStore.svelte';
 import { authStore } from '$shared/security/authStore.svelte';
+import { withBase } from '$shared/routing/appBase';
 
 /**
  * Browser-side per-room sync client. Lazy-connects a WebSocket to /sync/<roomId>,
@@ -21,7 +22,9 @@ import { authStore } from '$shared/security/authStore.svelte';
  */
 
 const WS_SCHEME = (): string => (location.protocol === 'https:' ? 'wss:' : 'ws:');
-const WS_BASE = (): string => `${WS_SCHEME()}//${location.host}/sync`;
+// The runtime base path (dashboard served under a URL prefix) applies to the
+// WS endpoint too; the server side strips it in wsServer's upgrade listener.
+const WS_BASE = (): string => `${WS_SCHEME()}//${location.host}${withBase('/sync')}`;
 
 const BACKOFF_START_MS = 1000;
 const BACKOFF_MAX_MS = 8000;

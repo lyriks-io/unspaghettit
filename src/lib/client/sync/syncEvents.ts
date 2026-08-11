@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import type { RoomKind } from '../../sync/roomId';
 import { authStore } from '$shared/security/authStore.svelte';
+import { withBase } from '$shared/routing/appBase';
 
 /**
  * Mirrors the server-side SyncEvent shape (syncEventsHub.ts). All fields
@@ -48,9 +49,9 @@ const ensureSource = (): void => {
   // accepts either form. Empty token = no param = unauthenticated SSE
   // (which is fine when the dashboard isn't gated).
   const token = authStore.token;
-  const url = token.length > 0
-    ? `/api/sync/events?token=${encodeURIComponent(token)}`
-    : '/api/sync/events';
+  const url = withBase(
+    token.length > 0 ? `/api/sync/events?token=${encodeURIComponent(token)}` : '/api/sync/events'
+  );
   source = new EventSource(url);
   source.addEventListener('sync', (e) => {
     let evt: SyncEvent;
