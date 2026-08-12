@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-12
+
+Serve the dashboard under a URL prefix decided at boot, so one prebuilt
+package fits behind any path-routed ingress. Nothing changes for a standalone
+`unspa dashboard`: the prefix is opt-in, additive, and off by default.
+
 ### Added
 
 - **Runtime base path.** The dashboard can be served under a URL prefix
@@ -23,6 +29,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   router needs no hook, because SvelteKit's relative paths already compute
   the runtime base from the real browser URL. App-internal paths stay
   app-rooted throughout.
+
+### Changed
+
+- **Dead project links land on the projects list.** A stale project id (a
+  deleted project, or a host application handing out a remapped id) used to
+  render a dead-end "Project not found" stub; it now redirects to the live
+  projects list, with `replaceState` so the Back button stays usable. Load
+  errors still render in place rather than being hidden by a redirect.
 
 ## [0.16.0] - 2026-07-31
 
