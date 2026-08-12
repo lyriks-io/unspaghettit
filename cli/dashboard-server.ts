@@ -71,9 +71,14 @@ const main = async (): Promise<void> => {
   // that put several apps behind one hostname. Stripping here, in front of
   // the SvelteKit handler, is what makes prefixed asset and API requests
   // (/behavior/_app/..., /behavior/api/...) reach adapter-node's static
-  // serving and the routes; the client router handles its own side via the
-  // reroute hook in src/hooks.ts. Unprefixed paths pass through untouched,
-  // so the prefix is additive and localhost use never changes.
+  // serving and the routes. The client router needs NO hook of its own:
+  // SvelteKit's relative paths (paths.relative, the default) make the shell
+  // compute its runtime base from the real browser URL, so at
+  // /behavior/projects/x it resolves base='/behavior' and matches routes
+  // against the rest. (A reroute hook stripping the prefix on top of that
+  // double-strips and 404s: do not add one back.) Unprefixed paths pass
+  // through untouched, so the prefix is additive and localhost use never
+  // changes.
   const basePath = normalizeBasePath(process.env.PUBLIC_UNSPA_BASE_PATH);
   if (basePath.length > 0) {
     process.stderr.write(
@@ -83,6 +88,15 @@ const main = async (): Promise<void> => {
 
   const httpServer = createServer((req, res) => {
     if (basePath.length > 0 && req.url) {
+      // The BARE prefix must redirect to its slash form, not serve: the shell
+      // served at /behavior would compute runtime base '' (its relative root
+      // resolves against the last segment) and every route would 404.
+      if (req.url === basePath || req.url.startsWith(`${basePath}?`)) {
+        res.statusCode = 308;
+        res.setHeader('location', `${basePath}/${req.url.slice(basePath.length)}`);
+        res.end();
+        return;
+      }
       req.url = stripBaseFromRequestUrl(basePath, req.url);
     }
     if (!guard(req, res)) return;

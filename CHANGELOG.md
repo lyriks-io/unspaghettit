@@ -18,9 +18,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   (the prefix is additive), standalone `unspa dashboard` is unchanged, and an
   invalid prefix falls back to no prefix rather than a half-broken app.
   Internally the prefix is applied only at the browser edges (`withBase` /
-  `stripBasePath` around a pure `src/shared/routing/basePath.ts`), a reroute
-  hook maps prefixed URLs onto the routes, and the production server strips
-  the prefix in front of the SvelteKit handler; app-internal paths stay
+  `stripBasePath` around a pure `src/shared/routing/basePath.ts`) and the
+  production server strips it in front of the SvelteKit handler; the client
+  router needs no hook, because SvelteKit's relative paths already compute
+  the runtime base from the real browser URL. App-internal paths stay
   app-rooted throughout.
 
 ## [0.16.0] - 2026-07-31
