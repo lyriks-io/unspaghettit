@@ -1,6 +1,7 @@
 <script lang="ts">
   import { pageTitle } from '$features/app-shell/presentation/pageTitle';
   import { withBase } from '$shared/routing/appBase';
+  import { goto } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { projectStore } from '$features/projects/presentation/stores/projectStore.svelte';
@@ -17,6 +18,14 @@
     if (!raw) return;
     const id = asProjectId(raw);
     await projectStore.load(id);
+    if (!projectStore.project && !projectStore.error) {
+      // A dead link (stale id from a host application, deleted project) lands
+      // on the live projects list instead of a dead-end page; replaceState
+      // keeps the browser's Back button out of the redirect loop. Load errors
+      // still render in place: they are transient and a redirect would hide them.
+      void goto(withBase('/projects'), { replaceState: true });
+      return;
+    }
     await projectFeaturesStore.loadAllSummaries();
     if (projectStore.project) {
       await projectFeaturesStore.load(projectStore.project.featureIds);
@@ -64,8 +73,11 @@
 {:else if projectStore.error}
   <p class="mx-auto max-w-7xl px-4 py-10 text-sm text-red-600">{projectStore.error}</p>
 {:else if !projectStore.project}
+  <!-- Momentary: onMount redirects to the projects list. The link is the
+       fallback if that navigation ever fails. -->
   <p class="mx-auto max-w-7xl px-4 py-10 text-sm text-neutral-500">
-    Project not found. <a href={withBase('/projects')} class="text-brand-700 hover:underline">← Back to projects</a>
+    Project not found; taking you to the list.
+    <a href={withBase('/projects')} class="text-brand-700 hover:underline">← Back to projects</a>
   </p>
 {:else}
   <ProjectEditor />
