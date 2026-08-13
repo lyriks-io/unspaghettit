@@ -51,7 +51,14 @@ export class JsonFolderProjectRepository implements ProjectRepository {
   }
 
   async get(id: ProjectId): Promise<Project | null> {
-    const found = this.readAll().find((s) => s.project.id === id);
+    const all = this.readAll();
+    const found =
+      all.find((s) => s.project.id === id) ??
+      // Folder name is the canonical slug (see readAll). A host mirroring
+      // snapshots into <key>/<key>.project.json may stamp a different id
+      // inside the file; a deep link carrying the folder key still deserves
+      // to land on the project. Content id stays the primary key.
+      all.find((s) => s.slug === id);
     return found ? found.project : null;
   }
 
