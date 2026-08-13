@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-08-13
+
+Dashboard-only patch: project deep links now tolerate host-mirrored stores
+where the folder key and the id inside the file disagree.
+
+### Fixed
+
+- **Project lookup falls back to the folder name.** A host application
+  mirroring snapshots into the store may key the project folder by a shared
+  identity while a legacy writer stamped a different id inside the file. The
+  repository resolved projects by the content id only, so a deep link carrying
+  the folder key bounced to the projects list instead of landing on its
+  project. `GET /api/projects/:id` (and every read behind it) now resolves by
+  the content id first, then by the folder name; the content id stays the
+  primary key and wins any collision.
+
 ## [0.17.0] - 2026-08-12
 
 Serve the dashboard under a URL prefix decided at boot, so one prebuilt
