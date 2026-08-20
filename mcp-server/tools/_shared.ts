@@ -131,6 +131,38 @@ export const STATE_TYPE_INPUT_VALUES = [
   'text'
 ] as const;
 
+/**
+ * The same list for an action PARAMETER, which additionally carries the format
+ * types (date, email, geolocation, ...). Parameters used to accept the six
+ * canonical types alone, so a natural `type:"int"` bounced off the Zod enum
+ * even though the identical value works on a state path. One real build hit
+ * exactly that and modelled its integer inputs as states with `add`
+ * expressions, which is a worse model written to satisfy a validator.
+ */
+export const PARAMETER_TYPE_INPUT_VALUES = [
+  'string',
+  'number',
+  'boolean',
+  'enum',
+  'object',
+  'array',
+  'date',
+  'time',
+  'timestamp',
+  'url',
+  'email',
+  'geolocation',
+  'int',
+  'integer',
+  'float',
+  'double',
+  'long',
+  'decimal',
+  'bool',
+  'str',
+  'text'
+] as const;
+
 const STATE_TYPE_ALIASES: Readonly<Record<string, string>> = {
   int: 'number',
   integer: 'number',

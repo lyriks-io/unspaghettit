@@ -1360,6 +1360,63 @@ describe('MCP server', () => {
     await server.close();
   });
 
+  it('folds an int parameter type the same way it folds an int state type', async () => {
+    // Parameters took the six canonical types alone, so `type:"int"` bounced off
+    // the Zod enum while the identical value worked on a state path. A real
+    // build modelled its integer inputs as states with `add` expressions to get
+    // around it, which is a worse model written to satisfy a validator.
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Basket', description: 'Holds a quantity the caller supplies.' }
+      })
+    ) as { id: string };
+
+    const result = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            {
+              kind: 'add_surface',
+              ref: 'screen',
+              name: 'Screen',
+              type: 'screen',
+              description: 'Screen holding the basket.'
+            },
+            {
+              kind: 'add_action',
+              ref: 'add',
+              surfaceRef: 'screen',
+              name: 'Add lines',
+              intent: 'Add a number of lines to the basket.',
+              description: 'Adds a number of lines to the basket.'
+            },
+            {
+              kind: 'add_parameter',
+              surfaceRef: 'screen',
+              actionRef: 'add',
+              name: 'quantity',
+              type: 'int',
+              required: true,
+              defaultValue: 0,
+              description: 'How many lines to add.'
+            }
+          ]
+        }
+      })
+    ) as { ok: boolean };
+    expect(result.ok).toBe(true);
+
+    const persisted = await repo.get(created.id as never);
+    const parameter = persisted?.surfaces[0]?.actions[0]?.parameters[0];
+    expect(parameter?.type).toBe('number');
+    expect(parameter?.defaultValue).toBe(0);
+    await server.close();
+  });
+
   it('reports a clear error when a scenario expectedAssertion omits its path', async () => {
     const { client, server } = await setup();
     const created = parseTextContent(

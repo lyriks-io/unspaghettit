@@ -15,22 +15,18 @@ import {
   asValueSetId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '../../src/features/behavior-model/domain/value-objects/StatePath';
-import { coerceScalarByType, runMutation, type ToolDeps } from './_shared';
+import {
+  PARAMETER_TYPE_INPUT_VALUES,
+  coerceScalarByType,
+  normalizeStateType,
+  runMutation,
+  type ToolDeps
+} from './_shared';
 
-const parameterTypeSchema = z.enum([
-  'string',
-  'number',
-  'boolean',
-  'enum',
-  'object',
-  'array',
-  'date',
-  'time',
-  'timestamp',
-  'url',
-  'email',
-  'geolocation'
-] as const);
+// Accepts the synonyms a state path already takes (`int`, `bool`, `str`, ...);
+// every write path below folds them with `normalizeStateType` before the
+// validator sees them.
+const parameterTypeSchema = z.enum(PARAMETER_TYPE_INPUT_VALUES);
 
 export const registerParameterTools = (deps: ToolDeps): void => {
   const { server, ids } = deps;
@@ -62,7 +58,7 @@ export const registerParameterTools = (deps: ToolDeps): void => {
       const param: Parameter = {
         id: asParameterId(ids()),
         name: input.name,
-        type: input.type as ParameterType,
+        type: normalizeStateType(input.type) as ParameterType,
         required: input.required,
         description: input.description,
         ...(input.enumValues ? { enumValues: input.enumValues } : {}),
@@ -71,7 +67,7 @@ export const registerParameterTools = (deps: ToolDeps): void => {
           ? {
               defaultValue: coerceScalarByType(
                 input.defaultValue,
-                input.type
+                normalizeStateType(input.type) as string | undefined
               ) as Parameter['defaultValue']
             }
           : {}),
@@ -124,7 +120,9 @@ export const registerParameterTools = (deps: ToolDeps): void => {
     async (input) => {
       const patch: Partial<Parameter> = {
         ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.type !== undefined ? { type: input.type as ParameterType } : {}),
+        ...(input.type !== undefined
+          ? { type: normalizeStateType(input.type) as ParameterType }
+          : {}),
         ...(input.required !== undefined ? { required: input.required } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.enumValues !== undefined ? { enumValues: input.enumValues } : {}),
@@ -135,7 +133,7 @@ export const registerParameterTools = (deps: ToolDeps): void => {
           ? {
               defaultValue: coerceScalarByType(
                 input.defaultValue,
-                input.type
+                normalizeStateType(input.type) as string | undefined
               ) as Parameter['defaultValue']
             }
           : {}),

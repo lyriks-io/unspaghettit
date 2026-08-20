@@ -103,7 +103,7 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
       const param: Parameter = {
         id: asParameterId(mintId()),
         name: op.name as string,
-        type: op.type as Parameter['type'],
+        type: normalizeStateType(op.type) as Parameter['type'],
         required: op.required as boolean,
         ...(typeof op.description === 'string' ? { description: op.description } : {}),
         ...(Array.isArray(op.enumValues) ? { enumValues: op.enumValues as readonly string[] } : {}),
@@ -136,7 +136,9 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
         asParameterId(op.parameterId as string),
         {
           ...(typeof op.name === 'string' ? { name: op.name } : {}),
-          ...(typeof op.type === 'string' ? { type: op.type as Parameter['type'] } : {}),
+          ...(typeof op.type === 'string'
+            ? { type: normalizeStateType(op.type) as Parameter['type'] }
+            : {}),
           ...(typeof op.required === 'boolean' ? { required: op.required } : {}),
           ...(typeof op.description === 'string' ? { description: op.description } : {}),
           ...(Array.isArray(op.enumValues)
