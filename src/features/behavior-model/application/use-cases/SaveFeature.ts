@@ -1,6 +1,7 @@
 import type { Clock } from '$shared/domain/Clock';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import { introducedValidationErrors } from '$features/behavior-model/domain/services/FeatureValidator';
+import { stampElementVersions } from '$features/behavior-model/domain/services/FeatureElementVersions';
 import type { FeatureRepository } from '../ports/FeatureRepository';
 import { FeatureValidationError } from './MutateFeature';
 
@@ -24,7 +25,8 @@ export const saveFeatureUseCase = (deps: {
         introduced
       );
     }
-    const next: Feature = { ...feature, updatedAt: deps.clock() };
+    const now = deps.clock();
+    const next: Feature = stampElementVersions(prior, { ...feature, updatedAt: now }, now);
     await deps.repository.save(next);
     return next;
   };

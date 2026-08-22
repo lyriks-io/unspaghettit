@@ -12,6 +12,7 @@ import { scoreFeature } from '../../src/features/maturity/domain/MaturityScorer'
 import { scoreFeatureTool } from '../../src/features/mcp-tools/application/tools/scoreFeature';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
+import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
 import { applyOps } from './batch-ops/applyOps';
 import type { Op } from './batch-ops/opHelpers';
 import { errorText, text, type ToolDeps } from './_shared';
@@ -194,7 +195,11 @@ export const registerBatchTool = (deps: ToolDeps): void => {
               : 'Validation failed. The batch was NOT applied. Inspect `validation.errors` for per-issue details and `refs` for the ids that would have been minted. Re-run with `dryRun: true` to iterate without committing.'
           });
         }
-        const saved: Feature = { ...next, updatedAt: clock() };
+        // Stamp the elements this batch actually changed (see
+        // FeatureElementVersions), so drift can name them instead of
+        // implicating every audited entity of the feature.
+        const now = clock();
+        const saved: Feature = stampElementVersions(current, { ...next, updatedAt: now }, now);
         await repo.save(saved);
         const codegen = maybeAutoGenerateTypes(saved, repoContext);
         return text({

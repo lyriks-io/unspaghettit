@@ -5,6 +5,7 @@ import { normalizeFeatureEmittedEvents } from '$features/behavior-model/domain/s
 import { normalizeFeatureExpressions } from '$features/behavior-model/domain/services/FeatureExpressionNormalizer';
 import { normalizeFeatureSharedState } from '$features/behavior-model/domain/services/FeatureSharedStateNormalizer';
 import { introducedValidationErrors } from '$features/behavior-model/domain/services/FeatureValidator';
+import { stampElementVersions } from '$features/behavior-model/domain/services/FeatureElementVersions';
 import type { FeatureRepository } from '../ports/FeatureRepository';
 
 /** The shared normalization pipeline applied before validation + save. */
@@ -83,7 +84,10 @@ export const mutateFeatureUseCase = (deps: {
       );
     }
 
-    const next: Feature = { ...transformed, updatedAt: deps.clock() };
+    // Stamp the elements this write actually changed, so drift can name them
+    // instead of implicating the whole feature. See FeatureElementVersions.
+    const now = deps.clock();
+    const next: Feature = stampElementVersions(current, { ...transformed, updatedAt: now }, now);
     await deps.repository.save(next);
     return next;
   };

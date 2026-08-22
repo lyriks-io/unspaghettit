@@ -4,6 +4,7 @@ import type { Feature } from '../../src/features/behavior-model/domain/entities/
 import type { Persona } from '../../src/features/behavior-model/domain/entities/Persona';
 import type { Resource } from '../../src/features/behavior-model/domain/entities/Resource';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
+import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
 import type { Project } from '../../src/features/projects/domain/entities/Project';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import {
@@ -229,7 +230,11 @@ export const registerProjectLibraryTools = (deps: ToolDeps): void => {
         // outcome worth ordering against.
         await projectRepo.save({ ...nextProject, updatedAt: clock() });
         for (const toSave of [promotedSource, ...siblingSaves]) {
-          await repo.save({ ...toSave, updatedAt: clock() });
+          // Re-read the prior so element stamps move only for what this
+          // promotion actually rewrote (see FeatureElementVersions).
+          const now = clock();
+          const prior = await repo.get(toSave.id);
+          await repo.save(stampElementVersions(prior, { ...toSave, updatedAt: now }, now));
         }
 
         return text({
@@ -282,7 +287,10 @@ export const registerProjectLibraryTools = (deps: ToolDeps): void => {
             `Project ${project.id} has no ${kind} "${id}" in its library. Call list_project_library for the real ids, or promote_to_project_library to put one there.`
           );
         }
-        await repo.save({ ...linkLibraryRef(feature, kind, id), updatedAt: clock() });
+        const linkedAt = clock();
+        await repo.save(
+          stampElementVersions(feature, { ...linkLibraryRef(feature, kind, id), updatedAt: linkedAt }, linkedAt)
+        );
         return text({ ok: true, featureId: String(feature.id), kind, id });
       } catch (e) {
         return errorText(`link_project_definition failed: ${(e as Error).message}`);
@@ -302,7 +310,10 @@ export const registerProjectLibraryTools = (deps: ToolDeps): void => {
         const expandedFeatureId = await expandFeatureId(repo, featureId);
         const feature = await repo.get(asFeatureId(expandedFeatureId));
         if (!feature) return errorText(`Feature ${featureId} not found.`);
-        await repo.save({ ...unlinkLibraryRef(feature, kind, id), updatedAt: clock() });
+        const unlinkedAt = clock();
+        await repo.save(
+          stampElementVersions(feature, { ...unlinkLibraryRef(feature, kind, id), updatedAt: unlinkedAt }, unlinkedAt)
+        );
         return text({ ok: true, featureId: String(feature.id), kind, id });
       } catch (e) {
         return errorText(`unlink_project_definition failed: ${(e as Error).message}`);

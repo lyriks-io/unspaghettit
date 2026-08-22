@@ -6,6 +6,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Per-element spec versions.** Every feature now carries `elementVersions`, a
+  map from behavioral-index key (`"<type>:<id-or-path>"`) to the ISO time that
+  element last actually changed. Every write stamps only what its diff touched:
+  a rule edit moves the rule and leaves its action and surface alone. Children
+  that hold their own key are excluded from a parent's digest, and scenarios are
+  keyed apart from the action they test, so adding a test does not invalidate the
+  code mapped to that action.
+
+### Changed
+
+- **`get_drift` answers per element.** Each entry is judged against the current
+  version of the exact element it maps, so a changed rule no longer marks every
+  audited entity of its feature stale. Stale rows carry a new `scope` field:
+  `"element"` (this entity moved, real evidence) or `"feature"` (only the
+  feature-wide stamp was available, so the row is suspect by association).
+
+  Backward compatible: `.unspa.json` is untouched and needs no re-seed, a
+  snapshot with no stamps behaves exactly as before and reports
+  `scope: "feature"`, and the first write after upgrading calibrates a feature by
+  stamping its untouched elements with its own `updatedAt`, an upper bound that
+  can only reproduce the coarse signal, never hide a change.
+
 ## [0.17.1] - 2026-08-13
 
 Dashboard-only patch: project deep links now tolerate host-mirrored stores

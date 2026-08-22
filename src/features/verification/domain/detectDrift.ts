@@ -1,4 +1,5 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import { elementVersionOf } from '$features/behavior-model/domain/services/FeatureElementVersions';
 import type { DriftEntry, DriftReport, OrphanEntry } from './DriftReport';
 import type { IndexedImplementation } from './IndexedImplementation';
 
@@ -8,10 +9,13 @@ import type { IndexedImplementation } from './IndexedImplementation';
  * been edited since the entry was last audited — meaning the implementation was
  * mapped against an older spec and is now suspect.
  *
- * The signal is deliberately coarse and honest: `feature.updatedAt` moves on ANY
- * edit to the feature, so a rule change marks every audited entity in that
- * feature as worth re-checking. That's the documented contract ("compare
- * entry.specVersion vs feature.updatedAt for spec drift") made executable.
+ * Resolution is per ELEMENT when the feature carries element stamps (see
+ * FeatureElementVersions): a changed rule marks that rule's entry stale and
+ * leaves its neighbours alone, and each stale entry reports `scope: "element"`.
+ * A snapshot written before those stamps existed, or an element that has never
+ * been stamped, falls back to `feature.updatedAt`, which moves on ANY edit and
+ * therefore implicates every audited entity of the feature. Those entries report
+ * `scope: "feature"`, so a reader can tell evidence from association.
  *
  * Pure: no clock, no I/O. Comparison is by parsed timestamp so format quirks
  * (trailing Z, millis) don't produce false positives; an unparseable stamp is
@@ -142,8 +146,13 @@ export const detectDrift = (
       continue;
     }
 
+    // The element's own stamp when the feature carries one, so an edit to a
+    // neighbouring rule stops implicating this entry. Falls back to the
+    // feature-wide stamp for snapshots written before per-element versions.
+    const elementVersion = elementVersionOf(owner.feature, entry.key);
+    const currentVersion = elementVersion ?? String(owner.feature.updatedAt);
     const audited = Date.parse(entry.auditedSpecVersion);
-    const current = Date.parse(String(owner.feature.updatedAt));
+    const current = Date.parse(currentVersion);
     if (Number.isNaN(audited) || Number.isNaN(current)) {
       unversioned.push(entry.key);
       continue;
@@ -157,7 +166,8 @@ export const detectDrift = (
         featureName: owner.feature.name,
         status: entry.status,
         auditedSpecVersion: entry.auditedSpecVersion,
-        currentSpecVersion: String(owner.feature.updatedAt)
+        currentSpecVersion: currentVersion,
+        scope: elementVersion ? 'element' : 'feature'
       });
     }
   }

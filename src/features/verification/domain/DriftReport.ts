@@ -15,8 +15,16 @@ export type DriftEntry = {
   readonly status: IndexedImplementationStatus;
   /** Spec version the code was audited against. */
   readonly auditedSpecVersion: string;
-  /** Current spec version (the owning feature's `updatedAt`). */
+  /** Current spec version: the ELEMENT's own stamp when it carries one, the
+   *  owning feature's `updatedAt` otherwise. */
   readonly currentSpecVersion: string;
+  /**
+   * Which of those two answered. `element` means this exact entity changed after
+   * the audit. `feature` means only the feature-wide stamp was available (a
+   * snapshot written before per-element versions, or an element that has never
+   * been stamped), so the entry is suspect by association, not by evidence.
+   */
+  readonly scope: 'element' | 'feature';
 };
 
 /** An index key that resolves to no spec entity — renamed or removed under it. */
@@ -26,7 +34,7 @@ export type OrphanEntry = {
 };
 
 export type DriftReport = {
-  /** Audited entries whose feature changed after they were last audited. */
+  /** Audited entries whose spec changed after they were last audited. */
   readonly stale: readonly DriftEntry[];
   /** Audited entries with no `auditedSpecVersion` — drift can't be judged, re-audit to stamp one. */
   readonly unversioned: readonly string[];

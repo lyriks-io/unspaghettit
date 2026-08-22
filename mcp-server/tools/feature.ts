@@ -8,6 +8,7 @@ import { normalizeFeatureRuleCategories } from '../../src/features/behavior-mode
 import { normalizeFeatureSharedState } from '../../src/features/behavior-model/domain/services/FeatureSharedStateNormalizer';
 import { introducedValidationErrors } from '../../src/features/behavior-model/domain/services/FeatureValidator';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
+import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
 import { addTag, normalizeTags, removeTag } from '../../src/shared/domain/Tags';
 import { setCoreTag } from '../../src/shared/domain/coreFeatureTag';
 import { ack, errorText, text, writeErrorText, type ToolDeps } from './_shared';
@@ -285,7 +286,8 @@ export const registerFeatureTools = (deps: ToolDeps): void => {
             `Save would introduce new validation errors (pre-existing issues are not blocking):\n - ${introduced.join('\n - ')}`
           );
         }
-        const next: Feature = { ...candidate, updatedAt: clock() };
+        const now = clock();
+        const next: Feature = stampElementVersions(prior, { ...candidate, updatedAt: now }, now);
         await repo.save(next);
         return text(ack(next.id, next.updatedAt));
       } catch (e) {

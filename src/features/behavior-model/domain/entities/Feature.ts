@@ -130,4 +130,12 @@ export type Feature = {
   readonly nonGoals?: readonly string[];
   readonly createdAt: string;
   readonly updatedAt: string;
+  /**
+   * When each element of this feature last changed, keyed like the behavioral
+   * index (`"<type>:<id-or-path>"`). Written by every save; see
+   * `FeatureElementVersions`. Optional for backward compatibility: absent means
+   * "never stamped", and readers fall back to `updatedAt`, which is the coarse
+   * signal this refines.
+   */
+  readonly elementVersions?: Readonly<Record<string, string>>;
 };
