@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-24
+
+Drift stops implicating a whole feature when one element moved, and the
+index stops hiding a key that several features share. Both are additive:
+`.unspa.json` is untouched, no re-seed is needed, and a snapshot written
+before this behaves exactly as it did.
+
 ### Added
 
 - **Per-element spec versions.** Every feature now carries `elementVersions`, a
