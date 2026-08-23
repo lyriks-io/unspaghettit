@@ -16,6 +16,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   keyed apart from the action they test, so adding a test does not invalidate the
   code mapped to that action.
 
+- **`sync_from_index` names the keys several features share.** The index is a
+  flat map and a state path is not unique across features, so seeding feature by
+  feature and merging the results silently keeps the last write: one entry claims
+  to locate an entity that lives in many. Every surviving key still resolved, so
+  orphans stayed empty and gaps read clean. The response now carries a `shared`
+  block naming each such key and every feature that declares it. Reported, never
+  fatal: `ok` is unchanged, because sharing a state path is legitimate modelling
+  and the collision is the format's limit.
+
 ### Changed
 
 - **`get_drift` answers per element.** Each entry is judged against the current

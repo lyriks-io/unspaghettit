@@ -2,7 +2,14 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildExpectedIndexKeys, findOrphanKeys, healIndexLines } from './implementationStatus';
+import {
+  buildExpectedIndexKeys,
+  buildKeyOwners,
+  findOrphanKeys,
+  findSharedKeys,
+  healIndexLines
+} from './implementationStatus';
+import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import type { BehavioralIndex } from '../repo-link';
 
 const writeFixture = (root: string, relPath: string, content: string): void => {
@@ -265,5 +272,72 @@ describe('buildExpectedIndexKeys', () => {
     }
 
     expect(keys.has('action:ghost')).toBe(false);
+  });
+});
+
+describe('findSharedKeys', () => {
+  /** Two features that both declare `session.role`, plus one id each. */
+  const feature = (id: string, actionId: string): Feature =>
+    ({
+      id,
+      name: id,
+      surfaces: [
+        {
+          id: `srf-${id}`,
+          name: 'S',
+          type: 'screen',
+          stateDefinitions: [{ id: `sd-${id}`, path: 'session.role', type: 'string' }],
+          actions: [
+            {
+              id: actionId,
+              name: 'A',
+              intent: 'i',
+              parameters: [],
+              requiredStates: [],
+              rules: [],
+              invariants: [],
+              effects: [],
+              emittedEvents: [],
+              transitions: []
+            }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: []
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: 'x',
+      updatedAt: 'x'
+    }) as unknown as Feature;
+
+  const features = [feature('feat-a', 'a1b2c3d4'), feature('feat-b', 'deadbeef')];
+
+  it('names the key and every feature that declares it', () => {
+    const shared = findSharedKeys(
+      { 'state:session.role': indexEntry(), 'action:a1b2c3d4': indexEntry() },
+      features
+    );
+
+    expect(shared).toHaveLength(1);
+    expect(shared[0]?.key).toBe('state:session.role');
+    expect(shared[0]?.featureIds).toEqual(['feat-a', 'feat-b']);
+    expect(shared[0]?.hint).toMatch(/ONE entry/);
+  });
+
+  it('stays quiet about a shared key the index does not carry', () => {
+    expect(findSharedKeys({ 'action:a1b2c3d4': indexEntry() }, features)).toEqual([]);
+  });
+
+  it('stays quiet when nothing is shared', () => {
+    expect(findSharedKeys({ 'action:a1b2c3d4': indexEntry() }, [features[0]!])).toEqual([]);
+  });
+
+  it('keeps buildExpectedIndexKeys answering the same set it always did', () => {
+    const owners = buildKeyOwners(features);
+    expect(buildExpectedIndexKeys(features)).toEqual(new Set(owners.keys()));
+    expect(owners.get('state:session.role')).toEqual(['feat-a', 'feat-b']);
   });
 });

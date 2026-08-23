@@ -289,28 +289,73 @@ const HEX_ID_RE = /^[a-f0-9]{8}$|^[a-f0-9-]{36}$/i;
  * `transition:<id>`, and declared-but-not-yet-emitted `event:<name>`.
  * Flagging those as orphans would punish users for following the docs.
  */
-export const buildExpectedIndexKeys = (features: readonly Feature[]): Set<string> => {
-  const expectedKeys = new Set<string>();
+export const buildKeyOwners = (features: readonly Feature[]): Map<string, string[]> => {
+  const owners = new Map<string, string[]>();
   for (const exp of features) {
-    for (const inv of exp.featureInvariants ?? []) expectedKeys.add(`invariant:${String(inv.id)}`);
-    for (const ev of exp.events ?? []) expectedKeys.add(`event:${String(ev.name)}`);
-    for (const entity of exp.entities ?? []) expectedKeys.add(`entity:${String(entity.id)}`);
+    const featureId = String(exp.id);
+    const own = (key: string) => {
+      const list = owners.get(key);
+      if (!list) owners.set(key, [featureId]);
+      else if (!list.includes(featureId)) list.push(featureId);
+    };
+    for (const inv of exp.featureInvariants ?? []) own(`invariant:${String(inv.id)}`);
+    for (const ev of exp.events ?? []) own(`event:${String(ev.name)}`);
+    for (const entity of exp.entities ?? []) own(`entity:${String(entity.id)}`);
     for (const surface of exp.surfaces) {
-      expectedKeys.add(`surface:${String(surface.id)}`);
-      for (const sd of surface.stateDefinitions) expectedKeys.add(`state:${String(sd.path)}`);
-      for (const r of surface.rules) expectedKeys.add(`surface_rule:${String(r.id)}`);
-      for (const inv of surface.invariants) expectedKeys.add(`surface_invariant:${String(inv.id)}`);
-      for (const t of surface.transitions) expectedKeys.add(`transition:${String(t.id)}`);
+      own(`surface:${String(surface.id)}`);
+      for (const sd of surface.stateDefinitions) own(`state:${String(sd.path)}`);
+      for (const r of surface.rules) own(`surface_rule:${String(r.id)}`);
+      for (const inv of surface.invariants) own(`surface_invariant:${String(inv.id)}`);
+      for (const t of surface.transitions) own(`transition:${String(t.id)}`);
       for (const action of surface.actions) {
-        expectedKeys.add(`action:${String(action.id)}`);
-        for (const ev of action.emittedEvents) expectedKeys.add(`event:${String(ev)}`);
-        for (const r of action.rules) expectedKeys.add(`rule:${String(r.id)}`);
-        for (const inv of action.invariants) expectedKeys.add(`invariant:${String(inv.id)}`);
-        for (const t of action.transitions) expectedKeys.add(`transition:${String(t.id)}`);
+        own(`action:${String(action.id)}`);
+        for (const ev of action.emittedEvents) own(`event:${String(ev)}`);
+        for (const r of action.rules) own(`rule:${String(r.id)}`);
+        for (const inv of action.invariants) own(`invariant:${String(inv.id)}`);
+        for (const t of action.transitions) own(`transition:${String(t.id)}`);
       }
     }
   }
-  return expectedKeys;
+  return owners;
+};
+
+export const buildExpectedIndexKeys = (features: readonly Feature[]): Set<string> =>
+  new Set(buildKeyOwners(features).keys());
+
+export type SharedKey = {
+  readonly key: string;
+  readonly featureIds: readonly string[];
+  readonly hint: string;
+};
+
+/**
+ * Index keys that SEVERAL features declare.
+ *
+ * The index is a flat map and a key carries an id or a path, not the feature it
+ * belongs to. Ids are minted unique, but a state path is not: `session.role`
+ * declared in fourteen features is ONE key. An author seeding feature by feature
+ * merges the results into one object, the last write wins, and nothing complains:
+ * every surviving key still resolves, so orphans stay empty and gaps read clean
+ * while the entry names a single file for an entity that lives in many.
+ *
+ * Reported, never fatal: sharing a state path across features is legitimate
+ * modelling, and the collision is the index format's limit, not the author's
+ * mistake. `ok` is deliberately left alone.
+ */
+export const findSharedKeys = (
+  index: Readonly<Record<string, unknown>>,
+  features: readonly Feature[]
+): SharedKey[] => {
+  const shared: SharedKey[] = [];
+  for (const [key, featureIds] of buildKeyOwners(features)) {
+    if (featureIds.length < 2 || !(key in index)) continue;
+    shared.push({
+      key,
+      featureIds,
+      hint: `${featureIds.length} features declare this key, and the index holds ONE entry for it: its file and line describe whichever feature was seeded last. Coverage and drift for the others resolve to that same location.`
+    });
+  }
+  return shared;
 };
 
 /**
@@ -642,7 +687,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'sync_from_index',
     {
       description:
-        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and code snippets are then skipped, since both need the real files). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
+        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and code snippets are then skipped, since both need the real files). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `shared` block lists keys that SEVERAL features declare (a state path is not unique across features): the index holds one entry per key, so its file and line describe whichever feature was seeded last, and coverage and drift for the others resolve to that same location. Reported, never fatal, and it does not affect `ok`. The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
       inputSchema: { ...inlineIndexSchema }
     },
     async ({ index: inlineIndex, projectId: inlineProjectId }) => {
@@ -864,6 +909,8 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       // entity. Pre-0.1.5 these were silently ignored, masking wrong-format
       // keys (e.g. `action:add-to-cart` when the spec uses 8-char hex ids).
       const orphans = findOrphanKeys(index, expectedKeys);
+      // Keys several features declare: one entry cannot describe them all.
+      const shared = findSharedKeys(index, features);
 
       // `ok` is false when ANY of these hold: a per-entity report failed,
       // an index entry didn't match a spec entity, OR nothing landed at all
@@ -894,6 +941,10 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
           orphans: {
             total: orphans.length,
             entries: orphans
+          },
+          shared: {
+            total: shared.length,
+            entries: shared
           },
           acks
         })
