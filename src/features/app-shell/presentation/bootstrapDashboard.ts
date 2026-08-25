@@ -3,6 +3,7 @@ import { authStore } from '$shared/security/authStore.svelte';
 import { themeStore } from '$lib/theme/themeStore.svelte';
 import { onboardingStore } from '$features/tutorial/presentation/stores/onboardingStore.svelte';
 import { projectsStore } from '$features/projects/presentation/stores/projectsStore.svelte';
+import { communitySplashStore } from '$features/lyriks-community/presentation/stores/communitySplashStore.svelte';
 import { promptForDisplayName } from '$features/app-shell/presentation/identityPrompt';
 
 /**
@@ -41,6 +42,10 @@ export async function bootstrapDashboard(options: BootstrapDashboardOptions = {}
   // 'unknown' and the banner stays hidden, so returning users never
   // see it flash.
   onboardingStore.init();
+  // Whether this browser retired the Lyriks Community offer. Same contract as
+  // the banner above: until this has hydrated the splash stays closed, so a
+  // user who already retired it never sees it flash.
+  communitySplashStore.init();
   // First visit only: auto-prompt for a name. Once the user has been
   // asked (even if they dismissed without setting one), the flag in
   // localStorage suppresses the dialog on every subsequent reload.

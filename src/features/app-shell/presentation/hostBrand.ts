@@ -14,3 +14,15 @@
  */
 export const isLyriksBrand = (url: URL | null | undefined): boolean =>
   url?.searchParams.get('brand') === 'lyriks';
+
+/**
+ * Is this runtime FRAMED by a host application (`?embed=1`)?
+ *
+ * The host's contract for "I own the chrome": the dashboard drops its header,
+ * banners, tour, floating widgets and any self-promotion, so the frame reads as
+ * one tab of the host instead of a second application nested inside it.
+ * Independent from {@link isLyriksBrand}: a link opened in a NEW TAB from the
+ * host carries the brand without the frame, and still needs its own chrome.
+ */
+export const isEmbedded = (url: URL | null | undefined): boolean =>
+  url?.searchParams.get('embed') === '1';

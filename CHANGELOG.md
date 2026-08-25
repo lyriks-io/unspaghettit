@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **The dashboard says what it is part of.** A standalone install now opens on a
+  splash naming what Lyriks Community wraps around the same engine, with a link
+  to the free key and the install guide. The offer stands until the user says
+  otherwise: closing the panel hides it for that visit only, and the single
+  button "keep using Unspaghettit on its own" retires it for good. The app menu
+  reopens it either way. It waits for the display-name prompt, so a first visit
+  never stacks two modals.
+
+- **`PUBLIC_UNSPA_HOST_PRODUCT`.** Set it to the name of the product that embeds
+  this dashboard and the offer above disappears for that deployment, whatever URL
+  users reach it by. The two existing host markers suppress it too (`?brand=` and
+  `?embed=1`), but only the env var survives a user opening the editor directly
+  with no query string, which is exactly how someone reaches it inside an
+  appliance. The Lyriks appliance image sets it.
+
+- **README and docs cover the upgrade path.** A comparison of standalone
+  Unspaghettit against Lyriks Community in the README, and a full page at
+  `docs/lyriks-community.md` covering what the appliance adds, how it relates to
+  models you already have, how to install it, and how to turn the offer off.
+
 ## [0.18.0] - 2026-08-24
 
 Drift stops implicating a whole feature when one element moved, and the

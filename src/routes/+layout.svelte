@@ -12,8 +12,10 @@
   import FloatingQueueWidget from '$features/implementation-queue/presentation/components/FloatingQueueWidget.svelte';
   import AppHeader from '$features/app-shell/presentation/components/AppHeader.svelte';
   import UpdateBanner from '$features/update-check/presentation/components/UpdateBanner.svelte';
+  import LyriksCommunitySplash from '$features/lyriks-community/presentation/components/LyriksCommunitySplash.svelte';
   import { bootstrapDashboard } from '$features/app-shell/presentation/bootstrapDashboard';
   import { isBuilderRoute } from '$features/app-shell/presentation/routeContext';
+  import { isEmbedded } from '$features/app-shell/presentation/hostBrand';
   import { themeStore } from '$lib/theme/themeStore.svelte';
   import { withPersistentNavigationParams } from '$features/app-shell/presentation/navigationContext';
   import '../app.css';
@@ -21,7 +23,7 @@
   let { children } = $props();
 
   const builderActive = $derived(isBuilderRoute(page.url.pathname));
-  const embedded = $derived(page.url.searchParams.get('embed') === '1');
+  const embedded = $derived(isEmbedded(page.url));
   const lyriks = $derived(embedded || themeStore.isLyriks);
   const requestedUser = $derived(page.url.searchParams.get('user') ?? undefined);
 
@@ -93,6 +95,11 @@
 {/if}
 
 <AppDialog />
+<!-- First-run Lyriks Community splash. Rendered unconditionally on purpose:
+     `embedded` is only one of the three signals that suppress it (a host
+     product also declares itself through PUBLIC_UNSPA_HOST_PRODUCT and through
+     the brand parameter), so the component owns that decision, not the layout. -->
+<LyriksCommunitySplash />
 {#if !embedded}
   <FlyingSpaghettiEasterEgg />
   <SyncToast />

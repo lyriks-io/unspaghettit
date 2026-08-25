@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import { withBase } from '$shared/routing/appBase';
   import { pageTitle } from '$features/app-shell/presentation/pageTitle';
+  import { isHosted } from '$features/lyriks-community/presentation/hostProduct';
   import TutorialSection from "$features/tutorial/presentation/components/TutorialSection.svelte";
   import CodeBlock from "$features/tutorial/presentation/components/CodeBlock.svelte";
   import Callout from "$features/tutorial/presentation/components/Callout.svelte";
@@ -29,6 +30,11 @@
     { id: "security", title: "13. Hosting on a network" },
     { id: "next", title: "14. Where to go next" },
   ];
+
+  // The Lyriks Community pointer below is for people running Unspaghettit on
+  // its own. Inside a host product this page is reached FROM that product, so
+  // pitching it there would be nonsense.
+  const standalone = $derived(!isHosted(page.url));
 
   let busyLoadingSamples = $state(false);
 
@@ -1330,6 +1336,25 @@ unspa dashboard --host 0.0.0.0`}
             explicitly named.
           </li>
         </ul>
+        {#if standalone}
+          <Callout tone="info" title="Unspaghettit is one layer of a specification">
+            {#snippet children()}
+              It models what your software <em>does</em>. Who the users are, what each
+              feature must deliver to be accepted, what the screens look like, what the
+              data and the architecture are, and whether the product is actually
+              finished: those live one layer up.
+              <a
+                href="https://get.lyriks.io/"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-brand-700 underline">Lyriks Community</a
+              >
+              is the free, self-hosted appliance that holds all of that with this exact
+              dashboard and these exact models inside it. Free, one operator, on your own
+              machine.
+            {/snippet}
+          </Callout>
+        {/if}
         <Callout tone="info" title="Where this goes next">
           {#snippet children()}
             Unspaghettit is free and stays local-first. The roadmap tracks the

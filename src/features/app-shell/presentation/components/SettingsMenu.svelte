@@ -1,11 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/state';
   import HeaderMenu from '$features/app-shell/presentation/components/HeaderMenu.svelte';
+  import LyriksLogo from '$features/app-shell/presentation/components/LyriksLogo.svelte';
   import { hubDirectoryStore } from '$features/app-shell/presentation/stores/hubDirectoryStore.svelte';
   import { resetLocalData } from '$features/app-shell/presentation/resetLocalData';
+  import { isHosted } from '$features/lyriks-community/presentation/hostProduct';
+  import { communitySplashStore } from '$features/lyriks-community/presentation/stores/communitySplashStore.svelte';
 
   /**
-   * The gear menu: open the hub snapshots folder in the OS file manager, and
+   * The gear menu: open the hub snapshots folder in the OS file manager, the
+   * way back to the Lyriks Community splash (standalone installs only), and
    * the destructive "Reset local data" action.
    */
   type Props = {
@@ -23,6 +28,15 @@
 
   async function pickOpenFolder(close: () => void) {
     if (await hubDirectoryStore.openFolder()) close();
+  }
+
+  // The way back once the user retired the Lyriks Community splash for good.
+  // Hidden inside a host product, which already IS the offer.
+  const standalone = $derived(!isHosted(page.url));
+
+  function pickCommunity(close: () => void) {
+    close();
+    communitySplashStore.open();
   }
 
   async function pickReset(close: () => void) {
@@ -103,6 +117,23 @@
         {/if}
       </span>
     </button>
+    {#if standalone}
+      <div class="my-1 h-px bg-slate-100"></div>
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() => pickCommunity(close)}
+        class="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+      >
+        <LyriksLogo size={16} class="mt-0.5 shrink-0" />
+        <span class="min-w-0 flex-1">
+          <span class="block font-medium">About Lyriks Community</span>
+          <span class="block text-[11px] text-slate-500">
+            The free appliance that embeds this dashboard in a full product workspace
+          </span>
+        </span>
+      </button>
+    {/if}
     <div class="my-1 h-px bg-slate-100"></div>
     <button
       type="button"

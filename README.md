@@ -135,6 +135,42 @@ Restart your IDE. Your LLM now has the full runtime as typed MCP tools. Open the
 
 Full setup, client config, and shared-hub mode: [docs/getting-started.md](docs/getting-started.md).
 
+## Unspaghettit, with a whole product around it: Lyriks Community
+
+Unspaghettit models how software **behaves**. That is one layer of a specification, and the layer everything else hangs off. **Lyriks Community** is the free, self-hosted appliance that embeds this exact dashboard, this exact engine and these exact JSON models, then builds the rest of the product specification around them, under one login and behind one MCP endpoint.
+
+| | Unspaghettit on its own | Lyriks Community |
+| --- | --- | --- |
+| Behavior models, simulator, model checking, maturity | yes | the same engine, embedded |
+| MCP for your AI clients | yes | yes, one gateway for the whole workspace |
+| Spec-to-code coverage, drift, `unspa check` CI gate | yes | yes |
+| Product foundation: brief, guardrails, business / technical / security constraints | no | yes |
+| Users, roles, capability access matrix | no | yes |
+| Feature tree: requirements, acceptance criteria, dependencies, MVP scope, releases | no | yes |
+| Journeys, screen design, experience simulator over your behavior models | no | yes |
+| Rules, data, architecture, glossary, one merged knowledge graph | no | yes |
+| Traceability, completion audits, baselines, approvals, generated spec artifacts | no | yes |
+| Roadmap, and delivery sync between the spec and your tracker | no | yes |
+| Storage | plain JSON on your disk | the same JSON, plus PostgreSQL for the workspace |
+| Seats | unlimited, no accounts at all | one operator (Enterprise adds members, invitations, RBAC) |
+| Price | free, AGPL-3.0 | free, with a licence key |
+
+Both are self-hosted and neither phones home. Nothing is taken away by installing the appliance: Unspaghettit stays exactly what it is here, and the models stay plain JSON you can copy in and out.
+
+Get a free key at **[get.lyriks.io](https://get.lyriks.io/)** (it arrives by email), then:
+
+```bash
+# Linux / macOS
+curl -fsSL https://get.lyriks.io | sh
+```
+
+```powershell
+# Windows, in a normal PowerShell window
+irm https://get.lyriks.io/windows | iex
+```
+
+The appliance lands in `~/lyriks` and serves `http://localhost:3000`, where you claim it with the email and the key. Full walkthrough: [docs/lyriks-community.md](docs/lyriks-community.md) and the [install guide](https://get.lyriks.io/docs).
+
 ## Documentation
 
 | | |
@@ -146,6 +182,7 @@ Full setup, client config, and shared-hub mode: [docs/getting-started.md](docs/g
 | [Security](docs/security.md) | Trust tiers, LAN sharing, encrypted backup |
 | [Architecture](docs/architecture.md) | Repo layout, how the pieces fit, project status |
 | [Worlds & quests](docs/worldbuilding.md) | Modeling interactive fiction and narrative state (for the brave) |
+| [Lyriks Community](docs/lyriks-community.md) | The free appliance that embeds Unspaghettit in a full product workspace |
 
 ## Status
 
