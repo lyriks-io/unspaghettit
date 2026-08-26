@@ -6,11 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-26
+
+The dashboard learns what it is part of. A standalone install is told that
+Unspaghettit evolved into Lyriks Community, and one running inside an
+appliance is told, once, to keep quiet about it. Nothing changes in the models
+or on the wire: a snapshot written before this behaves exactly as it did.
+
 ### Added
 
 - **The dashboard says what it is part of.** A standalone install now opens on a
-  splash naming what Lyriks Community wraps around the same engine, with a link
-  to the free key and the install guide. The offer stands until the user says
+  splash telling that Unspaghettit evolved into Lyriks Community: what carries
+  over (the same engine and models), what comes with it, and a link to the free
+  key. The offer stands until the user says
   otherwise: closing the panel hides it for that visit only, and the single
   button "keep using Unspaghettit on its own" retires it for good. The app menu
   reopens it either way. It waits for the display-name prompt, so a first visit
