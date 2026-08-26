@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import { fade, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import LyriksLogo from '$features/app-shell/presentation/components/LyriksLogo.svelte';
+  import { withBase } from '$shared/routing/appBase';
   import { dialogStore } from '$shared/presentation/dialogs/dialogStore.svelte';
   import { showUpgradeOffer } from '$features/lyriks-community/presentation/hostProduct';
   import { communitySplashStore } from '$features/lyriks-community/presentation/stores/communitySplashStore.svelte';
@@ -19,7 +19,6 @@
    */
 
   const KEY_URL = 'https://get.lyriks.io/';
-  const GUIDE_URL = 'https://get.lyriks.io/docs';
 
   const visible = $derived(
     showUpgradeOffer({
@@ -61,14 +60,23 @@
     dismiss();
   }
 
-  /** What Lyriks Community adds around the same behavior models. */
-  const adds = [
-    'The product brief, its guardrails, and who the users and their roles are',
-    'Features with requirements, acceptance criteria, scope and releases',
-    'Journeys, screen design and an experience simulator on your models',
-    'Rules, data, architecture and one knowledge graph over all of it',
-    'Traceability, completion audits and generated specification documents'
-  ];
+  /**
+   * Two kinds of row, because they answer two different questions. The first
+   * one is what CARRIES OVER, and it leads: someone reading "evolved into" needs
+   * to see that the engine they already use is not being taken away before a
+   * list of new things means anything. Everything after it is what is NEW, which
+   * is why it is a plus and not a tick.
+   *
+   * A few words each: this is a scan, not a spec sheet.
+   */
+  const rows = [
+    { kind: 'kept', text: 'The same Unspaghettit engine and models' },
+    { kind: 'new', text: 'Product brief, users and roles' },
+    { kind: 'new', text: 'Features, requirements and releases' },
+    { kind: 'new', text: 'Journeys, screens and a simulator' },
+    { kind: 'new', text: 'Rules, data and architecture' },
+    { kind: 'new', text: 'Audits and generated specs' }
+  ] as const;
 </script>
 
 <svelte:window onkeydown={handleKey} />
@@ -92,21 +100,17 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="lyriks-community-title"
-      aria-describedby="lyriks-community-lead"
       class="relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-950/40 outline-none"
       transition:scale={{ duration: 160, start: 0.97, easing: cubicOut }}
     >
       <!-- The Lyriks livery, not the dashboard's current skin: this panel is
            about Lyriks, and it has to read as Lyriks under either theme. -->
       <header
-        class="flex items-center justify-between gap-4 bg-[linear-gradient(100deg,#6d28d9_0%,#a21caf_55%,#db2777_100%)] px-7 py-5 text-white"
+        class="flex items-center justify-between gap-3 bg-[linear-gradient(100deg,#6d28d9_0%,#a21caf_55%,#db2777_100%)] px-5 py-4 text-white sm:px-7"
       >
-        <div class="flex min-w-0 items-center gap-3">
-          <LyriksLogo size={30} class="shrink-0" />
-          <p class="font-grotesk truncate text-xl leading-none font-bold tracking-tight">
-            Lyriks Community
-          </p>
-        </div>
+        <p class="font-grotesk truncate text-lg leading-none font-bold tracking-tight sm:text-xl">
+          Lyriks Community is finally out!
+        </p>
         <button
           type="button"
           onclick={dismiss}
@@ -131,50 +135,71 @@
         </button>
       </header>
 
-      <div class="min-h-0 flex-1 overflow-y-auto px-7 py-6">
+      <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-7 py-6">
         <h2
           id="lyriks-community-title"
-          class="font-grotesk text-2xl leading-tight font-semibold text-slate-950"
+          class="font-grotesk text-center text-xl leading-snug font-semibold text-balance text-slate-950 sm:text-2xl"
         >
-          The same engine, with the product around it.
+          Unspaghettit evolved and became the Lyriks Community Edition.
         </h2>
-        <p id="lyriks-community-lead" class="mt-3 text-sm leading-6 text-slate-600">
-          You are running Unspaghettit on its own, which models how your software behaves. Lyriks
-          Community is the free app that embeds this exact dashboard and these exact models, and
-          holds the rest of the specification around them:
+
+        <!-- The same statement, animated. It carries its own wording, so the
+             heading above is what a screen reader gets: the frames are decorative
+             here, not the source of the message. -->
+        <img
+          src={withBase('/unspaghettit-evolution.gif')}
+          alt=""
+          aria-hidden="true"
+          width="480"
+          height="360"
+          class="mt-5 max-h-[38vh] w-auto max-w-full self-center rounded-xl border border-hairline"
+        />
+
+        <p class="mt-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          What comes with it
         </p>
 
-        <ul class="mt-4 space-y-2.5">
-          {#each adds as item (item)}
-            <li class="flex gap-3 text-sm leading-5 text-slate-700">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="mt-0.5 h-4 w-4 shrink-0 text-brand-600"
-                aria-hidden="true"
-              >
-                <path d="m5 12 5 5L20 7" />
-              </svg>
-              <span>{item}</span>
+        <ul class="mt-3 space-y-2.5">
+          {#each rows as row (row.text)}
+            <li
+              class="flex gap-3 text-sm leading-5 {row.kind === 'kept'
+                ? 'text-slate-500'
+                : 'text-slate-700'}"
+            >
+              {#if row.kind === 'kept'}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
+                  aria-hidden="true"
+                >
+                  <path d="m5 12 5 5L20 7" />
+                </svg>
+              {:else}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="mt-0.5 h-4 w-4 shrink-0 text-brand-600"
+                  aria-hidden="true"
+                >
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+              {/if}
+              <span>{row.text}</span>
             </li>
           {/each}
         </ul>
-
-        <p class="mt-5 text-sm leading-6 text-slate-600">
-          Free, one operator, installed by
-          <a
-            href={GUIDE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-brand-700 underline underline-offset-2 hover:text-brand-800">one command</a
-          >
-          on your own machine. Nothing changes here: Unspaghettit stays open source and local-first.
-        </p>
       </div>
 
       <footer
