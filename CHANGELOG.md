@@ -19,6 +19,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- **Tools read a project's features in one pass.** `get_spec_gaps`,
+  `run_all_scenarios`, `model_check`, `get_drift`, the digests and the library
+  tools walked the projects with a `get` per project and loaded a project's
+  features with a `get` per member; on a folder store every `get` reads the
+  whole folder, so one call cost N reads of N files. The repository ports gain
+  an optional `listFull()` and the tools go through it (falling back to
+  `list` + `get` for a store without it). Measured on a 560-file workspace:
+  6.5 s per tool to 40 ms.
 - **Reads stop re-parsing the whole folder.** Every `get` / `list` walked the
   snapshot folders and parsed every file each time, so on a workspace of a few
   hundred features one read cost tens of milliseconds and a pass over a project
