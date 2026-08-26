@@ -7,7 +7,7 @@ import type { Project } from '$features/projects/domain/entities/Project';
 import { InMemoryProjectRepository } from './InMemoryProjectRepository';
 import { ProjectScopedFeatureRepository } from './ProjectScopedFeatureRepository';
 
-const entity = { id: asEntityId('ent-user'), name: 'User', fields: [] };
+const entity = { id: asEntityId('ent-user'), name: 'User', namespace: 'user', fields: [] };
 
 const feature = (id: string, refs: readonly string[] = []): Feature => ({
   id: asFeatureId(id),
