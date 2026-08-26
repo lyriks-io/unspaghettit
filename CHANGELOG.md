@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **`UNSPA_FILE_NAMING=id`.** The JSON folder repositories can name the files
+  they write by record id (`<id>.feature.json`, `<id>.project.json`) instead of
+  by name slug. For a folder a host owns and resolves by id, a rename then never
+  moves a file, and the folder stops holding two naming conventions when the
+  host writes id-named files itself. Reads never depended on the naming, and a
+  file keeps its current name until its record is saved again, so there is no
+  migration to run. Default stays `slug`, the right choice for a folder humans
+  and Git browse next to the code.
+
+### Changed
+
+- **Reads stop re-parsing the whole folder.** Every `get` / `list` walked the
+  snapshot folders and parsed every file each time, so on a workspace of a few
+  hundred features one read cost tens of milliseconds and a pass over a project
+  cost seconds. Both repositories now keep each parsed file and re-parse it only
+  when its inode, size or mtime moved; the listing and one `stat` per file still
+  run on every call, so a write from another process is seen on the next read.
+  Measured on an 87-feature project: `get` 18 ms to under 1 ms.
+
 ## [0.19.0] - 2026-08-26
 
 The dashboard learns what it is part of. A standalone install is told that

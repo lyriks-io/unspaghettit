@@ -9,7 +9,10 @@ import { JsonFolderProvenanceRepository } from '../src/features/source-provenanc
 import { JsonFolderProjectSourceRepository } from '../src/features/source-provenance/infrastructure/persistence/JsonFolderProjectSourceRepository';
 import { migrateEmbeddedSourceDocsAndLog } from '../src/features/source-provenance/infrastructure/persistence/migrateEmbeddedSourceDocs';
 import { JsonFolderProjectRepository } from '../src/features/projects/infrastructure/persistence/JsonFolderProjectRepository';
-import { migrateFlatLayoutAndLog } from '../src/shared/infrastructure/persistence/snapshotLayout';
+import {
+  fileNamingFromEnv,
+  migrateFlatLayoutAndLog
+} from '../src/shared/infrastructure/persistence/snapshotLayout';
 import { discoverRepoLink } from './repo-link';
 import { buildServer } from './server';
 import {
@@ -73,11 +76,19 @@ const main = async (): Promise<void> => {
     );
   }
 
-  const repo = new SyncAwareFeatureRepository(new JsonFolderFeatureRepository(directory));
+  // How the files this server writes are named (see `FileNaming`). A host that
+  // owns the folder and resolves records by id sets UNSPA_FILE_NAMING=id.
+  const fileNaming = fileNamingFromEnv(process.env);
+  if (fileNaming !== 'slug') process.stderr.write(`[unspa-mcp] file naming: ${fileNaming}\n`);
+  const repo = new SyncAwareFeatureRepository(
+    new JsonFolderFeatureRepository(directory, { fileNaming })
+  );
   const statusRepo = new SyncAwareImplementationStatusRepository(
     new JsonFolderImplementationStatusRepository(directory)
   );
-  const projectRepo = new SyncAwareProjectRepository(new JsonFolderProjectRepository(directory));
+  const projectRepo = new SyncAwareProjectRepository(
+    new JsonFolderProjectRepository(directory, { fileNaming })
+  );
   // Provenance sidecars and source documents are read fresh from disk by the
   // dashboard on each fetch, so they don't need the Yjs live-broadcast
   // wrapper the others use.

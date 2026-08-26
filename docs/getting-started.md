@@ -83,6 +83,8 @@ unspa init --hub /custom/path # a non-default hub location (pins UNSPA_SNAPSHOTS
 
 Discovery order, used by both the MCP and the dashboard: explicit `UNSPA_SNAPSHOTS` / `--snapshots` → a per-repo `unspa/` found by walking up from the launch directory → the shared hub. A per-repo `unspa/` always wins when present; everything else falls back to the hub.
 
+`UNSPA_FILE_NAMING=id` makes the MCP server and the dashboard name the files they write by record id instead of by name slug. Leave it unset for a repo-embedded `unspa/` folder (the slug names are what make the folder readable in Git); set it when a host application owns the folder and resolves records by id.
+
 Switching later is just a re-run: `unspa init` for the hub, `unspa init --local` for per-repo, or `unspa dashboard --snapshots <path>` for a one-off look at any folder. All loopback / single-machine; the hub is not a network service.
 
 A typical end state: a global-scope MCP client for cross-project querying, per-repo agent instances pointed at the same hub (each bound to one project with `unspa link`), and one live dashboard reflecting every change.

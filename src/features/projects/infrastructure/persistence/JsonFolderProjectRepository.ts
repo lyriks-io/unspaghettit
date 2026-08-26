@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import writeFileAtomic from 'write-file-atomic';
 import type {
   ProjectRepository,
@@ -16,10 +16,24 @@ import {
   ensureProjectDir,
   projectFilePath,
   removeEmptyProjectFolder,
-  walkBySuffix
+  walkBySuffix,
+  type FileNaming
 } from '$shared/infrastructure/persistence/snapshotLayout';
 
 type LoadedProject = { readonly slug: string; readonly project: Project };
+
+/** A parsed file, valid while its inode, size and mtime all hold. */
+type CachedProject = {
+  readonly ino: number;
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly loaded: LoadedProject;
+};
+
+export type JsonFolderProjectRepositoryOptions = {
+  /** See {@link FileNaming}. Defaults to `slug`. */
+  readonly fileNaming?: FileNaming;
+};
 
 const toSummary = (p: Project): ProjectSummary => ({
   id: p.id,
@@ -41,7 +55,22 @@ const slugify = (name: string): string => {
 };
 
 export class JsonFolderProjectRepository implements ProjectRepository {
-  constructor(private readonly directory: string) {}
+  readonly #fileNaming: FileNaming;
+  /** Parsed files by path, re-parsed only when (inode, size, mtime) moved. */
+  readonly #parsed = new Map<string, CachedProject>();
+  #parses = 0;
+
+  constructor(
+    private readonly directory: string,
+    options: JsonFolderProjectRepositoryOptions = {}
+  ) {
+    this.#fileNaming = options.fileNaming ?? 'slug';
+  }
+
+  /** Files parsed since construction. A diagnostic, for tests and doctor tooling. */
+  get parseCount(): number {
+    return this.#parses;
+  }
 
   async list(): Promise<readonly ProjectSummary[]> {
     return this.readAll()
@@ -77,7 +106,7 @@ export class JsonFolderProjectRepository implements ProjectRepository {
     const taken = all
       .filter((s) => s.project.id !== project.id)
       .map((s) => s.slug);
-    const target = slugify(project.name);
+    const target = this.#fileNaming === 'id' ? String(project.id) : slugify(project.name);
     const finalSlug = taken.includes(target)
       ? `${target}-${project.id.slice(0, 8)}`
       : target;
@@ -108,15 +137,44 @@ export class JsonFolderProjectRepository implements ProjectRepository {
 
   private readAll(): readonly LoadedProject[] {
     const out: LoadedProject[] = [];
+    const seen = new Set<string>();
     for (const { folder, path } of walkBySuffix(this.directory, PROJECT_SUFFIX)) {
+      seen.add(path);
+      // Stat before read, so a rewrite between the two is re-parsed next pass.
+      let stats: { ino: number; size: number; mtimeMs: number };
+      try {
+        stats = statSync(path);
+      } catch {
+        continue;
+      }
+      const hit = this.#parsed.get(path);
+      if (
+        hit &&
+        hit.ino === stats.ino &&
+        hit.size === stats.size &&
+        hit.mtimeMs === stats.mtimeMs
+      ) {
+        out.push(hit.loaded);
+        continue;
+      }
       try {
         const project = importProjectFromJson(readFileSync(path, 'utf8'));
+        this.#parses += 1;
         // Folder name is the canonical slug; trust it so a rename-without-rewrite still resolves.
-        out.push({ slug: folder, project });
+        const loaded: LoadedProject = { slug: folder, project };
+        this.#parsed.set(path, {
+          ino: stats.ino,
+          size: stats.size,
+          mtimeMs: stats.mtimeMs,
+          loaded
+        });
+        out.push(loaded);
       } catch {
+        this.#parsed.delete(path);
         // Malformed files skipped so one bad file can't kill the API.
       }
     }
+    for (const path of this.#parsed.keys()) if (!seen.has(path)) this.#parsed.delete(path);
     return out;
   }
 }

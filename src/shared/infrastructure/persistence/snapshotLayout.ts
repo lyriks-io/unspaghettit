@@ -40,6 +40,27 @@ import { assertSafeSegment } from '../../domain/pathSegment';
  * startup by `migrateFlatLayout`.
  */
 
+/**
+ * How the JSON folder repositories name the files they WRITE.
+ *
+ *  - `slug` (default): `<slugify(name)>.feature.json`, renamed whenever the
+ *    record is renamed. The right choice for a folder humans and Git browse,
+ *    next to the code it describes.
+ *  - `id`: `<id>.feature.json`. The right choice for a host that owns the folder
+ *    and resolves records by id (Lyriks): a rename never moves a file, and a
+ *    host that writes id-named files itself stops seeing two naming conventions
+ *    in one folder, so it can find a record without opening every file.
+ *
+ * Reads never depend on the naming: every repository resolves a record by the
+ * id stored inside the file. A file keeps its current name until the record is
+ * saved again, so switching modes migrates one file per save, never in bulk.
+ */
+export type FileNaming = 'slug' | 'id';
+export const FILE_NAMING_ENV = 'UNSPA_FILE_NAMING';
+export const fileNamingFromEnv = (
+  env: Readonly<Record<string, string | undefined>> = process.env
+): FileNaming => (env[FILE_NAMING_ENV] === 'id' ? 'id' : 'slug');
+
 export const PROJECT_SUFFIX = '.project.json';
 export const FEATURE_SUFFIX = '.feature.json';
 export const STATUS_SUFFIX = '.implementation-status.json';

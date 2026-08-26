@@ -9,7 +9,10 @@ import { JsonFolderDomainRepository } from '$features/domains/infrastructure/per
 import { JsonFileTagPaletteRepository } from '$features/tag-palette/infrastructure/persistence/JsonFileTagPaletteRepository';
 import { withProjectLibrary } from '$features/projects/infrastructure/persistence/ProjectScopedFeatureRepository';
 import type { FeatureRepository } from '$features/behavior-model/application/ports/FeatureRepository';
-import { migrateFlatLayoutAndLog } from '$shared/infrastructure/persistence/snapshotLayout';
+import {
+  fileNamingFromEnv,
+  migrateFlatLayoutAndLog
+} from '$shared/infrastructure/persistence/snapshotLayout';
 
 let cached: {
   repo: JsonFolderFeatureRepository;
@@ -47,11 +50,13 @@ export const getSnapshotRepository = (): {
   const { directory } = discoverSnapshotDirectory({ override });
   migrateFlatLayoutAndLog(directory, 'unspa-sveltekit');
   migrateEmbeddedSourceDocsAndLog(directory, 'unspa-sveltekit');
-  const repo = new JsonFolderFeatureRepository(directory);
+  // Same naming rule as the MCP server, so both write the same file names.
+  const fileNaming = fileNamingFromEnv(process.env);
+  const repo = new JsonFolderFeatureRepository(directory, { fileNaming });
   const statusRepo = new JsonFolderImplementationStatusRepository(directory);
   const provenanceRepo = new JsonFolderProvenanceRepository(directory);
   const sourceRepo = new JsonFolderProjectSourceRepository(directory);
-  const projectRepo = new JsonFolderProjectRepository(directory);
+  const projectRepo = new JsonFolderProjectRepository(directory, { fileNaming });
   const domainRepo = new JsonFolderDomainRepository(directory);
   const tagPaletteRepo = new JsonFileTagPaletteRepository(directory);
   cached = {

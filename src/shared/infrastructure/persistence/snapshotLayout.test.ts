@@ -7,6 +7,7 @@ import {
   FEATURE_SUFFIX,
   STATUS_SUFFIX,
   UNASSIGNED_FOLDER,
+  fileNamingFromEnv,
   findProjectSlugForFeature,
   hasFlatLayout,
   migrateFlatLayout,
@@ -219,5 +220,13 @@ describe('snapshotLayout', () => {
     expect(walked).toHaveLength(1);
     const onDisk = JSON.parse(readFileSync(walked[0]!.path, 'utf8'));
     expect(onDisk).toEqual(payload);
+  });
+});
+
+describe('fileNamingFromEnv', () => {
+  it('defaults to slug and accepts only the explicit id opt-in', () => {
+    expect(fileNamingFromEnv({})).toBe('slug');
+    expect(fileNamingFromEnv({ UNSPA_FILE_NAMING: 'id' })).toBe('id');
+    expect(fileNamingFromEnv({ UNSPA_FILE_NAMING: 'ID' })).toBe('slug');
   });
 });

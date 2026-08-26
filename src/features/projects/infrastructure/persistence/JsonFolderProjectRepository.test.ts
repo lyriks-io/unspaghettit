@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { Project } from '$features/projects/domain/entities/Project';
 import { asProjectId } from '$features/projects/domain/value-objects/ids';
 import { JsonFolderProjectRepository } from './JsonFolderProjectRepository';
 
@@ -71,5 +72,42 @@ describe('JsonFolderProjectRepository.get', () => {
     const repo = new JsonFolderProjectRepository(root);
 
     expect(await repo.get(asProjectId('nope'))).toBeNull();
+  });
+});
+
+describe('JsonFolderProjectRepository parse cache', () => {
+  it('re-parses a project file only after it changed on disk', async () => {
+    const root = makeTempRoot();
+    seedProject(root, 'my-product-a1b2c3', 'my-product-a1b2c3', 'My product');
+    const repo = new JsonFolderProjectRepository(root);
+
+    expect((await repo.get(asProjectId('my-product-a1b2c3')))?.name).toBe('My product');
+    await repo.list();
+    expect(repo.parseCount).toBe(1);
+
+    seedProject(root, 'my-product-a1b2c3', 'my-product-a1b2c3', 'My product, renamed elsewhere');
+    expect((await repo.get(asProjectId('my-product-a1b2c3')))?.name).toBe(
+      'My product, renamed elsewhere'
+    );
+    expect(repo.parseCount).toBe(2);
+  });
+});
+
+describe('JsonFolderProjectRepository file naming', () => {
+  it('names the project folder and file by id when asked', async () => {
+    const root = makeTempRoot();
+    const repo = new JsonFolderProjectRepository(root, { fileNaming: 'id' });
+    await repo.save({
+      id: asProjectId('evidencia-b13c3c'),
+      name: 'Evidencia',
+      description: 'A compliance platform.',
+      featureIds: [],
+      createdAt: '2026-08-26T00:00:00.000Z',
+      updatedAt: '2026-08-26T00:00:00.000Z'
+    } as Project);
+
+    expect(readdirSync(join(root, 'evidencia-b13c3c'))).toContain('evidencia-b13c3c.project.json');
+    expect(readdirSync(root)).not.toContain('evidencia');
+    expect((await repo.get(asProjectId('evidencia-b13c3c')))?.name).toBe('Evidencia');
   });
 });

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -227,5 +227,64 @@ describe('JsonFolderFeatureRepository', () => {
     const repo = new JsonFolderFeatureRepository(dir);
     const summaries = await repo.list();
     expect(summaries.map((s) => s.id)).toEqual([exp.id]);
+  });
+});
+
+describe('JsonFolderFeatureRepository parse cache', () => {
+  it('parses each file once and re-parses only after it changed on disk', async () => {
+    const dir = makeTempRoot();
+    const repo = new JsonFolderFeatureRepository(dir);
+    const cart = buildFeature({ id: asFeatureId('cart-id-aaaaaaaa'), name: 'Cart' });
+    const pay = buildFeature({ id: asFeatureId('pay-id-bbbbbbbb'), name: 'Pay' });
+    await repo.save(cart);
+    await repo.save(pay);
+
+    expect(await repo.get(cart.id)).toEqual(cart);
+    expect(await repo.get(pay.id)).toEqual(pay);
+    expect(await repo.list()).toHaveLength(2);
+    // Two files on disk, each parsed exactly once across the saves and reads.
+    expect(repo.parseCount).toBe(2);
+
+    // Another process rewrites a file in place: the next read sees it.
+    const cartPath = join(dir, UNASSIGNED_FOLDER, 'cart.feature.json');
+    writeFileSync(
+      cartPath,
+      exportFeatureToJson({ ...cart, name: 'Cart, renamed elsewhere' }),
+      'utf8'
+    );
+    expect((await repo.get(cart.id))?.name).toBe('Cart, renamed elsewhere');
+    expect(repo.parseCount).toBe(3);
+
+    // Another process removes a file: it leaves the listing, nothing is re-parsed.
+    rmSync(join(dir, UNASSIGNED_FOLDER, 'pay.feature.json'));
+    expect(await repo.get(pay.id)).toBeNull();
+    expect((await repo.list()).map((s) => s.id)).toEqual([cart.id]);
+    expect(repo.parseCount).toBe(3);
+  });
+});
+
+describe('JsonFolderFeatureRepository file naming', () => {
+  it('names files by id when asked, and moves a slug-named file on its next save', async () => {
+    const dir = makeTempRoot();
+    const exp = buildFeature({ id: asFeatureId('exp-checkout-1234abcd'), name: 'Checkout' });
+    await new JsonFolderFeatureRepository(dir).save(exp);
+    expect(readdirSync(join(dir, UNASSIGNED_FOLDER))).toEqual(['checkout.feature.json']);
+
+    const byId = new JsonFolderFeatureRepository(dir, { fileNaming: 'id' });
+    // Reads never depend on the naming.
+    expect(await byId.get(exp.id)).toEqual(exp);
+
+    await byId.save({ ...exp, name: 'Checkout flow', updatedAt: '2026-05-09T11:00:00.000Z' });
+    expect(readdirSync(join(dir, UNASSIGNED_FOLDER))).toEqual([
+      'exp-checkout-1234abcd.feature.json'
+    ]);
+    expect((await byId.get(exp.id))?.name).toBe('Checkout flow');
+
+    // A rename no longer moves the file.
+    await byId.save({ ...exp, name: 'Basket', updatedAt: '2026-05-09T12:00:00.000Z' });
+    expect(readdirSync(join(dir, UNASSIGNED_FOLDER))).toEqual([
+      'exp-checkout-1234abcd.feature.json'
+    ]);
+    expect((await byId.get(exp.id))?.name).toBe('Basket');
   });
 });
