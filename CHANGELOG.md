@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-08-26
+
+Reads scale with the file you touch, not with the folder it sits in. Every
+snapshot file is parsed once and re-read only when it changes on disk, the
+project-wide tools load a project in one pass, and a host that resolves
+records by id can ask for id-named files. Nothing moves on disk by itself:
+the default naming stays `slug`, and an existing folder reads exactly as it
+did.
+
 ### Added
 
 - **`UNSPA_FILE_NAMING=id`.** The JSON folder repositories can name the files
