@@ -19,4 +19,6 @@ export interface ProjectRepository {
   get(id: ProjectId): Promise<Project | null>;
   save(project: Project): Promise<void>;
   delete(id: ProjectId): Promise<void>;
+  /** Every full project in one pass; see `FeatureRepository.listFull`. */
+  listFull?(): Promise<readonly Project[]>;
 }

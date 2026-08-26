@@ -16,6 +16,8 @@ import {
   projectStateVariables,
   stateCoherenceIssues
 } from '../../src/features/projects/domain/services/stateRegistry';
+import { loadFeaturesByIds } from '../../src/features/behavior-model/application/services/bulkRead';
+import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 
 type Severity = 'critical' | 'recommended';
 type EntityKind = 'feature' | 'surface' | 'action';
@@ -373,11 +375,11 @@ export const registerSpecGapsTool = (deps: ToolDeps): void => {
         (status?.actions ?? []).map((c) => String(c.actionId))
       );
       const gaps = [...detectSpecGaps(exp, implementedIds)];
-      const projects = await projectRepo.list();
-      for (const summary of projects) {
-        const project = await projectRepo.get(summary.id);
-        if (!project?.featureIds.includes(exp.id)) continue;
-        const features = (await Promise.all(project.featureIds.map((id) => repo.get(id)))).filter(
+      // One pass over the projects and one over the features: a `get` per member
+      // re-read the whole store each time, so this tool cost N reads of N files.
+      const owner = await findOwningProject(projectRepo, String(exp.id));
+      for (const project of owner ? [owner] : []) {
+        const features = (await loadFeaturesByIds(repo, project.featureIds)).filter(
           (feature): feature is Feature => feature !== null
         );
         const states = projectStateVariables(project, features);

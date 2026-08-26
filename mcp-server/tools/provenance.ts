@@ -50,6 +50,7 @@ import {
 import type { ProjectRepository } from '../../src/features/projects/application/ports/ProjectRepository';
 import { errorText, text, type ToolDeps } from './_shared';
 import { expandFeatureId, expandProjectId } from './short-ids';
+import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 
 /** Resolve an element by exact id or unique prefix against the feature's elements. */
 const matchElement = (
@@ -73,11 +74,8 @@ const findOwningProjectId = async (
   projectRepo: ProjectRepository,
   featureId: string
 ): Promise<string | null> => {
-  for (const summary of await projectRepo.list()) {
-    const project = await projectRepo.get(summary.id);
-    if (project?.featureIds.some((fid) => String(fid) === featureId)) return String(project.id);
-  }
-  return null;
+  const owner = await findOwningProject(projectRepo, featureId);
+  return owner ? String(owner.id) : null;
 };
 
 /** Slice of a stored document returned by get_source. Full 1 MiB docs would flood the context. */

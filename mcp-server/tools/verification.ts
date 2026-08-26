@@ -15,6 +15,8 @@ import { strictThresholds } from '../../src/features/verification/domain/Verific
 import { trackTokens } from '../metrics';
 import { errorText, text, type ToolDeps } from './_shared';
 import { expandFeatureId } from './short-ids';
+import { listAllFeatures, loadFeaturesByIds } from '../../src/features/behavior-model/application/services/bulkRead';
+import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 
 /**
  * Read the index from the same `.unspa.json` the CLI bound this repo to. When
@@ -49,13 +51,8 @@ const resolveCohort = async (
     const feature = await repo.get(asFeatureId(id));
     let projectInvariants: readonly Invariant[] = [];
     if (feature) {
-      for (const summary of await projectRepo.list()) {
-        const project = await projectRepo.get(summary.id);
-        if (project?.featureIds.some((f) => String(f) === String(feature.id))) {
-          projectInvariants = project.projectInvariants ?? [];
-          break;
-        }
-      }
+      const owner = await findOwningProject(projectRepo, String(feature.id));
+      projectInvariants = owner?.projectInvariants ?? [];
     }
     return { features: feature ? [feature] : [], projectInvariants };
   }
@@ -68,12 +65,9 @@ const resolveCohort = async (
   const project = projectId ? await projectRepo.get(asProjectId(projectId)) : null;
   const ids = project?.featureIds ?? null;
 
-  const summaries = ids ?? (await repo.list()).map((s) => s.id);
-  const out: Feature[] = [];
-  for (const id of summaries) {
-    const feature = await repo.get(id);
-    if (feature) out.push(feature);
-  }
+  // One store pass whichever way the cohort is named, never a `get` per member.
+  const loaded = ids ? await loadFeaturesByIds(repo, ids) : await listAllFeatures(repo);
+  const out = loaded.filter((feature): feature is Feature => feature !== null);
   return { features: out, projectInvariants: project?.projectInvariants ?? [] };
 };
 

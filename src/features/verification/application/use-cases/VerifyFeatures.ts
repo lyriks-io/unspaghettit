@@ -16,6 +16,10 @@ import {
   type VerificationThresholds
 } from '../../domain/VerificationThresholds';
 import type { BehavioralIndexReader } from '../ports/BehavioralIndexReader';
+import {
+  listAllFeatures,
+  loadFeaturesByIds
+} from '$features/behavior-model/application/services/bulkRead';
 
 export type VerifyFeaturesDeps = {
   readonly features: FeatureRepository;
@@ -62,16 +66,12 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
   return async (input: VerifyFeaturesInput = {}): Promise<VerificationReport> => {
     const thresholds = withThresholdDefaults(input.thresholds);
 
-    const ids =
+    // One store pass either way: a `get` per id re-read a folder store whole.
+    const loaded = (
       input.featureIds && input.featureIds.length > 0
-        ? [...input.featureIds]
-        : (await deps.features.list()).map((s) => s.id);
-
-    const loaded: Feature[] = [];
-    for (const id of ids) {
-      const feature = await deps.features.get(id);
-      if (feature) loaded.push(feature);
-    }
+        ? await loadFeaturesByIds(deps.features, input.featureIds)
+        : await listAllFeatures(deps.features)
+    ).filter((feature): feature is Feature => feature !== null);
 
     const indexEntries = await deps.index.read();
     const drift = detectDrift(loaded, indexEntries);

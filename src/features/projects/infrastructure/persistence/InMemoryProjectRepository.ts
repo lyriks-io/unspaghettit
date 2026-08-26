@@ -29,6 +29,10 @@ export class InMemoryProjectRepository implements ProjectRepository {
     return this.store.get(id) ?? null;
   }
 
+  async listFull(): Promise<readonly Project[]> {
+    return Array.from(this.store.values());
+  }
+
   async save(project: Project): Promise<void> {
     this.store.set(project.id, project);
   }

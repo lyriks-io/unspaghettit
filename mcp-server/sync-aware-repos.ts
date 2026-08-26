@@ -12,6 +12,8 @@ import type { Project } from '../src/features/projects/domain/entities/Project';
 import type { ProjectId } from '../src/features/projects/domain/value-objects/ids';
 import type { ImplementationStatusRepository } from '../src/features/implementation-status/application/ports/ImplementationStatusRepository';
 import type { ImplementationStatus } from '../src/features/implementation-status/domain/ImplementationStatus';
+import { listAllFeatures } from '../src/features/behavior-model/application/services/bulkRead';
+import { listAllProjects } from '../src/features/projects/application/services/bulkRead';
 import { notifySyncReload } from './sync-notifier';
 
 export class SyncAwareFeatureRepository implements FeatureRepository {
@@ -21,6 +23,9 @@ export class SyncAwareFeatureRepository implements FeatureRepository {
   }
   get(id: FeatureId): Promise<Feature | null> {
     return this.inner.get(id);
+  }
+  listFull(): Promise<readonly Feature[]> {
+    return listAllFeatures(this.inner);
   }
   async save(feature: Feature): Promise<void> {
     await this.inner.save(feature);
@@ -46,6 +51,9 @@ export class SyncAwareProjectRepository implements ProjectRepository {
   }
   get(id: ProjectId): Promise<Project | null> {
     return this.inner.get(id);
+  }
+  listFull(): Promise<readonly Project[]> {
+    return listAllProjects(this.inner);
   }
   async save(project: Project): Promise<void> {
     await this.inner.save(project);

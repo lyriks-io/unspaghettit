@@ -19,6 +19,10 @@ export class InMemoryFeatureRepository implements FeatureRepository {
     return this.store.get(id) ?? null;
   }
 
+  async listFull(): Promise<readonly Feature[]> {
+    return Array.from(this.store.values());
+  }
+
   async save(feature: Feature): Promise<void> {
     this.store.set(feature.id, feature);
   }

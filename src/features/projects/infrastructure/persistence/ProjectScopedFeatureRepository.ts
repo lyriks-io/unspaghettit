@@ -7,6 +7,8 @@ import type { FeatureId } from '$features/behavior-model/domain/value-objects/id
 import type { ProjectRepository } from '../../application/ports/ProjectRepository';
 import type { Project } from '../../domain/entities/Project';
 import { resolveLibraryRefs, stripLibraryRefs } from '../../domain/services/projectLibrary';
+import { listAllFeatures } from '$features/behavior-model/application/services/bulkRead';
+import { listAllProjects } from '../../application/services/bulkRead';
 
 /**
  * The seam that makes project-scoped references invisible to everything
@@ -60,9 +62,7 @@ export class ProjectScopedFeatureRepository implements FeatureRepository {
     if (fresh && !force) return this.#membership!;
     const map = new Map<string, string>();
     try {
-      for (const summary of await this.projects.list()) {
-        const project = await this.projects.get(summary.id);
-        if (!project) continue;
+      for (const project of await listAllProjects(this.projects)) {
         for (const featureId of project.featureIds) map.set(String(featureId), String(project.id));
       }
     } catch {
@@ -98,6 +98,27 @@ export class ProjectScopedFeatureRepository implements FeatureRepository {
     if (!feature) return null;
     const project = await this.#projectFor(String(id));
     return resolveLibraryRefs(feature, project);
+  }
+
+  /**
+   * Every feature with its refs resolved, from ONE pass over features and ONE
+   * over projects. A feature's project is looked up in that pass, so a store of
+   * N features costs two reads here instead of N + N.
+   */
+  async listFull(): Promise<readonly Feature[]> {
+    const features = await listAllFeatures(this.inner);
+    const byProject = new Map<string, Project>();
+    try {
+      for (const project of await listAllProjects(this.projects)) {
+        for (const featureId of project.featureIds) byProject.set(String(featureId), project);
+      }
+    } catch {
+      // Same rule as the membership map: a broken project file degrades its
+      // features' refs, never the whole listing.
+    }
+    return features.map((feature) =>
+      resolveLibraryRefs(feature, byProject.get(String(feature.id)) ?? null)
+    );
   }
 
   async save(feature: Feature): Promise<void> {

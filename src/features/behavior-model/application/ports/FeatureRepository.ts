@@ -16,4 +16,15 @@ export interface FeatureRepository {
   get(id: FeatureId): Promise<Feature | null>;
   save(feature: Feature): Promise<void>;
   delete(id: FeatureId): Promise<void>;
+  /**
+   * Every full feature in ONE pass. Optional: a store that can read all its
+   * records cheaper than one `get` per id offers it, and callers that need many
+   * features go through `listAllFeatures` / `loadFeaturesByIds`
+   * (application/services/bulkRead), which fall back to `list` + `get`.
+   *
+   * The reason it exists: a folder store re-reads the whole folder on every
+   * `get`, so a loop of N gets costs N times the folder, and a tool that needs a
+   * project's features paid that on every call.
+   */
+  listFull?(): Promise<readonly Feature[]>;
 }

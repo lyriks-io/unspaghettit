@@ -20,6 +20,7 @@ import {
 } from '../../src/features/projects/domain/services/projectLibrary';
 import { errorText, text, type ToolDeps } from './_shared';
 import { expandFeatureId, expandProjectId } from './short-ids';
+import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 
 const kindSchema = z.enum(ALL_LIBRARY_KINDS as unknown as [LibraryKind, ...LibraryKind[]]);
 
@@ -162,14 +163,7 @@ export const registerProjectLibraryTools = (deps: ToolDeps): void => {
         const feature = await repo.get(asFeatureId(expandedFeatureId));
         if (!feature) return errorText(`Feature ${featureId} not found.`);
 
-        let project: Project | null = null;
-        for (const summary of await projectRepo.list()) {
-          const candidate = await projectRepo.get(summary.id);
-          if (candidate?.featureIds.some((f) => String(f) === String(feature.id))) {
-            project = candidate;
-            break;
-          }
-        }
+        const project: Project | null = await findOwningProject(projectRepo, String(feature.id));
         if (!project) {
           return errorText(
             `Feature ${feature.id} is not a member of any project, so there is no library to promote into. Add it with add_feature_to_project first.`
@@ -269,14 +263,7 @@ export const registerProjectLibraryTools = (deps: ToolDeps): void => {
         const feature = await repo.get(asFeatureId(expandedFeatureId));
         if (!feature) return errorText(`Feature ${featureId} not found.`);
 
-        let project: Project | null = null;
-        for (const summary of await projectRepo.list()) {
-          const candidate = await projectRepo.get(summary.id);
-          if (candidate?.featureIds.some((f) => String(f) === String(feature.id))) {
-            project = candidate;
-            break;
-          }
-        }
+        const project: Project | null = await findOwningProject(projectRepo, String(feature.id));
         if (!project) {
           return errorText(
             `Feature ${feature.id} is not a member of any project. Add it with add_feature_to_project before linking library definitions.`

@@ -39,6 +39,8 @@ import {
   expandIdInFeature,
   expandProjectId
 } from './short-ids';
+import { loadFeaturesByIds as readFeaturesByIds } from '../../src/features/behavior-model/application/services/bulkRead';
+import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 
 /**
  * Load sibling features (same project as `focalFeatureId`) so the simulator
@@ -52,20 +54,11 @@ const loadProjectSiblings = async (
   projectRepo: ProjectRepository,
   focalFeatureId: string
 ): Promise<readonly Feature[] | undefined> => {
-  const projects = await projectRepo.list();
-  for (const summary of projects) {
-    const project = await projectRepo.get(summary.id);
-    if (!project) continue;
-    const ids = project.featureIds.map(String);
-    if (!ids.includes(focalFeatureId)) continue;
-    const siblings = await Promise.all(
-      ids
-        .filter((id) => id !== focalFeatureId)
-        .map((id) => repo.get(asFeatureId(id)))
-    );
-    return siblings.filter((f): f is Feature => f !== null);
-  }
-  return undefined;
+  const project = await findOwningProject(projectRepo, focalFeatureId);
+  if (!project) return undefined;
+  const ids = project.featureIds.map(String).filter((id) => id !== focalFeatureId);
+  const siblings = await readFeaturesByIds(repo, ids);
+  return siblings.filter((f): f is Feature => f !== null);
 };
 
 /**
@@ -78,7 +71,7 @@ const loadFeaturesByIds = async (
   repo: FeatureRepository,
   featureIds: readonly string[]
 ): Promise<readonly Feature[]> => {
-  const loaded = await Promise.all(featureIds.map((id) => repo.get(asFeatureId(id))));
+  const loaded = await readFeaturesByIds(repo, featureIds);
   return loaded.filter((f): f is Feature => f !== null);
 };
 
