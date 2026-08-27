@@ -6,6 +6,64 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-28
+
+A write that cannot land now says so. The editing path stops trusting
+silence: unknown types, missed lookups and empty patches are refused with
+the fix in the message, and one broken scenario can no longer take down a
+whole verification run. Driven by field feedback from an agent session that
+misread every one of these silences as "the engine cannot do this".
+
+### Added
+
+- **`list`, `collection`, `map` and `dict` type synonyms.** Folded to the
+  canonical `array` / `object` the way `int` folds to `number`. The
+  collection effects are NAMED `append_to_list` / `remove_from_list`, so
+  `type:"list"` is the synonym every agent reaches for first; the
+  `unspa://operations` and `unspa://guide` resources now say in one line
+  that lists are `type:"array"`.
+- **`update_dependency` op**, completing the add/remove pair, with
+  `dependencyKind` and full `operations` replacement (fresh ids minted).
+- **Both patch spellings on every update op.** Fields flat on the op or
+  nested under `patch:{...}` are equivalent everywhere; each op documents
+  what it accepts when the patch resolves empty.
+- **`op[N] (remove_*)` attribution.** Validation errors introduced by a
+  removal now name the op that orphaned the reference ("transition targets
+  unknown surface X" reads as `op[2] (remove_surface): ...`).
+- **Collection parameter domains in `model_check`.** The empty collection
+  is a required array/object parameter's boundary sample (like
+  `[true,false]` for booleans), so such a parameter no longer makes its
+  whole action unexplorable.
+
+### Fixed
+
+- **Silent no-op updates.** Eight batch update ops and eight granular tools
+  acked `ok:true` on a missed lookup while changing nothing; they now throw,
+  with a cross-level hint when the rule id lives at the other level (action
+  vs surface). An update whose computed patch is empty is an error naming
+  the accepted fields.
+- **Unknown types are refused at write time.** An out-of-vocabulary state
+  or parameter type used to reach disk and surface later as misleading
+  value errors ("expected list, got object") that permanently blocked the
+  action; the validator now names the type and the `array` remedy, and a
+  legacy on-disk unknown type is reported as a declaration problem.
+- **`link_project_definition` / `unlink_project_definition` in a batch
+  replaced the feature with `undefined`**: the op discriminator was passed
+  as the library kind. The ops now take `definitionKind`.
+- **One broken scenario no longer aborts the run.** A scenario whose
+  references do not resolve (a removed step action, a missing persona)
+  failed the entire feature's run and `verify` for the whole project; it
+  now fails alone, with a summary naming the dangling reference.
+- **A landed write can no longer report "Write failed".** The post-write
+  scenario-impact check is fenced; when it cannot run, the ack says the
+  write WAS saved and carries `scenarioImpactError`.
+- **The dashboard state inspector edits array/object state as JSON.** It
+  used to write the raw string into the snapshot, after which every list
+  effect and `contains` check silently no-oped.
+- **`update_surface` parent changes refuse loudly through the MCP.**
+  Self-parent, unknown parent and cycles were silent no-ops; the dashboard
+  drag flow keeps its quiet refusal.
+
 ## [0.20.0] - 2026-08-26
 
 Reads scale with the file you touch, not with the folder it sits in. Every
