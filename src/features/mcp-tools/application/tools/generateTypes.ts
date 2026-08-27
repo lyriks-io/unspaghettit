@@ -41,6 +41,8 @@ const stateTypeToTs = (type: StateType, enumValues?: readonly string[]): string 
       return 'readonly unknown[]';
     case 'object':
       return 'Record<string, unknown>';
+    default:
+      return 'unknown';
   }
 };
 
@@ -66,6 +68,8 @@ const parameterTypeToTs = (type: ParameterType, enumValues?: readonly string[]):
       return 'string';
     case 'geolocation':
       return '{ readonly lat: number; readonly lng: number }';
+    default:
+      return 'unknown';
   }
 };
 

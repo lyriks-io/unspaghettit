@@ -26,6 +26,8 @@ const fallbackForType = (type: StateType, enumValues?: readonly string[]): State
       return {};
     case 'array':
       return [];
+    default:
+      return null;
   }
 };
 

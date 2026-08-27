@@ -80,7 +80,8 @@ Feature
   └── acceptanceCriteria[] Prose Given/When/Then acceptance tests { title, given, when, then, expectedOutcome } — the documentation facet, NOT model-checked or scored (use a Scenario for a checkable assertion)
 
 State paths use dot notation: "cart.itemCount", "user.profile.name".
-StateDefinition: { path, type (string|number|boolean|enum|object|array; int/integer/bool/str synonyms fold to the canonical type), defaultValue, enumValues? | valueSetId?, sharedWith?: SurfaceId[] }
+StateDefinition: { path, type (string|number|boolean|enum|object|array; int/integer/bool/str/list/map synonyms fold to the canonical type), defaultValue, enumValues? | valueSetId?, sharedWith?: SurfaceId[] }
+There is NO \`list\` type: lists are \`type:"array"\` (the append_to_list / remove_from_list / update_list_item effects operate on array-typed paths, e.g. defaultValue: []).
 
 Descriptions are mandatory for every authored element. That includes Feature,
 Project, Surface, StateDefinition, Parameter, Rule, Effect, Invariant,

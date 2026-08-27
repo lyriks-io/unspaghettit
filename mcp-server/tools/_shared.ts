@@ -128,7 +128,11 @@ export const STATE_TYPE_INPUT_VALUES = [
   'decimal',
   'bool',
   'str',
-  'text'
+  'text',
+  'list',
+  'collection',
+  'map',
+  'dict'
 ] as const;
 
 /**
@@ -160,7 +164,11 @@ export const PARAMETER_TYPE_INPUT_VALUES = [
   'decimal',
   'bool',
   'str',
-  'text'
+  'text',
+  'list',
+  'collection',
+  'map',
+  'dict'
 ] as const;
 
 const STATE_TYPE_ALIASES: Readonly<Record<string, string>> = {
@@ -172,7 +180,16 @@ const STATE_TYPE_ALIASES: Readonly<Record<string, string>> = {
   decimal: 'number',
   bool: 'boolean',
   str: 'string',
-  text: 'string'
+  text: 'string',
+  // The collection effects are NAMED *_to_list, so `type:"list"` is the
+  // synonym every LLM reaches for first. Before this alias existed, the bogus
+  // type slipped through the batch path and every downstream error blamed the
+  // value instead of the type ("expected list, got object"), which read as
+  // "the engine cannot simulate lists". It can; the type is `array`.
+  list: 'array',
+  collection: 'array',
+  map: 'object',
+  dict: 'object'
 };
 
 /**

@@ -1,8 +1,16 @@
 import type { Feature } from '../../entities/Feature';
 import { effectiveEnumValues } from '../EnumValues';
 import { isEventName } from '../../value-objects/EventName';
-import { parameterTypeToStateType } from '../../value-objects/ParameterType';
-import { isStateValueAssignableTo } from '../../value-objects/StateValue';
+import {
+  isParameterType,
+  PARAMETER_TYPES,
+  parameterTypeToStateType
+} from '../../value-objects/ParameterType';
+import {
+  isStateType,
+  isStateValueAssignableTo,
+  STATE_TYPES
+} from '../../value-objects/StateValue';
 import { validateElementShapes } from './elementShape';
 import {
   categoryHint,
@@ -124,12 +132,22 @@ export const validateFeature = (feature: Feature): ValidationResult => {
       }
       stateDefPaths.add(def.path);
       requireDescription(errors, `State definition "${def.path}" in surface ${surface.id}`, def);
+      // Unknown declared types (the classic being "list", induced by the
+      // *_to_list effect names) used to slip through the batch path unchecked
+      // and then surface downstream as misleading defaultValue / parameter
+      // errors that never named the real cause. Name it here and skip the
+      // value checks that presuppose a valid type.
+      if (!isStateType(def.type)) {
+        errors.push(
+          `State "${def.path}" in surface ${surface.id}: unknown type "${def.type}". Valid: ${STATE_TYPES.join(', ')}. Lists are type "array" (the append_to_list / remove_from_list / update_list_item effects operate on array-typed paths).`
+        );
+      }
       // Type/value contract: rules and invariants compare values by JS type
       // (e.g. greater_than requires both sides to be `typeof number`). A
       // defaultValue stored as `"365"` instead of `365` silently falsifies
       // every condition that touches it. Reject at write time so the bug
       // can't reach disk.
-      if (!isStateValueAssignableTo(def.defaultValue, def.type)) {
+      else if (!isStateValueAssignableTo(def.defaultValue, def.type)) {
         errors.push(
           `State "${def.path}" in surface ${surface.id}: defaultValue is not assignable to declared type "${def.type}". ${defaultValueHint(def.defaultValue, def.type)}`
         );
@@ -157,7 +175,7 @@ export const validateFeature = (feature: Feature): ValidationResult => {
           );
         }
       }
-      if (def.valueSetId !== undefined && def.type !== 'enum') {
+      if (isStateType(def.type) && def.valueSetId !== undefined && def.type !== 'enum') {
         errors.push(
           `State "${def.path}" in surface ${surface.id}: valueSetId is only valid for type "enum" (got "${def.type}").`
         );
@@ -235,7 +253,14 @@ export const validateFeature = (feature: Feature): ValidationResult => {
         }
         paramIds.add(p.id);
         requireDescription(errors, `Parameter "${p.name}" in action ${cap.id}`, p);
-        if (
+        // Same gate as state definitions: an out-of-vocabulary parameter type
+        // used to reach disk and then permanently block the action with
+        // `expected list, got object` style errors at simulate time.
+        if (!isParameterType(p.type)) {
+          errors.push(
+            `Parameter "${p.name}" in action ${cap.id}: unknown type "${p.type}". Valid: ${PARAMETER_TYPES.join(', ')}. Lists are type "array".`
+          );
+        } else if (
           p.defaultValue !== undefined &&
           !isStateValueAssignableTo(p.defaultValue, parameterTypeToStateType(p.type))
         ) {
@@ -267,7 +292,7 @@ export const validateFeature = (feature: Feature): ValidationResult => {
             );
           }
         }
-        if (p.valueSetId !== undefined && p.type !== 'enum') {
+        if (isParameterType(p.type) && p.valueSetId !== undefined && p.type !== 'enum') {
           errors.push(
             `Parameter "${p.name}" in action ${cap.id}: valueSetId is only valid for type "enum" (got "${p.type}").`
           );

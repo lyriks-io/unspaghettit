@@ -1,6 +1,10 @@
 import type { Parameter } from '../entities/Parameter';
 import type { ValueSet } from '../entities/ValueSet';
-import { parameterTypeToStateType } from '../value-objects/ParameterType';
+import {
+  isParameterType,
+  PARAMETER_TYPES,
+  parameterTypeToStateType
+} from '../value-objects/ParameterType';
 import type { ParameterValidation } from '../value-objects/ParameterValidation';
 import type { StateValue } from '../value-objects/StateValue';
 import { isStateValueAssignableTo } from '../value-objects/StateValue';
@@ -280,6 +284,17 @@ export const validateParameters = (
       if (parameter.required && parameter.defaultValue === undefined) {
         errors.push({ parameterName: parameter.name, reason: 'is required' });
       }
+      continue;
+    }
+    // A declared type outside the vocabulary (legacy on-disk "list" written
+    // before the write-time type gate) would otherwise reject EVERY value with
+    // "expected list, got object" and permanently block the action. Name the
+    // declaration as the problem, not the caller's value.
+    if (!isParameterType(parameter.type)) {
+      errors.push({
+        parameterName: parameter.name,
+        reason: `has unknown declared type "${parameter.type}". Fix the parameter declaration: valid types are ${PARAMETER_TYPES.join(', ')} (lists are type "array")`
+      });
       continue;
     }
     const baseType = parameterTypeToStateType(parameter.type);
