@@ -793,3 +793,67 @@ describe('runScenariosUseCase — multi-step scenarios', () => {
     });
   });
 });
+
+describe('unresolvable scenarios fail instead of aborting the run', () => {
+  it('reports a dangling step reference as a failing scenario, not a crash', () => {
+    const broken: Action = {
+      id: asActionId('c-broken'),
+      name: 'Checkout',
+      intent: 'Complete the purchase',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [],
+      emittedEvents: [],
+      transitions: [],
+      scenarios: [
+        {
+          id: asScenarioId('sc-dangling'),
+          name: 'checkout after adding an item',
+          stateOverrides: [],
+          parameterOverrides: [],
+          expectedStatus: 'success',
+          // The step's action was removed from the model (legacy data written
+          // before the write gate covered steps). This must fail THIS
+          // scenario, not throw and take down the whole feature's run.
+          steps: [{ actionId: asActionId('c-gone'), parameterOverrides: [] }]
+        }
+      ]
+    };
+    const healthy: Action = {
+      id: asActionId('c-ok'),
+      name: 'Noop',
+      intent: 'Do nothing',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [],
+      emittedEvents: [],
+      transitions: [],
+      scenarios: [
+        {
+          id: asScenarioId('sc-ok'),
+          name: 'runs fine',
+          stateOverrides: [],
+          parameterOverrides: [],
+          expectedStatus: 'success'
+        }
+      ]
+    };
+    const feature = makeFeature(broken);
+    const withBoth: Feature = {
+      ...feature,
+      surfaces: [{ ...feature.surfaces[0]!, actions: [broken, healthy] }]
+    };
+    const out = runScenariosUseCase()({ feature: withBoth });
+    expect(out.total).toBe(2);
+    expect(out.passed).toBe(1);
+    expect(out.failed).toBe(1);
+    const failed = out.results.find((r) => String(r.scenarioId) === 'sc-dangling');
+    expect(failed?.pass).toBe(false);
+    expect(failed?.summary).toContain('scenario could not run');
+    expect(failed?.summary).toContain('c-gone');
+  });
+});

@@ -111,7 +111,7 @@ class SimulatorStore {
     this.persistAcrossNavigation = value;
   }
 
-  setStatePath(path: StatePath, value: string | number | boolean): void {
+  setStatePath(path: StatePath, value: StateValue): void {
     this.snapshot = writePath(this.snapshot, path, value);
   }
 

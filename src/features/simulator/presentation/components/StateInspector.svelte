@@ -5,22 +5,47 @@
   import { moveStateDefinitionBy } from '$features/behavior-model/domain/services/FeatureTransforms';
   import { simulatorStore } from '$features/simulator/presentation/stores/simulatorStore.svelte';
   import { readPath, type StatePath } from '$features/behavior-model/domain/value-objects/StatePath';
+  import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
   import { humanizeStatePath } from '$features/behavior-model/domain/value-objects/humanize';
 
   type Props = { surface: Surface };
   let { surface }: Props = $props();
 
-  function coerce(raw: string, type: string): string | number | boolean {
+  // The sentinel `undefined` means "invalid input, do not write". Writing the
+  // raw STRING for an array/object path used to corrupt the snapshot: every
+  // list effect and `contains` check then silently no-oped against "[1,2]".
+  function coerce(raw: string, type: string): StateValue | undefined {
     if (type === 'boolean') return raw === 'true';
     if (type === 'number') {
       const n = Number(raw);
       return Number.isFinite(n) ? n : 0;
     }
+    if (type === 'array' || type === 'object') {
+      try {
+        // JSON.parse output is a StateValue by construction.
+        const parsed = JSON.parse(raw) as StateValue;
+        if (type === 'array' && Array.isArray(parsed)) return parsed;
+        if (type === 'object' && parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch {
+        // fall through: not valid JSON of the declared shape
+      }
+      return undefined;
+    }
     return raw;
   }
 
   function update(path: StatePath, raw: string, type: string) {
-    simulatorStore.setStatePath(path, coerce(raw, type));
+    const value = coerce(raw, type);
+    if (value === undefined) return;
+    simulatorStore.setStatePath(path, value);
+  }
+
+  function display(value: unknown, type: string): string {
+    if (value === undefined || value === null) return '';
+    if (type === 'array' || type === 'object') return JSON.stringify(value);
+    return String(value);
   }
 
   async function move(definitionId: StateDefinitionId, delta: -1 | 1) {
@@ -68,7 +93,8 @@
           <input
             type={def.type === 'number' ? 'number' : 'text'}
             class="w-28 shrink-0 rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-[11px] focus:border-brand-500 focus:outline-none"
-            value={value === undefined || value === null ? '' : String(value)}
+            value={display(value, def.type)}
+            placeholder={def.type === 'array' ? '[]' : def.type === 'object' ? '{}' : ''}
             onchange={(e) => update(def.path, (e.target as HTMLInputElement).value, def.type)}
           />
         {/if}

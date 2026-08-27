@@ -306,8 +306,20 @@ export const runMutation = async (
     const result = await deps.mutateFeature(expandedInput);
     const baseAck = ack(result.id, result.updatedAt, opts?.createdId);
     if (!opts?.scenarioScope) return text(baseAck);
-    const impact = scenarioImpact(result, opts.scenarioScope);
-    return text(impact === null ? baseAck : { ...baseAck, scenarioImpact: impact });
+    // The write is already persisted at this point. A scenario-impact check
+    // that throws (pre-existing broken scenario data in the covered scope)
+    // must not turn a LANDED write into a "Write failed:" response: that
+    // taught agents that update_* is broken and pushed them into remove+add
+    // loops while their writes were silently stacking up on disk.
+    try {
+      const impact = scenarioImpact(result, opts.scenarioScope);
+      return text(impact === null ? baseAck : { ...baseAck, scenarioImpact: impact });
+    } catch (impactError) {
+      return text({
+        ...baseAck,
+        scenarioImpactError: `The write was SAVED, but the post-write scenario check could not run: ${(impactError as Error).message}. Run run_all_scenarios for details.`
+      });
+    }
   } catch (e) {
     return writeErrorText(e);
   }

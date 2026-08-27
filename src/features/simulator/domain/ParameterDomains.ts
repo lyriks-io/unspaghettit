@@ -143,6 +143,19 @@ const parameterValues = (
     if (samples.length > 0) return samples;
     return parameter.required ? 'unbounded' : [undefined as unknown as StateValue];
   }
+  // Collections have a canonical boundary value the way booleans do: the
+  // empty collection. Before this, a required array/object parameter without
+  // a default made the WHOLE action unexplorable ("the explorer cannot invent
+  // a value"), which read as "the engine cannot model-check lists". Rules
+  // that need a non-empty sample still deserve an explicit defaultValue.
+  if (parameter.type === 'array') {
+    if (parameter.defaultValue !== undefined) return [parameter.defaultValue];
+    return parameter.required ? [[] as StateValue] : [undefined as unknown as StateValue];
+  }
+  if (parameter.type === 'object') {
+    if (parameter.defaultValue !== undefined) return [parameter.defaultValue];
+    return parameter.required ? [{} as StateValue] : [undefined as unknown as StateValue];
+  }
   if (parameter.defaultValue !== undefined) return [parameter.defaultValue];
   return parameter.required ? 'unbounded' : [undefined as unknown as StateValue];
 };

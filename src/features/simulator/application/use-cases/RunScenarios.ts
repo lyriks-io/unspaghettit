@@ -458,7 +458,35 @@ export const runScenariosUseCase = () => {
         if (input.actionId && action.id !== input.actionId) continue;
         const scenarios = action.scenarios ?? [];
         for (const scenario of scenarios) {
-          results.push(runOne(surface, action, scenario, input.feature, input.projectFeatures));
+          try {
+            results.push(runOne(surface, action, scenario, input.feature, input.projectFeatures));
+          } catch (e) {
+            // A scenario whose references no longer resolve (a step's action
+            // or surface removed, a persona gone: legacy data written before
+            // the write gate covered it) is a FAILING scenario, not a crash.
+            // Throwing here used to abort the whole feature's run, take down
+            // `verify` for the entire project, and (via the post-write impact
+            // check) make landed writes report "Write failed".
+            results.push({
+              surfaceId: surface.id,
+              actionId: action.id,
+              actionName: action.name,
+              scenarioId: scenario.id,
+              scenarioName: scenario.name,
+              personaId: scenario.personaId ? String(scenario.personaId) : null,
+              personaName: null,
+              pass: false,
+              actualStatus: 'blocked',
+              expectedStatus: scenario.expectedStatus ?? null,
+              statusMatches: false,
+              assertions: [],
+              steps: [],
+              transitionCheck: null,
+              parameterErrors: [],
+              invariantViolations: [],
+              summary: `fail. scenario could not run: ${(e as Error).message}`
+            });
+          }
         }
       }
     }
