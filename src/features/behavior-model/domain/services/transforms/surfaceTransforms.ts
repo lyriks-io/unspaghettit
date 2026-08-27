@@ -211,20 +211,40 @@ const isDescendantOf = (
 };
 
 /**
+ * Why `setSurfaceParent` would refuse this reparenting, or null when it is
+ * fine. The dashboard drag flow relies on the silent refusal below; MCP
+ * callers check this first and throw, so an op never acks success while
+ * changing nothing.
+ */
+export const surfaceParentBlockReason = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  parentId: SurfaceId | null
+): string | null => {
+  if (parentId === null) return null;
+  if (parentId === surfaceId) return `surface ${String(surfaceId)} cannot be its own parent`;
+  if (!feature.surfaces.some((s) => s.id === parentId)) {
+    return `parent surface "${String(parentId)}" does not exist in the feature`;
+  }
+  if (isDescendantOf(feature.surfaces, parentId, surfaceId)) {
+    return `"${String(parentId)}" is a descendant of "${String(surfaceId)}"; nesting under it would create a cycle`;
+  }
+  return null;
+};
+
+/**
  * Set or clear a surface's parent for navigator grouping. Refuses cycles:
  * a surface cannot be its own parent, nor a descendant of itself. Pass
- * `null` to make the surface a root again.
+ * `null` to make the surface a root again. Invalid targets are a silent
+ * no-op (the dashboard drag flow relies on that); use
+ * `surfaceParentBlockReason` first when the caller must be told.
  */
 export const setSurfaceParent = (
   feature: Feature,
   surfaceId: SurfaceId,
   parentId: SurfaceId | null
 ): Feature => {
-  if (parentId !== null) {
-    if (parentId === surfaceId) return feature;
-    if (!feature.surfaces.some((s) => s.id === parentId)) return feature;
-    if (isDescendantOf(feature.surfaces, parentId, surfaceId)) return feature;
-  }
+  if (surfaceParentBlockReason(feature, surfaceId, parentId) !== null) return feature;
   return updateSurface(feature, surfaceId, (s) => ({
     ...s,
     parentSurfaceId: parentId ?? undefined

@@ -4,6 +4,7 @@ import {
   removeConstant,
   updateConstant
 } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
+import { EntityNotFoundInFeatureError } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { Constant } from '../../src/features/behavior-model/domain/entities/Constant';
 import type { StateValue } from '../../src/features/behavior-model/domain/value-objects/StateValue';
 import {
@@ -75,7 +76,7 @@ export const registerConstantTools = (deps: ToolDeps): void => {
           const existing = (exp.constants ?? []).find(
             (c) => c.id === asConstantId(constantId)
           );
-          if (!existing) return exp;
+          if (!existing) throw new EntityNotFoundInFeatureError('constant', constantId);
           const merged: Constant = {
             ...existing,
             ...(name !== undefined ? { name } : {}),

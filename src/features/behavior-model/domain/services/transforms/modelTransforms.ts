@@ -172,9 +172,7 @@ export const addDependency = (feature: Feature, dependency: Dependency): Feature
 
 export const updateDependency = (feature: Feature, dependency: Dependency): Feature => ({
   ...feature,
-  dependencies: (feature.dependencies ?? []).map((d) =>
-    d.id === dependency.id ? dependency : d
-  )
+  dependencies: mustMap(feature.dependencies ?? [], String(dependency.id), 'dependency', () => dependency)
 });
 
 export const removeDependency = (feature: Feature, dependencyId: DependencyId): Feature => ({

@@ -4,6 +4,7 @@ import {
   removeValueSet,
   updateValueSet
 } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
+import { EntityNotFoundInFeatureError } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { ValueSet } from '../../src/features/behavior-model/domain/entities/ValueSet';
 import {
   asFeatureId,
@@ -64,7 +65,7 @@ export const registerValueSetTools = (deps: ToolDeps): void => {
           const existing = (exp.valueSets ?? []).find(
             (vs) => vs.id === asValueSetId(valueSetId)
           );
-          if (!existing) return exp;
+          if (!existing) throw new EntityNotFoundInFeatureError('value set', valueSetId);
           const merged: ValueSet = {
             ...existing,
             ...(name !== undefined ? { name } : {}),

@@ -3,7 +3,8 @@ import {
   addSurface,
   removeSurface,
   renameSurface,
-  setSurfaceParent
+  setSurfaceParent,
+  surfaceParentBlockReason
 } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { Surface, SurfaceType } from '../../src/features/behavior-model/domain/entities/Surface';
 import { ALL_SURFACE_TYPES } from '../../src/features/behavior-model/domain/entities/Surface';
@@ -93,11 +94,14 @@ export const registerSurfaceTools = (deps: ToolDeps): void => {
             ...(presentation !== undefined ? { presentation } : {})
           });
           if (parentSurfaceId !== undefined) {
-            next = setSurfaceParent(
-              next,
-              sId,
-              parentSurfaceId === null ? null : asSurfaceId(parentSurfaceId)
-            );
+            const parentId = parentSurfaceId === null ? null : asSurfaceId(parentSurfaceId);
+            // setSurfaceParent quietly refuses an invalid target (the
+            // dashboard drag flow relies on that); through the MCP the
+            // refusal must be loud or the call acks success while changing
+            // nothing.
+            const blocked = surfaceParentBlockReason(next, sId, parentId);
+            if (blocked) throw new Error(`update_surface: ${blocked}`);
+            next = setSurfaceParent(next, sId, parentId);
           }
           return next;
         }

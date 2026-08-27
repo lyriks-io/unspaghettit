@@ -12,7 +12,15 @@ import {
   asSurfaceId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
 import { buildScenario, buildScenarioPatch } from '../_entity_builders';
-import { resolve, resolveScenarioRefs, type Op, type OpContext } from './opHelpers';
+import {
+  notFoundInOp,
+  requireSomeChange,
+  resolve,
+  resolveScenarioRefs,
+  withPatch,
+  type Op,
+  type OpContext
+} from './opHelpers';
 
 /**
  * Scenario and Event op families. Returns the next Feature when it handled
@@ -41,8 +49,21 @@ export const applyScenarioEventOps = (op: Op, ctx: OpContext): Feature | null =>
       const sid = asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId'));
       const cid = asActionId(resolve(op, refs, 'actionRef', 'actionId'));
       const scid = asScenarioId(op.scenarioId as string);
-      const resolved = resolveScenarioRefs(op, refs);
-      exp = T.updateScenarioOnCapability(exp, sid, cid, scid, buildScenarioPatch(resolved));
+      const resolved = resolveScenarioRefs(withPatch(op), refs);
+      const patch = buildScenarioPatch(resolved);
+      requireSomeChange(op, patch as Record<string, unknown>, [
+        'name',
+        'description',
+        'personaId',
+        'stateOverrides',
+        'parameterOverrides',
+        'expectedStatus',
+        'expectedAssertions',
+        'expectedTransition',
+        'timeAdvance',
+        'steps'
+      ]);
+      exp = T.updateScenarioOnCapability(exp, sid, cid, scid, patch);
       break;
     }
     case 'remove_scenario':
@@ -87,14 +108,14 @@ export const applyScenarioEventOps = (op: Op, ctx: OpContext): Feature | null =>
     case 'update_event': {
       const eid = asEventDefinitionId(op.eventId as string);
       const existing = (exp.events ?? []).find((e) => e.id === eid);
-      if (!existing) break;
-      const payloadRaw = op.payloadSchema as
+      if (!existing) throw notFoundInOp(op, 'event', eid);
+      const o = withPatch(op);
+      const payloadRaw = o.payloadSchema as
         | readonly Record<string, unknown>[]
         | undefined;
-      const merged: EventDefinition = {
-        ...existing,
-        ...(typeof op.name === 'string' ? { name: op.name as EventName } : {}),
-        ...(typeof op.description === 'string' ? { description: op.description } : {}),
+      const picked = {
+        ...(typeof o.name === 'string' ? { name: o.name as EventName } : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {}),
         ...(payloadRaw !== undefined
           ? payloadRaw.length === 0
             ? { payloadSchema: undefined }
@@ -112,11 +133,12 @@ export const applyScenarioEventOps = (op: Op, ctx: OpContext): Feature | null =>
                 )
               }
           : {}),
-        ...(typeof op.delivery === 'string'
-          ? { delivery: op.delivery as EventDefinition['delivery'] }
+        ...(typeof o.delivery === 'string'
+          ? { delivery: o.delivery as EventDefinition['delivery'] }
           : {})
       };
-      exp = T.updateEvent(exp, merged);
+      requireSomeChange(op, picked, ['name', 'description', 'payloadSchema', 'delivery']);
+      exp = T.updateEvent(exp, { ...existing, ...picked });
       break;
     }
     case 'remove_event':

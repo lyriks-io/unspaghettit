@@ -7,6 +7,7 @@ import {
   updateRuleOnCapability,
   updateRuleOnSurface
 } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
+import { EntityNotFoundInFeatureError } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { Rule } from '../../src/features/behavior-model/domain/entities/Rule';
 import { ALL_RULE_CATEGORIES } from '../../src/features/behavior-model/domain/value-objects/RuleCategory';
 import type { RuleCategory } from '../../src/features/behavior-model/domain/value-objects/RuleCategory';
@@ -162,7 +163,7 @@ export const registerRuleTools = (deps: ToolDeps): void => {
             const surface = exp.surfaces.find((s) => s.id === asSurfaceId(surfaceId));
             const cap = surface?.actions.find((c) => c.id === asActionId(actionId));
             const existing = cap?.rules.find((r) => r.id === asRuleId(ruleId));
-            if (!existing) return exp;
+            if (!existing) throw new EntityNotFoundInFeatureError('rule', ruleId);
             const merged: Rule = {
               ...existing,
               ...(patch.category !== undefined ? { category: patch.category } : {}),
@@ -268,7 +269,7 @@ export const registerRuleTools = (deps: ToolDeps): void => {
           transform: (exp) => {
             const surface = exp.surfaces.find((s) => s.id === asSurfaceId(surfaceId));
             const existing = surface?.rules.find((r) => r.id === asRuleId(ruleId));
-            if (!existing) return exp;
+            if (!existing) throw new EntityNotFoundInFeatureError('rule', ruleId);
             const merged: Rule = {
               ...existing,
               ...(patch.category !== undefined ? { category: patch.category } : {}),

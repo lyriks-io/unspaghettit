@@ -30,6 +30,59 @@ export type OpContext = {
 
 const get = <K extends string>(op: Op, key: K): unknown => op[key];
 
+/**
+ * Update ops accept their editable fields either flat on the op (the original
+ * engine contract) or nested under `patch` (the spelling half the callers use,
+ * the platform facade included). Both used to half-work: flat ops silently
+ * ignored `patch` and patch ops silently ignored flat fields, producing an
+ * empty patch that saved nothing while acking ok:true. Merging `patch` over
+ * the op lets both spellings reach the field picks; the callers keep reading
+ * structural keys (ids, refs) off the original op.
+ */
+export const withPatch = (op: Op): Op => {
+  const patch = op.patch;
+  if (patch === undefined) return op;
+  if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
+    throw new Error(`${op.kind}: "patch" must be an object`);
+  }
+  return { ...op, ...(patch as Record<string, unknown>), kind: op.kind };
+};
+
+/** A copy of the op without its structural keys, for open-ended patch shapes. */
+export const flatFields = (
+  op: Op,
+  structuralKeys: readonly string[]
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(op).filter(([k]) => k !== 'patch' && !structuralKeys.includes(k))
+  );
+
+/**
+ * Refuse an update whose computed patch is empty. An empty patch was the other
+ * face of the silent-no-op bug: the save "succeeded" while changing nothing,
+ * which taught agents that update_* was broken and pushed them into
+ * remove+add churn.
+ */
+export const requireSomeChange = (
+  op: Op,
+  patch: Record<string, unknown>,
+  accepted: readonly string[]
+): void => {
+  if (Object.keys(patch).length > 0) return;
+  throw new Error(
+    `${op.kind}: nothing to update. Pass at least one of: ${accepted.join(', ')} (flat on the op or under "patch").`
+  );
+};
+
+/**
+ * Loud lookup failure for update ops, mirroring transforms/internal.mustMap:
+ * an update whose target id does not resolve must never ack success.
+ */
+export const notFoundInOp = (op: Op, kind: string, id: unknown, where?: string): Error =>
+  new Error(
+    `${op.kind}: ${kind} "${String(id)}" not found${where ? ` ${where}` : ''}. Updates never no-op silently; re-read the ids with get_feature and retry.`
+  );
+
 export const resolve = (op: Op, refs: Refs, refKey: string, idKey: string): string => {
   const refName = get(op, refKey);
   if (typeof refName === 'string' && refName.length > 0) {

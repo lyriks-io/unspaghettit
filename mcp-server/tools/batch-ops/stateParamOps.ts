@@ -13,7 +13,15 @@ import {
 import { asStatePath } from '../../../src/features/behavior-model/domain/value-objects/StatePath';
 import { asStateVariableId } from '../../../src/features/projects/domain/value-objects/ids';
 import { normalizeStateType } from '../_shared';
-import { directionDelta, resolve, resolveSharedWith, type Op, type OpContext } from './opHelpers';
+import {
+  directionDelta,
+  requireSomeChange,
+  resolve,
+  resolveSharedWith,
+  withPatch,
+  type Op,
+  type OpContext
+} from './opHelpers';
 
 /**
  * State definition and Parameter op families. Returns the next Feature when
@@ -51,37 +59,49 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
       remember(op.ref, def.id);
       break;
     }
-    case 'update_state_definition':
+    case 'update_state_definition': {
+      const o = withPatch(op);
+      const picked = {
+        ...(typeof o.path === 'string' ? { path: asStatePath(o.path) } : {}),
+        ...(typeof o.type === 'string'
+          ? { type: normalizeStateType(o.type) as StateDefinition['type'] }
+          : {}),
+        ...(o.defaultValue !== undefined
+          ? { defaultValue: o.defaultValue as StateDefinition['defaultValue'] }
+          : {}),
+        ...(Array.isArray(o.enumValues)
+          ? { enumValues: o.enumValues as readonly string[] }
+          : {}),
+        ...('valueSetId' in o
+          ? {
+              valueSetId:
+                o.valueSetId == null ? undefined : asValueSetId(o.valueSetId as string)
+            }
+          : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {}),
+        ...(Array.isArray(o.sharedWith)
+          ? {
+              sharedWith: o.sharedWith.length === 0 ? undefined : resolveSharedWith(o, refs)
+            }
+          : {})
+      };
+      requireSomeChange(op, picked, [
+        'path',
+        'type',
+        'defaultValue',
+        'enumValues',
+        'valueSetId',
+        'description',
+        'sharedWith'
+      ]);
       exp = T.updateStateDefinition(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asStateDefinitionId(op.stateDefinitionId as string),
-        {
-          ...(typeof op.path === 'string' ? { path: asStatePath(op.path) } : {}),
-          ...(typeof op.type === 'string'
-            ? { type: normalizeStateType(op.type) as StateDefinition['type'] }
-            : {}),
-          ...(op.defaultValue !== undefined
-            ? { defaultValue: op.defaultValue as StateDefinition['defaultValue'] }
-            : {}),
-          ...(Array.isArray(op.enumValues)
-            ? { enumValues: op.enumValues as readonly string[] }
-            : {}),
-          ...('valueSetId' in op
-            ? {
-                valueSetId:
-                  op.valueSetId == null ? undefined : asValueSetId(op.valueSetId as string)
-              }
-            : {}),
-          ...(typeof op.description === 'string' ? { description: op.description } : {}),
-          ...(Array.isArray(op.sharedWith)
-            ? {
-                sharedWith: op.sharedWith.length === 0 ? undefined : resolveSharedWith(op, refs)
-              }
-            : {})
-        }
+        picked
       );
       break;
+    }
     case 'remove_state_definition':
       exp = T.removeStateDefinition(
         exp,
@@ -128,51 +148,66 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
       remember(op.ref, param.id);
       break;
     }
-    case 'update_parameter':
+    case 'update_parameter': {
+      const o = withPatch(op);
+      const picked = {
+        ...(typeof o.name === 'string' ? { name: o.name } : {}),
+        ...(typeof o.type === 'string'
+          ? { type: normalizeStateType(o.type) as Parameter['type'] }
+          : {}),
+        ...(typeof o.required === 'boolean' ? { required: o.required } : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {}),
+        ...(Array.isArray(o.enumValues)
+          ? { enumValues: o.enumValues as readonly string[] }
+          : {}),
+        ...('valueSetId' in o
+          ? {
+              valueSetId:
+                o.valueSetId == null ? undefined : asValueSetId(o.valueSetId as string)
+            }
+          : {}),
+        ...(o.defaultValue !== undefined
+          ? { defaultValue: o.defaultValue as Parameter['defaultValue'] }
+          : {}),
+        ...('bindToStatePath' in o
+          ? {
+              bindToStatePath:
+                o.bindToStatePath === null || o.bindToStatePath === undefined
+                  ? undefined
+                  : asStatePath(o.bindToStatePath as string)
+            }
+          : {}),
+        ...(Array.isArray(o.validations)
+          ? { validations: o.validations as unknown as Parameter['validations'] }
+          : {}),
+        ...('resourceId' in o
+          ? {
+              resourceId:
+                o.resourceId == null ? undefined : asResourceId(o.resourceId as string)
+            }
+          : {})
+      };
+      requireSomeChange(op, picked, [
+        'name',
+        'type',
+        'required',
+        'description',
+        'enumValues',
+        'valueSetId',
+        'defaultValue',
+        'bindToStatePath',
+        'validations',
+        'resourceId'
+      ]);
       exp = T.updateParameter(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asActionId(resolve(op, refs, 'actionRef', 'actionId')),
         asParameterId(op.parameterId as string),
-        {
-          ...(typeof op.name === 'string' ? { name: op.name } : {}),
-          ...(typeof op.type === 'string'
-            ? { type: normalizeStateType(op.type) as Parameter['type'] }
-            : {}),
-          ...(typeof op.required === 'boolean' ? { required: op.required } : {}),
-          ...(typeof op.description === 'string' ? { description: op.description } : {}),
-          ...(Array.isArray(op.enumValues)
-            ? { enumValues: op.enumValues as readonly string[] }
-            : {}),
-          ...('valueSetId' in op
-            ? {
-                valueSetId:
-                  op.valueSetId == null ? undefined : asValueSetId(op.valueSetId as string)
-              }
-            : {}),
-          ...(op.defaultValue !== undefined
-            ? { defaultValue: op.defaultValue as Parameter['defaultValue'] }
-            : {}),
-          ...('bindToStatePath' in op
-            ? {
-                bindToStatePath:
-                  op.bindToStatePath === null || op.bindToStatePath === undefined
-                    ? undefined
-                    : asStatePath(op.bindToStatePath as string)
-              }
-            : {}),
-          ...(Array.isArray(op.validations)
-            ? { validations: op.validations as unknown as Parameter['validations'] }
-            : {}),
-          ...('resourceId' in op
-            ? {
-                resourceId:
-                  op.resourceId == null ? undefined : asResourceId(op.resourceId as string)
-              }
-            : {})
-        }
+        picked
       );
       break;
+    }
     case 'remove_parameter':
       exp = T.removeParameter(
         exp,

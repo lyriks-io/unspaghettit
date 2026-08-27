@@ -22,6 +22,7 @@ import {
   asValueSetId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
 import {
+  ALL_LIBRARY_KINDS,
   linkLibraryRef,
   unlinkLibraryRef,
   type LibraryKind
@@ -29,8 +30,12 @@ import {
 import {
   buildDataField,
   buildOverrides,
+  flatFields,
+  notFoundInOp,
   optional,
+  requireSomeChange,
   resolve,
+  withPatch,
   type Op,
   type OpContext
 } from './opHelpers';
@@ -70,13 +75,15 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
     }
     case 'update_transition': {
       const sid = asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId'));
+      const o = withPatch(op);
       const patch = {
-        ...('target' in op || 'targetRef' in op
-          ? { target: asSurfaceId(resolve(op, refs, 'targetRef', 'target')) }
+        ...('target' in o || 'targetRef' in o
+          ? { target: asSurfaceId(resolve(o, refs, 'targetRef', 'target')) }
           : {}),
-        ...(typeof op.label === 'string' ? { label: op.label } : {}),
-        ...(typeof op.description === 'string' ? { description: op.description } : {})
+        ...(typeof o.label === 'string' ? { label: o.label } : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {})
       };
+      requireSomeChange(op, patch, ['target', 'label', 'description']);
       exp =
         'actionId' in op || 'actionRef' in op
           ? T.updateTransitionOnCapability(
@@ -123,22 +130,29 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
     case 'update_persona': {
       const pid = asPersonaId(op.personaId as string);
       const existing = exp.personas.find((p) => p.id === pid);
-      if (!existing) break;
-      const merged: Persona = {
-        ...existing,
-        ...(typeof op.name === 'string' ? { name: op.name } : {}),
-        ...(typeof op.description === 'string' ? { description: op.description } : {}),
-        ...(Array.isArray(op.stateOverrides)
-          ? { stateOverrides: buildOverrides(op).state }
+      if (!existing) throw notFoundInOp(op, 'persona', pid);
+      const o = withPatch(op);
+      const picked = {
+        ...(typeof o.name === 'string' ? { name: o.name } : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {}),
+        ...(Array.isArray(o.stateOverrides)
+          ? { stateOverrides: buildOverrides(o).state }
           : {}),
-        ...(Array.isArray(op.parameterOverrides)
-          ? { parameterOverrides: buildOverrides(op).param }
+        ...(Array.isArray(o.parameterOverrides)
+          ? { parameterOverrides: buildOverrides(o).param }
           : {}),
-        ...(typeof op.persistAcrossSurfaces === 'boolean'
-          ? { persistAcrossSurfaces: op.persistAcrossSurfaces }
+        ...(typeof o.persistAcrossSurfaces === 'boolean'
+          ? { persistAcrossSurfaces: o.persistAcrossSurfaces }
           : {})
       };
-      exp = T.updatePersona(exp, merged);
+      requireSomeChange(op, picked, [
+        'name',
+        'description',
+        'stateOverrides',
+        'parameterOverrides',
+        'persistAcrossSurfaces'
+      ]);
+      exp = T.updatePersona(exp, { ...existing, ...picked });
       break;
     }
     case 'remove_persona':
@@ -160,14 +174,15 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
     case 'update_value_set': {
       const vsid = asValueSetId(op.valueSetId as string);
       const existing = (exp.valueSets ?? []).find((vs) => vs.id === vsid);
-      if (!existing) break;
-      const merged: ValueSet = {
-        ...existing,
-        ...(typeof op.name === 'string' ? { name: op.name } : {}),
-        ...(typeof op.description === 'string' ? { description: op.description } : {}),
-        ...(Array.isArray(op.values) ? { values: op.values as readonly string[] } : {})
+      if (!existing) throw notFoundInOp(op, 'value set', vsid);
+      const o = withPatch(op);
+      const picked = {
+        ...(typeof o.name === 'string' ? { name: o.name } : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {}),
+        ...(Array.isArray(o.values) ? { values: o.values as readonly string[] } : {})
       };
-      exp = T.updateValueSet(exp, merged);
+      requireSomeChange(op, picked, ['name', 'description', 'values']);
+      exp = T.updateValueSet(exp, { ...existing, ...picked });
       break;
     }
     case 'remove_value_set':
@@ -189,14 +204,15 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
     case 'update_constant': {
       const cid = asConstantId(op.constantId as string);
       const existing = (exp.constants ?? []).find((c) => c.id === cid);
-      if (!existing) break;
-      const merged: Constant = {
-        ...existing,
-        ...(typeof op.name === 'string' ? { name: op.name } : {}),
-        ...(typeof op.description === 'string' ? { description: op.description } : {}),
-        ...(op.value !== undefined ? { value: op.value as StateValue } : {})
+      if (!existing) throw notFoundInOp(op, 'constant', cid);
+      const o = withPatch(op);
+      const picked = {
+        ...(typeof o.name === 'string' ? { name: o.name } : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {}),
+        ...(o.value !== undefined ? { value: o.value as StateValue } : {})
       };
-      exp = T.updateConstant(exp, merged);
+      requireSomeChange(op, picked, ['name', 'description', 'value']);
+      exp = T.updateConstant(exp, { ...existing, ...picked });
       break;
     }
     case 'remove_constant':
@@ -257,10 +273,11 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
     case 'update_resource': {
       const rid = asResourceId(op.resourceId as string);
       const existing = exp.resources.find((r) => r.id === rid);
-      if (!existing) break;
-      // Same collision rules as add_resource: prefer nested `resource:{}`,
-      // and accept `resourceKind` as an alias on the flat form.
-      const nested = op.resource as Record<string, unknown> | undefined;
+      if (!existing) throw notFoundInOp(op, 'resource', rid);
+      // Same collision rules as add_resource: prefer nested `resource:{}`
+      // (or `patch:{}`), and accept `resourceKind` as an alias on the flat
+      // form.
+      const nested = (op.resource ?? op.patch) as Record<string, unknown> | undefined;
       const src = nested ?? (op as unknown as Record<string, unknown>);
       const kindOverride = nested
         ? (src.kind as Resource['kind'] | undefined)
@@ -273,9 +290,15 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
             k !== 'resourceKind' &&
             k !== 'resourceId' &&
             k !== 'resource' &&
+            k !== 'patch' &&
             k !== 'ref'
         )
       ) as Partial<Resource>;
+      requireSomeChange(
+        op,
+        { ...patch, ...(kindOverride ? { kind: kindOverride } : {}) },
+        ['the resource fields to change (name, provider, scope, resourceKind, ...)']
+      );
       const merged: Resource = {
         ...existing,
         ...patch,
@@ -317,6 +340,48 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
       remember(op.ref, dependency.id);
       break;
     }
+    case 'update_dependency': {
+      const did = asDependencyId(op.dependencyId as string);
+      const existing = (exp.dependencies ?? []).find((d) => d.id === did);
+      if (!existing) throw notFoundInOp(op, 'dependency', did);
+      const o = withPatch(op);
+      // `dependencyKind` carries the kind on both forms (`kind` is the op
+      // discriminator), mirroring add_dependency. `operations` replaces the
+      // whole list, with fresh ids minted like add_dependency does.
+      const rawOperations = Array.isArray(o.operations) ? o.operations : undefined;
+      const operations = rawOperations?.map((raw) => {
+        const x = raw as Record<string, unknown>;
+        return {
+          id: asDependencyOperationId(mintId()),
+          name: x.name as string,
+          ...(typeof x.description === 'string' ? { description: x.description } : {}),
+          ...(Array.isArray(x.failureModes) ? { failureModes: x.failureModes as string[] } : {}),
+          ...(typeof x.timeout === 'string' ? { timeout: x.timeout } : {}),
+          ...(typeof x.retries === 'number' ? { retries: x.retries } : {}),
+          ...(typeof x.idempotent === 'boolean' ? { idempotent: x.idempotent } : {})
+        };
+      }) as Dependency['operations'] | undefined;
+      const picked = {
+        ...(typeof o.name === 'string' ? { name: o.name } : {}),
+        ...(typeof o.dependencyKind === 'string'
+          ? { kind: o.dependencyKind as Dependency['kind'] }
+          : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {}),
+        ...(typeof o.provider === 'string' ? { provider: o.provider } : {}),
+        ...(operations ? { operations } : {}),
+        ...(Array.isArray(o.assumptions) ? { assumptions: o.assumptions as string[] } : {})
+      };
+      requireSomeChange(op, picked, [
+        'name',
+        'dependencyKind',
+        'description',
+        'provider',
+        'operations',
+        'assumptions'
+      ]);
+      exp = T.updateDependency(exp, { ...existing, ...picked });
+      break;
+    }
     case 'remove_dependency':
       exp = T.removeDependency(exp, asDependencyId(op.dependencyId as string));
       break;
@@ -339,21 +404,22 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
     case 'update_entity': {
       const did = asEntityId(op.entityId as string);
       const existing = exp.entities.find((d) => d.id === did);
-      if (!existing) break;
-      const fields = op.fields as readonly Record<string, unknown>[] | undefined;
-      const resolvedResource = optional(op, 'resourceRef', 'resourceId', refs);
-      const merged: Entity = {
-        ...existing,
-        ...(typeof op.namespace === 'string' ? { namespace: op.namespace } : {}),
-        ...(typeof op.description === 'string' ? { description: op.description } : {}),
+      if (!existing) throw notFoundInOp(op, 'entity', did);
+      const o = withPatch(op);
+      const fields = o.fields as readonly Record<string, unknown>[] | undefined;
+      const resolvedResource = optional(o, 'resourceRef', 'resourceId', refs);
+      const picked = {
+        ...(typeof o.namespace === 'string' ? { namespace: o.namespace } : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {}),
         ...(fields ? { fields: fields.map((f) => buildDataField(mintId, f)) } : {}),
-        ...('resourceId' in op || 'resourceRef' in op
+        ...('resourceId' in o || 'resourceRef' in o
           ? resolvedResource
             ? { resourceId: asResourceId(resolvedResource) }
             : { resourceId: undefined }
           : {})
       };
-      exp = T.updateEntity(exp, merged);
+      requireSomeChange(op, picked, ['namespace', 'description', 'fields', 'resourceId']);
+      exp = T.updateEntity(exp, { ...existing, ...picked });
       break;
     }
     case 'remove_entity':
@@ -366,14 +432,22 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
       remember(op.ref, field.id);
       break;
     }
-    case 'update_entity_field':
+    case 'update_entity_field': {
+      const patch =
+        (op.patch as Partial<EntityField> | undefined) ??
+        (flatFields(op, ['kind', 'ref', 'dataRef', 'entityId', 'fieldId']) as
+          Partial<EntityField>);
+      requireSomeChange(op, patch as Record<string, unknown>, [
+        'the field properties to change (name, type, description, required, enumValues, ...)'
+      ]);
       exp = T.updateEntityField(
         exp,
         asEntityId(resolve(op, refs, 'dataRef', 'entityId')),
         asEntityFieldId(op.fieldId as string),
-        (op.patch as Partial<EntityField>) ?? {}
+        patch
       );
       break;
+    }
     case 'remove_entity_field':
       exp = T.removeEntityField(
         exp,
@@ -388,12 +462,24 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
     // decorator resolves them on the next read, and validation reports a ref
     // the owning project can't satisfy.
     case 'link_project_definition':
-      exp = linkLibraryRef(exp, op.kind as LibraryKind, op.id as string);
+    case 'unlink_project_definition': {
+      // The library kind cannot ride on `kind` (that key is the op
+      // discriminator); it rides as `definitionKind`. The old code passed
+      // op.kind itself into the LibraryKind switch, which matched nothing and
+      // silently replaced the feature with `undefined`.
+      const defKind = (op.definitionKind ?? op.libraryKind) as string | undefined;
+      if (!defKind || !(ALL_LIBRARY_KINDS as readonly string[]).includes(defKind)) {
+        throw new Error(
+          `${op.kind}: definitionKind must be one of ${ALL_LIBRARY_KINDS.join(', ')} (got ${JSON.stringify(defKind)}). The op discriminator "kind" cannot carry it.`
+        );
+      }
+      exp = (op.kind === 'link_project_definition' ? linkLibraryRef : unlinkLibraryRef)(
+        exp,
+        defKind as LibraryKind,
+        op.id as string
+      );
       break;
-
-    case 'unlink_project_definition':
-      exp = unlinkLibraryRef(exp, op.kind as LibraryKind, op.id as string);
-      break;
+    }
 
     default:
       return null;

@@ -19,7 +19,46 @@ import {
   buildReachabilityGoal,
   buildReachabilityGoalPatch
 } from '../_entity_builders';
-import { buildEffect, buildRule, resolve, type Op, type OpContext } from './opHelpers';
+import {
+  buildEffect,
+  buildRule,
+  flatFields,
+  notFoundInOp,
+  requireSomeChange,
+  resolve,
+  type Op,
+  type OpContext
+} from './opHelpers';
+
+/** The four patchable Rule fields, picked from either spelling. */
+const pickRulePatch = (op: Op): Record<string, unknown> => {
+  const src = (op.patch as Record<string, unknown> | undefined) ?? op;
+  return {
+    ...(src.category !== undefined ? { category: src.category } : {}),
+    ...(src.condition !== undefined ? { condition: src.condition } : {}),
+    ...(src.effect !== undefined ? { effect: src.effect } : {}),
+    ...(typeof src.description === 'string' ? { description: src.description } : {})
+  };
+};
+
+const mergeRule = (existing: Rule, picked: Record<string, unknown>): Rule => ({
+  ...existing,
+  ...(picked.category !== undefined ? { category: picked.category as Rule['category'] } : {}),
+  ...(picked.condition !== undefined
+    ? { condition: picked.condition as unknown as Rule['condition'] }
+    : {}),
+  ...(picked.effect !== undefined
+    ? {
+        effect: {
+          ...(picked.effect as object),
+          id: asEffectId(
+            ((picked.effect as { id?: string }).id ?? existing.effect.id) as string
+          )
+        } as unknown as Rule['effect']
+      }
+    : {}),
+  ...(typeof picked.description === 'string' ? { description: picked.description } : {})
+});
 
 /**
  * Rule, Effect, Invariant (action, surface, and feature level), and
@@ -49,27 +88,24 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       const surface = exp.surfaces.find((s) => s.id === sid);
       const cap = surface?.actions.find((c) => c.id === cid);
       const existing = cap?.rules.find((r) => r.id === rid);
-      if (!existing) break;
-      const patch = (op.patch as Record<string, unknown> | undefined) ?? {};
-      const merged: Rule = {
-        ...existing,
-        ...(patch.category !== undefined ? { category: patch.category as Rule['category'] } : {}),
-        ...(patch.condition !== undefined
-          ? { condition: patch.condition as unknown as Rule['condition'] }
-          : {}),
-        ...(patch.effect !== undefined
-          ? {
-              effect: {
-                ...(patch.effect as object),
-                id: asEffectId(
-                  ((patch.effect as { id?: string }).id ?? existing.effect.id) as string
-                )
-              } as unknown as Rule['effect']
-            }
-          : {}),
-        ...(typeof patch.description === 'string' ? { description: patch.description } : {})
-      };
-      exp = T.updateRuleOnCapability(exp, sid, cid, merged);
+      if (!existing) {
+        // The realistic miss: the id belongs to the OTHER rule level. Say so,
+        // instead of the silent success that taught agents update was broken.
+        const atSurfaceLevel = surface?.rules.some((r) => r.id === rid);
+        throw notFoundInOp(
+          op,
+          'rule',
+          rid,
+          `on action ${String(cid)} of surface ${String(sid)}${
+            atSurfaceLevel
+              ? `. A rule with this id exists at SURFACE level; use update_surface_rule`
+              : ''
+          }`
+        );
+      }
+      const picked = pickRulePatch(op);
+      requireSomeChange(op, picked, ['category', 'condition', 'effect', 'description']);
+      exp = T.updateRuleOnCapability(exp, sid, cid, mergeRule(existing, picked));
       break;
     }
     case 'remove_action_rule':
@@ -95,27 +131,24 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       const rid = asRuleId(op.ruleId as string);
       const surface = exp.surfaces.find((s) => s.id === sid);
       const existing = surface?.rules.find((r) => r.id === rid);
-      if (!existing) break;
-      const patch = (op.patch as Record<string, unknown> | undefined) ?? {};
-      const merged: Rule = {
-        ...existing,
-        ...(patch.category !== undefined ? { category: patch.category as Rule['category'] } : {}),
-        ...(patch.condition !== undefined
-          ? { condition: patch.condition as unknown as Rule['condition'] }
-          : {}),
-        ...(patch.effect !== undefined
-          ? {
-              effect: {
-                ...(patch.effect as object),
-                id: asEffectId(
-                  ((patch.effect as { id?: string }).id ?? existing.effect.id) as string
-                )
-              } as unknown as Rule['effect']
-            }
-          : {}),
-        ...(typeof patch.description === 'string' ? { description: patch.description } : {})
-      };
-      exp = T.updateRuleOnSurface(exp, sid, merged);
+      if (!existing) {
+        const owningAction = surface?.actions.find((c) =>
+          c.rules.some((r) => r.id === rid)
+        );
+        throw notFoundInOp(
+          op,
+          'rule',
+          rid,
+          `on surface ${String(sid)}${
+            owningAction
+              ? `. A rule with this id exists on ACTION ${String(owningAction.id)}; use update_action_rule`
+              : ''
+          }`
+        );
+      }
+      const picked = pickRulePatch(op);
+      requireSomeChange(op, picked, ['category', 'condition', 'effect', 'description']);
+      exp = T.updateRuleOnSurface(exp, sid, mergeRule(existing, picked));
       break;
     }
     case 'remove_surface_rule':
@@ -140,15 +173,31 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       remember(op.ref, effect.id);
       break;
     }
-    case 'update_effect':
+    case 'update_effect': {
+      const patch =
+        (op.patch as Partial<Effect> | undefined) ??
+        (flatFields(op, [
+          'kind',
+          'ref',
+          'surfaceId',
+          'surfaceRef',
+          'actionId',
+          'actionRef',
+          'effectId',
+          'onBlocked'
+        ]) as Partial<Effect>);
+      requireSomeChange(op, patch as Record<string, unknown>, [
+        'the effect fields to change (type, path, value, event, target, message, ...)'
+      ]);
       exp = (op.onBlocked ? T.updateOnBlockedEffectOnCapability : T.updateEffectOnCapability)(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asActionId(resolve(op, refs, 'actionRef', 'actionId')),
         asEffectId(op.effectId as string),
-        (op.patch as Partial<Effect>) ?? {}
+        patch
       );
       break;
+    }
     case 'remove_effect':
       exp = (op.onBlocked ? T.removeOnBlockedEffectFromCapability : T.removeEffectFromCapability)(
         exp,
@@ -173,15 +222,18 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       remember(op.ref, inv.id);
       break;
     }
-    case 'update_action_invariant':
+    case 'update_action_invariant': {
+      const patch = buildInvariantPatch((op.patch as Record<string, unknown>) ?? op);
+      requireSomeChange(op, patch, ['name', 'condition', 'message', 'description']);
       exp = T.updateInvariantOnCapability(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asActionId(resolve(op, refs, 'actionRef', 'actionId')),
         asInvariantId(op.invariantId as string),
-        buildInvariantPatch((op.patch as Record<string, unknown>) ?? {})
+        patch
       );
       break;
+    }
     case 'remove_action_invariant':
       exp = T.removeInvariantFromCapability(
         exp,
@@ -203,14 +255,17 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       remember(op.ref, inv.id);
       break;
     }
-    case 'update_surface_invariant':
+    case 'update_surface_invariant': {
+      const patch = buildInvariantPatch((op.patch as Record<string, unknown>) ?? op);
+      requireSomeChange(op, patch, ['name', 'condition', 'message', 'description']);
       exp = T.updateInvariantOnSurface(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asInvariantId(op.invariantId as string),
-        buildInvariantPatch((op.patch as Record<string, unknown>) ?? {})
+        patch
       );
       break;
+    }
     case 'remove_surface_invariant':
       exp = T.removeInvariantFromSurface(
         exp,
@@ -232,13 +287,12 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       remember(op.ref, inv.id);
       break;
     }
-    case 'update_feature_invariant':
-      exp = T.updateFeatureInvariant(
-        exp,
-        asInvariantId(op.invariantId as string),
-        buildInvariantPatch((op.patch as Record<string, unknown>) ?? {})
-      );
+    case 'update_feature_invariant': {
+      const patch = buildInvariantPatch((op.patch as Record<string, unknown>) ?? op);
+      requireSomeChange(op, patch, ['name', 'condition', 'message', 'description']);
+      exp = T.updateFeatureInvariant(exp, asInvariantId(op.invariantId as string), patch);
       break;
+    }
     case 'remove_feature_invariant':
       exp = T.removeFeatureInvariant(
         exp,
@@ -258,13 +312,27 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       remember(op.ref, goal.id);
       break;
     }
-    case 'update_reachability_goal':
-      exp = T.updateReachabilityGoal(
-        exp,
-        asReachabilityGoalId(op.goalId as string),
-        buildReachabilityGoalPatch((op.patch as Record<string, unknown>) ?? {})
-      );
+    case 'update_reachability_goal': {
+      // Flat spelling cannot carry the goal's `kind` (that key is the op
+      // discriminator), so it rides as `goalKind`; the nested patch uses
+      // `patch.kind` as documented.
+      const src =
+        (op.patch as Record<string, unknown> | undefined) ??
+        {
+          ...flatFields(op, ['kind', 'ref', 'goalId', 'goalKind']),
+          ...(typeof op.goalKind === 'string' ? { kind: op.goalKind } : {})
+        };
+      const patch = buildReachabilityGoalPatch(src);
+      requireSomeChange(op, patch, [
+        'name',
+        'kind (patch.kind, or goalKind on the flat form)',
+        'condition',
+        'message',
+        'description'
+      ]);
+      exp = T.updateReachabilityGoal(exp, asReachabilityGoalId(op.goalId as string), patch);
       break;
+    }
     case 'remove_reachability_goal':
       exp = T.removeReachabilityGoal(
         exp,
@@ -285,13 +353,26 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       remember(op.ref, criterion.id);
       break;
     }
-    case 'update_acceptance_criterion':
+    case 'update_acceptance_criterion': {
+      const patch = buildAcceptanceCriterionPatch(
+        (op.patch as Record<string, unknown>) ?? op
+      );
+      requireSomeChange(op, patch, [
+        'title',
+        'given',
+        'when',
+        'then',
+        'expectedOutcome',
+        'relatedSurfaceId',
+        'description'
+      ]);
       exp = T.updateAcceptanceCriterion(
         exp,
         asAcceptanceCriterionId(op.criterionId as string),
-        buildAcceptanceCriterionPatch((op.patch as Record<string, unknown>) ?? {})
+        patch
       );
       break;
+    }
     case 'remove_acceptance_criterion':
       exp = T.removeAcceptanceCriterion(
         exp,

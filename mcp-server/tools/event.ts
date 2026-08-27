@@ -4,6 +4,7 @@ import {
   removeEvent,
   updateEvent
 } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
+import { EntityNotFoundInFeatureError } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type {
   EventDefinition,
   EventPayloadField
@@ -103,7 +104,7 @@ export const registerEventTools = (deps: ToolDeps): void => {
           const existing = (exp.events ?? []).find(
             (e) => e.id === asEventDefinitionId(eventId)
           );
-          if (!existing) return exp;
+          if (!existing) throw new EntityNotFoundInFeatureError('event', eventId);
           const merged: EventDefinition = {
             ...existing,
             ...(name !== undefined ? { name: name as EventName } : {}),

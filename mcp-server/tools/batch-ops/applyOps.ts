@@ -18,6 +18,36 @@ const familyHandlers: readonly ((op: Op, ctx: OpContext) => Feature | null)[] = 
   applyScenarioEventOps
 ];
 
+// The primary target id key per remove op, so validation errors that mention a
+// just-removed id can be attributed to the op that removed it. Structural keys
+// (the parent surfaceId of a remove_action, say) are deliberately NOT tracked;
+// they would mis-attribute errors that merely mention the parent.
+const REMOVE_TARGET_KEYS: Readonly<Record<string, string>> = {
+  remove_surface: 'surfaceId',
+  remove_action: 'actionId',
+  remove_action_rule: 'ruleId',
+  remove_surface_rule: 'ruleId',
+  remove_effect: 'effectId',
+  remove_action_invariant: 'invariantId',
+  remove_surface_invariant: 'invariantId',
+  remove_feature_invariant: 'invariantId',
+  remove_reachability_goal: 'goalId',
+  remove_acceptance_criterion: 'criterionId',
+  remove_scenario: 'scenarioId',
+  remove_event: 'eventId',
+  remove_transition: 'transitionId',
+  remove_persona: 'personaId',
+  remove_value_set: 'valueSetId',
+  remove_constant: 'constantId',
+  remove_resource: 'resourceId',
+  remove_dependency: 'dependencyId',
+  remove_state_definition: 'stateDefinitionId',
+  remove_parameter: 'parameterId',
+  remove_entity: 'entityId',
+  remove_entity_field: 'fieldId',
+  remove_action_outcome: 'outcomeId'
+};
+
 /**
  * Walk the ops list once, folding each op into the running feature.
  * `add_*` ops capture the new id under op.ref (if provided) so subsequent
@@ -28,16 +58,20 @@ const familyHandlers: readonly ((op: Op, ctx: OpContext) => Feature | null)[] = 
  * of the op that produced it. The apply_batch caller uses this to annotate
  * validation errors (which reference entity ids like "Action 7bfd0b83") with
  * the op index that introduced them, so the agent knows exactly which op
- * to fix rather than scanning the whole batch.
+ * to fix rather than scanning the whole batch. `removedIdToOp` is the same
+ * map for the ids remove ops targeted, so an error like "transition targets
+ * unknown surface X" names the remove_surface op that orphaned it.
  */
 export const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): {
   next: Feature;
   refs: Refs;
   mintIdToOp: ReadonlyMap<string, number>;
+  removedIdToOp: ReadonlyMap<string, number>;
 } => {
   let exp = start;
   const refs: Refs = {};
   const mintIdToOp = new Map<string, number>();
+  const removedIdToOp = new Map<string, number>();
   const remember = (ref: unknown, id: string) => {
     if (typeof ref === 'string' && ref.length > 0) refs[ref] = id;
   };
@@ -56,6 +90,11 @@ export const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => st
   for (let i = 0; i < ops.length; i += 1) {
     const op = ops[i]!;
     currentOpIndex = i;
+    const removeTargetKey = REMOVE_TARGET_KEYS[op.kind];
+    if (removeTargetKey) {
+      const target = op[removeTargetKey];
+      if (typeof target === 'string' && target.length > 0) removedIdToOp.set(target, i);
+    }
     try {
       const ctx: OpContext = { feature: exp, refs, mintId, remember };
       let handled: Feature | null = null;
@@ -70,5 +109,5 @@ export const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => st
     }
   }
 
-  return { next: exp, refs, mintIdToOp };
+  return { next: exp, refs, mintIdToOp, removedIdToOp };
 };

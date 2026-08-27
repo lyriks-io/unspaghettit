@@ -10,7 +10,15 @@ import {
   asSurfaceId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
 import { normalizeEvolutionLoose } from '../_evolution';
-import { directionDelta, optional, resolve, type Op, type OpContext } from './opHelpers';
+import {
+  directionDelta,
+  optional,
+  requireSomeChange,
+  resolve,
+  withPatch,
+  type Op,
+  type OpContext
+} from './opHelpers';
 
 /**
  * Surface and Action op families. Returns the next Feature when it handled
@@ -43,15 +51,33 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
     }
     case 'update_surface': {
       const sid = asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId'));
-      exp = T.renameSurface(exp, sid, {
-        ...(typeof op.name === 'string' ? { name: op.name } : {}),
-        ...(typeof op.type === 'string' ? { type: op.type as Surface['type'] } : {}),
-        ...(typeof op.description === 'string' ? { description: op.description } : {}),
-        ...(typeof op.presentation === 'boolean' ? { presentation: op.presentation } : {})
-      });
-      if ('parentSurfaceId' in op || 'parentRef' in op) {
-        const parent = optional(op, 'parentRef', 'parentSurfaceId', refs);
-        exp = T.setSurfaceParent(exp, sid, parent ? asSurfaceId(parent) : null);
+      const o = withPatch(op);
+      const picked = {
+        ...(typeof o.name === 'string' ? { name: o.name } : {}),
+        ...(typeof o.type === 'string' ? { type: o.type as Surface['type'] } : {}),
+        ...(typeof o.description === 'string' ? { description: o.description } : {}),
+        ...(typeof o.presentation === 'boolean' ? { presentation: o.presentation } : {})
+      };
+      const wantsParent = 'parentSurfaceId' in o || 'parentRef' in o;
+      if (!wantsParent) {
+        requireSomeChange(op, picked, [
+          'name',
+          'type',
+          'description',
+          'presentation',
+          'parentSurfaceId'
+        ]);
+      }
+      if (Object.keys(picked).length > 0) exp = T.renameSurface(exp, sid, picked);
+      if (wantsParent) {
+        const parent = optional(o, 'parentRef', 'parentSurfaceId', refs);
+        const parentId = parent ? asSurfaceId(parent) : null;
+        // setSurfaceParent quietly refuses an invalid target (the dashboard
+        // drag flow relies on that); through the MCP the refusal must be loud
+        // or the op acks success while changing nothing.
+        const blocked = T.surfaceParentBlockReason(exp, sid, parentId);
+        if (blocked) throw new Error(`${op.kind}: ${blocked}`);
+        exp = T.setSurfaceParent(exp, sid, parentId);
       }
       break;
     }
@@ -113,52 +139,65 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
       remember(op.ref, cap.id);
       break;
     }
-    case 'update_action':
+    case 'update_action': {
+      const o = withPatch(op);
+      const picked = {
+        ...(typeof o.name === 'string' ? { name: o.name } : {}),
+        ...(typeof o.intent === 'string' ? { intent: o.intent } : {}),
+        ...(Array.isArray(o.requiredStates)
+          ? {
+              requiredStates: o.requiredStates as unknown as Action['requiredStates']
+            }
+          : {}),
+        ...(Array.isArray(o.emittedEvents)
+          ? {
+              emittedEvents: o.emittedEvents as unknown as Action['emittedEvents']
+            }
+          : {}),
+        ...(typeof o.bypassInvariants === 'boolean'
+          ? { bypassInvariants: o.bypassInvariants }
+          : {}),
+        // null clears the relaxation; an object sets it; omit to leave it.
+        ...(o.invariantRelaxation !== undefined
+          ? {
+              invariantRelaxation:
+                o.invariantRelaxation === null
+                  ? undefined
+                  : (o.invariantRelaxation as unknown as Action['invariantRelaxation'])
+            }
+          : {}),
+        // null/empty string clears the subscription; non-empty sets it.
+        ...(o.triggeredByEvent === null || o.triggeredByEvent === ''
+          ? { triggeredByEvent: undefined }
+          : typeof o.triggeredByEvent === 'string'
+            ? { triggeredByEvent: o.triggeredByEvent as Action['triggeredByEvent'] }
+            : {}),
+        // null accepts the proposal (clears the marker); an object sets
+        // it; omit to leave the evolution state untouched.
+        ...(o.evolution === null
+          ? { evolution: undefined }
+          : o.evolution !== undefined
+            ? { evolution: normalizeEvolutionLoose(o.evolution) }
+            : {})
+      };
+      requireSomeChange(op, picked, [
+        'name',
+        'intent',
+        'requiredStates',
+        'emittedEvents',
+        'bypassInvariants',
+        'invariantRelaxation',
+        'triggeredByEvent',
+        'evolution'
+      ]);
       exp = T.updateAction(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asActionId(resolve(op, refs, 'actionRef', 'actionId')),
-        {
-          ...(typeof op.name === 'string' ? { name: op.name } : {}),
-          ...(typeof op.intent === 'string' ? { intent: op.intent } : {}),
-          ...(Array.isArray(op.requiredStates)
-            ? {
-                requiredStates: op.requiredStates as unknown as Action['requiredStates']
-              }
-            : {}),
-          ...(Array.isArray(op.emittedEvents)
-            ? {
-                emittedEvents: op.emittedEvents as unknown as Action['emittedEvents']
-              }
-            : {}),
-          ...(typeof op.bypassInvariants === 'boolean'
-            ? { bypassInvariants: op.bypassInvariants }
-            : {}),
-          // null clears the relaxation; an object sets it; omit to leave it.
-          ...(op.invariantRelaxation !== undefined
-            ? {
-                invariantRelaxation:
-                  op.invariantRelaxation === null
-                    ? undefined
-                    : (op.invariantRelaxation as unknown as Action['invariantRelaxation'])
-              }
-            : {}),
-          // null/empty string clears the subscription; non-empty sets it.
-          ...(op.triggeredByEvent === null || op.triggeredByEvent === ''
-            ? { triggeredByEvent: undefined }
-            : typeof op.triggeredByEvent === 'string'
-              ? { triggeredByEvent: op.triggeredByEvent as Action['triggeredByEvent'] }
-              : {}),
-          // null accepts the proposal (clears the marker); an object sets
-          // it; omit to leave the evolution state untouched.
-          ...(op.evolution === null
-            ? { evolution: undefined }
-            : op.evolution !== undefined
-              ? { evolution: normalizeEvolutionLoose(op.evolution) }
-              : {})
-        }
+        picked
       );
       break;
+    }
     case 'remove_action':
       exp = T.removeAction(
         exp,

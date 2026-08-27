@@ -98,7 +98,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         }
         const current = await repo.get(asFeatureId(featureId));
         if (!current) throw new FeatureNotFoundError(featureId);
-        const { next, refs, mintIdToOp } = applyOps(current, ops, ids);
+        const { next, refs, mintIdToOp, removedIdToOp } = applyOps(current, ops, ids);
         // Diff-aware validation (structural + reference-integrity): a batch is
         // blocked only when it INTRODUCES a new error versus the loaded
         // snapshot. Pre-existing issues on a partially-built feature (e.g.
@@ -123,6 +123,13 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           let bestOpIdx = -1;
           for (const [mintedId, opIdx] of mintIdToOp) {
             if (msg.includes(mintedId) && opIdx > bestOpIdx) bestOpIdx = opIdx;
+          }
+          // Same scan for ids the batch REMOVED: "transition targets unknown
+          // surface X" then reads as "op[N] (remove_surface): ...", telling
+          // the agent which removal orphaned the reference instead of leaving
+          // it to correlate ids across the whole batch by hand.
+          for (const [removedId, opIdx] of removedIdToOp) {
+            if (msg.includes(removedId) && opIdx > bestOpIdx) bestOpIdx = opIdx;
           }
           if (bestOpIdx < 0) return msg;
           const op = ops[bestOpIdx] as { kind?: string };

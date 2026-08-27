@@ -4,6 +4,7 @@ import {
   removePersona,
   updatePersona
 } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
+import { EntityNotFoundInFeatureError } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { Persona } from '../../src/features/behavior-model/domain/entities/Persona';
 import {
   asFeatureId,
@@ -98,7 +99,7 @@ export const registerPersonaTools = (deps: ToolDeps): void => {
         featureId: asFeatureId(featureId),
         transform: (exp) => {
           const existing = exp.personas.find((p) => p.id === asPersonaId(personaId));
-          if (!existing) return exp;
+          if (!existing) throw new EntityNotFoundInFeatureError('persona', personaId);
           const merged: Persona = {
             ...existing,
             ...(name !== undefined ? { name } : {}),

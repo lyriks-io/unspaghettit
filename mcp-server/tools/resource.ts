@@ -4,6 +4,7 @@ import {
   removeResource,
   updateResource
 } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
+import { EntityNotFoundInFeatureError } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { Resource } from '../../src/features/behavior-model/domain/entities/Resource';
 import {
   ALL_ACCESS_MODES,
@@ -169,7 +170,7 @@ export const registerResourceTools = (deps: ToolDeps): void => {
         featureId: asFeatureId(featureId),
         transform: (exp) => {
           const existing = exp.resources.find((r) => r.id === asResourceId(resourceId));
-          if (!existing) return exp;
+          if (!existing) throw new EntityNotFoundInFeatureError('resource', resourceId);
           // Merge field-by-field. Optional string fields stay as-is unless provided.
           const merged: Resource = {
             ...existing,

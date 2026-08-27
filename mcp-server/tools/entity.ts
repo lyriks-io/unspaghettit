@@ -4,6 +4,7 @@ import {
   removeEntity,
   updateEntity
 } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
+import { EntityNotFoundInFeatureError } from '../../src/features/behavior-model/domain/services/FeatureTransforms';
 import type { Entity, EntityField } from '../../src/features/behavior-model/domain/entities/Entity';
 import {
   ALL_DATA_FIELD_TYPES,
@@ -108,7 +109,7 @@ export const registerEntityTools = (deps: ToolDeps): void => {
         featureId: asFeatureId(featureId),
         transform: (exp) => {
           const existing = exp.entities.find((d) => d.id === asEntityId(entityId));
-          if (!existing) return exp;
+          if (!existing) throw new EntityNotFoundInFeatureError('entity', entityId);
           const merged: Entity = {
             ...existing,
             ...(namespace !== undefined ? { namespace } : {}),
