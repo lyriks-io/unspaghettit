@@ -577,7 +577,7 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         const prov = await provenanceRepo.get(fid);
         if (!prov || prov.spans.length === 0) {
           return errorText(
-            'No spans recorded for this feature. Attach code sources (attach_source_file kind:"code") and record_element_span first.'
+            'No spans recorded for this feature, so there is nothing to seed from. This tool only serves ADOPTION (existing code modeled into the spec): attach the implementing files (attach_source_file kind:"code"), record_element_spans, then seed. If the feature was specified FIRST and the code written to it, do not record spans: write the .unspa.json index entries yourself (one key per element at the line that applies it, status implemented|partial|missing, specVersion = the feature updatedAt) and run sync_from_index.'
           );
         }
 
