@@ -19,6 +19,20 @@ The MCP never reads source files. **You** read the code, and the finalize gate
 keeps you honest: `finalize_analysis` refuses until every modeled element has
 a recorded span, so nothing can be invented without a source.
 
+## The mapping law (one concept: adopt, implement, trace)
+
+A spec↔code mapping is only real when the code itself is captured. Never
+record or report a bare `{file, line}`: that is a claim the server cannot
+check, and the dashboard stamps such locations `unverified`. Adoption is the
+flow where evidence is automatic, so USE it: attach the file, record the
+spans, finalize, seed, sync. Skipping the span flow and pushing locations
+straight through `report_implementation_status[_batch]` produces an
+unverifiable report and is never an acceptable shortcut for adoption. If you
+report directly for any reason, every location carries the exact code as
+`snippet`; the server completes what it can (checkout slice, recorded spans)
+and stamps the rest `unverified`. Leave zero unverified locations behind; if
+you cannot capture the code, say so instead of reporting the location.
+
 ## Non-negotiables
 
 - Model what the code **actually does**, not what it should do. A bug you can

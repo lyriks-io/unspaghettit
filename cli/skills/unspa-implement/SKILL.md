@@ -15,6 +15,30 @@ The MCP cannot see your code. The `.unspa.json` index is the only contract
 between spec and code. Do not annotate code with tags — the index is the
 single source of truth.
 
+## The mapping law (one concept: adopt, implement, trace)
+
+A spec↔code mapping is only real when the code itself is captured. Never
+record or report a bare `{file, line}`: that is a claim the server cannot
+check, and the dashboard stamps such locations `unverified`. Whatever
+direction you are working in, the mechanics are the same:
+
+- **Code → spec (adoption)**: attach each analyzed file
+  (`attach_source_file kind:"code"` / `attach_source_path`), record a span
+  for every element (`record_element_span`), `finalize_analysis`, then
+  `seed_index_from_analysis` + `sync_from_index`. Spans carry the code, so
+  evidence is automatic.
+- **Spec → code (implementing, or tracing code that already exists)**: every
+  `.unspa.json` entry carries `signature`, one real line copied from the code
+  at `file:line`. When the server cannot read the checkout, that line is the
+  only code evidence the dashboard has.
+- **Reporting directly** (`report_implementation_status[_batch]`): pass the
+  exact code at each location as `snippet`. The server completes what it can
+  (checkout slice, recorded adoption spans) and stamps the rest `unverified`.
+
+`unverified` is not cosmetic: it is the difference between "mapped" and
+"trust me". Leave zero unverified locations behind; if you cannot capture
+the code, say so instead of reporting the location.
+
 ## Always record at least presence
 
 **The moment you write code that implements a spec entity, record it.** Every
@@ -100,7 +124,8 @@ state:<dotted.path>            # e.g. cart.itemCount
 recognized by `sync_from_index` and will be reported in its `orphans`
 block with a fix hint.
 
-Minimum fields per entry:
+Minimum fields per entry (`signature` is not optional in practice: it is the
+code evidence the dashboard shows, and the line auto-healer's anchor):
 
 ```json
 {

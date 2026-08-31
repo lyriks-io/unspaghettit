@@ -66,6 +66,14 @@ export type TagLocation = {
   readonly line?: number;
   readonly snippet?: string;
   /**
+   * True when NO code evidence reached the server for this location: the
+   * caller sent no snippet, there is no checkout to slice the file from, and
+   * no recorded source span matches it. The dashboard renders such a location
+   * as a claim, not a verification. Stamped server-side (never accepted from
+   * callers) by the report tools' evidence pass.
+   */
+  readonly unverified?: boolean;
+  /**
    * True when the audited signature could not be located at (or within ±2 lines
    * of) the indexed line. Surfaced by the dashboard so re-audit drift is
    * visible without manually diffing every entry.

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import {
   asActionId,
@@ -17,8 +17,16 @@ import {
 import type {
   AuditMeta,
   EntityType,
+  ExtraTag,
   TagLocation
 } from '../../src/features/implementation-status/domain/ImplementationStatus';
+import {
+  buildSpanEvidenceMap,
+  enrichLocation,
+  sliceAround,
+  type SpanEvidence
+} from '../../src/features/implementation-status/domain/CodeEvidence';
+import type { AdoptionSourceMeta } from '../../src/features/source-provenance/domain/CodeAdoption';
 import { writeRepoLink, type BehavioralIndex, type IndexEntry, type RepoLink } from '../repo-link';
 import type { RepoContext } from '../server';
 import { errorText, text, type ToolDeps } from './_shared';
@@ -149,19 +157,6 @@ const findSignatureLine = (lines: readonly string[], signature: string): number 
   return null;
 };
 
-const sliceAround = (
-  lines: readonly string[],
-  line: number,
-  before = 1,
-  after = 1
-): string | undefined => {
-  if (line <= 0) return undefined;
-  const start = Math.max(0, line - 1 - before);
-  const end = Math.min(lines.length, line + after);
-  if (start >= end) return undefined;
-  return lines.slice(start, end).join('\n');
-};
-
 /** ±2 line tolerance. A small edit above the entity doesn't count as stale. */
 const FRESH_WINDOW = 2;
 
@@ -171,10 +166,13 @@ const entryToLocation = (
   cache?: FileCache
 ): TagLocation => {
   const indexedLine = entry.line > 0 ? entry.line : undefined;
+  // With no checkout, the entry's signature (one real line captured at seed
+  // time) is the only code evidence available; an entry without one has none,
+  // and the dashboard must say so rather than imply the mapping was checked.
   const noFileFallback = (): TagLocation => ({
     file: entry.file,
     ...(indexedLine !== undefined ? { line: indexedLine } : {}),
-    ...(entry.signature ? { snippet: entry.signature } : {})
+    ...(entry.signature ? { snippet: entry.signature } : { unverified: true })
   });
   if (!repoRoot || !cache) return noFileFallback();
 
@@ -443,6 +441,59 @@ const entityTypeSchema = z.enum([
   'surface_invariant'
 ]);
 
+/**
+ * Everything one report call can draw evidence from: the linked checkout
+ * (sliced at the claimed line) and the source spans recorded during adoption
+ * (already resolved to their code files). Built once per call; `readLines`
+ * is null on hosts that run the server without access to the checkout.
+ */
+type ReportEvidence = {
+  readonly byKey: ReadonlyMap<string, readonly SpanEvidence[]>;
+  readonly readLines: ((file: string) => readonly string[] | null) | null;
+};
+
+const buildReportEvidence = async (
+  deps: Pick<ToolDeps, 'provenanceRepo' | 'sourceRepo' | 'repoContext'>,
+  feature: Feature | null | undefined
+): Promise<ReportEvidence> => {
+  const root = deps.repoContext?.linkPath ? dirname(deps.repoContext.linkPath) : null;
+  const cache: FileCache = new Map();
+  const readLines = root
+    ? (file: string): readonly string[] | null => readLinesCached(cache, root, file)
+    : null;
+  if (!feature) return { byKey: new Map(), readLines };
+  const provenance = await deps.provenanceRepo.get(feature.id);
+  if (!provenance || provenance.spans.length === 0) return { byKey: new Map(), readLines };
+  const sources = new Map<string, AdoptionSourceMeta>();
+  for (const span of provenance.spans) {
+    if (!span.sourceId || sources.has(span.sourceId)) continue;
+    const source = await deps.sourceRepo.find(span.sourceId);
+    if (source) sources.set(span.sourceId, { kind: source.kind, name: source.name });
+  }
+  return { byKey: buildSpanEvidenceMap(feature, provenance.spans, sources), readLines };
+};
+
+/** Run the evidence pass over one reported entity's locations. */
+const enrichReportedLocations = (
+  entityType: string,
+  entityId: string,
+  locations: readonly TagLocation[],
+  evidence: ReportEvidence
+): readonly TagLocation[] =>
+  locations.map((loc) =>
+    enrichLocation(loc, evidence.byKey.get(`${entityType}:${entityId}`) ?? [], evidence.readLines)
+  );
+
+/** Extra tags trace no spec entity, so spans can't back them; disk slices can. */
+const enrichExtraTags = (
+  extraTags: readonly ExtraTag[] | undefined,
+  evidence: ReportEvidence
+): readonly ExtraTag[] | undefined =>
+  extraTags?.map((t) => ({
+    ...t,
+    locations: t.locations.map((loc) => enrichLocation(loc, [], evidence.readLines))
+  }));
+
 const tagLocationSchema = z.object({
   file: z.string().min(1),
   line: z.number().int().nonnegative().optional(),
@@ -470,7 +521,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'report_implementation_status',
     {
       description:
-        'Sync one action or surface worth of implementation data from the behavioral index into the dashboard. Pass `actionId` for action-scoped reports (action + events + rules + invariants + transitions) OR `surfaceId` for surface-scoped reports (states + data + surface_rules + surface_invariants). `foundEntities[]` is the entities you resolved. Each with file + line + snippet AND optional `capturedFields` (real values from the implementation for spec-vs-code diff). `entityId` is the 8-char hex id from `get_implementation_gaps` / `get_feature(verbose:true)`, except: `state` entities accept either the dotted path (e.g. `cart.itemCount`) or the hex id, and `event` entities use the event\'s literal name string. Missing entities are inferred (expected − found). Any reported entity whose id doesn\'t match the spec lands in `rejectedEntities` with a reason - `ok:false` when any are present so wrong-format ids cannot pass silently.',
+        'Sync one action or surface worth of implementation data from the behavioral index into the dashboard. Pass `actionId` for action-scoped reports (action + events + rules + invariants + transitions) OR `surfaceId` for surface-scoped reports (states + data + surface_rules + surface_invariants). `foundEntities[]` is the entities you resolved. Each with file + line + snippet AND optional `capturedFields` (real values from the implementation for spec-vs-code diff). EVIDENCE: always pass the exact code at each location as `snippet`; the server completes missing snippets itself when it can (slicing the linked checkout at the line, or reusing the source spans recorded during adoption), and any location left with no code evidence is stored and displayed as `unverified` - a claim, not a verification. Adopting an existing codebase? Prefer attach_source_file kind:"code" + record_element_span + seed_index_from_analysis + sync_from_index, which makes evidence automatic. `entityId` is the 8-char hex id from `get_implementation_gaps` / `get_feature(verbose:true)`, except: `state` entities accept either the dotted path (e.g. `cart.itemCount`) or the hex id, and `event` entities use the event\'s literal name string. Missing entities are inferred (expected − found). Any reported entity whose id doesn\'t match the spec lands in `rejectedEntities` with a reason - `ok:false` when any are present so wrong-format ids cannot pass silently.',
       inputSchema: {
         featureId: z.string(),
         actionId: z.string().optional(),
@@ -499,6 +550,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
           ? `action:${input.actionId}`
           : `surface:${input.surfaceId}`;
         const auditMeta = readAuditMeta(repoContext, indexKey);
+        const evidence = await buildReportEvidence(deps, exp);
         const result = await reportImplementationStatus({
           featureId: asFeatureId(featureId),
           actionId: input.actionId ? asActionId(input.actionId) : undefined,
@@ -506,10 +558,15 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
           foundEntities: input.foundEntities.map((f) => ({
             entityType: f.entityType as EntityType,
             entityId: f.entityId,
-            locations: f.locations as readonly TagLocation[],
+            locations: enrichReportedLocations(
+              f.entityType,
+              f.entityId,
+              f.locations as readonly TagLocation[],
+              evidence
+            ),
             ...(f.capturedFields !== undefined ? { capturedFields: f.capturedFields } : {})
           })),
-          extraTags: input.extraTags,
+          extraTags: enrichExtraTags(input.extraTags, evidence),
           ...(auditMeta !== undefined ? { auditMeta } : {})
         });
         return text(
@@ -540,7 +597,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'report_implementation_status_batch',
     {
       description:
-        'Sync the full behavioral index into the dashboard in one call. Use after writing (or updating) .unspa.json with the behavioral index. Post one report per action and per surface. Preferred over the single-entity variant for whole-feature syncs. Each item in `reports` carries its own `actionId` xor `surfaceId`. Returns one slim ack per item; per-item failures are reported in-place without aborting the batch. Each ack carries `rejectedCount` + `rejected[]` listing reported entities whose ids didn\'t match the spec (with a per-entry reason), and `ok:false` whenever rejections are present - wrong-format ids cannot pass silently. For state entities the report tool accepts either the path or the hex id; for event entities it accepts the literal event name.',
+        'Sync the full behavioral index into the dashboard in one call. Use after writing (or updating) .unspa.json with the behavioral index. Post one report per action and per surface. Preferred over the single-entity variant for whole-feature syncs. Each item in `reports` carries its own `actionId` xor `surfaceId`. EVIDENCE: always pass the exact code at each location as `snippet`; the server completes missing snippets itself when it can (slicing the linked checkout at the line, or reusing the source spans recorded during adoption), and any location left with no code evidence is stored and displayed as `unverified` - a claim, not a verification. Returns one slim ack per item; per-item failures are reported in-place without aborting the batch. Each ack carries `rejectedCount` + `rejected[]` listing reported entities whose ids didn\'t match the spec (with a per-entry reason), and `ok:false` whenever rejections are present - wrong-format ids cannot pass silently. For state entities the report tool accepts either the path or the hex id; for event entities it accepts the literal event name.',
       inputSchema: {
         featureId: z.string(),
         reports: z
@@ -559,6 +616,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       const expandedFeatureId = await expandFeatureId(repo, input.featureId);
       const featureId = asFeatureId(expandedFeatureId);
       const exp = await repo.get(featureId);
+      const evidence = await buildReportEvidence(deps, exp);
       const acks: unknown[] = [];
 
       for (let i = 0; i < input.reports.length; i += 1) {
@@ -587,10 +645,15 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
             foundEntities: r.foundEntities.map((f) => ({
               entityType: f.entityType as EntityType,
               entityId: f.entityId,
-              locations: f.locations as readonly TagLocation[],
+              locations: enrichReportedLocations(
+                f.entityType,
+                f.entityId,
+                f.locations as readonly TagLocation[],
+                evidence
+              ),
               ...(f.capturedFields !== undefined ? { capturedFields: f.capturedFields } : {})
             })),
-            extraTags: r.extraTags,
+            extraTags: enrichExtraTags(r.extraTags, evidence),
             ...(batchAuditMeta !== undefined ? { auditMeta: batchAuditMeta } : {})
           });
           acks.push({
@@ -687,7 +750,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'sync_from_index',
     {
       description:
-        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and code snippets are then skipped, since both need the real files). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `shared` block lists keys that SEVERAL features declare (a state path is not unique across features): the index holds one entry per key, so its file and line describe whichever feature was seeded last, and coverage and drift for the others resolve to that same location. Reported, never fatal, and it does not affect `ok`. The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
+        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and disk snippets are then skipped, since both need the real files; each entry\'s `signature` becomes its code evidence, and an entry with no signature lands as `unverified` in the dashboard, so seed entries via seed_index_from_analysis or copy the real code line into `signature` yourself). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `shared` block lists keys that SEVERAL features declare (a state path is not unique across features): the index holds one entry per key, so its file and line describe whichever feature was seeded last, and coverage and drift for the others resolve to that same location. Reported, never fatal, and it does not affect `ok`. The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
       inputSchema: { ...inlineIndexSchema }
     },
     async ({ index: inlineIndex, projectId: inlineProjectId }) => {

@@ -47,6 +47,7 @@ const parseLocation = (raw: unknown): TagLocation | null => {
   const line = typeof raw.line === 'number' && Number.isFinite(raw.line) ? raw.line : undefined;
   const snippet = typeof raw.snippet === 'string' ? raw.snippet : undefined;
   const stale = raw.stale === true ? true : undefined;
+  const unverified = raw.unverified === true ? true : undefined;
   const suggestedLine =
     typeof raw.suggestedLine === 'number' && Number.isFinite(raw.suggestedLine)
       ? raw.suggestedLine
@@ -56,6 +57,7 @@ const parseLocation = (raw: unknown): TagLocation | null => {
     ...(line !== undefined ? { line } : {}),
     ...(snippet !== undefined ? { snippet } : {}),
     ...(stale !== undefined ? { stale } : {}),
+    ...(unverified !== undefined ? { unverified } : {}),
     ...(suggestedLine !== undefined ? { suggestedLine } : {})
   };
 };

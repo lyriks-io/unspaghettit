@@ -76,7 +76,12 @@ is the only mapping between code and spec. Keys follow
 (e.g. \`action:add-to-cart\`) are rejected by \`sync_from_index\` and surfaced
 in its \`orphans\` block with a fix hint.
 
-Each entry stores \`{ file, line, signature, ... }\`. After editing the index,
+Each entry stores \`{ file, line, signature, ... }\`. \`signature\` is the exact
+code line, verbatim: it is the entry's evidence and the auto-healer's anchor,
+and an entry synced without one shows as \`unverified\` in the dashboard when
+the server cannot read the checkout. Same law for direct reports
+(\`report_implementation_status\`): every location carries the code as
+\`snippet\`, or it is stamped \`unverified\`. After editing the index,
 call \`sync_from_index\` so the MCP refreshes the coverage report.
 
 To PROVE coverage (not just claim it), run the feature's scenarios against the

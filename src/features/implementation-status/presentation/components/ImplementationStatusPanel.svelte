@@ -38,6 +38,26 @@
     computeImplementationBreakdown(feature, implementationStatusStore.status)
   );
 
+  /**
+   * Locations stored without any code evidence (no snippet, no matching
+   * source span, no checkout to read). Surfaced in the header so a report
+   * that is all claims cannot pass for a verified one at a glance.
+   */
+  const unverifiedCount = $derived(() => {
+    let n = 0;
+    for (const s of breakdown.perSurface) {
+      for (const f of s.surfaceLevel.found) {
+        for (const loc of f.locations) if (loc.unverified) n += 1;
+      }
+      for (const a of s.perAction) {
+        for (const f of a.found) {
+          for (const loc of f.locations) if (loc.unverified) n += 1;
+        }
+      }
+    }
+    return n;
+  });
+
   let expandedSurfaces = $state<Record<string, boolean>>({});
   let expandedCapabilities = $state<Record<string, boolean>>({});
   let expandedSurfaceLevel = $state<Record<string, boolean>>({});
@@ -320,6 +340,14 @@
       {#if breakdown.extraCount > 0}
         <span class="font-bold text-amber-700">{breakdown.extraCount} extra</span>
       {/if}
+      {#if unverifiedCount() > 0}
+        <span
+          class="font-bold text-red-700"
+          title="Locations reported without any code evidence. The dashboard treats them as claims, not verifications"
+        >
+          {unverifiedCount()} unverified
+        </span>
+      {/if}
       {#if breakdown.capabilitiesWithExpected > 0}
         <span class="opacity-70">
           {breakdown.reportedCount}/{breakdown.capabilitiesWithExpected} actions audited
@@ -481,6 +509,11 @@
                                       <li>
                                         <div class="flex flex-wrap items-center gap-1 font-mono text-[10px] text-neutral-600">
                                           <span>{loc.file}{loc.line !== undefined ? `:${loc.line}` : ''}</span>
+                                          {#if loc.unverified}
+                                            <span class="rounded bg-red-100 px-1 py-0 text-[9px] font-semibold text-red-800" title="Reported without code evidence: no snippet was supplied, no attached source span matches this location, and there is no checkout to read. Treat as a claim, not a verification. Re-map through the adoption flow (attach_source + record_element_spans + seed) or re-report with the code in `snippet`.">
+                                              unverified
+                                            </span>
+                                          {/if}
                                           {#if loc.stale}
                                             <span class="rounded bg-amber-100 px-1 py-0 text-[9px] font-semibold text-amber-800" title="The audited signature no longer matches this line. Re-author this entry in .unspa.json">
                                               index stale
