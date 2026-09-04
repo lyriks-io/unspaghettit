@@ -1,4 +1,11 @@
 <p align="center">
+  <a href="https://lyriks.io"><img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/lyriks_logo.svg" alt="Lyriks" width="16" height="16" /></a>&nbsp;
+  <strong>Unspaghettit is now part of <a href="https://lyriks.io">Lyriks</a>.</strong><br />
+  <a href="https://get.lyriks.io/"><strong>Download Lyriks Community Edition (Open Source)</strong></a>
+  &middot; <a href="#unspaghettit-with-a-whole-product-around-it-lyriks-community">How the two fit together</a>
+</p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/unspaghettit_logo.png" alt="Unspaghettit" width="180" />
 </p>
 
@@ -7,6 +14,7 @@
 <p align="center"><em>Your specs shouldn't be markdown. They should pass or fail.</em></p>
 
 <p align="center">
+  <a href="https://lyriks.io"><img src="https://img.shields.io/badge/part%20of-Lyriks-bb46f5.svg" alt="Part of Lyriks" /></a>
   <a href="https://github.com/lyriks-io/unspaghettit/actions/workflows/ci.yml"><img src="https://github.com/lyriks-io/unspaghettit/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0.html"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License: AGPL-3.0" /></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%E2%89%A520.10-43853d.svg" alt="Node >= 20.10" /></a>

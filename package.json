@@ -2,12 +2,13 @@
   "name": "unspaghettit",
   "version": "0.21.0",
   "type": "module",
-  "description": "Executable specifications for AI-assisted software development. Local-first and MCP-native.",
+  "description": "Executable specifications for AI-assisted software development. Local-first and MCP-native. Part of Lyriks (lyriks.io).",
   "author": {
     "name": "Lyriks.io",
     "url": "https://lyriks.io"
   },
   "keywords": [
+    "lyriks",
     "mcp",
     "model-context-protocol",
     "ai",
