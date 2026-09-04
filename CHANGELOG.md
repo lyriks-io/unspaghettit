@@ -6,6 +6,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-09-04
+
+Unspaghettit is now part of Lyriks, and a spec-to-code mapping is only real
+when the code travels with it.
+
+### Added
+
+- **`unverified` implementation status.** The report tools run every
+  location through an evidence pass: snippets missing from a report are
+  completed from the linked checkout or from the source spans recorded
+  during adoption, and a location that still carries no code is stamped
+  `unverified`, server-side only, never accepted from callers. The dashboard
+  renders those as claims, not verifications (a per-location badge plus a
+  count in the panel header). The `unspa-adopt` and `unspa-implement` skills
+  and the tool descriptions teach the rule.
+
+### Changed
+
+- **README and npm description announce that Unspaghettit is now part of
+  Lyriks**, with a link to download Lyriks Community Edition and to the
+  section explaining how the two fit together; `lyriks` joins the package
+  keywords.
+
+### Fixed
+
+- **`seed_index_from_analysis` on an empty analysis** now says the tool
+  serves adoption (code to spec) only and points a spec-first project at the
+  index entries to write by hand, instead of a message that sent it down the
+  adoption chain where `finalize_analysis` can never pass.
+
 ## [0.21.0] - 2026-08-28
 
 A write that cannot land now says so. The editing path stops trusting
