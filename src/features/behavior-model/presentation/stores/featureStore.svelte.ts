@@ -1,5 +1,9 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
+import type {
+  StateDeletionInput,
+  StateDeletionResult
+} from '../../application/ports/StateDeletionCommand';
 import { FeatureValidationError } from '$features/behavior-model/application/use-cases/MutateFeature';
 import { getBrowserContainer } from '$shared/infrastructure/browserContainer';
 import { dropRoomClient, getRoomClient, type YDocClient } from '$lib/client/sync';
@@ -53,7 +57,8 @@ class FeatureStore {
     // shared references on both sides and broadcast a corrupted snapshot.
     const currentSnapshot = $state.snapshot(this.feature) as unknown as Feature;
     const next = mutator(currentSnapshot);
-    const cleanNext = next === currentSnapshot ? currentSnapshot : (deepClonePlain(next) as Feature);
+    const cleanNext =
+      next === currentSnapshot ? currentSnapshot : (deepClonePlain(next) as Feature);
     this.applyNext(cleanNext);
     if (!this.client) return;
     this.saving = true;
@@ -74,6 +79,28 @@ class FeatureStore {
 
   dismissSaveError(): void {
     this.saveError = null;
+  }
+
+  async deleteStateDefinition(
+    input: Omit<StateDeletionInput, 'featureId'>
+  ): Promise<StateDeletionResult> {
+    if (!this.currentId || !this.feature) throw new Error('No feature is open.');
+    const id = this.currentId;
+    this.saving = true;
+    this.saveError = null;
+    try {
+      const container = await getBrowserContainer();
+      const result = await container.useCases.deleteStateDefinition({ ...input, featureId: id });
+      if (!result.ok) this.saveError = result.message;
+      else {
+        const fresh = await container.useCases.getFeature(id);
+        if (fresh && this.currentId === id) this.applyNext(fresh);
+        emit('feature.saved', { id: String(id), name: fresh?.name ?? this.feature.name });
+      }
+      return result;
+    } finally {
+      this.saving = false;
+    }
   }
 
   reset(): void {

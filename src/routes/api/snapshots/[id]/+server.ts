@@ -10,6 +10,7 @@ import { getFeatureUseCase } from '$features/behavior-model/application/use-case
 import { saveFeatureUseCase } from '$features/behavior-model/application/use-cases/SaveFeature';
 import { deleteFeatureUseCase } from '$features/behavior-model/application/use-cases/DeleteFeature';
 import { FeatureValidationError } from '$features/behavior-model/application/use-cases/MutateFeature';
+import { StateDeletionCommandRequiredError } from '$features/behavior-model/application/services/assertStateDefinitionsPreserved';
 
 export const prerender = false;
 
@@ -50,6 +51,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
   try {
     await saveFeature(feature);
   } catch (e) {
+    if (e instanceof StateDeletionCommandRequiredError) throw error(409, e.message);
     if (e instanceof FeatureValidationError) {
       throw error(400, `Feature validation failed:\n - ${e.errors.join('\n - ')}`);
     }

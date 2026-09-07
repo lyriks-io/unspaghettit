@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { HttpStateDeletionCommand } from '$features/behavior-model/infrastructure/persistence/HttpStateDeletionCommand';
 import { HttpFeatureRepository } from '$features/behavior-model/infrastructure/persistence/HttpFeatureRepository';
 import { InMemoryFeatureRepository } from '$features/behavior-model/infrastructure/persistence/InMemoryFeatureRepository';
 import { seedFeatures } from '$features/behavior-model/infrastructure/seed/seedFeatures';
@@ -23,15 +24,9 @@ let cached: Container | null = null;
 
 export const getBrowserContainer = async (): Promise<Container> => {
   if (cached) return cached;
-  const repository = browser
-    ? new HttpFeatureRepository()
-    : new InMemoryFeatureRepository();
-  const projectRepository = browser
-    ? new HttpProjectRepository()
-    : new InMemoryProjectRepository();
-  const domainRepository = browser
-    ? new HttpDomainRepository()
-    : new InMemoryDomainRepository();
+  const repository = browser ? new HttpFeatureRepository() : new InMemoryFeatureRepository();
+  const projectRepository = browser ? new HttpProjectRepository() : new InMemoryProjectRepository();
+  const domainRepository = browser ? new HttpDomainRepository() : new InMemoryDomainRepository();
   const statusRepository = browser
     ? new HttpImplementationStatusRepository()
     : new InMemoryImplementationStatusRepository();
@@ -47,6 +42,7 @@ export const getBrowserContainer = async (): Promise<Container> => {
         clock: systemClock
       });
   const container = createContainer({
+    stateDeletion: browser ? new HttpStateDeletionCommand() : undefined,
     repository,
     projectRepository,
     domainRepository,

@@ -15,11 +15,7 @@ import {
 import { YDocManager } from './YDocManager';
 import type { HistoryStore } from './historyStore';
 import { currentActiveUser, recordIdentity, releaseIdentity } from './identityRegistry';
-import {
-  checkQueryAuth,
-  isAuthEnabled,
-  isOriginCheckEnabled
-} from '../security/auth';
+import { checkQueryAuth, isAuthEnabled, isOriginCheckEnabled } from '../security/auth';
 import { checkLocalUpgrade } from '../security/localGuard';
 import { normalizeBasePath, stripBaseFromRequestUrl } from '../../../shared/routing/basePath';
 
@@ -162,11 +158,21 @@ export const attachSyncWebSocket = (
         // applyUpdate fires the doc 'update' listener with origin=self, which
         // schedules persistence, logs to history (with author=self.author),
         // and broadcasts to peers (excluding self).
-        Y.applyUpdate(doc, msg.update, self);
+        try {
+          manager.applyUpdate(roomId, msg.update, self);
+        } catch {
+          ws.close(1008, 'Use the checked state deletion command');
+        }
         return;
       }
       if (msg.kind === 'history_jump') {
-        const result = manager.jumpHistory(roomId, msg.entryId);
+        let result;
+        try {
+          result = manager.jumpHistory(roomId, msg.entryId);
+        } catch {
+          ws.close(1008, 'Use the checked state deletion command');
+          return;
+        }
         if (result && history) {
           // Re-broadcast the new history view to everyone (cursor changed).
           const view = history.view(roomId);

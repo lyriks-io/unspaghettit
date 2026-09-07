@@ -1,4 +1,6 @@
 import { YDocManager } from './YDocManager';
+import { assertStateDefinitionsPreserved } from '../../../features/behavior-model/application/services/assertStateDefinitionsPreserved';
+import { hostOwnsStateDeletion } from '../hostIntegration';
 import { HistoryStore } from './historyStore';
 import { discoverSnapshotDirectory } from '../../../features/behavior-model/infrastructure/persistence/snapshot-discovery';
 import { migrateFlatLayoutAndLog } from '../../../shared/infrastructure/persistence/snapshotLayout';
@@ -25,7 +27,11 @@ export const getSyncManager = (): SyncSingleton => {
   const { directory } = discoverSnapshotDirectory({ override });
   migrateFlatLayoutAndLog(directory, 'unspa-sync');
   const history = new HistoryStore(directory);
-  const manager = new YDocManager(directory, history);
+  const manager = new YDocManager(
+    directory,
+    history,
+    hostOwnsStateDeletion() ? assertStateDefinitionsPreserved : undefined
+  );
   const created: SyncSingleton = { manager, history, directory };
   g[KEY] = created;
   return created;

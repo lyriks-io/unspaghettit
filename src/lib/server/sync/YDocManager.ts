@@ -72,7 +72,8 @@ export class YDocManager {
 
   constructor(
     private readonly directory: string,
-    private readonly history: HistoryStore | null = null
+    private readonly history: HistoryStore | null = null,
+    private readonly validateFeatureChange?: (before: unknown, after: unknown) => void
   ) {}
 
   /** Subscribe a function to translate a write origin to a human author label. */
@@ -146,12 +147,7 @@ export class YDocManager {
       // Seed (or rehydrate) the history view. If the on-disk log is empty and
       // we have a snapshot, plant a single "initial" entry so the timeline is
       // never blank for an existing feature.
-      const view = this.history.getOrInit(
-        roomId,
-        parsed.kind,
-        parsed.id,
-        extractName(snapshot)
-      );
+      const view = this.history.getOrInit(roomId, parsed.kind, parsed.id, extractName(snapshot));
       if (view.entries.length === 0 && snapshot !== null) {
         this.history.append(roomId, parsed.kind, parsed.id, {
           id: newEntryId(),
@@ -203,8 +199,7 @@ export class YDocManager {
     // When the AI made this write, attribute to the human currently at
     // the dashboard (if any). Direct human writes (author = a real
     // display name) skip this — the author already IS the human.
-    const actingFor =
-      author === 'mcp' ? currentActiveUser() ?? undefined : undefined;
+    const actingFor = author === 'mcp' ? (currentActiveUser() ?? undefined) : undefined;
     const entry: HistoryEntry = {
       id: newEntryId(),
       ts: Date.now(),
@@ -225,15 +220,14 @@ export class YDocManager {
    * is deferred until the next append (classic redo-stack semantics).
    * Returns the entry's new cursor + a flag indicating whether anything moved.
    */
-  jumpHistory(
-    roomId: RoomId,
-    entryId: string
-  ): { cursor: number; entry: HistoryEntry } | null {
+  jumpHistory(roomId: RoomId, entryId: string): { cursor: number; entry: HistoryEntry } | null {
     if (!this.history) return null;
     const parsed = parseRoomId(roomId);
     if (!parsed) return null;
     const room = this.rooms.get(roomId);
     if (!room) return null;
+    const target = this.history.view(roomId)?.entries.find((entry) => entry.id === entryId);
+    if (target) this.assertSnapshotChange(roomId, target.snapshot);
     const result = this.history.jumpTo(roomId, parsed.kind, parsed.id, entryId);
     if (!result) return null;
     const view = this.history.view(roomId);
@@ -277,9 +271,7 @@ export class YDocManager {
       roomId,
       parsed.kind,
       parsed.id,
-      snapshot != null
-        ? { snapshot, label: 'Cleared history', author: 'system' }
-        : undefined
+      snapshot != null ? { snapshot, label: 'Cleared history', author: 'system' } : undefined
     );
   }
 
@@ -292,7 +284,23 @@ export class YDocManager {
   applyUpdate(roomId: RoomId, update: Uint8Array, origin: unknown): void {
     const room = this.rooms.get(roomId);
     if (!room) return;
+    if (this.validateFeatureChange && parseRoomId(roomId)?.kind === 'feature') {
+      const preview = new Y.Doc();
+      try {
+        Y.applyUpdate(preview, Y.encodeStateAsUpdate(room.doc));
+        Y.applyUpdate(preview, update);
+        this.assertSnapshotChange(roomId, preview.getMap(ROOM_DOC_MAP).get(ROOM_DOC_FIELD));
+      } finally {
+        preview.destroy();
+      }
+    }
     Y.applyUpdate(room.doc, update, origin);
+  }
+
+  assertSnapshotChange(roomId: RoomId, after: unknown): void {
+    if (parseRoomId(roomId)?.kind !== 'feature') return;
+    const before = this.rooms.get(roomId)?.doc.getMap(ROOM_DOC_MAP).get(ROOM_DOC_FIELD);
+    this.validateFeatureChange?.(before, after);
   }
 
   encodeFullState(roomId: RoomId): Uint8Array | null {

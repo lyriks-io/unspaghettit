@@ -27,6 +27,7 @@ export const replaceSnapshotViaSync = async (
 ): Promise<void> => {
   const { manager, directory } = getSyncManager();
   const doc = await manager.getOrLoad(makeRoomId(kind, id));
+  manager.assertSnapshotChange(makeRoomId(kind, id), value);
   // 'http' origin (same as publish.ts): the author resolver attributes the
   // resulting history entry to the connected user instead of 'unknown'.
   doc.transact(() => {

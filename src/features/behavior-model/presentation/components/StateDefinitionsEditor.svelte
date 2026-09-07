@@ -12,7 +12,6 @@
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import {
     addStateDefinition,
-    removeStateDefinition,
     updateStateDefinition
   } from '$features/behavior-model/domain/services/FeatureTransforms';
   import { newStateDefinition } from '$features/behavior-model/presentation/view-models/factories';
@@ -34,7 +33,9 @@
   // source. Binding one inherits its schema; it cannot diverge locally.
   const reusable = $derived.by(() => {
     const boundIds = new Set(
-      surface.stateDefinitions.flatMap((d) => (d.stateVariableId ? [String(d.stateVariableId)] : []))
+      surface.stateDefinitions.flatMap((d) =>
+        d.stateVariableId ? [String(d.stateVariableId)] : []
+      )
     );
     const paths = new Set(surface.stateDefinitions.map((d) => String(d.path)));
     return queueCtx.projectStateVariables.filter(
@@ -71,15 +72,20 @@
   let nameDraft = $state('');
   let typeDraft = $state<StateType>('string');
   let createError = $state<string | null>(null);
+  let deletionResult = $state<{
+    ok: boolean;
+    message: string;
+    formalChecked: boolean;
+    code?: string;
+  } | null>(null);
+  let deleting = $state(false);
   let defaultErrors = $state<Record<string, string>>({});
 
   // Auto-derived dot path. Only shown when the user typed something other
   // than a canonical path, so power users typing "cart.itemCount" directly
   // don't see redundant noise.
   const derivedPath = $derived(statePathFromName(nameDraft));
-  const showDerived = $derived(
-    nameDraft.trim().length > 0 && derivedPath !== nameDraft.trim()
-  );
+  const showDerived = $derived(nameDraft.trim().length > 0 && derivedPath !== nameDraft.trim());
   const otherSurfaces = $derived(surfaces.filter((s) => s.id !== surface.id));
   const incomingShared = $derived.by(() =>
     surfaces
@@ -121,7 +127,19 @@
   }
 
   async function remove(id: StateDefinitionId) {
-    await featureStore.mutate((current) => removeStateDefinition(current, surface.id, id));
+    deleting = true;
+    deletionResult = null;
+    try {
+      deletionResult = await featureStore.deleteStateDefinition({
+        projectId: queueCtx.project?.id ?? null,
+        surfaceId: String(surface.id),
+        stateDefinitionId: String(id)
+      });
+    } catch (cause) {
+      deletionResult = { ok: false, formalChecked: false, message: (cause as Error).message };
+    } finally {
+      deleting = false;
+    }
   }
 
   function defaultForType(type: StateType): StateValue {
@@ -141,7 +159,10 @@
     if (type === 'boolean') return raw === 'true';
     if (type === 'object' || type === 'array') {
       const value = JSON.parse(raw);
-      if (type === 'object' && (value === null || typeof value !== 'object' || Array.isArray(value))) {
+      if (
+        type === 'object' &&
+        (value === null || typeof value !== 'object' || Array.isArray(value))
+      ) {
         throw new Error('Use a JSON object, for example {"enabled":true}.');
       }
       if (type === 'array' && !Array.isArray(value)) {
@@ -204,6 +225,22 @@
   }
 </script>
 
+{#if deletionResult}
+  <div
+    role="status"
+    class="mb-3 rounded-lg border p-3 text-sm {deletionResult.ok
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      : 'border-red-200 bg-red-50 text-red-800'}"
+  >
+    <p class="font-semibold">
+      {deletionResult.formalChecked && !['BEHAVIOR', 'STALE'].includes(deletionResult.code ?? '')
+        ? 'DPO · deletion check'
+        : 'Deletion check'} · {deletionResult.ok ? 'Accepted' : 'Refused'}
+    </p>
+    <p>{deletionResult.message}</p>
+  </div>
+{/if}
+
 <div class="space-y-3">
   <!-- Inline create. Friendly name in, canonical dot path derived. -->
   <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
@@ -257,7 +294,9 @@
   </div>
 
   {#if reusable.length > 0}
-    <div class="flex flex-col gap-2 rounded-lg border border-violet-200 bg-violet-50/50 p-2.5 sm:flex-row sm:items-center">
+    <div
+      class="flex flex-col gap-2 rounded-lg border border-violet-200 bg-violet-50/50 p-2.5 sm:flex-row sm:items-center"
+    >
       <span class="text-[11px] font-medium text-violet-800">Reuse from project</span>
       <select
         bind:value={reuseChoice}
@@ -283,8 +322,8 @@
     <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50/30 p-6 text-center">
       <p class="text-sm font-medium text-slate-700">No state defined yet</p>
       <p class="mx-auto mt-1 max-w-sm text-xs text-slate-500">
-        State is the typed data this surface reads and writes. Rules and effects refer to it
-        by its dotted path. Add a slot above to get started.
+        State is the typed data this surface reads and writes. Rules and effects refer to it by its
+        dotted path. Add a slot above to get started.
       </p>
     </div>
   {:else}
@@ -313,7 +352,8 @@
               value={def.type}
               disabled={!!def.stateVariableId}
               title={def.stateVariableId ? 'Inherited from the project state variable' : undefined}
-              onchange={(e) => updateType(def.id, (e.target as HTMLSelectElement).value as StateType)}
+              onchange={(e) =>
+                updateType(def.id, (e.target as HTMLSelectElement).value as StateType)}
             >
               <option value="string">string</option>
               <option value="number">number</option>
@@ -327,10 +367,11 @@
                 class="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-60"
                 value={String(def.defaultValue)}
                 disabled={!!def.stateVariableId}
-                onchange={(e) => updateDefault(def.id, (e.target as HTMLSelectElement).value, def.type)}
+                onchange={(e) =>
+                  updateDefault(def.id, (e.target as HTMLSelectElement).value, def.type)}
               >
                 <option value="false">false</option>
-                  <option value="true">true</option>
+                <option value="true">true</option>
               </select>
             {:else if def.type === 'object' || def.type === 'array'}
               <textarea
@@ -346,14 +387,16 @@
                 disabled={!!def.stateVariableId}
                 class="w-32 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-60"
                 value={String(def.defaultValue ?? '')}
-                onchange={(e) => updateDefault(def.id, (e.target as HTMLInputElement).value, def.type)}
+                onchange={(e) =>
+                  updateDefault(def.id, (e.target as HTMLInputElement).value, def.type)}
               />
             {/if}
             <button
               type="button"
               class="rounded px-2 py-1 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600"
               onclick={() => remove(def.id)}
-              aria-label="Remove state"
+              disabled={deleting || featureStore.saving}
+              aria-label="Remove state {def.path}"
             >
               x
             </button>
@@ -382,8 +425,7 @@
                   class="mono mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
                   value={(def.enumValues ?? []).join(', ')}
                   placeholder="draft, published, archived"
-                  onblur={(e) =>
-                    updateEnumValues(def.id, (e.target as HTMLInputElement).value)}
+                  onblur={(e) => updateEnumValues(def.id, (e.target as HTMLInputElement).value)}
                 />
               </label>
             {/if}
@@ -397,17 +439,15 @@
                 Shared with
               </span>
               {#each otherSurfaces as other (other.id)}
-                <label class="inline-flex max-w-full items-center gap-1 rounded-md border border-hairline px-2 py-1 text-[11px] text-slate-700">
+                <label
+                  class="inline-flex max-w-full items-center gap-1 rounded-md border border-hairline px-2 py-1 text-[11px] text-slate-700"
+                >
                   <input
                     type="checkbox"
                     checked={def.sharedWith?.includes(other.id) ?? false}
                     aria-label={`Share ${String(def.path)} with ${other.name}`}
                     onchange={(e) =>
-                      updateSharedWith(
-                        def.id,
-                        other.id,
-                        (e.target as HTMLInputElement).checked
-                      )}
+                      updateSharedWith(def.id, other.id, (e.target as HTMLInputElement).checked)}
                   />
                   <span class="truncate">{other.name}</span>
                 </label>

@@ -1,4 +1,6 @@
 import { systemClock, type Clock } from '$shared/domain/Clock';
+import type { StateDeletionCommand } from '$features/behavior-model/application/ports/StateDeletionCommand';
+import { DeleteStateDefinitionUseCase } from '$features/behavior-model/application/use-cases/DeleteStateDefinition';
 import { cryptoIdGenerator, type IdGenerator } from '$shared/domain/IdGenerator';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { FeatureRepository } from '$features/behavior-model/application/ports/FeatureRepository';
@@ -58,6 +60,7 @@ export type Container = {
     readonly saveFeature: ReturnType<typeof saveFeatureUseCase>;
     readonly mutateFeature: ReturnType<typeof mutateFeatureUseCase>;
     readonly deleteFeature: ReturnType<typeof deleteFeatureUseCase>;
+    readonly deleteStateDefinition: StateDeletionCommand['execute'];
     readonly listFeatures: ReturnType<typeof listFeaturesUseCase>;
     readonly listFeaturesWithMaturity: ReturnType<typeof listFeaturesWithMaturityUseCase>;
     readonly getFeature: ReturnType<typeof getFeatureUseCase>;
@@ -74,9 +77,7 @@ export type Container = {
     readonly removeFeatureFromProject: ReturnType<typeof removeFeatureFromProjectUseCase>;
     readonly moveFeatureInProject: ReturnType<typeof moveFeatureInProjectUseCase>;
     readonly getProjectAggregate: ReturnType<typeof getProjectAggregateUseCase>;
-    readonly findProjectContainingFeature: ReturnType<
-      typeof findProjectContainingFeatureUseCase
-    >;
+    readonly findProjectContainingFeature: ReturnType<typeof findProjectContainingFeatureUseCase>;
     readonly createDomain: ReturnType<typeof createDomainUseCase>;
     readonly saveDomain: ReturnType<typeof saveDomainUseCase>;
     readonly deleteDomain: ReturnType<typeof deleteDomainUseCase>;
@@ -96,6 +97,7 @@ export type Container = {
 };
 
 export const createContainer = (deps: {
+  stateDeletion?: StateDeletionCommand;
   repository: FeatureRepository;
   projectRepository: ProjectRepository;
   domainRepository: DomainRepository;
@@ -129,6 +131,8 @@ export const createContainer = (deps: {
       saveFeature: saveFeatureUseCase({ repository, clock }),
       mutateFeature: mutateFeatureUseCase({ repository, clock }),
       deleteFeature: deleteFeatureUseCase({ repository }),
+      deleteStateDefinition: (input) =>
+        (deps.stateDeletion ?? new DeleteStateDefinitionUseCase(repository, clock)).execute(input),
       listFeatures: listFeaturesUseCase({ repository }),
       listFeaturesWithMaturity: listFeaturesWithMaturityUseCase({ repository, statusRepository }),
       getFeature: getFeatureUseCase({ repository }),
