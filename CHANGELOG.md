@@ -6,6 +6,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-09-07
+
+Deleting a state is a command the server answers, and a parameter cannot be
+written into a state that cannot hold it.
+
+### Added
+
+- **Validated state deletion.** Removing a state definition from the editor
+  no longer edits the snapshot optimistically: the editor posts a command to
+  `POST /api/snapshots/:id/state-deletion`, which flushes pending
+  collaborative edits, runs the deletion through the same mutation primitive
+  as MCP with the local reference validation, and reloads the room from disk
+  once it landed. A raw collaborative deletion is refused before it is
+  broadcast or persisted; standalone collaborative editing, persistence and
+  undo/redo are unchanged.
+- **Host-owned deletion.** When `UNSPA_HOST_URL` is set, the server forwards
+  the authenticated command to the host's `/api/behavior/state/delete` and
+  returns its verdict as is (`DELETED`, a formal refusal, `UNAVAILABLE`); it
+  never falls back to a local write when the host is missing or unreachable.
+  Without the variable, Community and standalone answer with the local
+  verdict and `formalChecked: false`.
+
+### Changed
+
+- **Type-compatible parameter writes.** The feature validator rejects a state
+  path declared with different types on two surfaces, a `set_state` effect
+  that writes a parameter whose type the target state cannot hold (a free
+  string into an enum, a number into a string), and an enum parameter that
+  offers values outside the state's domain. A format type collapses to its
+  base (an email is a string) and an enum member may land in a string. These
+  used to surface later as an opaque "string written into an enum" from the
+  formal engine.
+
 ## [0.22.0] - 2026-09-04
 
 Unspaghettit is now part of Lyriks, and a spec-to-code mapping is only real
