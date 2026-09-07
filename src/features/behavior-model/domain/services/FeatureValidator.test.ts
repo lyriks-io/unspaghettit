@@ -1504,3 +1504,170 @@ describe('reference-integrity hardening (events, resources, personas, quantifier
     }
   });
 });
+
+// A parameter that lands in a state (bindToStatePath, or a set_state carrying
+// it) must fit the state's declared type, exactly the way the formal engine
+// types the bus that carries the path. Before this check, a `string` parameter
+// bound to an `enum` state was accepted here and rejected later by the engine
+// as an opaque "a string value is written into a enum on state 'x'", with no
+// authoring-level error pointing at the parameter to fix.
+describe('parameter types agree with the state they write', () => {
+  type ParamOver = {
+    type: string;
+    enumValues?: string[];
+    /** The path the parameter binds to (default: the enum period). */
+    path?: string;
+    /** Also write the parameter into the path through a set_state effect. */
+    viaEffect?: boolean;
+    /** Skip bindToStatePath (effect only). */
+    noBind?: boolean;
+  };
+  const periodFeature = (over: ParamOver): Feature => {
+    const s0 = storefrontFeature.surfaces[0]!;
+    const path = asStatePath(over.path ?? 'dashboard.period');
+    return {
+      ...storefrontFeature,
+      surfaces: storefrontFeature.surfaces.map((s, i) =>
+        i === 0
+          ? {
+              ...s,
+              stateDefinitions: [
+                ...s.stateDefinitions,
+                {
+                  id: asStateDefinitionId('sd-period'),
+                  path: asStatePath('dashboard.period'),
+                  type: 'enum',
+                  enumValues: ['7d', '30d', '90d'],
+                  defaultValue: '30d',
+                  description: 'Reporting window.'
+                },
+                {
+                  id: asStateDefinitionId('sd-note'),
+                  path: asStatePath('dashboard.note'),
+                  type: 'string',
+                  defaultValue: '',
+                  description: 'Free note.'
+                }
+              ],
+              actions: s0.actions.map((c, j) =>
+                j === 0
+                  ? {
+                      ...c,
+                      parameters: [
+                        ...c.parameters,
+                        {
+                          id: asParameterId('p-period'),
+                          name: 'period',
+                          type: over.type,
+                          required: true,
+                          ...(over.enumValues ? { enumValues: over.enumValues } : {}),
+                          ...(over.noBind ? {} : { bindToStatePath: path })
+                        }
+                      ],
+                      effects: over.viaEffect
+                        ? [
+                            ...c.effects,
+                            {
+                              id: asEffectId('eff-period'),
+                              type: 'set_state',
+                              path,
+                              value: { kind: 'param', name: 'period' },
+                              description: 'Apply the chosen window.'
+                            }
+                          ]
+                        : c.effects
+                    }
+                  : c
+              )
+            }
+          : s
+      )
+    } as unknown as Feature;
+  };
+  const errorsOf = (feature: Feature): readonly string[] => {
+    const result = validateReferenceIntegrity(feature);
+    return result.valid ? [] : result.errors;
+  };
+
+  it('rejects a string parameter bound to an enum state, naming the fix', () => {
+    const errors = errorsOf(periodFeature({ type: 'string' }));
+    expect(
+      errors.some((e) =>
+        /parameter "period" \(string\) is bound \(bindToStatePath\) to state "dashboard\.period", which is declared as enum/.test(e)
+      )
+    ).toBe(true);
+    expect(errors.some((e) => /Declare the parameter as type "enum" with the values "dashboard\.period" can hold \("7d", "30d", "90d"\)/.test(e))).toBe(true);
+  });
+
+  it('rejects a set_state that writes a string parameter into an enum state', () => {
+    const errors = errorsOf(periodFeature({ type: 'string', noBind: true, viaEffect: true }));
+    expect(
+      errors.some((e) =>
+        /effect eff-period: parameter "period" \(string\) is written \(set_state\) into state "dashboard\.period", which is declared as enum/.test(e)
+      )
+    ).toBe(true);
+  });
+
+  it('accepts an enum parameter whose values the state can hold, bound and written', () => {
+    expect(errorsOf(periodFeature({ type: 'enum', enumValues: ['7d', '30d'], viaEffect: true }))).toEqual([]);
+  });
+
+  it('rejects an enum parameter offering a value the state cannot hold', () => {
+    const errors = errorsOf(periodFeature({ type: 'enum', enumValues: ['7d', '12m'] }));
+    expect(errors.some((e) => /parameter "period" is bound \(bindToStatePath\) to state "dashboard\.period" but offers "12m", which "dashboard\.period" cannot hold \("7d", "30d", "90d"\)/.test(e))).toBe(true);
+  });
+
+  it('accepts format and enum parameters on a string state, rejects a number', () => {
+    expect(errorsOf(periodFeature({ type: 'email', path: 'dashboard.note' }))).toEqual([]);
+    expect(errorsOf(periodFeature({ type: 'enum', enumValues: ['a'], path: 'dashboard.note' }))).toEqual([]);
+    const errors = errorsOf(periodFeature({ type: 'number', path: 'dashboard.note' }));
+    expect(errors.some((e) => /parameter "period" \(number\) is bound \(bindToStatePath\) to state "dashboard\.note", which is declared as string/.test(e))).toBe(true);
+  });
+
+  it('leaves an unknown parameter type to the structural check (no second error)', () => {
+    const errors = errorsOf(periodFeature({ type: 'list' }));
+    expect(errors.some((e) => /is bound \(bindToStatePath\) to state/.test(e))).toBe(false);
+  });
+
+  it('rejects the same path declared with two types on two surfaces', () => {
+    const base = periodFeature({ type: 'enum', enumValues: ['7d'] });
+    const twice = {
+      ...base,
+      surfaces: base.surfaces.map((s, i) =>
+        i === 1
+          ? {
+              ...s,
+              stateDefinitions: [
+                ...s.stateDefinitions,
+                {
+                  id: asStateDefinitionId('sd-period-2'),
+                  path: asStatePath('dashboard.period'),
+                  type: 'string',
+                  defaultValue: '',
+                  description: 'Re-declared elsewhere.'
+                }
+              ]
+            }
+          : s
+      )
+    } as unknown as Feature;
+    const errors = errorsOf(twice);
+    const s0 = base.surfaces[0]!.id;
+    const s1 = base.surfaces[1]!.id;
+    expect(
+      errors.some((e) =>
+        e.startsWith(`State "dashboard.period" is declared as enum on surface ${s0} but string on surface ${s1}.`)
+      )
+    ).toBe(true);
+    // The same declaration on two surfaces is fine.
+    const same = {
+      ...twice,
+      surfaces: twice.surfaces.map((s, i) =>
+        i === 1
+          ? { ...s, stateDefinitions: s.stateDefinitions.map((d) => (d.id === 'sd-period-2' ? { ...d, type: 'enum', enumValues: ['7d', '30d', '90d'], defaultValue: '30d' } : d)) }
+          : s
+      )
+    } as unknown as Feature;
+    expect(errorsOf(same).some((e) => e.startsWith('State "dashboard.period" is declared as'))).toBe(false);
+  });
+});

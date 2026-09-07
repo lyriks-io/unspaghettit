@@ -1,5 +1,8 @@
 import type { Feature } from '../../entities/Feature';
+import type { Parameter } from '../../entities/Parameter';
 import { ALL_EFFECT_TYPES } from '../../value-objects/Effect';
+import { isParameterType, parameterTypeToStateType } from '../../value-objects/ParameterType';
+import type { StateType } from '../../value-objects/StateValue';
 import type { Expression } from '../../value-objects/Expression';
 import { isExpression } from '../../value-objects/Expression';
 import { CLOCK_NOW_PATH } from '../../value-objects/SimulationClock';
@@ -217,6 +220,71 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       if (allowed && allowed.length > 0) enumDomainByPath.set(String(def.path), allowed);
     }
   }
+
+  // One path, one type. A state path is a single slot in the snapshot whatever
+  // surface declares it, and the formal engine types the bus that carries it
+  // exactly once. Two surfaces declaring the same path with different types
+  // leave every writer typed against one declaration and checked against the
+  // other, which surfaces later as an opaque "string written into an enum"
+  // from the engine instead of a fixable authoring error here.
+  const typeByPath = new Map<string, StateType>();
+  const surfacesByPathType = new Map<string, Map<StateType, string[]>>();
+  for (const s of feature.surfaces) {
+    for (const def of s.stateDefinitions) {
+      const path = String(def.path);
+      if (!typeByPath.has(path)) typeByPath.set(path, def.type);
+      const byType = surfacesByPathType.get(path) ?? new Map<StateType, string[]>();
+      byType.set(def.type, [...(byType.get(def.type) ?? []), String(s.id)]);
+      surfacesByPathType.set(path, byType);
+    }
+  }
+  for (const [path, byType] of surfacesByPathType) {
+    if (byType.size < 2) continue;
+    const where = [...byType]
+      .map(([type, surfaces]) => `${type} on surface ${surfaces.join(', ')}`)
+      .join(' but ');
+    errors.push(
+      `State "${path}" is declared as ${where}. A state path is one slot whatever surface declares it, so every declaration must carry the same type (and, for an enum, the same values).`
+    );
+  }
+
+  const domainLabel = (path: string): string => {
+    const domain = enumDomainByPath.get(path);
+    return domain ? ` (${domain.map((v) => `"${v}"`).join(', ')})` : '';
+  };
+  /**
+   * Check that a parameter's value can land in a state path without leaving
+   * the path's declared type. Mirrors the runtime shapes (a format type IS its
+   * base type: an email is a string) and the formal engine's lattice (an enum
+   * member is a string). The reverse never holds: a free string bound to an
+   * enum can carry any text past the closed set, which is exactly the
+   * "string written into an enum" the engine rejects at merge time.
+   */
+  const checkParamWrite = (param: Parameter, path: string, label: string, how: string): void => {
+    const target = typeByPath.get(path);
+    // An undeclared path, or an unknown parameter type, is reported elsewhere.
+    if (target === undefined || !isParameterType(param.type)) return;
+    const base = parameterTypeToStateType(param.type);
+    if (base !== target && !(base === 'enum' && target === 'string')) {
+      const fix =
+        target === 'enum'
+          ? `Declare the parameter as type "enum" with the values "${path}" can hold${domainLabel(path)} (or the same valueSetId as the state), or change the state's type.`
+          : `Give the parameter type "${target}" (or a format type that collapses to it), or change the state's type.`;
+      errors.push(
+        `${label}: parameter "${param.name}" (${param.type}) ${how} "${path}", which is declared as ${target}. The types do not match. ${fix}`
+      );
+      return;
+    }
+    if (base !== 'enum' || target !== 'enum') return;
+    const domain = enumDomainByPath.get(path);
+    const offered = effectiveEnumValues(param, feature.valueSets);
+    if (!domain || !offered) return;
+    const outside = offered.filter((v) => !domain.includes(v));
+    if (outside.length === 0) return;
+    errors.push(
+      `${label}: parameter "${param.name}" ${how} "${path}" but offers ${outside.map((v) => `"${v}"`).join(', ')}, which "${path}" cannot hold${domainLabel(path)}. Align the parameter's values with the state's (or share one valueSetId).`
+    );
+  };
   /**
    * Check one literal against an enum path's domain. Only raw string literals
    * are checkable: an Expression resolves at run time, so its value is not
@@ -414,7 +482,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     paths: Set<string>,
     label: string,
     /** Parameters in scope for this effect's expressions (action effects only). */
-    paramNames?: ReadonlySet<string>
+    paramNames?: ReadonlySet<string>,
+    /** The same parameters, with their types, for the writes that carry one. */
+    params?: readonly Parameter[]
   ): void => {
     // Belt-and-suspenders: even with Zod-side enum validation, data loaded
     // from disk needs a final type check before it reaches the simulator
@@ -458,6 +528,14 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         checkValuePaths('set_state value', effect.value);
         // The write that puts a path outside its own declared domain.
         checkEnumMember(effect.path, effect.value, `${label} effect ${effect.id}`, 'set_state writes');
+        // The write that carries a parameter whose type the path cannot hold.
+        const value = effect.value;
+        if (isExpression(value) && value.kind === 'param' && typeof effect.path === 'string') {
+          const param = params?.find((p) => p.name === value.name);
+          if (param) {
+            checkParamWrite(param, effect.path, `${label} effect ${effect.id}`, 'is written (set_state) into state');
+          }
+        }
         return;
       }
       case 'append_to_list': {
@@ -699,15 +777,24 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       // before rules run, so it must target a path declared on (or shared into)
       // this surface — otherwise the write lands nowhere the rules can read.
       for (const param of cap.parameters) {
-        if (param.bindToStatePath !== undefined && !paths.has(String(param.bindToStatePath))) {
-          const bound = String(param.bindToStatePath);
+        if (param.bindToStatePath === undefined) continue;
+        const bound = String(param.bindToStatePath);
+        if (!paths.has(bound)) {
           const fix = sharedWithFix(bound, String(surface.id));
           errors.push(
             fix
               ? `Action ${cap.id} on surface ${surface.id}: parameter "${param.name}" bindToStatePath "${bound}" ${fix}`
               : `Action ${cap.id} on surface ${surface.id}: parameter "${param.name}" bindToStatePath "${bound}" is not a declared state path on this surface (or shared into it).`
           );
+          continue;
         }
+        // The bound value lands in the path before rules run: its type must fit.
+        checkParamWrite(
+          param,
+          bound,
+          `Action ${cap.id} on surface ${surface.id}`,
+          'is bound (bindToStatePath) to state'
+        );
       }
       for (const rule of cap.rules) {
         const label = `Action ${cap.id} rule ${rule.id}`;
@@ -717,7 +804,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           surface.id,
           paths,
           label,
-          capParamNames
+          capParamNames,
+          cap.parameters
         );
       }
       for (const inv of cap.invariants) {
@@ -735,7 +823,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           surface.id,
           paths,
           `Action ${cap.id}`,
-          capParamNames
+          capParamNames,
+          cap.parameters
         );
       }
       for (const e of cap.onBlockedEffects ?? []) {
@@ -744,7 +833,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           surface.id,
           paths,
           `Action ${cap.id} onBlocked`,
-          capParamNames
+          capParamNames,
+          cap.parameters
         );
       }
     }
