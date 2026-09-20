@@ -36,6 +36,12 @@ export {
 } from './dryRunSimulate';
 export { scoreFeatureTool, type ScoreFeatureOutput } from './scoreFeature';
 export {
+  batchScenariosTool,
+  BATCH_SCENARIO_LIMIT,
+  type BatchScenarioFailure,
+  type BatchScenarios
+} from './batchScenarios';
+export {
   getNeighborhoodTool,
   ALL_NEIGHBORHOOD_EDGE_KINDS,
   type Neighborhood,

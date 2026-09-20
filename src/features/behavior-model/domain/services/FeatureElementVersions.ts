@@ -42,7 +42,7 @@ const TYPE_ALIASES: Readonly<Record<string, string>> = {
 const canonicalType = (type: string): string => TYPE_ALIASES[type] ?? type;
 
 /** Deterministic serialization: key order must never decide whether an element changed. */
-const stable = (value: unknown): string => {
+export const stable = (value: unknown): string => {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
   const entries = Object.entries(value as Record<string, unknown>)

@@ -31,8 +31,7 @@ import type { DigestScopeRef } from '../../src/features/behavior-digest/domain/p
 import { trackTokens } from '../metrics';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import type { FeatureRepository } from '../../src/features/behavior-model/application/ports/FeatureRepository';
-import type { ProjectRepository } from '../../src/features/projects/application/ports/ProjectRepository';
-import { errorText, text, type ToolDeps } from './_shared';
+import { errorText, loadProjectSiblings, text, type ToolDeps } from './_shared';
 import { runGenerateTypes } from './_codegen';
 import {
   expandFeatureId,
@@ -40,26 +39,6 @@ import {
   expandProjectId
 } from './short-ids';
 import { loadFeaturesByIds as readFeaturesByIds } from '../../src/features/behavior-model/application/services/bulkRead';
-import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
-
-/**
- * Load sibling features (same project as `focalFeatureId`) so the simulator
- * can cascade events across feature boundaries. Returns `undefined` when no
- * project contains the feature, caller treats that as "single-feature mode."
- * Failures inside individual fetches are swallowed; missing siblings just
- * mean fewer handlers fire, not a hard error.
- */
-const loadProjectSiblings = async (
-  repo: FeatureRepository,
-  projectRepo: ProjectRepository,
-  focalFeatureId: string
-): Promise<readonly Feature[] | undefined> => {
-  const project = await findOwningProject(projectRepo, focalFeatureId);
-  if (!project) return undefined;
-  const ids = project.featureIds.map(String).filter((id) => id !== focalFeatureId);
-  const siblings = await readFeaturesByIds(repo, ids);
-  return siblings.filter((f): f is Feature => f !== null);
-};
 
 /**
  * Load every feature named by `featureIds`, dropping any that no longer resolve.

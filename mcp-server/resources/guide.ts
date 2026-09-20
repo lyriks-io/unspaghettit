@@ -130,7 +130,16 @@ Pass dryRun:true to validate and get a maturity score without persisting anythin
 Use this to check a proposal before committing:
 
   apply_batch({ featureId, dryRun:true, operations:[…] })
-  → { ok, dryRun:true, validation:{ valid, errors? }, maturity:{ percentage } | null, refs }
+  → { ok, dryRun:true, validation:{ valid, errors? }, maturity:{ percentage } | null, refs,
+      scenarios:{ scope:"touched"|"feature", run, passed, failed:[…], truncated? }, commitToken }
+
+Every successful apply_batch answer (dry run, direct apply, commit by token) carries that
+scenarios block: the scenarios of what the batch touched, run on the post-batch feature.
+A batch that stays inside actions runs only the scenarios exercising them (scope "touched");
+a batch that touches a state definition, a surface or feature invariant, a surface rule, a
+constant, a value set, a persona, an event, an entity or an event handler runs them all
+(scope "feature"). failed[] lists failing scenarios only, each with its reason. A failing
+scenario never rejects the batch: read scenarios.failed in the dry run, before you commit.
 
 ### transition_surface in a batch
 

@@ -10,6 +10,10 @@ import {
 } from '../../src/features/behavior-model/domain/services/FeatureValidator';
 import { scoreFeature } from '../../src/features/maturity/domain/MaturityScorer';
 import { scoreFeatureTool } from '../../src/features/mcp-tools/application/tools/scoreFeature';
+import {
+  batchScenariosTool,
+  type BatchScenarios
+} from '../../src/features/mcp-tools/application/tools/batchScenarios';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
@@ -19,7 +23,7 @@ import {
 } from '../../src/shared/domain/IdGenerator';
 import { applyOps } from './batch-ops/applyOps';
 import type { Op } from './batch-ops/opHelpers';
-import { errorText, text, type ToolDeps } from './_shared';
+import { errorText, loadProjectSiblings, text, type ToolDeps } from './_shared';
 import { collectFeatureEntityIds, expandFeatureId } from './short-ids';
 import { maybeAutoGenerateTypes } from './_codegen';
 
@@ -45,16 +49,44 @@ const pruneExpiredCommits = (now: number): void => {
   }
 };
 
+type ScenarioReport =
+  | { readonly scenarios: BatchScenarios }
+  | { readonly scenariosError: string };
+
+const hasScenarios = (feature: Feature): boolean =>
+  feature.surfaces.some((s) => s.actions.some((a) => (a.scenarios ?? []).length > 0));
+
+/**
+ * The `scenarios` block of a batch answer. Siblings are loaded only when the
+ * feature authors a scenario at all (they let an event cascade into another
+ * feature, exactly as run_all_scenarios does), so a batch on a feature without
+ * scenarios pays nothing for this.
+ */
+const scenariosOfBatch = async (
+  before: Feature,
+  after: Feature,
+  loadSiblings: () => Promise<readonly Feature[] | undefined>
+): Promise<ScenarioReport> => {
+  try {
+    const siblings = hasScenarios(after) ? await loadSiblings() : undefined;
+    return { scenarios: batchScenariosTool(before, after, siblings) };
+  } catch (e) {
+    return {
+      scenariosError: `The scenario run could not complete: ${(e as Error).message}. The batch itself is judged by \`validation\` alone; run run_all_scenarios for details.`
+    };
+  }
+};
+
 const opSchemaDescription = `Each op: { kind, ref?, ...kindArgs }. ADD ops mint a new id and (when op.ref is set) remember it so later ops in the same batch can address it via *Ref strings. UPDATE ops take the existing id and a patch. REMOVE ops take the id. MOVE ops take { direction: "up"|"down" }. Full per-op-kind schema in the unspa://operations resource. Load it once before authoring a batch. Common gotcha: add_resource's resource entity has its own "kind" field which collides with the op-kind discriminator. Nest under "resource:{kind,...}" or pass "resourceKind" on the flat form.`;
 
 export const registerBatchTool = (deps: ToolDeps): void => {
-  const { server, repo, clock, ids, repoContext } = deps;
+  const { server, repo, projectRepo, clock, ids, repoContext } = deps;
 
   server.registerTool(
     'apply_batch',
     {
       description:
-        'Apply N add/update/remove/move ops to one Feature in a single atomic load+validate+save. Pass dryRun:true to validate and score without saving. The default dryRun response is a slim summary (~1 KB), pair with verbose:true ONLY when you need the full per-issue maturity report and post-batch feature. A valid dryRun also returns a `commitToken`: call apply_batch again with just { commit: token } (no operations) to save that batch without resending the ops — the server re-loads the feature and re-validates before saving, and tokens are single-use, expiring after 5 minutes. A committed token keeps the ids of its dry run: the `refs` it returns are the ones the dry run returned (an id the feature gained in between is the only one re-minted). Add ops can capture their new id under `ref` so later ops use *Ref instead of *Id; sharedWith also accepts refs created earlier in the same batch. Strongly preferred over many granular calls. See the unspa://operations resource for the full per-op-kind schema reference.',
+        'Apply N add/update/remove/move ops to one Feature in a single atomic load+validate+save. Pass dryRun:true to validate and score without saving. Every successful answer (dry run, direct apply, commit by token) carries `scenarios: { scope, run, passed, failed[], truncated? }`: the scenarios of what the batch touched, run on the post-batch feature, so a dry run already says whether an expected value still holds. scope is "touched" when the batch stayed inside actions (an action it added or updated, or whose rule, effect, parameter, invariant, transition or scenario it added, updated, removed or moved): only the scenarios exercising those actions run, the ones testing them plus the multi-step ones replaying them. scope is "feature" when the batch touched anything wider (a state definition, a surface or feature invariant, a surface rule, a constant, a value set, a persona, an event, an entity, an event handler): every scenario runs. `failed` lists failing scenarios only ({ scenarioId, name, surfaceId, actionId, actionName, expectedStatus, actualStatus, firstFailingStep?, reason }); passing ones are the `passed` count. At most 300 scenarios run, in model order, and `truncated:true` says the cap was hit (finish with run_all_scenarios). A failing scenario NEVER rejects the batch, validation alone decides that: read `scenarios.failed` before committing. The default dryRun response is a slim summary (~1 KB), pair with verbose:true ONLY when you need the full per-issue maturity report and post-batch feature. A valid dryRun also returns a `commitToken`: call apply_batch again with just { commit: token } (no operations) to save that batch without resending the ops — the server re-loads the feature and re-validates before saving, and tokens are single-use, expiring after 5 minutes. A committed token keeps the ids of its dry run: the `refs` it returns are the ones the dry run returned (an id the feature gained in between is the only one re-minted). Add ops can capture their new id under `ref` so later ops use *Ref instead of *Id; sharedWith also accepts refs created earlier in the same batch. Strongly preferred over many granular calls. See the unspa://operations resource for the full per-op-kind schema reference.',
       inputSchema: {
         featureId: z.string().optional(),
         dryRun: z.boolean().optional(),
@@ -160,6 +192,16 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           introduced.length === 0
             ? { valid: true }
             : { valid: false, errors: annotateErrors(introduced) };
+        // The scenarios of what the batch touched, run on the feature the batch
+        // produces. Computed before anything is saved, so the dry run, the
+        // direct apply and the commit all answer it the same way. A failure is
+        // information: it never blocks the batch, and neither does a run that
+        // cannot complete (the answer then says why instead of a verdict).
+        const scenarioReport = validation.valid
+          ? await scenariosOfBatch(current, next, () =>
+              loadProjectSiblings(repo, projectRepo, String(featureId))
+            )
+          : {};
         // dryRun (never while committing): validate + score, don't save. On a
         // valid dry-run, cache the ops under a fresh single-use token so the
         // caller can commit later with just { commit } and no operations.
@@ -186,6 +228,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
               refs,
               validation,
               maturity: validation.valid ? scoreFeature(next) : null,
+              ...scenarioReport,
               ...(commitToken ? { commitToken } : {})
             });
           }
@@ -197,6 +240,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
             refs,
             validation,
             maturity: validation.valid ? scoreFeatureTool(next) : null,
+            ...scenarioReport,
             ...(commitToken ? { commitToken } : {})
           });
         }
@@ -232,6 +276,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           updatedAt: saved.updatedAt,
           appliedCount: ops.length,
           refs,
+          ...scenarioReport,
           ...(committing ? { committed: true } : {}),
           ...(codegen
             ? { generatedTypes: { outputPath: codegen.outputPath, stats: codegen.stats } }

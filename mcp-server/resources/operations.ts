@@ -147,6 +147,13 @@ Every update op also accepts its editable fields under \`patch:{...}\` instead o
   instead of two flat rules that share an effect. Implication \`A → B\` is \`{kind:"any", conditions:[{kind:"not", condition: A}, B]}\`.
 - Pass \`dryRun: true\` on apply_batch to validate + score without saving. Add \`verbose: true\`
   to get the full per-issue maturity report; otherwise the response is a slim summary (~1 KB).
+- Every successful apply_batch answer (dry run, direct apply, commit by token) carries
+  \`scenarios: { scope, run, passed, failed[], truncated? }\`: the scenarios of what the batch touched,
+  run on the post-batch feature. scope "touched" = only the scenarios exercising the actions the batch
+  changed; scope "feature" = everything, because the batch touched something every scenario runs
+  against (state definition, surface/feature invariant, surface rule, constant, value set, persona,
+  event, entity, event handler). \`failed\` holds failing scenarios only. A failing scenario never
+  rejects the batch; read it in the dry run, before committing.
 
 Evaluation semantics (matters for scenario assertions and rule ordering):
 - Effects apply SEQUENTIALLY in the order written, and derived (computed) state is

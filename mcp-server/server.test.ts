@@ -2758,6 +2758,309 @@ describe('MCP server', () => {
     expect(scenario?.expectedTransition).toBe(ack.refs.next);
     await server.close();
   });
+  describe('apply_batch scenarios block', () => {
+    type ScenariosBlock = {
+      scope: 'touched' | 'feature';
+      run: number;
+      passed: number;
+      failed: readonly {
+        scenarioId: string;
+        name: string;
+        surfaceId: string;
+        actionId: string;
+        actionName: string;
+        expectedStatus: string | null;
+        actualStatus: string;
+        firstFailingStep?: number;
+        reason: string;
+      }[];
+      truncated?: boolean;
+    };
+    type BatchAnswer = {
+      ok: boolean;
+      refs: Record<string, string>;
+      scenarios?: ScenariosBlock;
+      commitToken?: string;
+      committed?: boolean;
+    };
+
+    // A counter with two actions, each carrying one scenario: Increment expects
+    // count to land on 1, Reset expects it to land on 0.
+    const counterFeature = async (client: Client) => {
+      const created = parseTextContent(
+        await client.callTool({
+          name: 'create_feature',
+          arguments: { name: 'Counter', description: 'A counter used to test batch answers.' }
+        })
+      ) as { id: string };
+      const built = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId: created.id,
+            operations: [
+              {
+                kind: 'add_surface',
+                ref: 'screen',
+                name: 'Counter screen',
+                type: 'screen',
+                description: 'Shows the counter.'
+              },
+              {
+                kind: 'add_state_definition',
+                ref: 'count',
+                surfaceRef: 'screen',
+                path: 'count',
+                type: 'number',
+                defaultValue: 0,
+                description: 'The current count.'
+              },
+              {
+                kind: 'add_action',
+                ref: 'increment',
+                surfaceRef: 'screen',
+                name: 'Increment',
+                intent: 'Add one to the count.'
+              },
+              {
+                kind: 'add_effect',
+                ref: 'plusOne',
+                surfaceRef: 'screen',
+                actionRef: 'increment',
+                effect: {
+                  type: 'set_state',
+                  path: 'count',
+                  value: {
+                    kind: 'add',
+                    left: { kind: 'state', path: 'count' },
+                    right: { kind: 'literal', value: 1 }
+                  },
+                  description: 'Adds one to the count.'
+                }
+              },
+              {
+                kind: 'add_scenario',
+                ref: 'incrementScenario',
+                surfaceRef: 'screen',
+                actionRef: 'increment',
+                name: 'Count lands on one',
+                description: 'Incrementing from zero yields one.',
+                expectedStatus: 'success',
+                expectedAssertions: [
+                  {
+                    path: 'count',
+                    operator: 'equals',
+                    value: 1,
+                    description: 'The count is one.'
+                  }
+                ]
+              },
+              {
+                kind: 'add_action',
+                ref: 'reset',
+                surfaceRef: 'screen',
+                name: 'Reset',
+                intent: 'Put the count back to zero.'
+              },
+              {
+                kind: 'add_effect',
+                surfaceRef: 'screen',
+                actionRef: 'reset',
+                effect: {
+                  type: 'set_state',
+                  path: 'count',
+                  value: { kind: 'literal', value: 0 },
+                  description: 'Puts the count back to zero.'
+                }
+              },
+              {
+                kind: 'add_scenario',
+                ref: 'resetScenario',
+                surfaceRef: 'screen',
+                actionRef: 'reset',
+                name: 'Count lands on zero',
+                description: 'Resetting from seven yields zero.',
+                stateOverrides: [{ path: 'count', value: 7 }],
+                expectedStatus: 'success',
+                expectedAssertions: [
+                  {
+                    path: 'count',
+                    operator: 'equals',
+                    value: 0,
+                    description: 'The count is zero.'
+                  }
+                ]
+              }
+            ]
+          }
+        })
+      ) as BatchAnswer;
+      return { featureId: created.id, built };
+    };
+
+    // Increment now adds two, which its scenario (expecting one) no longer accepts.
+    const breakIncrement = (refs: Record<string, string>) => ({
+      kind: 'update_effect',
+      surfaceId: refs.screen,
+      actionId: refs.increment,
+      effectId: refs.plusOne,
+      patch: {
+        value: {
+          kind: 'add',
+          left: { kind: 'state', path: 'count' },
+          right: { kind: 'literal', value: 2 }
+        }
+      }
+    });
+
+    it('a direct apply that declares state runs the whole feature and reports it green', async () => {
+      const { client, server } = await setup();
+      const { built } = await counterFeature(client);
+      expect(built.ok).toBe(true);
+      expect(built.scenarios).toEqual({ scope: 'feature', run: 2, passed: 2, failed: [] });
+      await server.close();
+    });
+
+    it('a dry run that breaks an expected value names the failing scenario, and nothing is saved', async () => {
+      const { client, server, repo } = await setup();
+      const { featureId, built } = await counterFeature(client);
+      const before = await repo.get(featureId as never);
+
+      const dry = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: { featureId, dryRun: true, operations: [breakIncrement(built.refs)] }
+        })
+      ) as BatchAnswer;
+
+      // The batch is valid: a failing scenario is information, not a rejection.
+      expect(dry.ok).toBe(true);
+      expect(typeof dry.commitToken).toBe('string');
+      expect(dry.scenarios).toEqual({
+        scope: 'touched',
+        run: 1,
+        passed: 0,
+        failed: [
+          {
+            scenarioId: built.refs.incrementScenario,
+            name: 'Count lands on one',
+            surfaceId: built.refs.screen,
+            actionId: built.refs.increment,
+            actionName: 'Increment',
+            expectedStatus: 'success',
+            actualStatus: 'success',
+            reason: '1/1 assertion did not hold'
+          }
+        ]
+      });
+      expect(await repo.get(featureId as never)).toEqual(before);
+
+      // The commit answers the same question about what it saves.
+      const committed = parseTextContent(
+        await client.callTool({ name: 'apply_batch', arguments: { commit: dry.commitToken } })
+      ) as BatchAnswer;
+      expect(committed.ok).toBe(true);
+      expect(committed.committed).toBe(true);
+      expect(committed.scenarios).toEqual(dry.scenarios);
+      await server.close();
+    });
+
+    it("an untouched action's scenarios are not run", async () => {
+      const { client, server } = await setup();
+      const { featureId, built } = await counterFeature(client);
+
+      // Only Reset is edited: Increment's scenario stays out of the run.
+      const renamed = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            dryRun: true,
+            operations: [
+              {
+                kind: 'update_action',
+                surfaceId: built.refs.screen,
+                actionId: built.refs.reset,
+                intent: 'Put the count back to zero, whatever it was.'
+              }
+            ]
+          }
+        })
+      ) as BatchAnswer;
+      expect(renamed.scenarios).toEqual({ scope: 'touched', run: 1, passed: 1, failed: [] });
+
+      // Prose alone touches no action at all.
+      const prose = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            dryRun: true,
+            operations: [{ kind: 'add_acceptance_criterion', title: 'The count never goes negative' }]
+          }
+        })
+      ) as BatchAnswer;
+      expect(prose.ok).toBe(true);
+      expect(prose.scenarios).toEqual({ scope: 'touched', run: 0, passed: 0, failed: [] });
+      await server.close();
+    });
+
+    it('a state-definition change runs the whole feature', async () => {
+      const { client, server } = await setup();
+      const { featureId, built } = await counterFeature(client);
+
+      // Starting from 5, Increment lands on 6; Reset overrides its own start.
+      const dry = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            dryRun: true,
+            operations: [
+              {
+                kind: 'update_state_definition',
+                surfaceId: built.refs.screen,
+                stateDefinitionId: built.refs.count,
+                defaultValue: 5
+              }
+            ]
+          }
+        })
+      ) as BatchAnswer;
+      expect(dry.ok).toBe(true);
+      expect(dry.scenarios?.scope).toBe('feature');
+      expect(dry.scenarios?.run).toBe(2);
+      expect(dry.scenarios?.passed).toBe(1);
+      expect(dry.scenarios?.failed.map((f) => f.name)).toEqual(['Count lands on one']);
+      await server.close();
+    });
+
+    it('an invalid batch carries no scenarios block', async () => {
+      const { client, server } = await setup();
+      const { featureId, built } = await counterFeature(client);
+      const dry = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            dryRun: true,
+            operations: [
+              {
+                kind: 'add_effect',
+                surfaceId: built.refs.screen,
+                actionId: built.refs.increment,
+                effect: { type: 'not_a_real_effect', description: 'Rejected by validation.' }
+              }
+            ]
+          }
+        })
+      ) as BatchAnswer;
+      expect(dry.ok).toBe(false);
+      expect(dry.scenarios).toBeUndefined();
+      await server.close();
+    });
+  });
+
   it('stores a shared entity once and resolves it from every referencing feature', async () => {
     const { client, server, repo } = await setup();
 

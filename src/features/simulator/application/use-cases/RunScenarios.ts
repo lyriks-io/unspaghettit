@@ -28,6 +28,7 @@ import type {
   ScenarioId,
   SurfaceId
 } from '$features/behavior-model/domain/value-objects/ids';
+import { scenarioExercises } from '$features/simulator/domain/ScenarioScope';
 import { simulate } from '$features/simulator/domain/SimulatorEngine';
 
 export type ScenarioAssertionResult = {
@@ -124,6 +125,18 @@ export type RunScenariosInput = {
    * these via projectRepo when running scenarios with a project context.
    */
   readonly projectFeatures?: readonly Feature[];
+  /**
+   * Run only the scenarios that exercise one of these actions: the ones that
+   * test it, and the multi-step ones that replay it on the way to another
+   * action. Used after a write, where the rest of the suite cannot have moved.
+   * Omit to run everything the surface/action filters let through.
+   */
+  readonly exercisingActionIds?: ReadonlySet<string>;
+  /**
+   * Stop after this many scenarios, in model order. The output then says
+   * `truncated`, so a partial run is never read as a whole one.
+   */
+  readonly limit?: number;
 };
 
 export type RunScenariosOutput = {
@@ -133,6 +146,8 @@ export type RunScenariosOutput = {
   readonly passed: number;
   readonly failed: number;
   readonly results: readonly ScenarioRunResult[];
+  /** Present (and true) only when `limit` cut the run short. */
+  readonly truncated?: boolean;
 };
 
 /**
@@ -452,12 +467,20 @@ const runOne = (
 export const runScenariosUseCase = () => {
   return (input: RunScenariosInput): RunScenariosOutput => {
     const results: ScenarioRunResult[] = [];
+    const exercising = input.exercisingActionIds;
+    const limit = input.limit ?? Number.POSITIVE_INFINITY;
+    let truncated = false;
     for (const surface of input.feature.surfaces) {
       if (input.surfaceId && surface.id !== input.surfaceId) continue;
       for (const action of surface.actions) {
         if (input.actionId && action.id !== input.actionId) continue;
         const scenarios = action.scenarios ?? [];
         for (const scenario of scenarios) {
+          if (exercising && !scenarioExercises(exercising, action, scenario)) continue;
+          if (results.length >= limit) {
+            truncated = true;
+            continue;
+          }
           try {
             results.push(runOne(surface, action, scenario, input.feature, input.projectFeatures));
           } catch (e) {
@@ -497,7 +520,8 @@ export const runScenariosUseCase = () => {
       total: results.length,
       passed,
       failed: results.length - passed,
-      results
+      results,
+      ...(truncated ? { truncated: true } : {})
     };
   };
 };

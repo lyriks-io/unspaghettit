@@ -18,6 +18,9 @@ import type { ProjectRepository } from '../../src/features/projects/application/
 import type { Clock } from '../../src/shared/domain/Clock';
 import type { IdGenerator } from '../../src/shared/domain/IdGenerator';
 import { runScenariosUseCase } from '../../src/features/simulator/application/use-cases/RunScenarios';
+import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
+import { loadFeaturesByIds } from '../../src/features/behavior-model/application/services/bulkRead';
+import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 import type { RepoContext } from '../server';
 import { expandFeatureId } from './short-ids';
 
@@ -40,6 +43,27 @@ export type ToolDeps = {
    * skip the update check, keeping the network out of the test path).
    */
   readonly version?: string;
+};
+
+/**
+ * Load sibling features (same project as `focalFeatureId`) so the simulator
+ * can cascade events across feature boundaries. Returns `undefined` when no
+ * project contains the feature, caller treats that as "single-feature mode."
+ * Failures inside individual fetches are swallowed; missing siblings just
+ * mean fewer handlers fire, not a hard error. Shared by the read tools and by
+ * apply_batch, so a scenario reads the same in a batch answer as it does in
+ * run_all_scenarios.
+ */
+export const loadProjectSiblings = async (
+  repo: FeatureRepository,
+  projectRepo: ProjectRepository,
+  focalFeatureId: string
+): Promise<readonly Feature[] | undefined> => {
+  const project = await findOwningProject(projectRepo, focalFeatureId);
+  if (!project) return undefined;
+  const ids = project.featureIds.map(String).filter((id) => id !== focalFeatureId);
+  const siblings = await loadFeaturesByIds(repo, ids);
+  return siblings.filter((f): f is Feature => f !== null);
 };
 
 // Compact JSON: every byte of whitespace is a token sent to / from the LLM.
