@@ -18,3 +18,38 @@ export const cryptoIdGenerator: IdGenerator = () => {
   }
   return Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
 };
+
+/**
+ * Wrap a generator so the ids it hands out are remembered in mint order.
+ * `minted` is a live view: read it once the work that mints is done.
+ */
+export const recordingIdGenerator = (
+  live: IdGenerator
+): { readonly mint: IdGenerator; readonly minted: readonly string[] } => {
+  const minted: string[] = [];
+  const mint: IdGenerator = () => {
+    const id = live();
+    minted.push(id);
+    return id;
+  };
+  return { mint, minted };
+};
+
+/**
+ * Hand out a recorded sequence again, slot for slot, then fall back to `live`.
+ * A recorded id that `isTaken` (the target changed between the recording and
+ * the replay) gives up its slot to a fresh id rather than failing, so the
+ * slots after it still line up with the recording.
+ */
+export const replayingIdGenerator = (
+  recorded: readonly string[],
+  live: IdGenerator,
+  isTaken: (id: string) => boolean
+): IdGenerator => {
+  let cursor = 0;
+  return () => {
+    const replayed = recorded[cursor];
+    cursor += 1;
+    return replayed !== undefined && !isTaken(replayed) ? replayed : live();
+  };
+};

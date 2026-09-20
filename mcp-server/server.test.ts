@@ -1252,6 +1252,116 @@ describe('MCP server', () => {
     await server.close();
   });
 
+  it('apply_batch commit by token keeps the ids the dry run returned', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Stable refs', description: 'Validates dry-run ids survive the commit.' }
+      })
+    ) as { id: string };
+    const operations = [
+      {
+        kind: 'add_surface',
+        ref: 'screen',
+        name: 'Screen',
+        type: 'screen',
+        description: 'Screen used by the stable-refs test.'
+      },
+      { kind: 'add_action', ref: 'go', surfaceRef: 'screen', name: 'Go', intent: 'Run the action.' }
+    ];
+    type BatchResult = { ok: boolean; refs: Record<string, string>; commitToken?: string };
+    const dryRun = async (): Promise<BatchResult> =>
+      parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: { featureId: created.id, dryRun: true, operations }
+        })
+      ) as BatchResult;
+
+    const dry = await dryRun();
+    expect(dry.ok).toBe(true);
+
+    // A second dry run of the same ops is a new proposal: it mints new ids.
+    const again = await dryRun();
+    expect(again.refs.screen).not.toBe(dry.refs.screen);
+    expect(again.refs.go).not.toBe(dry.refs.go);
+
+    // Committing the FIRST token saves the ids the first dry run announced,
+    // even though the generator has moved on since.
+    const committed = parseTextContent(
+      await client.callTool({ name: 'apply_batch', arguments: { commit: dry.commitToken } })
+    ) as BatchResult;
+    expect(committed.ok).toBe(true);
+    expect(committed.refs).toEqual(dry.refs);
+
+    const persisted = await repo.get(created.id as never);
+    expect(String(persisted?.surfaces[0]?.id)).toBe(dry.refs.screen);
+    expect(String(persisted?.surfaces[0]?.actions[0]?.id)).toBe(dry.refs.go);
+    await server.close();
+  });
+
+  it('apply_batch commit re-mints only a dry-run id the feature gained in between', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Taken id', description: 'Validates the replay collision fallback.' }
+      })
+    ) as { id: string };
+    type BatchResult = { ok: boolean; refs: Record<string, string>; commitToken?: string };
+    const dry = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          dryRun: true,
+          operations: [
+            {
+              kind: 'add_surface',
+              ref: 'screen',
+              name: 'Screen',
+              type: 'screen',
+              description: 'Screen used by the collision test.'
+            },
+            { kind: 'add_action', ref: 'go', surfaceRef: 'screen', name: 'Go', intent: 'Run it.' }
+          ]
+        }
+      })
+    ) as BatchResult;
+
+    // Someone else lands a surface carrying the very id the dry run announced.
+    const current = (await repo.get(created.id as never))!;
+    await repo.save({
+      ...current,
+      surfaces: [
+        {
+          id: dry.refs.screen as never,
+          name: 'Intruder',
+          type: 'screen',
+          description: 'Saved between the dry run and the commit.',
+          stateDefinitions: [],
+          actions: [],
+          rules: [],
+          invariants: [],
+          transitions: []
+        }
+      ]
+    });
+
+    const committed = parseTextContent(
+      await client.callTool({ name: 'apply_batch', arguments: { commit: dry.commitToken } })
+    ) as BatchResult;
+    expect(committed.ok).toBe(true);
+    // The taken slot gets a fresh id; the slot after it still replays.
+    expect(committed.refs.screen).not.toBe(dry.refs.screen);
+    expect(committed.refs.go).toBe(dry.refs.go);
+
+    const surfaceIds = (await repo.get(created.id as never))!.surfaces.map((s) => String(s.id));
+    expect(new Set(surfaceIds).size).toBe(2);
+    await server.close();
+  });
+
   it('apply_batch rejects a bogus commit token with a re-run-the-dry-run hint', async () => {
     const { client, server } = await setup();
     const result = await client.callTool({

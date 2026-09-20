@@ -13,10 +13,14 @@ import { scoreFeatureTool } from '../../src/features/mcp-tools/application/tools
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
+import {
+  recordingIdGenerator,
+  replayingIdGenerator
+} from '../../src/shared/domain/IdGenerator';
 import { applyOps } from './batch-ops/applyOps';
 import type { Op } from './batch-ops/opHelpers';
 import { errorText, text, type ToolDeps } from './_shared';
-import { expandFeatureId } from './short-ids';
+import { collectFeatureEntityIds, expandFeatureId } from './short-ids';
 import { maybeAutoGenerateTypes } from './_codegen';
 
 // A valid `dryRun` caches its (featureId, operations) under a one-shot token so
@@ -29,6 +33,9 @@ const COMMIT_TTL_MS = COMMIT_TTL_MINUTES * 60 * 1000;
 type PendingCommit = {
   readonly featureId: string;
   readonly operations: readonly Op[];
+  // The ids the dry run minted, in mint order. The commit replays them so the
+  // `refs` the caller already recorded (evidence, links) name what gets saved.
+  readonly mintedIds: readonly string[];
   readonly expiresAt: number;
 };
 const commitCache = new Map<string, PendingCommit>();
@@ -47,7 +54,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
     'apply_batch',
     {
       description:
-        'Apply N add/update/remove/move ops to one Feature in a single atomic load+validate+save. Pass dryRun:true to validate and score without saving. The default dryRun response is a slim summary (~1 KB), pair with verbose:true ONLY when you need the full per-issue maturity report and post-batch feature. A valid dryRun also returns a `commitToken`: call apply_batch again with just { commit: token } (no operations) to save that batch without resending the ops — the server re-loads the feature and re-validates before saving, and tokens are single-use, expiring after 5 minutes. Add ops can capture their new id under `ref` so later ops use *Ref instead of *Id; sharedWith also accepts refs created earlier in the same batch. Strongly preferred over many granular calls. See the unspa://operations resource for the full per-op-kind schema reference.',
+        'Apply N add/update/remove/move ops to one Feature in a single atomic load+validate+save. Pass dryRun:true to validate and score without saving. The default dryRun response is a slim summary (~1 KB), pair with verbose:true ONLY when you need the full per-issue maturity report and post-batch feature. A valid dryRun also returns a `commitToken`: call apply_batch again with just { commit: token } (no operations) to save that batch without resending the ops — the server re-loads the feature and re-validates before saving, and tokens are single-use, expiring after 5 minutes. A committed token keeps the ids of its dry run: the `refs` it returns are the ones the dry run returned (an id the feature gained in between is the only one re-minted). Add ops can capture their new id under `ref` so later ops use *Ref instead of *Id; sharedWith also accepts refs created earlier in the same batch. Strongly preferred over many granular calls. See the unspa://operations resource for the full per-op-kind schema reference.',
       inputSchema: {
         featureId: z.string().optional(),
         dryRun: z.boolean().optional(),
@@ -73,6 +80,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         //    CURRENT feature (never blind-save a stale precomputed result).
         let ops: readonly Op[];
         let committing = false;
+        let dryRunIds: readonly string[] = [];
         if (commit !== undefined) {
           const cached = commitCache.get(commit);
           commitCache.delete(commit); // one-shot: consume regardless of outcome
@@ -83,6 +91,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           }
           featureId = cached.featureId;
           ops = cached.operations;
+          dryRunIds = cached.mintedIds;
           committing = true;
         } else {
           if (!operations) {
@@ -98,7 +107,14 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         }
         const current = await repo.get(asFeatureId(featureId));
         if (!current) throw new FeatureNotFoundError(featureId);
-        const { next, refs, mintIdToOp, removedIdToOp } = applyOps(current, ops, ids);
+        // A commit mints the dry run's ids again, slot for slot. The feature is
+        // reloaded, so an id it has gained since then is skipped for a fresh one
+        // instead of colliding; past the recording the live generator takes over.
+        const presentIds = committing ? collectFeatureEntityIds(current) : null;
+        const recorder = recordingIdGenerator(
+          presentIds ? replayingIdGenerator(dryRunIds, ids, (id) => presentIds.has(id)) : ids
+        );
+        const { next, refs, mintIdToOp, removedIdToOp } = applyOps(current, ops, recorder.mint);
         // Diff-aware validation (structural + reference-integrity): a batch is
         // blocked only when it INTRODUCES a new error versus the loaded
         // snapshot. Pre-existing issues on a partially-built feature (e.g.
@@ -156,6 +172,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
             commitCache.set(commitToken, {
               featureId,
               operations: ops,
+              mintedIds: [...recorder.minted],
               expiresAt: now + COMMIT_TTL_MS
             });
           }
