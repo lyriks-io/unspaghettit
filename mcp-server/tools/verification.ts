@@ -4,7 +4,11 @@ import type { Invariant } from '../../src/features/behavior-model/domain/entitie
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { detectDrift } from '../../src/features/verification/domain/detectDrift';
-import { verifyFeaturesUseCase } from '../../src/features/verification/application/use-cases/VerifyFeatures';
+import {
+  loadDriftOwnership,
+  verifyFeaturesUseCase,
+  type DriftOwnership
+} from '../../src/features/verification/application/use-cases/VerifyFeatures';
 import { fileBehavioralIndexReader } from '../../src/features/verification/infrastructure/persistence/FileBehavioralIndexReader';
 import {
   inlineBehavioralIndexReader,
@@ -43,18 +47,27 @@ const resolveCohort = async (
   deps: ToolDeps,
   featureId?: string,
   explicitProjectId?: string
-): Promise<{ features: Feature[]; projectInvariants: readonly Invariant[] }> => {
+): Promise<{
+  features: Feature[];
+  projectInvariants: readonly Invariant[];
+  /** Set only for a one-feature cohort: who else may own keys of the index. */
+  driftOwnership?: DriftOwnership;
+}> => {
   const { repo, projectRepo, repoContext } = deps;
 
   if (featureId) {
     const id = await expandFeatureId(repo, featureId);
     const feature = await repo.get(asFeatureId(id));
-    let projectInvariants: readonly Invariant[] = [];
-    if (feature) {
-      const owner = await findOwningProject(projectRepo, String(feature.id));
-      projectInvariants = owner?.projectInvariants ?? [];
-    }
-    return { features: feature ? [feature] : [], projectInvariants };
+    if (!feature) return { features: [], projectInvariants: [] };
+    const owner = await findOwningProject(projectRepo, String(feature.id));
+    // The index maps the whole project, so its other features own most keys.
+    // A feature no project claims has no known siblings: every feature the
+    // server can see is then a possible owner.
+    return {
+      features: [feature],
+      projectInvariants: owner?.projectInvariants ?? [],
+      driftOwnership: owner ? owner.featureIds : 'all'
+    };
   }
 
   // An explicit projectId is what a host passes when there is no `.unspa.json`
@@ -78,7 +91,7 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
     'get_drift',
     {
       description:
-        'Spec→code drift: which implementations were audited against an OLDER version of the spec than the one now on disk, so the code may no longer match. Compares each `.unspa.json` entry\'s recorded specVersion against the CURRENT version of the exact element it maps, falling back to the owning feature\'s current updatedAt. Returns `stale` (re-audit these — the spec changed under them), `unversioned` (audited but never stamped, so drift can\'t be judged), and `orphans` (index keys that no longer resolve to any spec entity — renamed/removed). Every stale row carries `scope`: "element" means THIS entity changed after the audit, so the row names real evidence; "feature" means only the feature-wide stamp was available (a snapshot written before per-element stamps), so the row is suspect by association and every audited entity of that feature is implicated. Scopes to a feature when given, else the linked project, else all. Run after editing a spec whose code you previously mapped, and in CI to block on silent drift.',
+        'Spec→code drift: which implementations were audited against an OLDER version of the spec than the one now on disk, so the code may no longer match. Compares each `.unspa.json` entry\'s recorded specVersion against the CURRENT version of the exact element it maps, falling back to the owning feature\'s current updatedAt. Returns `stale` (re-audit these — the spec changed under them), `unversioned` (audited but never stamped, so drift can\'t be judged), and `orphans` (index keys that no longer resolve to any spec entity — renamed/removed). Every stale row carries `scope`: "element" means THIS entity changed after the audit, so the row names real evidence; "feature" means only the feature-wide stamp was available (a snapshot written before per-element stamps), so the row is suspect by association and every audited entity of that feature is implicated. Scopes to a feature when given, else the linked project, else all. When scoped to one feature, a key owned by ANOTHER feature of the same project (or, for a feature no project claims, by any other feature the server can see) is out of scope: not checked, not stale, not an orphan, only counted in `outOfScope`; `orphans` are keys NO feature owns. `summary` gives the stale count per featureId (`staleByFeature`) and per scope (`staleByScope`), so a capped answer still says where the drift is. Run after editing a spec whose code you previously mapped, and in CI to block on silent drift.',
       inputSchema: {
         featureId: z.string().optional(),
         index: z
@@ -97,9 +110,10 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
     },
     async ({ featureId, index, projectId }) => {
       try {
-        const { features } = await resolveCohort(deps, featureId, projectId);
+        const { features, driftOwnership } = await resolveCohort(deps, featureId, projectId);
         const entries = await indexReader(repoContext, index).read();
-        return text(trackTokens('get_drift', detectDrift(features, entries)));
+        const universe = await loadDriftOwnership(repo, driftOwnership);
+        return text(trackTokens('get_drift', detectDrift(features, entries, universe)));
       } catch (e) {
         return errorText(`get_drift failed: ${(e as Error).message}`);
       }
@@ -128,11 +142,15 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
     },
     async (args) => {
       try {
-        const { features, projectInvariants } = await resolveCohort(deps, args.featureId);
+        const { features, projectInvariants, driftOwnership } = await resolveCohort(
+          deps,
+          args.featureId
+        );
         const verify = verifyFeaturesUseCase({ features: repo, index: indexReader(repoContext) });
         const report = await verify({
           featureIds: features.map((f) => f.id),
           projectInvariants,
+          ...(driftOwnership ? { driftOwnership } : {}),
           thresholds: {
             ...(args.strict ? strictThresholds() : {}),
             minMaturity: args.minMaturity ?? (args.strict ? 100 : 0),

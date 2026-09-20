@@ -1,6 +1,6 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import { elementVersionOf } from '$features/behavior-model/domain/services/FeatureElementVersions';
-import type { DriftEntry, DriftReport, OrphanEntry } from './DriftReport';
+import { summarizeStale, type DriftEntry, type DriftReport, type OrphanEntry } from './DriftReport';
 import type { IndexedImplementation } from './IndexedImplementation';
 
 /**
@@ -111,16 +111,30 @@ const owns = (sets: IdentifierSets, type: string, suffix: string): boolean => {
   }
 };
 
+/**
+ * `ownershipUniverse` is the wider set of features consulted for OWNERSHIP
+ * only, never for staleness. Pass it when `features` is narrower than the
+ * index it is judged against (one feature of a project whose `.unspa.json`
+ * maps all of them): a key owned by a universe feature outside the cohort is
+ * out of scope, not an orphan. Without it every key the cohort does not own is
+ * an orphan, which is right only when the cohort IS the whole project.
+ */
 export const detectDrift = (
   features: readonly Feature[],
-  index: readonly IndexedImplementation[]
+  index: readonly IndexedImplementation[],
+  ownershipUniverse?: readonly Feature[]
 ): DriftReport => {
   const owners = features.map((feature) => ({ feature, sets: buildIdentifierSets(feature) }));
+  const cohortIds = new Set(features.map((feature) => String(feature.id)));
+  const outsiders = (ownershipUniverse ?? [])
+    .filter((feature) => !cohortIds.has(String(feature.id)))
+    .map(buildIdentifierSets);
 
   const stale: DriftEntry[] = [];
   const unversioned: string[] = [];
   const orphans: OrphanEntry[] = [];
   let checked = 0;
+  let outOfScope = 0;
 
   for (const entry of index) {
     // A 'missing' entry maps nothing to code yet, so it can't have drifted.
@@ -136,6 +150,13 @@ export const detectDrift = (
 
     const owner = owners.find((o) => owns(o.sets, type, suffix));
     if (!owner) {
+      // The cohort gets first claim, so a universe can never hide a key the
+      // swept features own. Only then may a sibling claim it: someone else's
+      // key is neither this sweep's business nor evidence of a rename.
+      if (outsiders.some((sets) => owns(sets, type, suffix))) {
+        outOfScope += 1;
+        continue;
+      }
       orphans.push({ key: entry.key, reason: 'no spec entity matches this key (renamed or removed?)' });
       continue;
     }
@@ -172,5 +193,5 @@ export const detectDrift = (
     }
   }
 
-  return { stale, unversioned, orphans, checked };
+  return { stale, unversioned, orphans, checked, outOfScope, summary: summarizeStale(stale) };
 };

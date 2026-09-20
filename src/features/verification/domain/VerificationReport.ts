@@ -1,4 +1,4 @@
-import type { DriftReport } from './DriftReport';
+import { summarizeStale, type DriftReport } from './DriftReport';
 import type { EventCoherenceReport } from './EventCoherenceReport';
 import type { FeatureVerdict } from './VerificationVerdict';
 
@@ -35,14 +35,19 @@ export const mergeVerificationReports = (
   reports: readonly VerificationReport[]
 ): VerificationReport => {
   const features = reports.flatMap((r) => r.features);
+  const stale = reports.flatMap((r) => r.drift.stale);
   return {
     passed: reports.every((r) => r.passed),
     features,
     drift: {
-      stale: reports.flatMap((r) => r.drift.stale),
+      stale,
       unversioned: reports.flatMap((r) => r.drift.unversioned),
       orphans: reports.flatMap((r) => r.drift.orphans),
-      checked: reports.reduce((n, r) => n + r.drift.checked, 0)
+      checked: reports.reduce((n, r) => n + r.drift.checked, 0),
+      outOfScope: reports.reduce((n, r) => n + r.drift.outOfScope, 0),
+      // Rebuilt from the merged rows rather than summed per cohort, so the
+      // summary can never disagree with the `stale` list it describes.
+      summary: summarizeStale(stale)
     },
     eventCoherence: {
       deadHandlers: reports.flatMap((r) => r.eventCoherence.deadHandlers)

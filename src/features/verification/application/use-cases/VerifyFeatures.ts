@@ -26,6 +26,24 @@ export type VerifyFeaturesDeps = {
   readonly index: BehavioralIndexReader;
 };
 
+/** How an adapter names the features that may own index keys outside the cohort. */
+export type DriftOwnership = readonly FeatureId[] | 'all';
+
+/**
+ * Load the features a `DriftOwnership` names, in one store pass. Shared with
+ * the `get_drift` tool so a scoped sweep resolves ownership the same way
+ * whether it runs alone or inside `verify`.
+ */
+export const loadDriftOwnership = async (
+  repo: FeatureRepository,
+  ownership: DriftOwnership | undefined
+): Promise<readonly Feature[] | undefined> => {
+  if (ownership === undefined) return undefined;
+  const loaded =
+    ownership === 'all' ? await listAllFeatures(repo) : await loadFeaturesByIds(repo, ownership);
+  return loaded.filter((feature): feature is Feature => feature !== null);
+};
+
 export type VerifyFeaturesInput = {
   /**
    * The cohort to verify. Members are treated as siblings of one another, so
@@ -41,6 +59,15 @@ export type VerifyFeaturesInput = {
    * invariantViolations channel. Only meaningful when `modelCheck` is on.
    */
   readonly projectInvariants?: readonly Invariant[];
+  /**
+   * Features consulted for index-key OWNERSHIP when the cohort is narrower than
+   * the index it is judged against (one feature of a project whose index maps
+   * all of them): the owning project's feature ids, or `'all'` for a feature no
+   * project claims. A key owned by one of them is out of scope for drift rather
+   * than an orphan. Omit when the cohort is the whole project. The adapter
+   * resolves it because this use case has no project repository.
+   */
+  readonly driftOwnership?: DriftOwnership;
   readonly thresholds?: Partial<VerificationThresholds>;
   /**
    * Bounded model checking. Off by default — it explores the state space and is
@@ -73,8 +100,10 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
         : await listAllFeatures(deps.features)
     ).filter((feature): feature is Feature => feature !== null);
 
+    const ownershipUniverse = await loadDriftOwnership(deps.features, input.driftOwnership);
+
     const indexEntries = await deps.index.read();
-    const drift = detectDrift(loaded, indexEntries);
+    const drift = detectDrift(loaded, indexEntries, ownershipUniverse);
     const eventCoherence = analyzeEventCoherence(loaded);
 
     const explorerOptions: ExplorerOptions | null =

@@ -42,4 +42,32 @@ export type DriftReport = {
   readonly orphans: readonly OrphanEntry[];
   /** Number of resolvable, audited entries examined. */
   readonly checked: number;
+  /**
+   * Index keys skipped because a feature OUTSIDE the swept cohort owns them.
+   * Only a sweep narrowed to part of a project can produce these: the key is
+   * neither checked nor an orphan, it simply belongs to someone else. Always 0
+   * for a whole-project sweep.
+   */
+  readonly outOfScope: number;
+  /** Where the drift is, small enough to survive a capped or skimmed answer. */
+  readonly summary: DriftSummary;
+};
+
+/** Stale counts only: `unversioned` and `orphans` are already flat, short lists. */
+export type DriftSummary = {
+  /** Stale entries per owning feature id. */
+  readonly staleByFeature: Readonly<Record<string, number>>;
+  /** Stale entries per evidence scope (see `DriftEntry.scope`). */
+  readonly staleByScope: { readonly element: number; readonly feature: number };
+};
+
+/** Pure fold over the stale rows, shared by the detector and the report merge. */
+export const summarizeStale = (stale: readonly DriftEntry[]): DriftSummary => {
+  const staleByFeature: Record<string, number> = {};
+  const staleByScope = { element: 0, feature: 0 };
+  for (const entry of stale) {
+    staleByFeature[entry.featureId] = (staleByFeature[entry.featureId] ?? 0) + 1;
+    staleByScope[entry.scope] += 1;
+  }
+  return { staleByFeature, staleByScope };
 };

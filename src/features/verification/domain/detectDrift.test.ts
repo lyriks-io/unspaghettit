@@ -159,3 +159,102 @@ describe('detectDrift with element stamps', () => {
     expect(report.stale[0]!.scope).toBe('element');
   });
 });
+
+describe('detectDrift scoped to part of a project', () => {
+  const audited = '2026-06-01T00:00:00.000Z';
+
+  /** A sibling feature with its own ids, as the rest of the project would hold. */
+  const sibling = (id: string, updatedAt: string): Feature => {
+    const base = feature(updatedAt);
+    const surface = base.surfaces[0]!;
+    return {
+      ...base,
+      id: asFeatureId(id),
+      name: `Sibling ${id}`,
+      surfaces: [
+        {
+          ...surface,
+          id: asSurfaceId(`${id}-s`),
+          stateDefinitions: [
+            { ...surface.stateDefinitions[0]!, path: asStatePath(`${id}.total`) }
+          ],
+          actions: [{ ...surface.actions[0]!, id: asActionId(`${id}-a`) }]
+        }
+      ]
+    };
+  };
+
+  const cart = feature('2026-06-10T00:00:00.000Z');
+  // Both siblings changed after the audit: their keys WOULD be stale if swept.
+  const orders = sibling('orders', '2026-06-10T00:00:00.000Z');
+  const billing = sibling('billing', '2026-06-10T00:00:00.000Z');
+  const project = [cart, orders, billing];
+
+  // The whole project's index, as `.unspa.json` holds it.
+  const index: IndexedImplementation[] = [
+    { key: 'action:a1', status: 'implemented', auditedSpecVersion: audited },
+    { key: 'action:orders-a', status: 'implemented', auditedSpecVersion: audited },
+    { key: 'state:orders.total', status: 'implemented', auditedSpecVersion: audited },
+    { key: 'surface:billing-s', status: 'implemented' },
+    { key: 'action:ghost', status: 'implemented', auditedSpecVersion: audited },
+    { key: 'malformed', status: 'implemented' }
+  ];
+
+  it("ignores the siblings' keys: not checked, not stale, not orphans", () => {
+    const report = detectDrift([cart], index, project);
+
+    expect(report.checked).toBe(1);
+    expect(report.stale.map((s) => s.key)).toEqual(['action:a1']);
+    expect(report.unversioned).toEqual([]);
+    expect(report.outOfScope).toBe(3);
+  });
+
+  it('still reports the keys no feature at all owns as orphans', () => {
+    const report = detectDrift([cart], index, project);
+
+    expect(report.orphans.map((o) => o.key).sort()).toEqual(['action:ghost', 'malformed']);
+  });
+
+  it('reads every unowned key as an orphan when no universe is given', () => {
+    const report = detectDrift([cart], index);
+
+    expect(report.outOfScope).toBe(0);
+    expect(report.orphans).toHaveLength(5);
+  });
+
+  it('lets the cohort keep a key the universe also lists', () => {
+    // The universe normally CONTAINS the cohort; that must not skip its keys.
+    const report = detectDrift([cart, orders], index, project);
+
+    expect(report.checked).toBe(3);
+    expect(report.outOfScope).toBe(1);
+  });
+
+  it('summarizes stale entries per feature and per scope', () => {
+    const stampedOrders: Feature = {
+      ...orders,
+      elementVersions: { 'action:orders-a': '2026-06-10T00:00:00.000Z' }
+    };
+
+    const report = detectDrift([cart, stampedOrders], index, project);
+
+    // cart: action:a1 (feature stamp). orders: action (element stamp) and
+    // state (feature stamp, nobody stamped it).
+    expect(report.summary).toEqual({
+      staleByFeature: { feat: 1, orders: 2 },
+      staleByScope: { element: 1, feature: 2 }
+    });
+    expect(report.stale).toHaveLength(3);
+  });
+
+  it('reports an empty summary when nothing drifted', () => {
+    const report = detectDrift([feature(audited)], [
+      { key: 'action:a1', status: 'implemented', auditedSpecVersion: audited }
+    ]);
+
+    expect(report.summary).toEqual({
+      staleByFeature: {},
+      staleByScope: { element: 0, feature: 0 }
+    });
+  });
+});

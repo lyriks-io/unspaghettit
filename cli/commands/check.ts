@@ -8,7 +8,11 @@ import { asFeatureId, type FeatureId } from '../../src/features/behavior-model/d
 import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { fileBehavioralIndexReader } from '../../src/features/verification/infrastructure/persistence/FileBehavioralIndexReader';
-import { verifyFeaturesUseCase } from '../../src/features/verification/application/use-cases/VerifyFeatures';
+import {
+  verifyFeaturesUseCase,
+  type DriftOwnership
+} from '../../src/features/verification/application/use-cases/VerifyFeatures';
+import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 import { strictThresholds } from '../../src/features/verification/domain/VerificationThresholds';
 import type { CheckStatus, FeatureVerdict } from '../../src/features/verification/domain/VerificationVerdict';
 import {
@@ -86,6 +90,8 @@ const printSummary = (report: VerificationReport): void => {
 type Cohort = {
   readonly featureIds: readonly FeatureId[];
   readonly projectInvariants: readonly Invariant[];
+  /** Set only for a one-feature cohort: who else may own keys of the index. */
+  readonly driftOwnership?: DriftOwnership;
 };
 
 const resolveCohorts = async (
@@ -95,7 +101,16 @@ const resolveCohorts = async (
   projectRepo: JsonFolderProjectRepository
 ): Promise<readonly Cohort[]> => {
   if (options.featureId) {
-    return [{ featureIds: [asFeatureId(options.featureId)], projectInvariants: [] }];
+    // `.unspa.json` maps the whole project: without the siblings as possible
+    // owners, every key of theirs would read as an orphan of this one feature.
+    const owner = await findOwningProject(projectRepo, options.featureId);
+    return [
+      {
+        featureIds: [asFeatureId(options.featureId)],
+        projectInvariants: [],
+        driftOwnership: owner ? owner.featureIds : 'all'
+      }
+    ];
   }
 
   const explicitProjectId = options.project ?? readRepoLink(cwd)?.projectId;
@@ -177,6 +192,7 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
       await verify({
         featureIds: cohort.featureIds,
         projectInvariants: cohort.projectInvariants,
+        ...(cohort.driftOwnership ? { driftOwnership: cohort.driftOwnership } : {}),
         thresholds,
         modelCheck
       })
