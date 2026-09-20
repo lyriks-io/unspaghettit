@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-20
+
+An acceptance criterion is a first-class object, and a batch says what it
+touched.
+
+### Added
+
+- A criterion carries its standing, its relations to the criteria it replaces
+  or refines, the version it was written against and the index key a repository
+  anchors it by. Prose alone aged silently: nothing could say that one criterion
+  replaces another, and "is this criterion actually checked?" had no answer.
+- What verifies a criterion and what was proven against the code are kept with
+  its status, so a claim and a proof are never read as the same thing.
+- An action names its actor, and a system action nobody fires by hand may
+  refuse without a message rather than carry an invented one.
+- A batch can be written against the version it read and refuses to overwrite
+  what changed since, and its answer names what it touched in other features and
+  reports the scenarios of what it touched.
+
+### Fixed
+
+- A project's history is filed with the project instead of beside it, so moving
+  or deleting a project takes its history with it.
+- Committing a dry run by its token keeps the ids the dry run announced.
+- A wide action is sampled by coverage, and an action the search did not reach
+  is no longer reported as dead.
+- A drift sweep scoped to one feature no longer reports its siblings' keys as
+  orphans.
+
 ## [0.23.0] - 2026-09-07
 
 Deleting a state is a command the server answers, and a parameter cannot be
