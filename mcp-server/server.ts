@@ -13,6 +13,7 @@ import type { ProjectSourceRepository } from '../src/features/source-provenance/
 import { InMemoryProjectSourceRepository } from '../src/features/source-provenance/infrastructure/persistence/InMemoryProjectSourceRepository';
 import { getImplementationStatusUseCase } from '../src/features/implementation-status/application/use-cases/GetImplementationStatus';
 import { reportImplementationStatusUseCase } from '../src/features/implementation-status/application/use-cases/ReportImplementationStatus';
+import { recordCriteriaEvidenceUseCase } from '../src/features/implementation-status/application/use-cases/RecordCriteriaEvidence';
 import type { ProjectRepository } from '../src/features/projects/application/ports/ProjectRepository';
 import { InMemoryProjectRepository } from '../src/features/projects/infrastructure/persistence/InMemoryProjectRepository';
 import { withProjectLibrary } from '../src/features/projects/infrastructure/persistence/ProjectScopedFeatureRepository';
@@ -162,6 +163,11 @@ export const buildServer = (
     statuses: statusRepo,
     clock
   });
+  const recordCriteriaEvidence = recordCriteriaEvidenceUseCase({
+    features: repo,
+    statuses: statusRepo,
+    clock
+  });
   const getImplementationStatus = getImplementationStatusUseCase({ statuses: statusRepo });
 
   const server = new McpServer(
@@ -177,6 +183,7 @@ export const buildServer = (
     ids,
     mutateFeature,
     reportImplementationStatus,
+    recordCriteriaEvidence,
     getImplementationStatus,
     provenanceRepo,
     sourceRepo,

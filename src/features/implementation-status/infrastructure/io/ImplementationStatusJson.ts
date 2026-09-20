@@ -1,6 +1,9 @@
 import type {
   AuditMeta,
   ActionImplementationStatus,
+  CriterionEvidence,
+  CriterionVerification,
+  CriterionVerificationKind,
   EntityType,
   ExpectedEntity,
   ExtraTag,
@@ -135,7 +138,69 @@ const parseAuditMeta = (raw: unknown): AuditMeta | undefined => {
   if (Array.isArray(raw.knownGaps)) {
     out.knownGaps = raw.knownGaps.filter((g): g is string => typeof g === 'string');
   }
+  if (typeof raw.verifiedAt === 'string') out.verifiedAt = raw.verifiedAt;
   return Object.keys(out).length > 0 ? (out as AuditMeta) : undefined;
+};
+
+const VERIFICATION_KINDS: ReadonlySet<string> = new Set<CriterionVerificationKind>([
+  'unit',
+  'integration',
+  'e2e',
+  'visual',
+  'measurement',
+  'manual'
+]);
+
+const parseStringList = (raw: unknown): readonly string[] | undefined =>
+  Array.isArray(raw) && raw.every((item) => typeof item === 'string')
+    ? (raw as readonly string[])
+    : undefined;
+
+const parseVerification = (raw: unknown): CriterionVerification | undefined => {
+  if (!isObject(raw)) return undefined;
+  if (typeof raw.kind !== 'string' || !VERIFICATION_KINDS.has(raw.kind)) return undefined;
+  const files = parseStringList(raw.files);
+  const artifacts = parseStringList(raw.artifacts);
+  const result = isObject(raw.lastResult) ? raw.lastResult : undefined;
+  const lastResult =
+    result && typeof result.passed === 'boolean' && typeof result.at === 'string'
+      ? {
+          passed: result.passed,
+          at: result.at,
+          ...(typeof result.summary === 'string' ? { summary: result.summary } : {}),
+          ...(typeof result.revision === 'string' ? { revision: result.revision } : {})
+        }
+      : undefined;
+  return {
+    kind: raw.kind as CriterionVerificationKind,
+    ...(typeof raw.command === 'string' ? { command: raw.command } : {}),
+    ...(files ? { files } : {}),
+    ...(artifacts ? { artifacts } : {}),
+    ...(lastResult ? { lastResult } : {})
+  };
+};
+
+/**
+ * One kept criterion record. Read as leniently as the rest of the sidecar: a
+ * record that cannot name its criterion is dropped, and a part that does not
+ * read (a verification block of an unknown kind, say) costs only that part.
+ */
+const parseCriterionEvidence = (raw: unknown): CriterionEvidence | null => {
+  if (!isObject(raw)) return null;
+  if (typeof raw.criterionId !== 'string' || raw.criterionId.length === 0) return null;
+  if (typeof raw.syncedAt !== 'string') return null;
+  const verification = parseVerification(raw.verification);
+  return {
+    criterionId: raw.criterionId,
+    key: typeof raw.key === 'string' ? raw.key : `criterion:${raw.criterionId}`,
+    status: raw.status === 'partial' ? 'partial' : 'implemented',
+    ...(typeof raw.file === 'string' ? { file: raw.file } : {}),
+    ...(typeof raw.line === 'number' && Number.isFinite(raw.line) ? { line: raw.line } : {}),
+    ...(typeof raw.signature === 'string' ? { signature: raw.signature } : {}),
+    ...(verification ? { verification } : {}),
+    ...(typeof raw.specVersion === 'string' ? { specVersion: raw.specVersion } : {}),
+    syncedAt: raw.syncedAt
+  };
 };
 
 const parseExtraTag = (raw: unknown): ExtraTag | null => {
@@ -354,11 +419,19 @@ export const importImplementationStatusFromJson = (raw: string): ImplementationS
   const surfaces = Array.isArray(status.surfaces)
     ? status.surfaces.map(parseSurface).filter((s): s is SurfaceImplementationStatus => s !== null)
     : [];
+  // Absent on every record written before criteria evidence was kept, and the
+  // key stays absent then, so such a record loads and re-saves as it was.
+  const criteria = Array.isArray(status.criteria)
+    ? status.criteria
+        .map(parseCriterionEvidence)
+        .filter((c): c is CriterionEvidence => c !== null)
+    : [];
   return {
     featureId: status.featureId as FeatureId,
     revision,
     updatedAt: status.updatedAt,
     actions,
-    surfaces
+    surfaces,
+    ...(criteria.length > 0 ? { criteria } : {})
   };
 };

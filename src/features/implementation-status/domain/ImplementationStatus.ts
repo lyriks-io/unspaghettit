@@ -156,6 +156,15 @@ export type AuditMeta = {
   readonly testFile?: string;
   /** Structured list of spec elements not yet implemented. */
   readonly knownGaps?: readonly string[];
+  /**
+   * ISO timestamp of the last time every scenario of this action PASSED against
+   * the real code (the index entry's `verifiedAt`, stamped by
+   * `unspa coverage ingest`). Carried with the audit metadata because it has the
+   * same life: it comes from the index entry and is replaced whole by each
+   * report, so an entry synced later without it clears the proof instead of
+   * leaving a stale one behind. Absent means claimed, not proven.
+   */
+  readonly verifiedAt?: string;
 };
 
 /**
@@ -195,6 +204,62 @@ export type SurfaceImplementationStatus = {
   readonly auditMeta?: AuditMeta;
 };
 
+export type CriterionVerificationKind =
+  | 'unit'
+  | 'integration'
+  | 'e2e'
+  | 'visual'
+  | 'measurement'
+  | 'manual';
+
+/**
+ * What verifies an acceptance criterion and how it last went, as the index entry
+ * said it. The domain declares the shape it keeps; the index reader at the MCP
+ * edge (which owns the lenient parsing) produces a value that satisfies it.
+ */
+export type CriterionVerification = {
+  readonly kind: CriterionVerificationKind;
+  /** How to run it, e.g. `npx vitest run src/audio/footsteps.test.ts`. */
+  readonly command?: string;
+  /** The test or script files that carry the check. */
+  readonly files?: readonly string[];
+  /** What the check produces: a recording, a screenshot, a measurement log. */
+  readonly artifacts?: readonly string[];
+  readonly lastResult?: {
+    readonly passed: boolean;
+    /** ISO timestamp of the run. */
+    readonly at: string;
+    readonly summary?: string;
+    /** The code revision the check ran against (a commit SHA). */
+    readonly revision?: string;
+  };
+};
+
+/**
+ * What a sync said about one acceptance criterion: where its check lives, what
+ * kind of check it is and how it last went.
+ *
+ * Feature-level, unlike action and surface reports: a criterion belongs to the
+ * feature, not to one action. Kept so "is this criterion actually checked?" has
+ * an answer between two syncs, and for a host that never holds the index itself.
+ * Evidence, never a score: nothing here feeds maturity or a verdict.
+ */
+export type CriterionEvidence = {
+  readonly criterionId: string;
+  /** The index key the record came from, `criterion:<id>`. */
+  readonly key: string;
+  /** A `missing` entry is never kept: it removes the record instead. */
+  readonly status: 'implemented' | 'partial';
+  readonly file?: string;
+  readonly line?: number;
+  readonly signature?: string;
+  readonly verification?: CriterionVerification;
+  /** The spec version the check was written against, as recorded on the entry. */
+  readonly specVersion?: string;
+  /** When the sync that wrote this record ran. */
+  readonly syncedAt: string;
+};
+
 /**
  * Sidecar artifact persisted next to the feature JSON. Lives at
  * `unspa/<featureId>.implementation-status.json`. Volatile by design -
@@ -206,6 +271,12 @@ export type ImplementationStatus = {
   readonly updatedAt: string;
   readonly actions: readonly ActionImplementationStatus[];
   readonly surfaces: readonly SurfaceImplementationStatus[];
+  /**
+   * Evidence per acceptance criterion. Optional, and absent rather than empty:
+   * a record written before it existed, or one no sync ever gave a criterion
+   * entry, serializes exactly as it did.
+   */
+  readonly criteria?: readonly CriterionEvidence[];
 };
 
 export const emptyImplementationStatus = (
@@ -285,6 +356,51 @@ export const removeSurfaceStatus = (
     updatedAt: now,
     surfaces: filtered
   };
+};
+
+/** `status` carrying `criteria`, or no `criteria` key at all when the list is empty. */
+const withCriteria = (
+  status: ImplementationStatus,
+  criteria: readonly CriterionEvidence[],
+  now: string
+): ImplementationStatus => {
+  const { criteria: _previous, ...rest } = status;
+  return {
+    ...rest,
+    revision: status.revision + 1,
+    updatedAt: now,
+    ...(criteria.length > 0 ? { criteria } : {})
+  };
+};
+
+/**
+ * Replace (or insert) the evidence kept for one criterion, bump the revision,
+ * refresh `updatedAt`. Pure. Every other criterion keeps its record: an index
+ * that names only some criteria says nothing about the others, which is the
+ * partial-index rule action reports already follow.
+ */
+export const upsertCriterionEvidence = (
+  status: ImplementationStatus,
+  next: CriterionEvidence,
+  now: string
+): ImplementationStatus => {
+  const others = (status.criteria ?? []).filter((c) => c.criterionId !== next.criterionId);
+  return withCriteria(status, [...others, next], now);
+};
+
+/**
+ * Drop the evidence kept for a criterion (its index entry now says `missing`).
+ * Returns the same status, revision untouched, when there was nothing to drop.
+ */
+export const removeCriterionEvidence = (
+  status: ImplementationStatus,
+  criterionId: string,
+  now: string
+): ImplementationStatus => {
+  const current = status.criteria ?? [];
+  const filtered = current.filter((c) => c.criterionId !== criterionId);
+  if (filtered.length === current.length) return status;
+  return withCriteria(status, filtered, now);
 };
 
 /** Filter helpers used by the UI to avoid scattering entity-type checks. */

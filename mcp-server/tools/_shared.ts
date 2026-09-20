@@ -12,6 +12,7 @@ import type {
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import type { getImplementationStatusUseCase } from '../../src/features/implementation-status/application/use-cases/GetImplementationStatus';
 import type { reportImplementationStatusUseCase } from '../../src/features/implementation-status/application/use-cases/ReportImplementationStatus';
+import type { recordCriteriaEvidenceUseCase } from '../../src/features/implementation-status/application/use-cases/RecordCriteriaEvidence';
 import type { ProvenanceRepository } from '../../src/features/source-provenance/application/ports/ProvenanceRepository';
 import type { ProjectSourceRepository } from '../../src/features/source-provenance/application/ports/ProjectSourceRepository';
 import type { ProjectRepository } from '../../src/features/projects/application/ports/ProjectRepository';
@@ -32,6 +33,7 @@ export type ToolDeps = {
   readonly ids: IdGenerator;
   readonly mutateFeature: ReturnType<typeof mutateFeatureUseCase>;
   readonly reportImplementationStatus: ReturnType<typeof reportImplementationStatusUseCase>;
+  readonly recordCriteriaEvidence: ReturnType<typeof recordCriteriaEvidenceUseCase>;
   readonly getImplementationStatus: ReturnType<typeof getImplementationStatusUseCase>;
   readonly provenanceRepo: ProvenanceRepository;
   readonly sourceRepo: ProjectSourceRepository;

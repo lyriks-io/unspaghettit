@@ -172,7 +172,10 @@ Verified coverage closes the spec↔code loop: \`.unspa.json\` records WHERE eac
 the generated scenario spec (\`unspa scenarios export\` → \`vitest --reporter=json\`) and
 \`unspa coverage ingest <report>\` stamps \`verifiedAt\` on the actions whose scenarios PASSED against
 the real code — "proven", not just "claimed". verify / \`unspa check --min-verified <pct>\` gate on
-that proven share.
+that proven share. sync_from_index carries the stamp into the status report of the action
+(auditMeta.verifiedAt, cleared when a later sync sends the entry without it) and keeps, per acceptance
+criterion, what its criterion:<id> entry says verifies it; get_implementation_status reads both back
+(criteria[] with state and stale, verified { actions, total }). Evidence only, never a score.
 
 Run find_state_references before renaming or removing a state path. It shows every rule,
 effect, invariant, and requiredState that references that path.

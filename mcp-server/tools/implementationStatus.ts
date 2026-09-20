@@ -31,7 +31,11 @@ import { writeRepoLink, type BehavioralIndex, type IndexEntry, type RepoLink } f
 import type { RepoContext } from '../server';
 import { errorText, text, type ToolDeps } from './_shared';
 import { inlineIndexSchema, isIndexSourceError, resolveIndexSource } from './_index-source';
-import { buildCriteriaIndexReport } from './_criteria-index';
+import { buildCriteriaIndexReport, criteriaEvidenceFromIndex } from './_criteria-index';
+import {
+  criteriaEvidenceReport,
+  verifiedActionsOf
+} from '../../src/features/implementation-status/domain/CriteriaEvidence';
 import { trackTokens } from '../metrics';
 import { expandFeatureId, expandIdInFeature } from './short-ids';
 
@@ -58,6 +62,7 @@ const readAuditMeta = (repoContext: RepoContext | undefined, indexKey: string): 
     if (Array.isArray(e.knownGaps)) {
       meta.knownGaps = (e.knownGaps as unknown[]).filter((g): g is string => typeof g === 'string');
     }
+    if (typeof e.verifiedAt === 'string' && e.verifiedAt.length > 0) meta.verifiedAt = e.verifiedAt;
     return Object.keys(meta).length > 0 ? (meta as AuditMeta) : undefined;
   } catch {
     return undefined;
@@ -74,6 +79,13 @@ const extractAuditMeta = (entry: IndexEntry): AuditMeta | undefined => {
   if (entry.testFile !== undefined) meta.testFile = entry.testFile;
   if (entry.relatedFiles !== undefined) meta.relatedFiles = entry.relatedFiles;
   if (entry.knownGaps !== undefined) meta.knownGaps = entry.knownGaps;
+  // Proof against the code (`unspa coverage ingest`). It used to stop here, so a
+  // host syncing an inline index could never show it. The meta is rebuilt from
+  // the entry on every report, which is what clears it: an entry synced later
+  // without the stamp leaves no stale proof behind.
+  if (typeof entry.verifiedAt === 'string' && entry.verifiedAt.length > 0) {
+    meta.verifiedAt = entry.verifiedAt;
+  }
   return Object.keys(meta).length > 0 ? (meta as AuditMeta) : undefined;
 };
 
@@ -523,7 +535,15 @@ const extraTagSchema = z.object({
 });
 
 export const registerImplementationStatusTools = (deps: ToolDeps): void => {
-  const { server, repo, projectRepo, reportImplementationStatus, getImplementationStatus, repoContext } = deps;
+  const {
+    server,
+    repo,
+    projectRepo,
+    reportImplementationStatus,
+    recordCriteriaEvidence,
+    getImplementationStatus,
+    repoContext
+  } = deps;
 
   server.registerTool(
     'report_implementation_status',
@@ -709,7 +729,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'get_implementation_status',
     {
       description:
-        'Read the implementation-status sidecar for a feature. Optionally filter to one action or surface. Returns null when nothing has been reported yet. Useful before editing/extending an implementation: "what entities are already tagged, where in the repo do they live, and what real code was captured there?".',
+        'Read the implementation-status sidecar for a feature. Optionally filter to one action or surface. Returns null when nothing has been reported yet. Useful before editing/extending an implementation: "what entities are already tagged, where in the repo do they live, and what real code was captured there?". An action report carries `auditMeta.verifiedAt` when its index entry was proven against the code (every scenario of the action passed in a real run, stamped by `unspa coverage ingest`); absent means claimed, not proven. The WHOLE-FEATURE read (no actionId, no surfaceId) also answers the evidence sync_from_index kept, judged against the spec as it is now: `criteria: [{ criterionId, title, standing, key, indexed, state, stale, file?, line?, verification?, specVersion?, syncedAt? }]` lists EVERY acceptance criterion of the feature, where `state` is verified (last recorded run passed) | failing (it failed) | unverified (a record, no run to read) | none (no record, `indexed` false), and `stale` is true when the criterion (wording, status or relations) changed after the `specVersion` its check was written against, the same comparison get_drift makes; `orphanedCriteria` counts kept records whose criterion no longer exists, which are left out of `criteria`; `verified: { actions, total }` counts action reports carrying verifiedAt over actions that have a report. With nothing reported yet the whole-feature answer is still { status: null } plus those three blocks. Evidence only: none of it feeds maturity or a verdict.',
       inputSchema: {
         featureId: z.string(),
         actionId: z.string().optional(),
@@ -717,17 +737,33 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       }
     },
     async ({ featureId, actionId, surfaceId }) => {
+      let exp: Feature | null;
       try {
         featureId = await expandFeatureId(repo, featureId);
-        const exp = await repo.get(asFeatureId(featureId));
+        exp = await repo.get(asFeatureId(featureId));
         if (actionId && exp) actionId = expandIdInFeature(exp, actionId, 'actionId');
         if (surfaceId && exp) surfaceId = expandIdInFeature(exp, surfaceId, 'surfaceId');
       } catch (e) {
         return errorText((e as Error).message);
       }
       const status = await getImplementationStatus(asFeatureId(featureId));
-      if (!status)
-        return text(trackTokens('get_implementation_status', { status: null }));
+      // The evidence blocks belong to the whole-feature read only. They are laid
+      // against the feature as it is NOW, so a record whose criterion is gone is
+      // counted and left out, and a criterion no sync ever named still has a row.
+      const evidenceBlocks = () => ({
+        ...(exp
+          ? criteriaEvidenceReport(exp, status)
+          : { criteria: [], orphanedCriteria: status?.criteria?.length ?? 0 }),
+        verified: verifiedActionsOf(status)
+      });
+      if (!status) {
+        return text(
+          trackTokens(
+            'get_implementation_status',
+            actionId || surfaceId || !exp ? { status: null } : { status: null, ...evidenceBlocks() }
+          )
+        );
+      }
       if (actionId) {
         const cap = status.actions.find((c) => c.actionId === actionId);
         return text(
@@ -750,7 +786,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
           })
         );
       }
-      return text(trackTokens('get_implementation_status', status));
+      return text(trackTokens('get_implementation_status', { ...status, ...evidenceBlocks() }));
     }
   );
 
@@ -758,7 +794,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'sync_from_index',
     {
       description:
-        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and disk snippets are then skipped, since both need the real files; each entry\'s `signature` becomes its code evidence, and an entry with no signature lands as `unverified` in the dashboard, so seed entries via seed_index_from_analysis or copy the real code line into `signature` yourself). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `shared` block lists keys that SEVERAL features declare (a state path is not unique across features): the index holds one entry per key, so its file and line describe whichever feature was seeded last, and coverage and drift for the others resolve to that same location. Reported, never fatal, and it does not affect `ok`. The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. A `criterion:<id>` key maps what VERIFIES an acceptance criterion (a test, a script, a manual check) and may carry `verification: { kind: unit|integration|e2e|visual|measurement|manual, command?, files?, artifacts?, lastResult?: { passed, at, summary?, revision? } }`. Criterion entries produce NO action or surface report and change neither `synced` nor `skipped`; they feed the `criteria` block: { total, indexed, verified (lastResult.passed true), failing (lastResult.passed false), unverified (indexed, no lastResult), entries: [{ key, criterionId, title, standing, indexed, file?, verification? }], malformed[] }, where `standing` is the computed one-liner (active | superseded by <ids> | draft | ...). A malformed verification block is listed in `criteria.malformed` and never rejects the sync. The block is recomputed from the index on every call and stored nowhere server side; it never affects maturity or any verification score. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
+        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and disk snippets are then skipped, since both need the real files; each entry\'s `signature` becomes its code evidence, and an entry with no signature lands as `unverified` in the dashboard, so seed entries via seed_index_from_analysis or copy the real code line into `signature` yourself). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.), and the `verifiedAt` of an action entry (stamped by `unspa coverage ingest` when every scenario of the action passed against the real code) travels with it: the action report keeps it as `auditMeta.verifiedAt`, and an entry synced later WITHOUT it clears it. The `verified` block of the answer counts both: { actions (action reports of this sync that carry verifiedAt), cleared (actions that held one before this sync and no longer do) }. Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `shared` block lists keys that SEVERAL features declare (a state path is not unique across features): the index holds one entry per key, so its file and line describe whichever feature was seeded last, and coverage and drift for the others resolve to that same location. Reported, never fatal, and it does not affect `ok`. The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. A `criterion:<id>` key maps what VERIFIES an acceptance criterion (a test, a script, a manual check) and may carry `verification: { kind: unit|integration|e2e|visual|measurement|manual, command?, files?, artifacts?, lastResult?: { passed, at, summary?, revision? } }`. Criterion entries produce NO action or surface report and change neither `synced` nor `skipped`; they feed the `criteria` block: { total, indexed, verified (lastResult.passed true), failing (lastResult.passed false), unverified (indexed, no lastResult), entries: [{ key, criterionId, title, standing, indexed, file?, verification? }], malformed[] }, where `standing` is the computed one-liner (active | superseded by <ids> | draft | ...). A malformed verification block is listed in `criteria.malformed` and never rejects the sync. The block is recomputed from the index on every call. What it says is also KEPT with the status record of each feature, one record per criterion the index names: { criterionId, key, status, file?, line?, signature?, verification?, specVersion?, syncedAt }. A criterion the index does not name keeps the record it had (the partial-index rule action reports follow), an entry with status `missing` removes it, and get_implementation_status reads the records back against the current spec. If a record could not be written, `criteriaNotKept` lists it and `ok` is false. None of this ever affects maturity or any verification score. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
       inputSchema: { ...inlineIndexSchema }
     },
     async ({ index: inlineIndex, projectId: inlineProjectId }) => {
@@ -830,6 +866,12 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
         }
       };
       const acks: unknown[] = [];
+      // Proof against the code, as this sync carried it: how many action reports
+      // now hold a `verifiedAt`, and how many held one before and lost it because
+      // their entry came back without the stamp.
+      let verifiedActions = 0;
+      let clearedActions = 0;
+      const criteriaNotKept: { featureId: string; error: string }[] = [];
 
       // Build the universe of keys the spec expects to find in the index.
       // Used after the loop to detect orphan entries in `.unspa.json` -
@@ -838,6 +880,25 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
 
       for (const exp of features) {
         const featureId = exp.id;
+        const before = await getImplementationStatus(featureId);
+        const provenBefore = new Set(
+          (before?.actions ?? [])
+            .filter((a) => Boolean(a.auditMeta?.verifiedAt))
+            .map((a) => String(a.actionId))
+        );
+
+        // Keep what the index says verifies each criterion of this feature. Only
+        // the criteria the index names are touched, and a feature whose criteria
+        // it does not name is not written at all. A failure to keep the evidence
+        // is reported; it never undoes the reports that follow.
+        const kept = criteriaEvidenceFromIndex(exp, index);
+        if (kept.evidence.length > 0 || kept.missing.length > 0) {
+          try {
+            await recordCriteriaEvidence({ featureId, ...kept });
+          } catch (e) {
+            criteriaNotKept.push({ featureId: String(featureId), error: (e as Error).message });
+          }
+        }
       for (const surface of exp.surfaces) {
         // ── action-scoped reports ────────────────────────────────
         for (const action of surface.actions) {
@@ -906,6 +967,8 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
               found: result.foundEntities.length,
               missing: result.missingEntities.length
             });
+            if (auditMeta?.verifiedAt) verifiedActions += 1;
+            else if (provenBefore.has(String(action.id))) clearedActions += 1;
           } catch (e) {
             acks.push({ ok: false, scope: 'action', id: String(action.id), error: (e as Error).message });
           }
@@ -985,8 +1048,8 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       // What verifies each acceptance criterion, read off the `criterion:<id>`
       // entries. Those entries never enter the action/surface loop above, so
       // they change neither `synced` nor `skipped`, and a malformed verification
-      // block is reported here instead of failing the sync. Answer-only: the
-      // status store has action and surface slots, nothing feature-level.
+      // block is reported here instead of failing the sync. This block is the
+      // answer; what is KEPT of it was written per feature above.
       const criteria = buildCriteriaIndexReport(features, index);
 
       // `ok` is false when ANY of these hold: a per-entity report failed,
@@ -994,7 +1057,10 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       // (synced=0 is overwhelmingly a misconfiguration, not a no-op success).
       const allFailedOrEmpty = acks.length === 0;
       const ok =
-        successes === acks.length && orphans.length === 0 && !allFailedOrEmpty;
+        successes === acks.length &&
+        orphans.length === 0 &&
+        !allFailedOrEmpty &&
+        criteriaNotKept.length === 0;
 
       return text(
         trackTokens('sync_from_index', {
@@ -1024,6 +1090,8 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
             entries: shared
           },
           criteria,
+          ...(criteriaNotKept.length > 0 ? { criteriaNotKept } : {}),
+          verified: { actions: verifiedActions, cleared: clearedActions },
           acks
         })
       );

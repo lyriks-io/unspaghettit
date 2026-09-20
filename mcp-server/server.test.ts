@@ -3661,6 +3661,262 @@ describe('MCP server', () => {
       await server.close();
     });
 
+    describe('evidence kept with the status', () => {
+      type EvidenceRow = {
+        criterionId: string;
+        title: string;
+        standing: string;
+        key: string;
+        indexed: boolean;
+        state: string;
+        stale: boolean;
+        file?: string;
+        line?: number;
+        verification?: { kind: string; lastResult?: { passed: boolean } };
+        specVersion?: string;
+        syncedAt?: string;
+      };
+      type StatusAnswer = {
+        status?: null;
+        revision?: number;
+        actions?: readonly { actionId: string; auditMeta?: { verifiedAt?: string; kind?: string } }[];
+        criteria: readonly EvidenceRow[];
+        orphanedCriteria: number;
+        verified: { actions: number; total: number };
+      };
+      type SyncAnswer = {
+        ok: boolean;
+        criteria: { indexed: number };
+        verified: { actions: number; cleared: number };
+        criteriaNotKept?: unknown;
+      };
+      const at = '2026-09-20T10:00:00.000Z';
+      // The fixed test clock stamps every element at 2026-05-09.
+      const writtenBeforeTheCriterion = '2026-01-01T00:00:00.000Z';
+      const writtenAfterTheCriterion = '2026-06-01T00:00:00.000Z';
+
+      const tools = (client: Client, projectId: string, featureId: string) => ({
+        sync: async (index: Record<string, unknown>) =>
+          parseTextContent(
+            await client.callTool({ name: 'sync_from_index', arguments: { index, projectId } })
+          ) as SyncAnswer,
+        read: async (scope: Record<string, string> = {}) =>
+          parseTextContent(
+            await client.callTool({
+              name: 'get_implementation_status',
+              arguments: { featureId, ...scope }
+            })
+          ) as StatusAnswer
+      });
+
+      it('lists every criterion before anything was reported, next to the null status', async () => {
+        const { client, server } = await setup();
+        const { projectId, featureId, refs } = await footsteps(client);
+        const { read } = tools(client, projectId, featureId);
+
+        const answer = await read();
+
+        expect(answer.status).toBeNull();
+        expect(answer.criteria).toEqual([
+          {
+            criterionId: refs.silent,
+            title: 'Footsteps are silent in water',
+            standing: 'active',
+            key: `criterion:${refs.silent}`,
+            indexed: false,
+            state: 'none',
+            stale: false
+          }
+        ]);
+        expect(answer.orphanedCriteria).toBe(0);
+        expect(answer.verified).toEqual({ actions: 0, total: 0 });
+        // The scoped reads keep their answer as it was.
+        expect(await read({ actionId: refs.step! })).toEqual({ status: null });
+        await server.close();
+      });
+
+      it('keeps what verifies each criterion, and reads it back against the spec', async () => {
+        const { client, server } = await setup();
+        const { projectId, featureId, refs } = await footsteps(client);
+        const { sync, read } = tools(client, projectId, featureId);
+        const added = parseTextContent(
+          await client.callTool({
+            name: 'apply_batch',
+            arguments: {
+              featureId,
+              operations: [
+                { kind: 'add_acceptance_criterion', ref: 'shallow', title: 'Shallow water is audible' },
+                { kind: 'add_acceptance_criterion', ref: 'wading', title: 'Wading is louder' },
+                { kind: 'add_acceptance_criterion', ref: 'mud', title: 'Mud muffles every step' }
+              ]
+            }
+          })
+        ) as Ack;
+        const code = {
+          [`surface:${refs.shore}`]: { status: 'implemented', file: 'shore.ts', line: 1, signature: 'export const shore' },
+          [`action:${refs.step}`]: { status: 'implemented', file: 'step.ts', line: 1, signature: 'export const step' }
+        };
+
+        const first = await sync({
+          ...code,
+          [`criterion:${refs.silent}`]: {
+            file: 'silent.test.ts',
+            line: 12,
+            specVersion: writtenBeforeTheCriterion,
+            verification: { kind: 'unit', lastResult: { passed: true, at } }
+          },
+          [`criterion:${added.refs!.shallow}`]: {
+            file: 'shallow.test.ts',
+            specVersion: writtenAfterTheCriterion,
+            verification: { kind: 'e2e', lastResult: { passed: false, at } }
+          },
+          [`criterion:${added.refs!.wading}`]: { verification: { kind: 'manual' } }
+        });
+        expect(first.ok).toBe(true);
+        expect(first.criteriaNotKept).toBeUndefined();
+        expect(first.criteria.indexed).toBe(3);
+
+        const kept = await read();
+        const row = (id: string | undefined) => kept.criteria.find((r) => r.criterionId === id)!;
+        expect(kept.criteria.map((r) => r.criterionId)).toEqual([
+          refs.silent,
+          added.refs!.shallow,
+          added.refs!.wading,
+          added.refs!.mud
+        ]);
+        expect(row(refs.silent)).toMatchObject({
+          indexed: true,
+          state: 'verified',
+          stale: true,
+          file: 'silent.test.ts',
+          line: 12,
+          specVersion: writtenBeforeTheCriterion,
+          syncedAt: '2026-05-09T00:00:00.000Z'
+        });
+        expect(row(added.refs!.shallow)).toMatchObject({ state: 'failing', stale: false });
+        expect(row(added.refs!.wading)).toMatchObject({ state: 'unverified', stale: false });
+        expect(row(added.refs!.mud)).toMatchObject({ indexed: false, state: 'none', stale: false });
+        expect(kept.orphanedCriteria).toBe(0);
+        // The action and surface reports are where they were.
+        expect(kept.actions).toHaveLength(1);
+
+        // A partial index: only `shallow` is named, now passing. `silent` and
+        // `wading` are not retracted by silence; `mud` still has nothing.
+        await sync({
+          ...code,
+          [`criterion:${added.refs!.shallow}`]: {
+            file: 'shallow.test.ts',
+            verification: { kind: 'e2e', lastResult: { passed: true, at } }
+          }
+        });
+        const afterPartial = await read();
+        const states = Object.fromEntries(afterPartial.criteria.map((r) => [r.criterionId, r.state]));
+        expect(states).toEqual({
+          [refs.silent!]: 'verified',
+          [added.refs!.shallow!]: 'verified',
+          [added.refs!.wading!]: 'unverified',
+          [added.refs!.mud!]: 'none'
+        });
+
+        // An entry that says `missing` removes the record.
+        await sync({ ...code, [`criterion:${refs.silent}`]: { status: 'missing', file: 'silent.test.ts' } });
+        expect((await read()).criteria.find((r) => r.criterionId === refs.silent)).toMatchObject({
+          indexed: false,
+          state: 'none'
+        });
+
+        // A record whose criterion is gone is left out of the answer, and counted.
+        await client.callTool({
+          name: 'remove_acceptance_criterion',
+          arguments: { featureId, criterionId: added.refs!.wading }
+        });
+        const afterRemoval = await read();
+        expect(afterRemoval.criteria.map((r) => r.criterionId)).not.toContain(added.refs!.wading);
+        expect(afterRemoval.orphanedCriteria).toBe(1);
+        await server.close();
+      });
+
+      it('an index that names no criterion leaves the status record as a 0.23 sync left it', async () => {
+        const { client, server } = await setup();
+        const { projectId, featureId, refs } = await footsteps(client);
+        const { sync, read } = tools(client, projectId, featureId);
+
+        const answer = await sync({
+          [`surface:${refs.shore}`]: { status: 'implemented', file: 'shore.ts', line: 1, signature: 'export const shore' },
+          [`action:${refs.step}`]: { status: 'implemented', file: 'step.ts', line: 1, signature: 'export const step' }
+        });
+
+        expect(answer.verified).toEqual({ actions: 0, cleared: 0 });
+        const kept = await read();
+        // One revision per report (the action, the surface), none for criteria.
+        expect(kept.revision).toBe(2);
+        expect(kept.criteria).toHaveLength(1);
+        expect(kept.criteria[0]).toMatchObject({ indexed: false, state: 'none' });
+        await server.close();
+      });
+
+      it('carries verifiedAt into the action report, and clears it when a later sync drops it', async () => {
+        const { client, server } = await setup();
+        const { projectId, featureId, refs } = await footsteps(client);
+        const { sync, read } = tools(client, projectId, featureId);
+        const surface = { status: 'implemented', file: 'shore.ts', line: 1, signature: 'export const shore' };
+        const step = { status: 'implemented', file: 'step.ts', line: 1, signature: 'export const step' };
+        const index = (action: Record<string, unknown>) => ({
+          [`surface:${refs.shore}`]: surface,
+          [`action:${refs.step}`]: action
+        });
+
+        const proven = await sync(index({ ...step, kind: 'domain-service', verifiedAt: at, verifiedScenarios: 3 }));
+        expect(proven.verified).toEqual({ actions: 1, cleared: 0 });
+        const whole = await read();
+        expect(whole.verified).toEqual({ actions: 1, total: 1 });
+        expect(whole.actions![0]!.auditMeta).toMatchObject({ verifiedAt: at, kind: 'domain-service' });
+        const scoped = (await read({ actionId: refs.step! })) as unknown as {
+          action: { auditMeta?: { verifiedAt?: string } };
+          criteria?: unknown;
+          verified?: unknown;
+        };
+        expect(scoped.action.auditMeta?.verifiedAt).toBe(at);
+        // The scoped reads gain nothing else.
+        expect(scoped.criteria).toBeUndefined();
+        expect(scoped.verified).toBeUndefined();
+
+        // The same entry, synced without the stamp: the proof goes, and the sync says so.
+        const claimed = await sync(index({ ...step, kind: 'domain-service' }));
+        expect(claimed.verified).toEqual({ actions: 0, cleared: 1 });
+        const after = await read();
+        expect(after.verified).toEqual({ actions: 0, total: 1 });
+        expect(after.actions![0]!.auditMeta).toEqual({ kind: 'domain-service' });
+
+        // Nothing left to clear the second time, and a non-string stamp is not proof.
+        expect((await sync(index({ ...step, verifiedAt: true }))).verified).toEqual({
+          actions: 0,
+          cleared: 0
+        });
+        await server.close();
+      });
+
+      it('never moves maturity, whatever the evidence says', async () => {
+        const { client, server } = await setup();
+        const { projectId, featureId, refs } = await footsteps(client);
+        const { sync } = tools(client, projectId, featureId);
+        const score = async () =>
+          JSON.stringify(
+            parseTextContent(await client.callTool({ name: 'score_feature', arguments: { featureId } }))
+          );
+        const before = await score();
+
+        await sync({
+          [`surface:${refs.shore}`]: { status: 'implemented', file: 'shore.ts', line: 1, signature: 'export const shore' },
+          [`action:${refs.step}`]: { status: 'implemented', file: 'step.ts', line: 1, signature: 'step', verifiedAt: at },
+          [`criterion:${refs.silent}`]: { verification: { kind: 'unit', lastResult: { passed: false, at } } }
+        });
+
+        expect(await score()).toBe(before);
+        await server.close();
+      });
+    });
+
     it('get_drift reports a criterion entry stale after the criterion changed, never an orphan', async () => {
       const { client, server } = await setup();
       const { projectId, featureId, refs } = await footsteps(client);

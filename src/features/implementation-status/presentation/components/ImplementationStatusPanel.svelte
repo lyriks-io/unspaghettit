@@ -258,6 +258,7 @@
       meta.kind ||
       meta.auditedAt ||
       meta.gitCommit ||
+      meta.verifiedAt ||
       meta.testFile ||
       meta.relatedFiles?.length ||
       meta.knownGaps?.length
@@ -692,6 +693,9 @@
                                   {/if}
                                   {#if m.gitCommit}
                                     <span class="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] text-neutral-600" title={m.gitCommit}>{shortSha(m.gitCommit)}</span>
+                                  {/if}
+                                  {#if m.verifiedAt}
+                                    <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700" title="Every scenario of this action passed against the real code ({m.verifiedAt})">proven {relTime(m.verifiedAt)}</span>
                                   {/if}
                                   {#if m.testFile}
                                     <span class="rounded bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700" title="Test file">test: {m.testFile}</span>

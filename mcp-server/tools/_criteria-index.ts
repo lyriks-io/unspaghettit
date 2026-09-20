@@ -1,5 +1,6 @@
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import { criterionStandings } from '../../src/features/behavior-model/domain/services/CriterionStanding';
+import type { CriterionEvidenceInput } from '../../src/features/implementation-status/application/use-cases/RecordCriteriaEvidence';
 import {
   ALL_INDEX_VERIFICATION_KINDS,
   type IndexVerification,
@@ -14,9 +15,10 @@ import {
  * Repositories kept this in a private block of their index file that the engine
  * never read, so "is this criterion actually checked?" had no answer anywhere.
  * It is now an ordinary index entry keyed `criterion:<id>`, and this module is
- * what reads it. Pure: features and the index in, a report out. Nothing here is
- * persisted server side (the status store has action and surface slots only), so
- * the block is recomputed from the index on every sync.
+ * what reads it. Pure: features and the index in, a report out. The block is
+ * recomputed from the index on every sync; what the sync KEEPS of it, so the
+ * answer outlives the call, is read off the same entries by
+ * {@link criteriaEvidenceFromIndex} and stored with the feature's status record.
  *
  * Counts, never scores: a criterion is prose and stays out of maturity and of
  * every verification verdict.
@@ -131,6 +133,55 @@ export const readVerification = (
   };
 };
 
+const entryOf = (
+  index: Readonly<Record<string, unknown>>,
+  key: string
+): Record<string, unknown> | undefined => {
+  const raw = index[key];
+  return raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : undefined;
+};
+
+/**
+ * What one sync should keep about the criteria of `feature`: a record per
+ * criterion the index names with a live entry, and the ids it names as
+ * `missing` (whose record goes). A criterion the index does not name appears in
+ * neither list, so whatever was kept for it stays: an index is partial by
+ * nature, and silence is not a retraction.
+ *
+ * Read with the same leniency as the answer block: a part that does not read is
+ * left out of the record, never a reason to keep nothing. An entry without a
+ * status is kept as implemented, the reading drift already gives it.
+ */
+export const criteriaEvidenceFromIndex = (
+  feature: Feature,
+  index: Readonly<Record<string, unknown>>
+): { readonly evidence: readonly CriterionEvidenceInput[]; readonly missing: readonly string[] } => {
+  const evidence: CriterionEvidenceInput[] = [];
+  const missing: string[] = [];
+  for (const criterion of feature.acceptanceCriteria ?? []) {
+    const criterionId = String(criterion.id);
+    const entry = entryOf(index, `criterion:${criterionId}`);
+    if (!entry) continue;
+    if (entry.status === 'missing') {
+      missing.push(criterionId);
+      continue;
+    }
+    const { verification } = readVerification(entry.verification);
+    evidence.push({
+      criterionId,
+      status: entry.status === 'partial' ? 'partial' : 'implemented',
+      ...(isText(entry.file) ? { file: entry.file } : {}),
+      ...(typeof entry.line === 'number' && entry.line > 0 ? { line: entry.line } : {}),
+      ...(isText(entry.signature) ? { signature: entry.signature } : {}),
+      ...(verification ? { verification } : {}),
+      ...(isText(entry.specVersion) ? { specVersion: entry.specVersion } : {})
+    });
+  }
+  return { evidence, missing };
+};
+
 /** The criteria of `features` against `index`, in model order. */
 export const buildCriteriaIndexReport = (
   features: readonly Feature[],
@@ -144,11 +195,7 @@ export const buildCriteriaIndexReport = (
     for (const criterion of feature.acceptanceCriteria ?? []) {
       const criterionId = String(criterion.id);
       const key = `criterion:${criterionId}`;
-      const rawEntry = index[key];
-      const entry =
-        rawEntry !== null && typeof rawEntry === 'object' && !Array.isArray(rawEntry)
-          ? (rawEntry as Record<string, unknown>)
-          : undefined;
+      const entry = entryOf(index, key);
       const { verification, problems } = readVerification(entry?.verification);
       if (problems.length > 0) malformed.push({ key, problems });
       const file = entry?.file;

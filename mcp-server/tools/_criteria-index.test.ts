@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
-import { buildCriteriaIndexReport, readVerification } from './_criteria-index';
+import {
+  buildCriteriaIndexReport,
+  criteriaEvidenceFromIndex,
+  readVerification
+} from './_criteria-index';
 
 const feature = {
   id: 'f1',
@@ -109,5 +113,49 @@ describe('buildCriteriaIndexReport', () => {
       entries: [],
       malformed: []
     });
+  });
+});
+
+describe('criteriaEvidenceFromIndex', () => {
+  it('keeps a record per criterion the index names, reading each part leniently', () => {
+    const { evidence, missing } = criteriaEvidenceFromIndex(feature, {
+      'criterion:silent': {
+        status: 'partial',
+        file: 'silent.test.ts',
+        line: 12,
+        signature: 'it("is silent in water"',
+        specVersion: '2026-09-01T00:00:00.000Z',
+        verification: { kind: 'unit', lastResult: result(true) }
+      },
+      // No status reads as implemented; unreadable parts are left out, not fatal.
+      'criterion:shallow': { file: '', line: 0, signature: 7, verification: { kind: 'vibes' } },
+      'criterion:wading': { verification: { kind: 'manual' } }
+    });
+
+    expect(missing).toEqual([]);
+    expect(evidence).toEqual([
+      {
+        criterionId: 'silent',
+        status: 'partial',
+        file: 'silent.test.ts',
+        line: 12,
+        signature: 'it("is silent in water"',
+        verification: { kind: 'unit', lastResult: result(true) },
+        specVersion: '2026-09-01T00:00:00.000Z'
+      },
+      { criterionId: 'shallow', status: 'implemented' },
+      { criterionId: 'wading', status: 'implemented', verification: { kind: 'manual' } }
+    ]);
+  });
+
+  it('names a missing entry for removal, and says nothing of a criterion the index does not name', () => {
+    const { evidence, missing } = criteriaEvidenceFromIndex(feature, {
+      'criterion:silent': { status: 'missing', file: 'gone.test.ts' },
+      'criterion:mud': 'not an entry',
+      'criterion:unknown': { file: 'orphan.test.ts' },
+      'action:abcd1234': { status: 'implemented', file: 'step.ts', line: 1, signature: 'step' }
+    });
+    expect(missing).toEqual(['silent']);
+    expect(evidence).toEqual([]);
   });
 });
