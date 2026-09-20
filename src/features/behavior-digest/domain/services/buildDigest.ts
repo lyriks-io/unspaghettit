@@ -1,5 +1,5 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
-import { committedActions } from '$features/behavior-model/domain/entities/Action';
+import { committedActions, effectiveActor } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
@@ -81,7 +81,29 @@ const describeEffect = (effect: Effect, surfaceNameById: ReadonlyMap<string, str
     case 'emit_event': // emitted events are reported on their own clause
     case 'block_action': // block reasons are reported as guards
     case 'allow_action':
+    case 'no_feedback': // a silence on the blocked path, nothing a reader is shown
       return null;
+  }
+};
+
+/**
+ * Who fires the action, said only when it is not a person: "a person does this"
+ * is what a reader assumes of every capability, so repeating it on each line
+ * would be noise, while "nobody taps this, a timer does" changes how the rest of
+ * the line reads.
+ */
+const firedByPhrase = (action: Action): string | null => {
+  switch (effectiveActor(action)) {
+    case 'user':
+      return null;
+    case 'system':
+      return 'Fired by the system, not by a person';
+    case 'schedule':
+      return 'Fired on a schedule, not by a person';
+    case 'event':
+      return action.triggeredByEvent !== undefined
+        ? `Fired by the event ${String(action.triggeredByEvent)}, not by a person`
+        : 'Fired by an event, not by a person';
   }
 };
 
@@ -112,6 +134,8 @@ const capabilityDetails = (
   surfaceNameById: ReadonlyMap<string, string>
 ): string[] => {
   const details: string[] = [];
+  const firedBy = firedByPhrase(action);
+  if (firedBy) details.push(firedBy);
   if (level === 'full') {
     for (const effect of action.effects) {
       const phrase = describeEffect(effect, surfaceNameById);

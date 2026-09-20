@@ -104,6 +104,7 @@ export const effectStateReads = (effect: Effect): readonly StatePath[] => {
     case 'block_action':
     case 'allow_action':
     case 'transition_surface':
+    case 'no_feedback':
       return [];
   }
 };
@@ -124,6 +125,7 @@ export const effectStateWrites = (effect: Effect): readonly StatePath[] => {
     case 'block_action':
     case 'allow_action':
     case 'transition_surface':
+    case 'no_feedback':
       return [];
   }
 };

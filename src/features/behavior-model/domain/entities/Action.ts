@@ -37,6 +37,24 @@ export const ALL_CAPABILITY_ROLES: readonly ActionRole[] = [
 ];
 
 /**
+ * Who fires an action.
+ *
+ *  - `user`: a person does it (a tap, a form, a command). The default.
+ *  - `system`: the product does it on its own (a sensor reading, a background
+ *    job, a lifecycle hook). Nobody is looking at a screen when it runs.
+ *  - `schedule`: time does it (a timer, a cron, a deadline passing).
+ *  - `event`: something that happened does it. Usually a modeled event
+ *    (`triggeredByEvent`), but the host product may also fire an action from an
+ *    event this model does not describe, so the two are not tied together.
+ *
+ * It matters because several authoring checks assume a person: a blocked run
+ * "should show a message" only if someone is there to read it.
+ */
+export type ActionActor = 'user' | 'system' | 'schedule' | 'event';
+
+export const ALL_ACTION_ACTORS: readonly ActionActor[] = ['user', 'system', 'schedule', 'event'];
+
+/**
  * Taxonomy for an Evolution proposal — what *kind* of improvement it is.
  * Drives iconography/filtering in the dashboard; never affects simulation.
  */
@@ -194,6 +212,13 @@ export type Action = {
    */
   readonly triggeredByEvent?: EventName;
   /**
+   * Who fires this action. See {@link ActionActor}. Optional: absent means
+   * `user`, except on an event handler (`triggeredByEvent` set), which reads as
+   * `event`. Never read this field directly to decide behavior; go through
+   * {@link effectiveActor} so every reader agrees on the derivation.
+   */
+  readonly actor?: ActionActor;
+  /**
    * When present, this action is a proposed Evolution (a dashed-border
    * placeholder), not committed behavior. See {@link Evolution}. Optional;
    * absent means a normal action. Excluded from maturity + spec-gap analysis.
@@ -207,6 +232,18 @@ export type Action = {
  * dashboard all agree on what counts as a dashed placeholder.
  */
 export const isEvolution = (action: Action): boolean => action.evolution !== undefined;
+
+/**
+ * Who fires the action, once the defaults are applied: the declared `actor`
+ * when there is one, else `event` for an event handler, else `user`. The ONE
+ * place this is derived, so the maturity check, every read tool and the digest
+ * cannot drift apart. A feature written before `actor` existed reads exactly as
+ * it used to for a person-fired action, and its handlers now say `event`.
+ */
+export const effectiveActor = (
+  action: Pick<Action, 'actor' | 'triggeredByEvent'>
+): ActionActor =>
+  action.actor ?? (action.triggeredByEvent !== undefined ? 'event' : 'user');
 
 /** The committed (non-proposal) actions on a surface. */
 export const committedActions = <T extends { readonly evolution?: Evolution }>(

@@ -123,6 +123,8 @@ const effectLabel = (effect: Effect): string => {
       return 'advance time';
     case 'invoke_operation':
       return `invoke ${effect.operation}`;
+    case 'no_feedback':
+      return 'no feedback';
   }
 };
 

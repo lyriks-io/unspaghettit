@@ -20,6 +20,7 @@
  * so the builders see only ids.
  */
 
+import type { Action } from '../../src/features/behavior-model/domain/entities/Action';
 import type {
   AcceptanceCriterion,
   AcceptanceOutcome
@@ -413,6 +414,28 @@ export const buildAcceptanceCriterionPatch = (input: Raw): Partial<AcceptanceCri
     : {}),
   ...(typeof input.description === 'string' ? { description: input.description } : {})
 });
+
+// ─── Action actor ──────────────────────────────────────────────────────────
+//
+// Who fires an action (`user | system | schedule | event`). The add form sets it
+// when given; the update form also accepts `null`, which clears it back to the
+// derived default (`event` on a handler, `user` otherwise). The value is passed
+// through as written: the vocabulary is enforced once, by the feature validator,
+// so a batch and a granular call are refused with the same sentence.
+
+/** `{ actor }` for a new action, or nothing when the caller did not name one. */
+export const buildActionActor = (input: Raw): Pick<Action, 'actor'> =>
+  typeof input.actor === 'string' && input.actor.length > 0
+    ? { actor: input.actor as Action['actor'] }
+    : {};
+
+/** The `actor` part of an action patch. `null` (or '') clears; absent leaves it. */
+export const buildActionActorPatch = (input: Raw): Pick<Action, 'actor'> | Record<string, never> =>
+  input.actor === null || input.actor === ''
+    ? { actor: undefined }
+    : typeof input.actor === 'string'
+      ? { actor: input.actor as Action['actor'] }
+      : {};
 
 // Re-export the effect-id helper so batch.ts builders can reuse it without
 // importing from a deep value-object path.

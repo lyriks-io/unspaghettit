@@ -15,6 +15,7 @@ import {
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { runMutation, type ToolDeps } from './_shared';
 import { evolutionInputSchema, normalizeEvolution } from './_evolution';
+import { buildActionActor, buildActionActorPatch } from './_entity_builders';
 
 const actionRoleSchema = z.enum([
   'entry',
@@ -25,6 +26,12 @@ const actionRoleSchema = z.enum([
   'async',
   'persistence'
 ] as const);
+
+const actionActorSchema = z
+  .enum(['user', 'system', 'schedule', 'event'] as const)
+  .describe(
+    'Who fires the action. user (default): a person does it. system: the product does it on its own (sensor, background job). schedule: time does it (timer, cron). event: something that happened does it. Absent reads as user, or as event when triggeredByEvent is set. A non-user action is not asked what a person sees when it is blocked.'
+  );
 
 const invariantRelaxationSchema = z
   .object({
@@ -49,7 +56,7 @@ export const registerActionTools = (deps: ToolDeps): void => {
     'add_action',
     {
       description:
-        'Append an Action under a Surface. emittedEvents can be declared up-front; flesh out parameters/rules/effects via add_parameter/add_action_rule/add_effect. Optional `roles[]` tags the action for spec-gap diagnostics (e.g. destructive, async, validation). For a repair/admin action that must leave an invariant temporarily violated, prefer `invariantRelaxation` (name only the invariants it may relax, with a rationale) over the all-or-nothing `bypassInvariants`.',
+        'Append an Action under a Surface. emittedEvents can be declared up-front; flesh out parameters/rules/effects via add_parameter/add_action_rule/add_effect. Optional `roles[]` tags the action for spec-gap diagnostics (e.g. destructive, async, validation). For a repair/admin action that must leave an invariant temporarily violated, prefer `invariantRelaxation` (name only the invariants it may relax, with a rationale) over the all-or-nothing `bypassInvariants`. Set `actor` (user | system | schedule | event) when no person fires the action: a sensor reading, a timer, a host callback. A non-user action is not asked for a blocked-run message, so do not invent one; for a person-fired action whose blocked attempt is silent on purpose, add a `no_feedback` effect with onBlocked:true instead.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -61,12 +68,13 @@ export const registerActionTools = (deps: ToolDeps): void => {
         bypassInvariants: z.boolean().optional(),
         invariantRelaxation: invariantRelaxationSchema.optional(),
         triggeredByEvent: z.string().min(1).optional(),
+        actor: actionActorSchema.optional(),
         evolution: evolutionInputSchema
           .optional()
           .describe('Mark this action as a proposed Evolution (dashed placeholder) instead of committed behavior. Prefer propose_evolution for the common case.')
       }
     },
-    async ({ featureId, surfaceId, name, intent, requiredStates, emittedEvents, roles, bypassInvariants, invariantRelaxation, triggeredByEvent, evolution }) => {
+    async ({ featureId, surfaceId, name, intent, requiredStates, emittedEvents, roles, bypassInvariants, invariantRelaxation, triggeredByEvent, actor, evolution }) => {
       const action: Action = {
         id: asActionId(ids()),
         name,
@@ -84,6 +92,7 @@ export const registerActionTools = (deps: ToolDeps): void => {
           ? { invariantRelaxation: invariantRelaxation as unknown as Action['invariantRelaxation'] }
           : {}),
         ...(triggeredByEvent ? { triggeredByEvent: triggeredByEvent as Action['triggeredByEvent'] } : {}),
+        ...buildActionActor({ actor }),
         ...(evolution ? { evolution: normalizeEvolution(evolution) } : {})
       };
       return runMutation(
@@ -101,7 +110,7 @@ export const registerActionTools = (deps: ToolDeps): void => {
     'update_action',
     {
       description:
-        'Patch name/intent/requiredStates/emittedEvents/roles. Sub-collections untouched. roles:[] clears the list. Pass evolution to mark a proposal, or evolution:null to ACCEPT it (clear the marker and promote the action to committed behavior).',
+        'Patch name/intent/requiredStates/emittedEvents/roles/actor. Sub-collections untouched. roles:[] clears the list. actor (user | system | schedule | event) says who fires the action; actor:null clears it back to the default (event on a handler, user otherwise). Pass evolution to mark a proposal, or evolution:null to ACCEPT it (clear the marker and promote the action to committed behavior).',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),
@@ -114,6 +123,7 @@ export const registerActionTools = (deps: ToolDeps): void => {
         bypassInvariants: z.boolean().optional(),
         invariantRelaxation: invariantRelaxationSchema.nullable().optional(),
         triggeredByEvent: z.string().nullable().optional(),
+        actor: actionActorSchema.nullable().optional(),
         evolution: evolutionInputSchema
           .nullable()
           .optional()
@@ -132,6 +142,7 @@ export const registerActionTools = (deps: ToolDeps): void => {
       bypassInvariants,
       invariantRelaxation,
       triggeredByEvent,
+      actor,
       evolution
     }) =>
       runMutation(deps, {
@@ -169,6 +180,8 @@ export const registerActionTools = (deps: ToolDeps): void => {
                       : (triggeredByEvent as Action['triggeredByEvent'])
                 }
               : {}),
+            // null clears the actor back to its derived default; omit to keep it.
+            ...buildActionActorPatch({ actor }),
             // null accepts the proposal (clears the marker); an object sets it;
             // omit to leave the current evolution state untouched.
             ...(evolution !== undefined

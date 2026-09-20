@@ -45,6 +45,64 @@ const dummySurface: Surface = {
   transitions: []
 };
 
+describe('MaturityScorer block handling and the actor', () => {
+  // An action whose only rule is an allow rule is blocked, when the rule does
+  // not hold, without any reason a person could read: the case the check exists
+  // to catch. (A block_action rule carries its own reason and already passes.)
+  const allowOnly: Action = {
+    ...baseCapability,
+    intent: 'do',
+    rules: [
+      {
+        id: 'r-allow',
+        category: 'permissions',
+        condition: { left: asStatePath('user.isAdmin'), operator: 'is_true' },
+        effect: { id: asEffectId('e-allow'), type: 'allow_action' }
+      }
+    ] as unknown as Action['rules']
+  };
+  const flagged = (action: Action): boolean =>
+    scoreCapability(dummySurface, action)
+      .recommendedIssues.map((i) => i.area)
+      .includes('block handling');
+  const passLabels = (action: Action): readonly string[] =>
+    scoreCapability(dummySurface, action).passedChecks.map((c) => c.message);
+
+  it('still flags a person-fired action that says nothing about a blocked run', () => {
+    expect(flagged(allowOnly)).toBe(true);
+    expect(flagged({ ...allowOnly, actor: 'user' })).toBe(true);
+  });
+
+  it('is satisfied by a no_feedback onBlocked effect, for a person-fired action', () => {
+    const silentOnPurpose: Action = {
+      ...allowOnly,
+      onBlockedEffects: [
+        { id: asEffectId('e-nf'), type: 'no_feedback', reason: 'The button is simply inert.' }
+      ]
+    };
+    expect(flagged(silentOnPurpose)).toBe(false);
+    expect(flagged({ ...silentOnPurpose, actor: 'system' })).toBe(false);
+  });
+
+  it('is waived for an action no person fires, with no blocked effect at all', () => {
+    for (const actor of ['system', 'schedule', 'event'] as const) {
+      expect(flagged({ ...allowOnly, actor })).toBe(false);
+    }
+    // A handler that names no actor reads as event-fired, so it is waived too.
+    expect(flagged({ ...allowOnly, triggeredByEvent: asEventName('reading.arrived') })).toBe(false);
+    expect(passLabels({ ...allowOnly, actor: 'system' })).toContain(
+      'No person fires it (actor: system), nothing to show when blocked'
+    );
+  });
+
+  it('scores a person-fired action exactly as before the actor existed', () => {
+    const before = scoreCapability(dummySurface, allowOnly);
+    const after = scoreCapability(dummySurface, { ...allowOnly, actor: 'user' });
+    expect(after.score).toBe(before.score);
+    expect(after.maxScore).toBe(before.maxScore);
+  });
+});
+
 describe('MaturityScorer', () => {
   it('flags missing intent and missing effects as critical', () => {
     const report = scoreCapability(dummySurface, baseCapability);

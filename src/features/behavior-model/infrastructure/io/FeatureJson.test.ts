@@ -86,6 +86,49 @@ describe('FeatureJson', () => {
     });
   });
 
+  it('preserves an actor and a no_feedback effect, and invents neither on an older snapshot', () => {
+    const bare = {
+      id: 'old' as never,
+      name: 'Arm the hub',
+      intent: 'A person arms the hub',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [],
+      emittedEvents: [],
+      transitions: []
+    };
+    const withActor: Feature = {
+      ...sample,
+      surfaces: [
+        {
+          ...sample.surfaces[0]!,
+          actions: [
+            bare,
+            {
+              ...bare,
+              id: 'new' as never,
+              name: 'Record reading',
+              actor: 'system',
+              onBlockedEffects: [
+                { id: 'nf' as never, type: 'no_feedback', reason: 'Nobody is watching.' }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+    const [older, newer] = importFeatureFromJson(exportFeatureToJson(withActor)).surfaces[0]!
+      .actions;
+    // An action written before the field existed loads exactly as it was.
+    expect(older).toEqual(bare);
+    expect(newer!.actor).toBe('system');
+    expect(newer!.onBlockedEffects).toEqual([
+      { id: 'nf', type: 'no_feedback', reason: 'Nobody is watching.' }
+    ]);
+  });
+
   it('survives a condition-less invariant instead of evicting the whole feature', () => {
     // Regression: a condition-less invariant (written by a lax apply_batch op)
     // used to crash importFeatureFromJson in the expression normalizer, so the

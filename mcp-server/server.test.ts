@@ -3061,6 +3061,222 @@ describe('MCP server', () => {
     });
   });
 
+  describe('action actor and no_feedback', () => {
+    type Ack = { ok: boolean; id?: string; refs?: Record<string, string> };
+
+    const sensorFeature = async (client: Client) => {
+      const created = parseTextContent(
+        await client.callTool({
+          name: 'create_feature',
+          arguments: { name: 'Sensors', description: 'Readings nobody taps.' }
+        })
+      ) as { id: string };
+      const built = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId: created.id,
+            operations: [
+              {
+                kind: 'add_surface',
+                ref: 'hub',
+                name: 'Hub',
+                type: 'custom',
+                description: 'Where readings arrive.'
+              },
+              {
+                kind: 'add_state_definition',
+                surfaceRef: 'hub',
+                path: 'hub.armed',
+                type: 'boolean',
+                defaultValue: false,
+                description: 'Whether the hub listens.'
+              },
+              {
+                kind: 'add_action',
+                ref: 'reading',
+                surfaceRef: 'hub',
+                name: 'Record reading',
+                intent: 'Store a reading pushed by a sensor.',
+                actor: 'system'
+              },
+              {
+                kind: 'add_action',
+                ref: 'arm',
+                surfaceRef: 'hub',
+                name: 'Arm the hub',
+                intent: 'A person arms the hub.'
+              }
+            ]
+          }
+        })
+      ) as Ack;
+      return { featureId: created.id, refs: built.refs! };
+    };
+
+    const actorOf = async (
+      repo: InMemoryFeatureRepository,
+      featureId: string,
+      actionId: string
+    ): Promise<unknown> => {
+      const feature = await repo.get(featureId as never);
+      const action = feature?.surfaces.flatMap((s) => s.actions).find((a) => a.id === actionId);
+      return (action as { actor?: unknown } | undefined)?.actor;
+    };
+
+    it('round-trips actor through the batch and the granular tools, and null clears it', async () => {
+      const { client, server, repo } = await setup();
+      const { featureId, refs } = await sensorFeature(client);
+      expect(await actorOf(repo, featureId, refs.reading!)).toBe('system');
+      // Absent stays absent in storage: the default is derived, never written.
+      expect(await actorOf(repo, featureId, refs.arm!)).toBeUndefined();
+
+      const added = parseTextContent(
+        await client.callTool({
+          name: 'add_action',
+          arguments: {
+            featureId,
+            surfaceId: refs.hub,
+            name: 'Nightly purge',
+            intent: 'Drop readings older than a month.',
+            actor: 'schedule'
+          }
+        })
+      ) as Ack;
+      expect(await actorOf(repo, featureId, added.id!)).toBe('schedule');
+
+      await client.callTool({
+        name: 'update_action',
+        arguments: { featureId, surfaceId: refs.hub, actionId: refs.arm, actor: 'event' }
+      });
+      expect(await actorOf(repo, featureId, refs.arm!)).toBe('event');
+
+      const cleared = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            operations: [
+              { kind: 'update_action', surfaceId: refs.hub, actionId: refs.arm, actor: null }
+            ]
+          }
+        })
+      ) as Ack;
+      expect(cleared.ok).toBe(true);
+      expect(await actorOf(repo, featureId, refs.arm!)).toBeUndefined();
+      await server.close();
+    });
+
+    it('refuses an actor outside the vocabulary, in a batch as in a granular call', async () => {
+      const { client, server } = await setup();
+      const { featureId, refs } = await sensorFeature(client);
+      const batch = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            operations: [
+              { kind: 'update_action', surfaceId: refs.hub, actionId: refs.arm, actor: 'robot' }
+            ]
+          }
+        })
+      ) as { ok: boolean; validation: { errors: readonly string[] } };
+      expect(batch.ok).toBe(false);
+      expect(batch.validation.errors.join()).toContain('unknown actor "robot"');
+
+      const granular = (await client.callTool({
+        name: 'update_action',
+        arguments: { featureId, surfaceId: refs.hub, actionId: refs.arm, actor: 'robot' }
+      })) as { isError?: boolean };
+      expect(granular.isError).toBe(true);
+      await server.close();
+    });
+
+    it('shows the effective actor on every read of an action', async () => {
+      const { client, server } = await setup();
+      const { featureId, refs } = await sensorFeature(client);
+
+      const index = parseTextContent(
+        await client.callTool({ name: 'get_feature', arguments: { featureId } })
+      ) as { surfaces: readonly { actions: readonly { id: string; actor: string }[] }[] };
+      const indexed = Object.fromEntries(
+        index.surfaces.flatMap((s) => s.actions).map((a) => [a.id, a.actor])
+      );
+      expect(indexed[refs.reading!]).toBe('system');
+      expect(indexed[refs.arm!]).toBe('user');
+
+      const listed = parseTextContent(
+        await client.callTool({ name: 'list_actions', arguments: { featureId } })
+      ) as readonly { actionId: string; actor: string }[];
+      expect(listed.find((a) => a.actionId === refs.reading)?.actor).toBe('system');
+      expect(listed.find((a) => a.actionId === refs.arm)?.actor).toBe('user');
+
+      const focused = parseTextContent(
+        await client.callTool({
+          name: 'get_action',
+          arguments: { featureId, actionId: refs.arm }
+        })
+      ) as { actor: string; action: { actor?: string } };
+      // The derived value sits beside the stored action, which says nothing.
+      expect(focused.actor).toBe('user');
+      expect(focused.action.actor).toBeUndefined();
+      await server.close();
+    });
+
+    it('accepts no_feedback with onBlocked:true and refuses it as a success effect', async () => {
+      const { client, server, repo } = await setup();
+      const { featureId, refs } = await sensorFeature(client);
+      const effect = {
+        type: 'no_feedback',
+        reason: 'The arm button is inert until pairing completes.',
+        description: 'A blocked attempt to arm shows nothing, on purpose.'
+      };
+
+      const refused = (await client.callTool({
+        name: 'add_effect',
+        arguments: { featureId, surfaceId: refs.hub, actionId: refs.arm, effect }
+      })) as { isError?: boolean; content: readonly { text: string }[] };
+      expect(refused.isError).toBe(true);
+      expect(refused.content[0]?.text).toContain("only valid among an action's onBlocked effects");
+
+      const accepted = parseTextContent(
+        await client.callTool({
+          name: 'add_effect',
+          arguments: { featureId, surfaceId: refs.hub, actionId: refs.arm, effect, onBlocked: true }
+        })
+      ) as Ack;
+      expect(accepted.ok).toBe(true);
+
+      const viaBatch = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            operations: [
+              {
+                kind: 'add_effect',
+                surfaceId: refs.hub,
+                actionId: refs.reading,
+                onBlocked: true,
+                effect
+              }
+            ]
+          }
+        })
+      ) as Ack;
+      expect(viaBatch.ok).toBe(true);
+
+      const feature = await repo.get(featureId as never);
+      const actions = feature!.surfaces.flatMap((s) => s.actions);
+      for (const id of [refs.arm, refs.reading]) {
+        const action = actions.find((a) => a.id === id)!;
+        expect(action.effects).toHaveLength(0);
+        expect(action.onBlockedEffects?.map((e) => e.type)).toEqual(['no_feedback']);
+      }
+      await server.close();
+    });
+  });
+
   it('stores a shared entity once and resolves it from every referencing feature', async () => {
     const { client, server, repo } = await setup();
 

@@ -329,6 +329,84 @@ describe('validateElementShapes — effects', () => {
   });
 });
 
+describe('validateElementShapes: actor and no_feedback', () => {
+  const noFeedback = { id: asEffectId('nf1'), type: 'no_feedback', reason: 'A sensor reading.' };
+  const withAction = (over: Record<string, unknown>): Feature =>
+    buildFeature({
+      actions: [
+        {
+          id: asActionId('a1'),
+          name: 'Act',
+          intent: 'do something',
+          parameters: [],
+          requiredStates: [],
+          rules: [],
+          invariants: [],
+          effects: [],
+          emittedEvents: [],
+          transitions: [],
+          ...over
+        }
+      ]
+    } as unknown as Partial<Surface>);
+
+  it('accepts the four actors and an absent one', () => {
+    expect(errorsFor(withAction({}))).toEqual([]);
+    for (const actor of ['user', 'system', 'schedule', 'event']) {
+      expect(errorsFor(withAction({ actor }))).toEqual([]);
+    }
+  });
+
+  it('rejects an actor outside the vocabulary, naming the valid ones', () => {
+    const errors = errorsFor(withAction({ actor: 'sensor' })).join();
+    expect(errors).toContain('unknown actor "sensor"');
+    expect(errors).toContain('user, system, schedule, event');
+    expect(errorsFor(withAction({ actor: 7 })).join()).toContain('unknown actor 7');
+  });
+
+  it('does not tie the event actor to a modeled event', () => {
+    expect(errorsFor(withAction({ actor: 'event' }))).toEqual([]);
+  });
+
+  it('accepts no_feedback among the onBlocked effects', () => {
+    expect(errorsFor(withAction({ onBlockedEffects: [noFeedback] }))).toEqual([]);
+  });
+
+  it('rejects no_feedback as a success effect, a rule effect or an outcome effect', () => {
+    expect(errorsFor(withAction({ effects: [noFeedback] })).join()).toContain(
+      "only valid among an action's onBlocked effects"
+    );
+    const asRule = withAction({
+      rules: [
+        {
+          id: asRuleId('r1'),
+          category: 'business',
+          condition: { left: asStatePath('board.count'), operator: 'equals', right: 1 },
+          effect: noFeedback
+        }
+      ]
+    });
+    expect(errorsFor(asRule).join()).toContain("only valid among an action's onBlocked effects");
+    const asOutcome = withAction({
+      outcomes: [{ id: 'o1', name: 'Declined', kind: 'rejected', effects: [noFeedback] }]
+    });
+    expect(errorsFor(asOutcome).join()).toContain(
+      "only valid among an action's onBlocked effects"
+    );
+  });
+
+  it('requires a reason, and a reason that says something', () => {
+    const bare = { id: asEffectId('nf1'), type: 'no_feedback' };
+    expect(errorsFor(withAction({ onBlockedEffects: [bare] })).join()).toContain(
+      'requires "reason"'
+    );
+    const blank = { ...bare, reason: '   ' };
+    expect(errorsFor(withAction({ onBlockedEffects: [blank] })).join()).toContain(
+      'needs a non-empty "reason"'
+    );
+  });
+});
+
 describe('validateElementShapes — invariants and scenarios', () => {
   it('checks invariant conditions with the same rigor as rules', () => {
     const feature = buildFeature({

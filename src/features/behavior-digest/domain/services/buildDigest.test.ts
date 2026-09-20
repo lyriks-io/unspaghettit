@@ -203,6 +203,31 @@ describe('buildDigest', () => {
     expect(spec.sections.some((s) => s.kind === 'navigation')).toBe(false);
   });
 
+  it('says who fires an action only when it is not a person', () => {
+    const nightly: Action = {
+      ...emptyAction('nightly', 'Refresh nightly', 'Rebuild every summary overnight.'),
+      actor: 'schedule'
+    };
+    const onChange: Action = {
+      ...emptyAction('react', 'Refresh on change', 'Rebuild the summary when the model moves.'),
+      triggeredByEvent: asEventName('model.changed')
+    };
+    const spec = buildDigest({
+      features: [{ ...feature, surfaces: [{ ...panel, actions: [generate, nightly, onChange] }] }],
+      scope: { kind: 'feature', featureId: 'f-digest' },
+      detailLevel: 'standard'
+    });
+    const lines = spec.sections.find((s) => s.kind === 'capabilities')?.lines ?? [];
+    const details = (label: string) => lines.find((l) => l.label === label)?.details ?? [];
+
+    expect(details('Refresh nightly')).toContain('Fired on a schedule, not by a person');
+    expect(details('Refresh on change')).toContain(
+      'Fired by the event model.changed, not by a person'
+    );
+    // A person-fired action reads exactly as it did before the actor existed.
+    expect(details('Generate Digest').some((d) => d.startsWith('Fired'))).toBe(false);
+  });
+
   it('summarizes a single surface', () => {
     const spec = buildDigest({
       ...source,

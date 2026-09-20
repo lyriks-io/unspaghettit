@@ -15,7 +15,8 @@ export type EffectType =
   | 'remove_from_list'
   | 'update_list_item'
   | 'advance_time'
-  | 'invoke_operation';
+  | 'invoke_operation'
+  | 'no_feedback';
 
 /**
  * Writes `value` (or the result of `value` if it is an `Expression`) to the
@@ -165,6 +166,26 @@ export type InvokeOperationEffect = {
   readonly description?: string;
 };
 
+/**
+ * "A blocked attempt shows nothing, on purpose." Valid ONLY among an action's
+ * `onBlockedEffects`.
+ *
+ * The blocked-run check asks every action that can be blocked to say what the
+ * person then sees. For an action no person fires (a sensor reading, a timer, a
+ * host callback) the honest answer is "nothing", and without a way to write it
+ * down authors invented user messages that do not exist in the product just to
+ * satisfy the check. This effect is that answer, with the `reason` it is the
+ * right one. The simulator treats it as a no-op: it records it and changes
+ * nothing.
+ */
+export type NoFeedbackEffect = {
+  readonly id: EffectId;
+  readonly type: 'no_feedback';
+  /** Why a blocked attempt is silent (e.g. "sensor reading, nobody is watching"). */
+  readonly reason: string;
+  readonly description?: string;
+};
+
 export type Effect =
   | SetStateEffect
   | ShowMessageEffect
@@ -176,7 +197,8 @@ export type Effect =
   | RemoveFromListEffect
   | UpdateListItemEffect
   | AdvanceTimeEffect
-  | InvokeOperationEffect;
+  | InvokeOperationEffect
+  | NoFeedbackEffect;
 
 export const ALL_EFFECT_TYPES: readonly EffectType[] = [
   'set_state',
@@ -189,8 +211,18 @@ export const ALL_EFFECT_TYPES: readonly EffectType[] = [
   'remove_from_list',
   'update_list_item',
   'advance_time',
-  'invoke_operation'
+  'invoke_operation',
+  'no_feedback'
 ];
+
+/**
+ * Effect types that only make sense on the blocked path. One list, read by the
+ * validators and the MCP tools, so "where may this type appear" has one answer.
+ */
+export const ON_BLOCKED_ONLY_EFFECT_TYPES: readonly EffectType[] = ['no_feedback'];
+
+export const isOnBlockedOnlyEffectType = (type: unknown): boolean =>
+  (ON_BLOCKED_ONLY_EFFECT_TYPES as readonly unknown[]).includes(type);
 
 export const effectTypeLabel = (t: EffectType): string => {
   switch (t) {
@@ -216,6 +248,8 @@ export const effectTypeLabel = (t: EffectType): string => {
       return 'Advance time';
     case 'invoke_operation':
       return 'Invoke operation';
+    case 'no_feedback':
+      return 'No feedback';
   }
 };
 

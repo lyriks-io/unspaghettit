@@ -1,4 +1,8 @@
-import type { Action } from '$features/behavior-model/domain/entities/Action';
+import {
+  effectiveActor,
+  type Action,
+  type ActionActor
+} from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { Rule } from '$features/behavior-model/domain/entities/Rule';
@@ -23,7 +27,12 @@ export type FocusedSurfaceIndex = {
     readonly ruleCount: number;
     readonly invariantCount: number;
     readonly transitionCount: number;
-    readonly actions: readonly { readonly id: string; readonly name: string }[];
+    readonly actions: readonly {
+      readonly id: string;
+      readonly name: string;
+      /** Who fires it, defaults applied (see `effectiveActor`). */
+      readonly actor: ActionActor;
+    }[];
   };
 };
 
@@ -51,7 +60,8 @@ const indexEntry = (
     transitionCount: surface.transitions.length,
     actions: surface.actions.map((c: Action) => ({
       id: String(c.id),
-      name: c.name
+      name: c.name,
+      actor: effectiveActor(c)
     }))
   }
 });

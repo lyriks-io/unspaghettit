@@ -207,6 +207,12 @@ Examples:
   update_list_item { path, where, field, value } Set a field on array elements matching where
   advance_time     { by }                       Move the simulation clock (clock.now) forward
   invoke_operation { dependencyId, operation, resultPath?, resultValue? }  Call an operation on a feature dependency; writes the modeled result to resultPath (like set_state) so rules/outcomes can branch on it
+  no_feedback      { reason }                   onBlocked ONLY: a blocked attempt shows nothing, on purpose (simulator no-op)
+
+An action says who fires it with actor: user (default) | system | schedule | event. Absent reads
+as user, or as event when triggeredByEvent is set. The blocked-run check asks what a PERSON sees
+when the action refuses: it is waived for a non-user actor, and satisfied for anyone by an
+onBlocked no_feedback effect. Never invent a user message the product does not show.
 
 Model failure explicitly rather than through set_state gymnastics: give an action outcomes[]
 (each a kind + selecting condition + effects), register events with a delivery guarantee so a

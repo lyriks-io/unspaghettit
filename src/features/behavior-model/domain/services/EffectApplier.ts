@@ -111,6 +111,8 @@ const summarize = (effect: Effect): string => {
       return `advance time by ${isExpression(effect.by) ? `<expr:${effect.by.kind}>` : JSON.stringify(effect.by)}`;
     case 'invoke_operation':
       return `invoke ${effect.operation}${effect.resultPath ? ` → ${humanizeStatePath(effect.resultPath)}` : ''}`;
+    case 'no_feedback':
+      return `no feedback: ${effect.reason}`;
   }
 };
 
@@ -344,6 +346,12 @@ export const applyEffect = (
       }
       const nextSnapshot = writePath(current.snapshot, effect.resultPath, resolved);
       return { ...current, snapshot: nextSnapshot, applied: [...current.applied, record] };
+    }
+    case 'no_feedback': {
+      // A statement, not a behavior: "a blocked attempt shows nothing, on
+      // purpose". Recorded in the audit trail so the run shows the author's
+      // decision; no message, no event, no state.
+      return { ...current, applied: [...current.applied, record] };
     }
     default: {
       // An unrecognized effect type means malformed data slipped past the

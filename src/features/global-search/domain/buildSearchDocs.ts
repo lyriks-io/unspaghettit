@@ -66,6 +66,8 @@ const effectSummary = (effect: Effect): string => {
       return 'Advance time';
     case 'invoke_operation':
       return `Invoke ${effect.operation}`;
+    case 'no_feedback':
+      return `No feedback: ${effect.reason}`;
   }
 };
 

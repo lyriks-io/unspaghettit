@@ -1,5 +1,5 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
-import { committedActions } from '$features/behavior-model/domain/entities/Action';
+import { committedActions, effectiveActor } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import { isExpression, type Expression } from '$features/behavior-model/domain/value-objects/Expression';
@@ -324,7 +324,15 @@ const capabilityChecks = (
   const undeclaredEmissions = emittedEventsFromEffects.filter(
     (event) => !declaredEventNames.has(String(event))
   );
+  // Any on-block effect answers "what happens on a blocked run", a `no_feedback`
+  // one included: it is the author saying "nothing, on purpose", which is an
+  // answer. It therefore satisfies the check for every actor.
   const hasBlockedFallback = (action.onBlockedEffects ?? []).length > 0;
+  // The check asks what a PERSON sees when the action refuses. An action no
+  // person fires (system, schedule, event) has nobody to tell, so it is waived
+  // there instead of pushing authors to invent messages the product never shows.
+  const actor = effectiveActor(action);
+  const firedByAPerson = actor === 'user';
   const scenarioRelevantRole = (action.roles ?? []).some((role) =>
     ['primary', 'destructive', 'async', 'persistence'].includes(role)
   );
@@ -454,12 +462,18 @@ const capabilityChecks = (
       weight: 1,
       severity: 'recommended',
       passes:
+        !firedByAPerson ||
         action.rules.length === 0 ||
         hasBlockedFallback ||
         action.rules.some((rule) => rule.effect.type !== 'allow_action'),
       message:
-        'Add on-block effects when a blocked run should show a message, emit an audit event, or navigate.',
-      passLabel: action.rules.length === 0 ? 'No block paths' : 'Has block fallback effects',
+        'Add on-block effects when a blocked run should show a message, emit an audit event, or navigate. If a blocked attempt shows nothing on purpose, say so with a no_feedback on-block effect; if no person fires this action, set its actor (system, schedule or event).',
+      passLabel:
+        action.rules.length === 0
+          ? 'No block paths'
+          : !firedByAPerson && !hasBlockedFallback
+            ? `No person fires it (actor: ${actor}), nothing to show when blocked`
+            : 'Has block fallback effects',
       tab: 'actions'
     },
     {

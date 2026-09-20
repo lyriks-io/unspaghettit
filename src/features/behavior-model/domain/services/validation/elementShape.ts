@@ -1,6 +1,7 @@
 import type { Feature } from '../../entities/Feature';
+import { ALL_ACTION_ACTORS } from '../../entities/Action';
 import { ALL_ACTION_OUTCOME_KINDS } from '../../entities/ActionOutcome';
-import { ALL_EFFECT_TYPES } from '../../value-objects/Effect';
+import { ALL_EFFECT_TYPES, isOnBlockedOnlyEffectType } from '../../value-objects/Effect';
 import { ALL_OPERATORS, operatorRequiresRightOperand, type Operator } from '../../value-objects/Operator';
 
 /**
@@ -25,6 +26,8 @@ const KNOWN_EFFECT_TYPES = new Set<string>(ALL_EFFECT_TYPES);
 const effectTypeList = ALL_EFFECT_TYPES.join(', ');
 
 const OPERATOR_SET = new Set<string>(ALL_OPERATORS);
+
+const ACTOR_SET = new Set<string>(ALL_ACTION_ACTORS);
 
 const COMPOSITE_KINDS = new Set<string>(['all', 'any', 'not']);
 const QUANTIFIER_KINDS = new Set<string>(['all_match', 'any_match']);
@@ -190,10 +193,25 @@ const REQUIRED_EFFECT_FIELDS: Readonly<Record<string, readonly string[]>> = {
   advance_time: ['by'],
   // resultPath / resultValue are optional: an invoke_operation with neither is
   // a legitimate fire-and-forget call.
-  invoke_operation: ['dependencyId', 'operation']
+  invoke_operation: ['dependencyId', 'operation'],
+  // The reason is the whole point: a silence nobody explained is a forgotten
+  // message, which is what the blocked-run check exists to catch.
+  no_feedback: ['reason']
 };
 
-const checkEffect = (errors: string[], label: string, effect: unknown): void => {
+/**
+ * Where an effect sits. Most types are legal anywhere an effect is; a few only
+ * mean something on the blocked path (`no_feedback`), and written elsewhere
+ * they would be a success effect that does nothing, silently.
+ */
+type EffectSlot = 'onBlocked' | 'elsewhere';
+
+const checkEffect = (
+  errors: string[],
+  label: string,
+  effect: unknown,
+  slot: EffectSlot = 'elsewhere'
+): void => {
   if (!effect || typeof effect !== 'object') {
     errors.push(`${label}: effect must be an object, got ${JSON.stringify(effect)}.`);
     return;
@@ -215,10 +233,21 @@ const checkEffect = (errors: string[], label: string, effect: unknown): void => 
     );
     return;
   }
+  if (isOnBlockedOnlyEffectType(type) && slot !== 'onBlocked') {
+    errors.push(
+      `${label}: effect type "${type}" is only valid among an action's onBlocked effects (add_effect with onBlocked:true). It states that a blocked attempt shows nothing, on purpose; anywhere else it would be an effect that does nothing.`
+    );
+    return;
+  }
   for (const field of REQUIRED_EFFECT_FIELDS[type] ?? []) {
     if (raw[field] === undefined) {
       errors.push(`${label}: effect type "${type}" requires "${field}".`);
     }
+  }
+  if (type === 'no_feedback' && raw.reason !== undefined && !isText(raw.reason)) {
+    errors.push(
+      `${label}: effect type "no_feedback" needs a non-empty "reason" saying why a blocked attempt is silent.`
+    );
   }
 };
 
@@ -297,6 +326,14 @@ export const validateElementShapes = (feature: Feature): readonly string[] => {
     }
 
     for (const action of surface.actions) {
+      // Absent is legal (it reads as `user`, or `event` on a handler). A value
+      // outside the vocabulary would make every reader fall back differently.
+      const actor: unknown = action.actor;
+      if (actor !== undefined && (typeof actor !== 'string' || !ACTOR_SET.has(actor))) {
+        errors.push(
+          `Action ${action.id}: unknown actor ${JSON.stringify(actor)}. One of: ${ALL_ACTION_ACTORS.join(', ')} (omit it for a person-fired action).`
+        );
+      }
       for (const rule of action.rules) {
         checkRule(errors, `Rule ${rule.id} in action ${action.id}`, rule);
       }
@@ -308,7 +345,12 @@ export const validateElementShapes = (feature: Feature): readonly string[] => {
         checkEffect(errors, `Effect ${effect.id} in action ${action.id}`, effect);
       }
       for (const effect of action.onBlockedEffects ?? []) {
-        checkEffect(errors, `onBlockedEffect ${effect.id} in action ${action.id}`, effect);
+        checkEffect(
+          errors,
+          `onBlockedEffect ${effect.id} in action ${action.id}`,
+          effect,
+          'onBlocked'
+        );
       }
       for (const outcome of action.outcomes ?? []) {
         const label = `Outcome ${outcome.id} in action ${action.id}`;

@@ -223,6 +223,43 @@ describe('simulate', () => {
     expect(result.transition).toBe('upgrade-prompt');
   });
 
+  it('treats a no_feedback onBlocked effect as a no-op: nothing shown, emitted, moved or written', () => {
+    const blockRule = {
+      id: asRuleId('r-block'),
+      category: 'permissions' as const,
+      condition: { left: asStatePath('user.role'), operator: 'equals' as const, right: 'viewer' },
+      effect: {
+        id: asEffectId('e-block'),
+        type: 'block_action' as const,
+        reason: 'Viewer access. Cannot delete.'
+      }
+    };
+    const silent: Action = {
+      ...deleteSelection,
+      rules: [blockRule],
+      onBlockedEffects: [
+        { id: asEffectId('e-silent'), type: 'no_feedback', reason: 'Fired by a sensor.' }
+      ]
+    };
+    const bare: Action = { ...deleteSelection, rules: [blockRule] };
+    const surface = buildCanvasSurface();
+    const snapshot = {
+      ...buildInitialSnapshot(surface.stateDefinitions),
+      user: { role: 'viewer' }
+    };
+    const withIt = simulate({ surface, action: silent, snapshot, parameters: {} });
+    const without = simulate({ surface, action: bare, snapshot, parameters: {} });
+
+    expect(withIt.status).toBe('blocked');
+    // Exactly what the same blocked run yields without it...
+    expect(withIt.messages).toEqual(without.messages);
+    expect(withIt.emittedEvents).toEqual(without.emittedEvents);
+    expect(withIt.transition).toBe(without.transition);
+    expect(withIt.nextState).toEqual(without.nextState);
+    // ...apart from the audit trail, which records the author's decision.
+    expect(withIt.appliedEffects.map((e) => e.type)).toContain('no_feedback');
+  });
+
   it('fills missing snapshot paths with their stateDefinition defaults before evaluating', () => {
     // Surface defines selection.count default = 0 and an invariant count >= 0.
     // If the caller passes an empty snapshot (no selection.count), the simulator

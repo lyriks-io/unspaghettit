@@ -9,6 +9,7 @@ import {
   asOutcomeId,
   asSurfaceId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
+import { buildActionActor, buildActionActorPatch } from '../_entity_builders';
 import { normalizeEvolutionLoose } from '../_evolution';
 import {
   directionDelta,
@@ -125,6 +126,8 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
         ...(typeof op.triggeredByEvent === 'string' && op.triggeredByEvent.length > 0
           ? { triggeredByEvent: op.triggeredByEvent as Action['triggeredByEvent'] }
           : {}),
+        // Who fires it (user | system | schedule | event). See Action.actor.
+        ...buildActionActor(op),
         // Mark a brand-new action as a proposed Evolution (dashed
         // placeholder). See Action.evolution doc / propose_evolution.
         ...(op.evolution !== undefined && op.evolution !== null
@@ -172,6 +175,8 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
           : typeof o.triggeredByEvent === 'string'
             ? { triggeredByEvent: o.triggeredByEvent as Action['triggeredByEvent'] }
             : {}),
+        // null clears the actor back to its derived default; omit to keep it.
+        ...buildActionActorPatch(o),
         // null accepts the proposal (clears the marker); an object sets
         // it; omit to leave the evolution state untouched.
         ...(o.evolution === null
@@ -188,6 +193,7 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
         'bypassInvariants',
         'invariantRelaxation',
         'triggeredByEvent',
+        'actor',
         'evolution'
       ]);
       exp = T.updateAction(

@@ -1,4 +1,8 @@
-import type { Evolution } from '$features/behavior-model/domain/entities/Action';
+import {
+  effectiveActor,
+  type ActionActor,
+  type Evolution
+} from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type {
   ActionId,
@@ -13,6 +17,12 @@ export type ActionListing = {
   readonly surfaceName: string;
   readonly parameterCount: number;
   readonly ruleCount: number;
+  /**
+   * Who fires the action, defaults applied (see `effectiveActor`): always
+   * present, so a row never leaves the reader guessing between "a person" and
+   * "not said".
+   */
+  readonly actor: ActionActor;
   /**
    * Present only when this action is a proposed Evolution (dashed placeholder).
    * Lets the LLM tell suggestions apart from committed behavior in the cheap
@@ -41,6 +51,7 @@ export const listActionsTool = (
         surfaceName: surface.name,
         parameterCount: cap.parameters.length,
         ruleCount: cap.rules.length,
+        actor: effectiveActor(cap),
         ...(cap.evolution ? { evolution: cap.evolution } : {})
       });
     }

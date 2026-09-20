@@ -69,7 +69,9 @@ const hasBlockingValidationRule = (action: Action): boolean =>
 const hasAnyEffect = (action: Action): boolean =>
   action.effects.length > 0 ||
   action.rules.length > 0 ||
-  (action.onBlockedEffects?.length ?? 0) > 0;
+  // `no_feedback` is the statement "a blocked attempt shows nothing": it answers
+  // the blocked-run check, it is not something the action does.
+  (action.onBlockedEffects ?? []).some((effect) => effect.type !== 'no_feedback');
 
 /**
  * Every event name this action actually emits at runtime, gathered from

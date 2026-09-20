@@ -1,3 +1,4 @@
+import { effectiveActor, type ActionActor } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { DevContext } from '$features/behavior-model/domain/value-objects/DevContext';
 import { humanizeStatePath } from '$features/behavior-model/domain/value-objects/humanize';
@@ -11,6 +12,8 @@ import type {
 export type ActionIndexEntry = {
   readonly id: ActionId;
   readonly name: string;
+  /** Who fires it, defaults applied (see `effectiveActor`). */
+  readonly actor: ActionActor;
 };
 
 export type StateDefinitionIndexEntry = {
@@ -68,7 +71,7 @@ export const getFeatureIndexTool = (feature: Feature): FeatureIndex => ({
     ruleCount: s.rules.length,
     invariantCount: s.invariants.length,
     transitionCount: s.transitions.length,
-    actions: s.actions.map((c) => ({ id: c.id, name: c.name })),
+    actions: s.actions.map((c) => ({ id: c.id, name: c.name, actor: effectiveActor(c) })),
     stateDefinitions: s.stateDefinitions.map((d) => ({ id: d.id, path: String(d.path) }))
   })),
   personas: feature.personas.map((p) => ({ id: p.id, name: p.name })),

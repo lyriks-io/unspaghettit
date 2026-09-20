@@ -111,6 +111,18 @@ describe('nextElementVersions', () => {
     expect(after['surface:s1']).toBe('2026-06-01T00:00:00.000Z');
   });
 
+  it('moves the action stamp, and only it, when the actor changes', () => {
+    const before = stampElementVersions(null, build(), '2026-06-01T00:00:00.000Z');
+    const reassigned = JSON.parse(JSON.stringify(before)) as Feature;
+    (reassigned.surfaces[0]!.actions[0] as unknown as Record<string, unknown>).actor = 'system';
+    const after = nextElementVersions(before, reassigned, NOW);
+
+    expect(after['action:a1']).toBe(NOW);
+    expect(after['rule:r1']).toBe('2026-06-01T00:00:00.000Z');
+    expect(after['scenario:sc1']).toBe('2026-06-01T00:00:00.000Z');
+    expect(after['surface:s1']).toBe('2026-06-01T00:00:00.000Z');
+  });
+
   it('stamps a brand-new element with the write time', () => {
     const before = stampElementVersions(null, build(), '2026-06-01T00:00:00.000Z');
     const grown = JSON.parse(JSON.stringify(before)) as Feature;

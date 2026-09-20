@@ -10,9 +10,10 @@ describe('getFeatureIndexTool', () => {
     expect(idx.id).toBe(storefrontFeature.id);
     expect(idx.surfaces.length).toBe(storefrontFeature.surfaces.length);
     for (const s of idx.surfaces) {
-      // Action listings carry only id + name, never bodies.
+      // Action listings carry id + name + who fires it, never bodies.
       for (const c of s.actions) {
-        expect(Object.keys(c).sort()).toEqual(['id', 'name']);
+        expect(Object.keys(c).sort()).toEqual(['actor', 'id', 'name']);
+        expect(['user', 'system', 'schedule', 'event']).toContain(c.actor);
       }
       expect(typeof s.stateCount).toBe('number');
       expect(typeof s.ruleCount).toBe('number');

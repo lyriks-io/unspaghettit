@@ -159,6 +159,8 @@ export const newEffect = (ids: IdGenerator, type: Effect['type']): Effect => {
         dependencyId: asDependencyId(''),
         operation: ''
       };
+    case 'no_feedback':
+      return { id: asEffectId(ids()), type: 'no_feedback', reason: '' };
   }
 };
 

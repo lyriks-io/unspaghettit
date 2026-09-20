@@ -1,4 +1,8 @@
-import type { Action } from '$features/behavior-model/domain/entities/Action';
+import {
+  effectiveActor,
+  type Action,
+  type ActionActor
+} from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { StateDefinition } from '$features/behavior-model/domain/entities/StateDefinition';
@@ -18,6 +22,12 @@ export type FocusedAction = {
   readonly surfaceId: SurfaceId;
   readonly surfaceName: string;
   readonly action: Action;
+  /**
+   * Who fires the action, defaults applied (see `effectiveActor`). Reported
+   * beside the stored action rather than written into it, so `action.actor`
+   * still says what the author declared (or nothing).
+   */
+  readonly actor: ActionActor;
   readonly linkedStateDefinitions: readonly StateDefinition[];
   readonly enclosingInvariants: readonly Invariant[];
   readonly devContext?: DevContext;
@@ -72,6 +82,7 @@ export const getActionTool = (
       surfaceId: surface.id,
       surfaceName: surface.name,
       action,
+      actor: effectiveActor(action),
       linkedStateDefinitions,
       enclosingInvariants,
       ...(devContext ? { devContext } : {})
@@ -90,6 +101,8 @@ export type BulkActionEntry = {
   readonly surfaceId: SurfaceId;
   readonly surfaceName: string;
   readonly action: Action;
+  /** Who fires the action, defaults applied (see `effectiveActor`). */
+  readonly actor: ActionActor;
   /** Ids of state defs in the aggregated `linkedStateDefinitions[]` that this action touches. */
   readonly linkedStateDefinitionIds: readonly string[];
   /** Ids of invariants in the aggregated `enclosingInvariants[]` that enclose this action. */
@@ -143,6 +156,7 @@ export const getActionsTool = (
         surfaceId: surface.id,
         surfaceName: surface.name,
         action,
+        actor: effectiveActor(action),
         linkedStateDefinitionIds: myStateDefs.map((d) => String(d.id)),
         enclosingInvariantIds: myInvariants.map((inv) => String(inv.id))
       });
