@@ -5,9 +5,14 @@ import type { Rule } from '$features/behavior-model/domain/entities/Rule';
 import type { ValueSet } from '$features/behavior-model/domain/entities/ValueSet';
 import { effectiveEnumValues } from '$features/behavior-model/domain/services/EnumValues';
 import { fillDefaults, type ParameterValues } from '$features/behavior-model/domain/services/ParameterValidator';
+import { evaluateCondition } from '$features/behavior-model/domain/services/RuleEvaluator';
+import { isExpression } from '$features/behavior-model/domain/value-objects/Expression';
 import {
   flattenLeafConditions,
+  isCompositeCondition,
   isParamLeft,
+  isQuantifierCondition,
+  type LeafRuleCondition,
   type LeftOperand,
   type RuleCondition
 } from '$features/behavior-model/domain/value-objects/RuleCondition';
@@ -31,9 +36,14 @@ import type { StateValue } from '$features/behavior-model/domain/value-objects/S
  *                 domain (we cannot invent a meaningful email / free-form
  *                 string), so the action stays honestly "not explored".
  *
- * The cartesian product is capped so a wide action can't explode the search;
- * when capped, the caller marks the run truncated so a green result is never
- * mistaken for exhaustive.
+ * A grid that fits under the cap is explored whole. A wider one is SAMPLED so a
+ * wide action can't explode the search, and the sample is a COVERING one: a base
+ * combination plus one-at-a-time variations, so every value of every parameter
+ * is tried at least once. The base takes, for each parameter, a value that does
+ * not trip a block rule we can judge (its default when that qualifies), so the
+ * sample is not spent on combinations the action's own rules refuse. When
+ * sampled, the caller marks the run truncated so a green result is never
+ * mistaken for exhaustive, and `coverage` says how much of the grid was tried.
  */
 export type ParameterCombinations = {
   /** False when a required parameter has no enumerable domain — the action is skipped. */
@@ -43,6 +53,20 @@ export type ParameterCombinations = {
   readonly combos: readonly ParameterValues[];
   /** True when the full product exceeded the cap and only a sample is returned. */
   readonly capped: boolean;
+  /**
+   * How much of the grid `combos` stands for. Absent when not explorable.
+   * `covering` tries every VALUE of every parameter, not every combination, so
+   * a guard that needs two non-base values at once can still go untried.
+   */
+  readonly coverage?: ParameterCoverage;
+};
+
+export type ParameterCoverage = {
+  /** Size of the full cartesian product. */
+  readonly fullGridSize: number;
+  /** Combinations actually returned. Exceeds the cap when covering needs it. */
+  readonly sampled: number;
+  readonly strategy: 'full' | 'covering';
 };
 
 export const DEFAULT_MAX_COMBOS = 12;
@@ -160,6 +184,82 @@ const parameterValues = (
   return parameter.required ? 'unbounded' : [undefined as unknown as StateValue];
 };
 
+// Leaves that reference this parameter, each with its polarity: a leaf under an
+// odd number of `not` holds the rule open when it is FALSE. Quantifier bodies
+// read a scoped element binding, never a parameter, so they are not descended.
+const polarizedLeaves = (
+  condition: RuleCondition | undefined,
+  parameter: Parameter,
+  negated = false
+): readonly { readonly leaf: LeafRuleCondition; readonly negated: boolean }[] => {
+  if (!condition || isQuantifierCondition(condition)) return [];
+  if (isCompositeCondition(condition)) {
+    return condition.kind === 'not'
+      ? polarizedLeaves(condition.condition, parameter, !negated)
+      : condition.conditions.flatMap((sub) => polarizedLeaves(sub, parameter, negated));
+  }
+  return leafReferencesParameter(condition.left, parameter) ? [{ leaf: condition, negated }] : [];
+};
+
+// Whether `value` lands on the blocked side of a block rule. Judged leaf by
+// leaf, no solver: a leaf counts only when its right operand is a literal (or
+// the operator takes none), because anything else needs a snapshot we do not
+// have while sampling. Such a leaf is skipped, which keeps the current order.
+// Parameter binds are applied before rules run, so a leaf on the bound state
+// path sees the parameter value exactly as a param-left leaf does.
+const tripsBlockRule = (
+  parameter: Parameter,
+  value: StateValue,
+  blockRules: readonly Rule[]
+): boolean =>
+  blockRules.some((rule) =>
+    polarizedLeaves(rule.condition, parameter).some(({ leaf, negated }) => {
+      if (isExpression(leaf.right) && leaf.right.kind !== 'literal') return false;
+      const held = evaluateCondition(
+        { ...leaf, left: { kind: 'param', name: parameter.name } },
+        {},
+        { [parameter.name]: value }
+      );
+      return held !== negated;
+    })
+  );
+
+// Candidate values reordered for the covering sample's BASE: values on the
+// allowed side of every judgeable block rule first, the default leading its
+// group. Stable otherwise, so the order stays the mined one where nothing can
+// be judged. Without this the base inherits the first mined value, and for a
+// threshold T that is T-1: the blocked side of the very rule that produced it.
+const baseFirst = (
+  parameter: Parameter,
+  values: readonly StateValue[],
+  blockRules: readonly Rule[]
+): readonly StateValue[] => {
+  const rank = (value: StateValue): number =>
+    (tripsBlockRule(parameter, value, blockRules) ? 2 : 0) +
+    (parameter.defaultValue !== undefined && value === parameter.defaultValue ? 0 : 1);
+  return values
+    .map((value, order) => ({ value, order, rank: rank(value) }))
+    .sort((a, b) => a.rank - b.rank || a.order - b.order)
+    .map((entry) => entry.value);
+};
+
+// Covering sample of a grid too wide to enumerate: the base combination, then
+// one variation per remaining value of each parameter. Linear in the number of
+// values (1 + the sum of each domain size minus one), so it is never dropped to
+// fit the cap: losing a value is what made a wide action look dead.
+const coveringSample = (
+  parameters: readonly Parameter[],
+  ordered: readonly (readonly StateValue[])[]
+): Record<string, StateValue>[] => {
+  const base: Record<string, StateValue> = Object.fromEntries(
+    parameters.map((parameter, i) => [parameter.name, ordered[i]![0] as StateValue])
+  );
+  const variations = parameters.flatMap((parameter, i) =>
+    ordered[i]!.slice(1).map((value) => ({ ...base, [parameter.name]: value }))
+  );
+  return [base, ...variations];
+};
+
 export const parameterCombinations = (
   action: Action,
   valueSets: readonly ValueSet[] | undefined,
@@ -193,21 +293,31 @@ export const parameterCombinations = (
   const total = perParameter.reduce((acc, values) => acc * Math.max(1, values.length), 1);
   const capped = total > maxCombos;
 
-  // Cartesian product, stopping once we hit the cap. The prefix we keep is a
-  // deterministic sample of the full grid.
+  // Under the cap: the full cartesian product, in grid order. Over it: a
+  // covering sample instead of the grid's prefix, which pinned the early
+  // parameters to their first value and only ever varied the last ones.
+  // Deterministic either way: same action, same combinations.
   let raw: Record<string, StateValue>[] = [{}];
-  for (let i = 0; i < action.parameters.length; i++) {
-    const parameter = action.parameters[i]!;
-    const values = perParameter[i]!;
-    const next: Record<string, StateValue>[] = [];
-    for (const base of raw) {
-      for (const value of values) {
-        next.push({ ...base, [parameter.name]: value });
-        if (next.length >= maxCombos) break;
+  if (capped) {
+    // Only rules that can refuse THIS action while it runs: its own and its
+    // surface's. Invariants are judged on the post-state, not on parameters.
+    const blockRules = [...action.rules, ...(context?.surfaceRules ?? [])].filter(
+      (rule) => rule.effect.type === 'block_action'
+    );
+    raw = coveringSample(
+      action.parameters,
+      perParameter.map((values, i) => baseFirst(action.parameters[i]!, values, blockRules))
+    );
+  } else {
+    for (let i = 0; i < action.parameters.length; i++) {
+      const parameter = action.parameters[i]!;
+      const values = perParameter[i]!;
+      const next: Record<string, StateValue>[] = [];
+      for (const base of raw) {
+        for (const value of values) next.push({ ...base, [parameter.name]: value });
       }
-      if (next.length >= maxCombos) break;
+      raw = next;
     }
-    raw = next;
   }
   if (raw.length === 0) raw = [{}];
 
@@ -220,5 +330,14 @@ export const parameterCombinations = (
     )
   );
 
-  return { explorable: true, combos, capped };
+  return {
+    explorable: true,
+    combos,
+    capped,
+    coverage: {
+      fullGridSize: total,
+      sampled: combos.length,
+      strategy: capped ? 'covering' : 'full'
+    }
+  };
 };

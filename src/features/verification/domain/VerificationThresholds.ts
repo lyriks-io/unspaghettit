@@ -15,7 +15,9 @@ export type VerificationThresholds = {
   /**
    * When true, an action never observed firing within the model-check bound
    * fails verification. Off by default: "not fired within N steps" is not a
-   * proof of deadness, so it warns rather than fails unless opted in.
+   * proof of deadness, so it warns rather than fails unless opted in. Gates on
+   * `deadActions` only: what a TRUNCATED search left unreached never fails a
+   * verdict here (`failOnTruncatedExploration` is the gate for that).
    */
   readonly failOnDeadActions: boolean;
   /** When false, stale implementation entries fail verification. Default true → warn only. */

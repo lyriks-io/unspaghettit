@@ -37,6 +37,8 @@ const exploration = (partial: Partial<ExplorationReport> = {}): ExplorationRepor
   truncated: false,
   invariantViolations: [],
   deadActions: [],
+  unreachedActions: [],
+  sampledActions: [],
   deadlockStates: 0,
   skippedActions: [],
   goalResults: [],
@@ -188,6 +190,66 @@ describe('aggregateFeatureVerdict', () => {
     }));
     expect(strict.passed).toBe(false);
     expect(checkById(strict, 'bounds')?.status).toBe('fail');
+  });
+
+  it('fails on a dead action only when gated, and only for a proven one', () => {
+    const dead = exploration({
+      deadActions: [{ surfaceId: 's', actionId: 'a', actionName: 'Locked' }]
+    });
+    expect(checkById(aggregateFeatureVerdict(base({ exploration: dead })), 'dead-actions')?.status).toBe('warn');
+
+    const strict = aggregateFeatureVerdict(base({
+      exploration: dead,
+      thresholds: withThresholdDefaults({ failOnDeadActions: true })
+    }));
+    expect(strict.passed).toBe(false);
+    expect(checkById(strict, 'dead-actions')?.items).toEqual(['Locked']);
+  });
+
+  it('reports unreached actions apart from dead ones and never fails on them', () => {
+    const cut = exploration({
+      truncated: true,
+      unreachedActions: [{
+        surfaceId: 's',
+        actionId: 'a',
+        actionName: 'Publish',
+        reason: 'exploration stopped at 2000 states (depth 4 of 6)'
+      }]
+    });
+    // Every gate that could touch it is on, except the truncation gate itself.
+    const verdict = aggregateFeatureVerdict(base({
+      exploration: cut,
+      thresholds: withThresholdDefaults({ failOnDeadActions: true, failOnSkippedActions: true })
+    }));
+
+    expect(verdict.passed).toBe(true);
+    const unreached = checkById(verdict, 'unreached-actions');
+    expect(unreached?.status).toBe('warn');
+    expect(unreached?.detail).toMatch(/not reached within bounds/);
+    expect(unreached?.items).toEqual(['Publish: exploration stopped at 2000 states (depth 4 of 6)']);
+    // "None" must not read as a finding when the search could not prove any.
+    expect(checkById(verdict, 'dead-actions')?.status).toBe('pass');
+    expect(checkById(verdict, 'dead-actions')?.detail).toMatch(/truncated search cannot/);
+  });
+
+  it('omits the unreached check when the search reached everything', () => {
+    const verdict = aggregateFeatureVerdict(base({ exploration: exploration() }));
+    expect(checkById(verdict, 'unreached-actions')).toBeUndefined();
+    expect(checkById(verdict, 'dead-actions')?.detail).toBe('none within bounds');
+  });
+
+  it('names the sampled parameter grids on the bounds check', () => {
+    const verdict = aggregateFeatureVerdict(base({
+      exploration: exploration({
+        truncated: true,
+        sampledActions: [
+          { surfaceId: 's', actionId: 'a', actionName: 'Save draft', fullGridSize: 864, sampled: 16 }
+        ]
+      })
+    }));
+    expect(checkById(verdict, 'bounds')?.items).toEqual([
+      'Save draft: parameter grid sampled (16 of 864 combinations)'
+    ]);
   });
 
   it('reports skipped actions and supports a strict failure gate', () => {

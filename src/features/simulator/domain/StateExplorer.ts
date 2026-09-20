@@ -14,7 +14,11 @@ import { evaluateCondition } from '$features/behavior-model/domain/services/Rule
 import { buildInitialSnapshot } from '$features/behavior-model/domain/services/StateSnapshot';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
 import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
-import { DEFAULT_MAX_COMBOS, parameterCombinations } from './ParameterDomains';
+import {
+  DEFAULT_MAX_COMBOS,
+  parameterCombinations,
+  type ParameterCoverage
+} from './ParameterDomains';
 import { simulate } from './SimulatorEngine';
 
 /**
@@ -35,6 +39,10 @@ import { simulate } from './SimulatorEngine';
  * required parameter has no default and no enumerable domain, and the run is
  * marked truncated when a parameter grid is capped. Those caveats are surfaced
  * in the report so a green result is never mistaken for more than it is.
+ *
+ * A truncated run never calls an action dead: what did not fire is reported as
+ * UNREACHED, with the bound that cut the search. "Dead" is kept for a search
+ * that expanded every reachable state up to the depth bound.
  */
 export type ExplorerOptions = {
   /** Max action-steps from the initial state. */
@@ -73,6 +81,19 @@ export type DeadAction = {
   readonly actionName: string;
 };
 
+/**
+ * An action never observed firing in a search that was cut short. Same row as
+ * a dead action, but it proves nothing: the state that enables it may simply
+ * lie past the cut.
+ */
+export type UnreachedAction = DeadAction & {
+  /** Which bound cut the search, e.g. "exploration stopped at 2000 states". */
+  readonly reason: string;
+};
+
+/** An action whose parameter grid was too wide to enumerate, and how much of it ran. */
+export type SampledAction = DeadAction & Pick<ParameterCoverage, 'fullGridSize' | 'sampled'>;
+
 export type SkippedAction = {
   readonly surfaceId: string;
   readonly actionId: string;
@@ -100,11 +121,23 @@ export type GoalResult = {
 export type ExplorationReport = {
   readonly statesExplored: number;
   readonly depthReached: number;
-  /** True if a cap (depth or states) cut the search short — findings are then "within bounds". */
+  /** True if a cap (the states cap, or a sampled parameter grid) cut the search short — findings are then "within bounds". */
   readonly truncated: boolean;
   readonly invariantViolations: readonly InvariantCounterexample[];
-  /** Non-evolution actions never observed firing successfully within the bound. */
+  /**
+   * Non-evolution actions that never fired in a search that was NOT truncated:
+   * every reachable state up to `maxDepth` was expanded with whole parameter
+   * grids. Always empty when `truncated` is true (see `unreachedActions`). Still
+   * bounded by depth: an action that needs more than `maxDepth` steps reads dead.
+   */
   readonly deadActions: readonly DeadAction[];
+  /**
+   * Actions that never fired in a TRUNCATED search: not reached within bounds,
+   * which is not evidence of a dead action. Always empty when not truncated.
+   */
+  readonly unreachedActions: readonly UnreachedAction[];
+  /** Actions explored on a covering sample of their parameter grid, not all of it. */
+  readonly sampledActions: readonly SampledAction[];
   /** Count of reachable states from which no action could fire (potential dead-ends). */
   readonly deadlockStates: number;
   readonly skippedActions: readonly SkippedAction[];
@@ -163,7 +196,7 @@ export const exploreStateSpace = (
   // so they read as "not explored", never as "dead".
   const moves: Move[] = [];
   const skippedActions: SkippedAction[] = [];
-  let combosCapped = false;
+  const sampledActions: SampledAction[] = [];
   for (const surface of feature.surfaces) {
     for (const action of surface.actions) {
       if (isEvolution(action)) continue;
@@ -181,7 +214,15 @@ export const exploreStateSpace = (
         });
         continue;
       }
-      if (domains.capped) combosCapped = true;
+      if (domains.capped && domains.coverage) {
+        sampledActions.push({
+          surfaceId: String(surface.id),
+          actionId: String(action.id),
+          actionName: action.name,
+          fullGridSize: domains.coverage.fullGridSize,
+          sampled: domains.coverage.sampled
+        });
+      }
       moves.push({ surface, action, combos: domains.combos });
     }
   }
@@ -302,13 +343,39 @@ export const exploreStateSpace = (
     if (!anySuccess) deadlockStates += 1;
   }
 
-  const deadActions: DeadAction[] = moves
+  const neverFired: DeadAction[] = moves
     .filter((m) => !firedActions.has(String(m.action.id)))
     .map((m) => ({
       surfaceId: String(m.surface.id),
       actionId: String(m.action.id),
       actionName: m.action.name
     }));
+
+  // Only an exhaustive search can call an action dead. Cut short, the state
+  // that enables it may lie past the cut, so the same rows are reported as
+  // unreached, each saying which bound hit.
+  const combosCapped = sampledActions.length > 0;
+  const cutShort = truncated || combosCapped;
+  const sampledById = new Map(sampledActions.map((a) => [a.actionId, a]));
+  const unreachedReason = (actionId: string): string => {
+    const own = sampledById.get(actionId);
+    return [
+      truncated
+        ? `exploration stopped at ${statesExplored} states (depth ${depthReached} of ${maxDepth})`
+        : null,
+      own
+        ? `only ${own.sampled} of its ${own.fullGridSize} parameter combinations were tried`
+        : combosCapped
+          ? 'another action ran on a sampled parameter grid'
+          : null
+    ]
+      .filter((part): part is string => part !== null)
+      .join('; ');
+  };
+  const deadActions: DeadAction[] = cutShort ? [] : neverFired;
+  const unreachedActions: UnreachedAction[] = cutShort
+    ? neverFired.map((a) => ({ ...a, reason: unreachedReason(a.actionId) }))
+    : [];
 
   const goalResults: GoalResult[] = goals.map((goal) => {
     const satisfyingKeys = goalSatisfyingKeys.get(String(goal.id))!;
@@ -344,9 +411,11 @@ export const exploreStateSpace = (
     depthReached,
     // A capped parameter grid means some combinations were never tried, so the
     // result is bounded in the same honest sense as a depth/state cutoff.
-    truncated: truncated || combosCapped,
+    truncated: cutShort,
     invariantViolations: violations,
     deadActions,
+    unreachedActions,
+    sampledActions,
     deadlockStates,
     skippedActions,
     goalResults

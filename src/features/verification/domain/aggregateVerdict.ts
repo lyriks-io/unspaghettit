@@ -171,7 +171,16 @@ const deadActionsCheck = (
   thresholds: VerificationThresholds
 ): VerdictCheck => {
   if (exploration.deadActions.length === 0) {
-    return { id: 'dead-actions', label: 'Dead actions', status: 'pass', detail: 'none within bounds' };
+    return {
+      id: 'dead-actions',
+      label: 'Dead actions',
+      status: 'pass',
+      // A truncated search lists no dead action by construction, so "none" must
+      // not read as a finding there.
+      detail: exploration.truncated
+        ? 'none proven: a truncated search cannot call an action dead'
+        : 'none within bounds'
+    };
   }
   return {
     id: 'dead-actions',
@@ -182,6 +191,19 @@ const deadActionsCheck = (
   };
 };
 
+/**
+ * Actions a truncated search never saw fire. Advisory whatever the thresholds:
+ * they are not evidence of a defect, and strict mode already fails the
+ * truncation itself (`failOnTruncatedExploration`).
+ */
+const unreachedActionsCheck = (exploration: ExplorationReport): VerdictCheck => ({
+  id: 'unreached-actions',
+  label: 'Unreached actions',
+  status: 'warn',
+  detail: `${exploration.unreachedActions.length} action(s) not reached within bounds (not proven dead)`,
+  items: exploration.unreachedActions.map((a) => `${a.actionName}: ${a.reason}`)
+});
+
 const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
   const { scenarios, maturity, exploration, reachability, drift, deadHandlers, verifiedCoverage, thresholds } =
     input;
@@ -191,6 +213,7 @@ const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
     checks.push(invariantsCheck(exploration, thresholds));
     if (exploration.goalResults.length > 0) checks.push(livenessCheck(exploration, thresholds));
     checks.push(deadActionsCheck(exploration, thresholds));
+    if (exploration.unreachedActions.length > 0) checks.push(unreachedActionsCheck(exploration));
     if (exploration.skippedActions.length > 0) {
       checks.push({
         id: 'skipped-actions',
@@ -213,7 +236,15 @@ const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
         id: 'bounds',
         label: 'Search bounds',
         status: thresholds.failOnTruncatedExploration ? 'fail' : 'warn',
-        detail: 'model check truncated — findings are "within bounds", not a proof. Raise maxDepth/maxStates to widen.'
+        detail: 'model check truncated — findings are "within bounds", not a proof. Raise maxDepth/maxStates to widen.',
+        ...(exploration.sampledActions.length > 0
+          ? {
+              items: exploration.sampledActions.map(
+                (a) =>
+                  `${a.actionName}: parameter grid sampled (${a.sampled} of ${a.fullGridSize} combinations)`
+              )
+            }
+          : {})
       });
     }
   }

@@ -214,6 +214,175 @@ describe('exploreStateSpace', () => {
   });
 });
 
+describe('exploreStateSpace: dead versus unreached actions', () => {
+  const locked: Action = {
+    id: asActionId('locked'),
+    name: 'locked',
+    intent: 'an action that is always blocked',
+    parameters: [],
+    requiredStates: [],
+    rules: [
+      {
+        id: asRuleId('always-block'),
+        category: 'business',
+        effect: { id: asEffectId('e-blk'), type: 'block_action', reason: 'never allowed' }
+      }
+    ],
+    invariants: [],
+    effects: [],
+    emittedEvents: [],
+    transitions: []
+  };
+
+  it('calls nothing dead when the state cap cut the search, and says which bound hit', () => {
+    // `locked` IS dead, but a search stopped at 5 states is in no position to say so.
+    const feature = featureWith(countSurface([incr, locked], []));
+    const report = exploreStateSpace(feature, { maxDepth: 1000, maxStates: 5 });
+
+    expect(report.truncated).toBe(true);
+    expect(report.deadActions).toEqual([]);
+    expect(report.unreachedActions).toEqual([
+      {
+        surfaceId: 's',
+        actionId: 'locked',
+        actionName: 'locked',
+        reason: 'exploration stopped at 5 states (depth 4 of 1000)'
+      }
+    ]);
+  });
+
+  it('keeps unreached empty when the search was not truncated', () => {
+    const feature = featureWith(countSurface([incr, locked], []));
+    const report = exploreStateSpace(feature, { maxDepth: 3 });
+
+    expect(report.truncated).toBe(false);
+    expect(report.deadActions.map((a) => a.actionName)).toEqual(['locked']);
+    expect(report.unreachedActions).toEqual([]);
+    expect(report.sampledActions).toEqual([]);
+  });
+
+  // The field case. `Save draft` takes seven required parameters (864
+  // combinations) and writes each to state; `Review` and `Publish` are guarded
+  // by what it writes. The old prefix sample pinned `company` to -1, the blocked
+  // side of its own rule, so all three read as dead.
+  const kinds = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9'];
+  const flags = ['f0', 'f1', 'f2', 'f3', 'f4'];
+  const written = ['company', ...flags, 'kind'];
+
+  const follow = (id: string, guard: Action['rules'][number]['condition'], marks: string): Action => ({
+    id: asActionId(id),
+    name: id,
+    intent: `${id} the saved draft`,
+    parameters: [],
+    requiredStates: [],
+    rules: [
+      {
+        id: asRuleId(`${id}-guard`),
+        category: 'business',
+        condition: guard,
+        effect: { id: asEffectId(`${id}-blk`), type: 'block_action', reason: 'nothing saved yet' }
+      }
+    ],
+    invariants: [],
+    effects: [
+      { id: asEffectId(`${id}-mark`), type: 'set_state', path: asStatePath(marks), value: true }
+    ],
+    emittedEvents: [],
+    transitions: []
+  });
+
+  const draftSurface = (saveRules: Action['rules']): Surface => ({
+    id: asSurfaceId('s'),
+    name: 'Draft',
+    type: 'screen',
+    stateDefinitions: [
+      { id: asStateDefinitionId('d-company'), path: asStatePath('draft.company'), type: 'number', defaultValue: -1 },
+      ...flags.map((flag) => ({
+        id: asStateDefinitionId(`d-${flag}`),
+        path: asStatePath(`draft.${flag}`),
+        type: 'boolean' as const,
+        defaultValue: false
+      })),
+      {
+        id: asStateDefinitionId('d-kind'),
+        path: asStatePath('draft.kind'),
+        type: 'enum',
+        enumValues: ['none', ...kinds],
+        defaultValue: 'none'
+      },
+      { id: asStateDefinitionId('d-reviewed'), path: asStatePath('draft.reviewed'), type: 'boolean', defaultValue: false },
+      { id: asStateDefinitionId('d-published'), path: asStatePath('draft.published'), type: 'boolean', defaultValue: false }
+    ],
+    rules: [],
+    invariants: [],
+    transitions: [],
+    actions: [
+      {
+        id: asActionId('save'),
+        name: 'save',
+        intent: 'save the draft from the form',
+        parameters: [
+          { id: asParameterId('company'), name: 'company', type: 'number', required: true },
+          ...flags.map((flag) => ({
+            id: asParameterId(flag),
+            name: flag,
+            type: 'boolean' as const,
+            required: true
+          })),
+          { id: asParameterId('kind'), name: 'kind', type: 'enum', required: true, enumValues: kinds }
+        ],
+        requiredStates: [],
+        rules: saveRules,
+        invariants: [],
+        effects: written.map((name) => ({
+          id: asEffectId(`e-${name}`),
+          type: 'set_state' as const,
+          path: asStatePath(`draft.${name}`),
+          value: { kind: 'param' as const, name }
+        })),
+        emittedEvents: [],
+        transitions: []
+      },
+      follow('review', { left: asStatePath('draft.company'), operator: 'lower_than', right: 0 }, 'draft.reviewed'),
+      follow('publish', { left: asStatePath('draft.kind'), operator: 'equals', right: 'none' }, 'draft.published')
+    ]
+  });
+
+  const companyFloor: Action['rules'][number] = {
+    id: asRuleId('company-floor'),
+    category: 'business',
+    condition: { left: { kind: 'param', name: 'company' }, operator: 'lower_than', right: 0 },
+    effect: { id: asEffectId('e-floor'), type: 'block_action', reason: 'company must not be negative' }
+  };
+
+  it('fires a wide action and the actions that depend on what it writes', () => {
+    const report = exploreStateSpace(featureWith(draftSurface([companyFloor])));
+
+    expect(report.deadActions).toEqual([]);
+    expect(report.unreachedActions).toEqual([]);
+    // Honest about the sample: the run is bounded, and says by how much.
+    expect(report.truncated).toBe(true);
+    expect(report.sampledActions).toEqual([
+      { surfaceId: 's', actionId: 'save', actionName: 'save', fullGridSize: 864, sampled: 16 }
+    ]);
+  });
+
+  it('tells a sampled action that never fired how little of its grid was tried', () => {
+    const alwaysBlocked: Action['rules'][number] = {
+      id: asRuleId('never'),
+      category: 'business',
+      effect: { id: asEffectId('e-never'), type: 'block_action', reason: 'never allowed' }
+    };
+    const report = exploreStateSpace(featureWith(draftSurface([companyFloor, alwaysBlocked])));
+
+    expect(report.deadActions).toEqual([]);
+    const reasons = new Map(report.unreachedActions.map((a) => [a.actionName, a.reason]));
+    expect(reasons.get('save')).toBe('only 16 of its 864 parameter combinations were tried');
+    expect(reasons.get('review')).toBe('another action ran on a sampled parameter grid');
+    expect(reasons.get('publish')).toBe('another action ran on a sampled parameter grid');
+  });
+});
+
 describe('exploreStateSpace — reachability goals', () => {
   const withGoals = (goals: NonNullable<Feature['reachabilityGoals']>): Feature => ({
     ...featureWith(countSurface([incr], [])),
