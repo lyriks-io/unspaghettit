@@ -156,6 +156,15 @@ Every update op also accepts its editable fields under \`patch:{...}\` instead o
   against (state definition, surface/feature invariant, surface rule, constant, value set, persona,
   event, entity, event handler). \`failed\` holds failing scenarios only. A failing scenario never
   rejects the batch; read it in the dry run, before committing.
+- Optimistic concurrency, opt-in: pass \`expectedUpdatedAt\` (the feature \`updatedAt\` you read) next to
+  \`operations\` or \`commit\`. When the loaded feature carries a different stamp, nothing is applied and
+  the answer is \`{ ok:false, conflict:true, expectedUpdatedAt, currentUpdatedAt, changedSince[], changedSinceTotal, errors[] }\`:
+  \`changedSince\` names the element keys (\`action:<id>\`, \`scenario:<id>\`, \`state:<path>\`, ...) stamped
+  after your read, newest first, at most 50. Re-read them, rebase, send again with the current stamp.
+  It guards the dry run, the direct apply and the commit by token (a token remembers the stamp of its
+  dry run and the commit re-checks it; an explicit \`expectedUpdatedAt\` on the commit wins). Omitted =
+  no check. Every successful answer carries \`previousUpdatedAt\` and \`updatedAt\` (equal on a dry run),
+  so batches chain without a read in between.
 
 Evaluation semantics (matters for scenario assertions and rule ordering):
 - Effects apply SEQUENTIALLY in the order written, and derived (computed) state is

@@ -141,6 +141,13 @@ constant, a value set, a persona, an event, an entity or an event handler runs t
 (scope "feature"). failed[] lists failing scenarios only, each with its reason. A failing
 scenario never rejects the batch: read scenarios.failed in the dry run, before you commit.
 
+Several writers on one feature: pass expectedUpdatedAt (the feature updatedAt you read) with the
+batch. If the feature moved in between, nothing is applied and the answer is a conflict
+{ ok:false, conflict:true, currentUpdatedAt, changedSince:[element keys], changedSinceTotal }
+naming what changed since your read: re-read those, rebase, send again. The dry run, the direct
+apply and the commit by token are all guarded, and every successful answer carries
+previousUpdatedAt and updatedAt so the next batch can be guarded without a read in between.
+
 ### transition_surface in a batch
 
 The transition_surface effect accepts targetRef (resolved to the surface ID created earlier

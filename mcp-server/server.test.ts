@@ -3061,6 +3061,233 @@ describe('MCP server', () => {
     });
   });
 
+  describe('apply_batch expectedUpdatedAt: refusing to overwrite what changed since it was read', () => {
+    type Answer = {
+      ok: boolean;
+      conflict?: boolean;
+      dryRun?: boolean;
+      committed?: boolean;
+      featureId?: string;
+      expectedUpdatedAt?: string;
+      currentUpdatedAt?: string;
+      changedSince?: readonly string[];
+      changedSinceTotal?: number;
+      errors?: readonly string[];
+      previousUpdatedAt?: string;
+      updatedAt?: string;
+      refs?: Record<string, string>;
+      commitToken?: string;
+    };
+
+    // Every write needs its own stamp here: under the fixed clock of `setup` two
+    // writers would stamp the feature identically and no conflict could be seen.
+    const setupTicking = async () => {
+      nextId = 0;
+      const start = Date.parse('2026-05-09T00:00:00.000Z');
+      let ticks = 0;
+      const repo = new InMemoryFeatureRepository();
+      const server = buildServer(repo, {
+        ids: fixedIds,
+        clock: () => new Date(start + 1000 * ticks++).toISOString()
+      });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: 'test-client', version: '0.0.0' });
+      await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+      const batch = async (args: Record<string, unknown>) =>
+        parseTextContent(await client.callTool({ name: 'apply_batch', arguments: args })) as Answer;
+
+      const created = parseTextContent(
+        await client.callTool({
+          name: 'create_feature',
+          arguments: { name: 'Footsteps', description: 'What a step sounds like.' }
+        })
+      ) as { id: string };
+      const featureId = created.id;
+      const built = await batch({
+        featureId,
+        operations: [
+          { kind: 'add_surface', ref: 'shore', name: 'Shore', type: 'custom', description: 'Where the player walks.' },
+          { kind: 'add_action', ref: 'step', surfaceRef: 'shore', name: 'Take a step', intent: 'The player takes one step.' }
+        ]
+      });
+      expect(built.ok).toBe(true);
+      const refs = built.refs!;
+
+      // The other writer: adds a scenario to the action, with no guard of its own.
+      const otherWriterAddsScenario = (name: string) =>
+        batch({
+          featureId,
+          operations: [
+            {
+              kind: 'add_scenario',
+              ref: 'theirs',
+              surfaceId: refs.shore,
+              actionId: refs.step,
+              name,
+              description: 'Authored by the other agent.'
+            }
+          ]
+        });
+      const rewriteIntent = (intent: string) => [
+        { kind: 'update_action', surfaceId: refs.shore, actionId: refs.step, intent }
+      ];
+      const intentOf = async () =>
+        (await repo.get(featureId as never))!.surfaces[0]!.actions[0]!.intent;
+
+      return { client, server, repo, batch, featureId, refs, readAt: built.updatedAt!, otherWriterAddsScenario, rewriteIntent, intentOf };
+    };
+
+    it('direct apply: refuses, names what changed, applies nothing, then chains on the stamps it answers', async () => {
+      const t = await setupTicking();
+      const theirs = await t.otherWriterAddsScenario('Wading is louder');
+      expect(theirs.ok).toBe(true);
+
+      const refused = await t.batch({
+        featureId: t.featureId,
+        expectedUpdatedAt: t.readAt,
+        operations: t.rewriteIntent('Overwritten blind.')
+      });
+
+      expect(refused).toMatchObject({
+        ok: false,
+        conflict: true,
+        expectedUpdatedAt: t.readAt,
+        currentUpdatedAt: theirs.updatedAt,
+        // Only the scenario moved: the action it hangs under keeps its own stamp.
+        changedSince: [`scenario:${theirs.refs!.theirs}`],
+        changedSinceTotal: 1
+      });
+      expect(refused.errors).toHaveLength(1);
+      expect(refused.errors![0]).toContain('re-read');
+      expect(refused.errors![0]).toContain('rebase');
+      expect(await t.intentOf()).toBe('The player takes one step.');
+      expect((await t.repo.get(t.featureId as never))!.updatedAt).toBe(theirs.updatedAt);
+
+      // Rebased on the current stamp, it lands, and says what it was applied on.
+      const landed = await t.batch({
+        featureId: t.featureId,
+        expectedUpdatedAt: refused.currentUpdatedAt,
+        operations: t.rewriteIntent('The player takes one careful step.')
+      });
+      expect(landed.ok).toBe(true);
+      expect(landed.previousUpdatedAt).toBe(theirs.updatedAt);
+      expect(Date.parse(landed.updatedAt!)).toBeGreaterThan(Date.parse(landed.previousUpdatedAt!));
+
+      // Chained without a read in between.
+      const chained = await t.batch({
+        featureId: t.featureId,
+        expectedUpdatedAt: landed.updatedAt,
+        operations: t.rewriteIntent('The player takes one very careful step.')
+      });
+      expect(chained).toMatchObject({ ok: true, previousUpdatedAt: landed.updatedAt });
+      await t.server.close();
+    });
+
+    it('without the argument nothing is checked, exactly as before', async () => {
+      const t = await setupTicking();
+      const theirs = await t.otherWriterAddsScenario('Wading is louder');
+
+      const blind = await t.batch({ featureId: t.featureId, operations: t.rewriteIntent('Written blind.') });
+
+      expect(blind.ok).toBe(true);
+      expect(blind.conflict).toBeUndefined();
+      expect(blind.previousUpdatedAt).toBe(theirs.updatedAt);
+      expect(await t.intentOf()).toBe('Written blind.');
+      await t.server.close();
+    });
+
+    it('dry run: refuses without a token, and a guarded dry run answers the stamp it ran on', async () => {
+      const t = await setupTicking();
+      const theirs = await t.otherWriterAddsScenario('Wading is louder');
+
+      const refused = await t.batch({
+        featureId: t.featureId,
+        dryRun: true,
+        expectedUpdatedAt: t.readAt,
+        operations: t.rewriteIntent('Overwritten blind.')
+      });
+      expect(refused).toMatchObject({ ok: false, conflict: true, currentUpdatedAt: theirs.updatedAt });
+      expect(refused.commitToken).toBeUndefined();
+      expect(refused.dryRun).toBeUndefined();
+
+      const fresh = await t.batch({
+        featureId: t.featureId,
+        dryRun: true,
+        expectedUpdatedAt: theirs.updatedAt,
+        operations: t.rewriteIntent('A careful step.')
+      });
+      expect(fresh).toMatchObject({
+        ok: true,
+        dryRun: true,
+        // Nothing was saved, so both stamps are the one the feature still carries.
+        previousUpdatedAt: theirs.updatedAt,
+        updatedAt: theirs.updatedAt
+      });
+      expect(fresh.commitToken).toBeTruthy();
+      expect(await t.intentOf()).toBe('The player takes one step.');
+      await t.server.close();
+    });
+
+    it('commit by token: re-checks the stamp of its dry run, and an explicit stamp wins', async () => {
+      const t = await setupTicking();
+      const dry = await t.batch({
+        featureId: t.featureId,
+        dryRun: true,
+        expectedUpdatedAt: t.readAt,
+        operations: t.rewriteIntent('Committed later.')
+      });
+      expect(dry.commitToken).toBeTruthy();
+
+      // Another writer slips in between the dry run and its commit.
+      const theirs = await t.otherWriterAddsScenario('Wading is louder');
+      const refused = await t.batch({ commit: dry.commitToken });
+      expect(refused).toMatchObject({
+        ok: false,
+        conflict: true,
+        expectedUpdatedAt: t.readAt,
+        currentUpdatedAt: theirs.updatedAt,
+        changedSince: [`scenario:${theirs.refs!.theirs}`]
+      });
+      expect(await t.intentOf()).toBe('The player takes one step.');
+      // The token was consumed by the refusal, like by any other outcome.
+      const again = (await t.client.callTool({
+        name: 'apply_batch',
+        arguments: { commit: dry.commitToken }
+      })) as { isError?: boolean };
+      expect(again.isError).toBe(true);
+
+      // A caller that looked at what moved and still wants its batch says so:
+      // the stamp passed with the commit replaces the one the token remembers.
+      const second = await t.batch({
+        featureId: t.featureId,
+        dryRun: true,
+        expectedUpdatedAt: theirs.updatedAt,
+        operations: t.rewriteIntent('Committed after a look.')
+      });
+      const theirsAgain = await t.otherWriterAddsScenario('Mud muffles every step');
+      const committed = await t.batch({
+        commit: second.commitToken,
+        expectedUpdatedAt: theirsAgain.updatedAt
+      });
+      expect(committed).toMatchObject({
+        ok: true,
+        committed: true,
+        previousUpdatedAt: theirsAgain.updatedAt
+      });
+      expect(await t.intentOf()).toBe('Committed after a look.');
+
+      // A token from an unguarded dry run commits as it always did.
+      const unguarded = await t.batch({
+        featureId: t.featureId,
+        dryRun: true,
+        operations: t.rewriteIntent('Unguarded.')
+      });
+      await t.otherWriterAddsScenario('Ice cracks under a run');
+      expect(await t.batch({ commit: unguarded.commitToken })).toMatchObject({ ok: true, committed: true });
+      await t.server.close();
+    });
+  });
+
   describe('action actor and no_feedback', () => {
     type Ack = { ok: boolean; id?: string; refs?: Record<string, string> };
 
