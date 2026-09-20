@@ -5,6 +5,7 @@ import type { RoomId, RoomKind } from '../../sync/roomId';
 import {
   UNASSIGNED_FOLDER,
   ensureHistoryDir,
+  findProjectSlugById,
   findProjectSlugForFeature,
   historyFilePath,
   historySuffix,
@@ -70,13 +71,27 @@ const loadHistoryFromDisk = (
  * - project history → the project's own folder.
  * - feature / status history → the owning project's folder, or __unassigned/.
  */
+/**
+ * The folder a history file belongs in: the one that already HOLDS the record
+ * on disk, resolved by id, never a name guessed from the record.
+ *
+ * A folder is named by the project slug in the default layout, but a host that
+ * owns the directory writes id-named folders instead (`UNSPA_FILE_NAMING=id`).
+ * Guessing the folder from the project NAME therefore filed a project's history
+ * beside its project rather than in it: a second folder appeared on every
+ * project created, holding nothing but an orphaned history that time travel
+ * could not find and that deleting the project left behind. A feature's history
+ * already resolved its folder from disk, and so do the stored source documents.
+ *
+ * The name slug stays as the fallback, for a project that has no folder yet.
+ */
 const ownerForHistory = (
   directory: string,
   kind: RoomKind,
   id: string,
   fallbackSlug: string
 ): string | null => {
-  if (kind === 'project') return fallbackSlug;
+  if (kind === 'project') return findProjectSlugById(directory, id) ?? fallbackSlug;
   return findProjectSlugForFeature(directory, id);
 };
 
