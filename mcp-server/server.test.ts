@@ -3288,6 +3288,269 @@ describe('MCP server', () => {
     });
   });
 
+  describe('apply_batch relatedElsewhere: what the batch touches in other features', () => {
+    type Row = { kind: string; id: string; name: string };
+    type Answer = {
+      ok: boolean;
+      refs?: Record<string, string>;
+      relatedElsewhere?: {
+        statePaths: readonly {
+          path: string;
+          features: readonly {
+            featureId: string;
+            featureName: string;
+            declares: boolean;
+            readBy: readonly Row[];
+            writtenBy: readonly Row[];
+          }[];
+        }[];
+        truncated?: boolean;
+      };
+    };
+
+    // Two features of one project that both name `species.mix`: the reef
+    // rebalances it, the fishery reads it and writes it back.
+    const island = async (client: Client) => {
+      const project = parseTextContent(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Island',
+            description: 'Life on an island.',
+            features: [
+              { name: 'Reef', description: 'What lives on the reef.' },
+              { name: 'Fishery', description: 'What the village catches.' },
+              { name: 'Weather', description: 'What the sky does.' }
+            ]
+          }
+        })
+      ) as { id: string; features: readonly { id: string }[] };
+      const [reefId, fisheryId, weatherId] = project.features.map((f) => f.id) as [
+        string,
+        string,
+        string
+      ];
+      const batch = async (featureId: string, operations: readonly unknown[], extra = {}) =>
+        parseTextContent(
+          await client.callTool({
+            name: 'apply_batch',
+            arguments: { featureId, operations, ...extra }
+          })
+        ) as Answer;
+
+      const reef = await batch(reefId, [
+        { kind: 'add_surface', ref: 'reef', name: 'Reef', type: 'custom', description: 'The reef itself.' },
+        {
+          kind: 'add_state_definition',
+          ref: 'mix',
+          surfaceRef: 'reef',
+          path: 'species.mix',
+          type: 'number',
+          defaultValue: 50,
+          description: 'How mixed the species are.'
+        },
+        {
+          kind: 'add_action',
+          ref: 'rebalance',
+          surfaceRef: 'reef',
+          name: 'Rebalance the reef',
+          intent: 'Shift the species mix.'
+        },
+        {
+          kind: 'add_effect',
+          ref: 'shift',
+          surfaceRef: 'reef',
+          actionRef: 'rebalance',
+          effect: {
+            type: 'set_state',
+            path: 'species.mix',
+            value: { kind: 'literal', value: 60 },
+            description: 'Sets the mix.'
+          }
+        }
+      ]);
+      expect(reef.ok).toBe(true);
+
+      const fishery = await batch(fisheryId, [
+        { kind: 'add_surface', ref: 'boat', name: 'Boat', type: 'custom', description: 'The fishing boat.' },
+        {
+          kind: 'add_state_definition',
+          ref: 'mix',
+          surfaceRef: 'boat',
+          path: 'species.mix',
+          type: 'number',
+          defaultValue: 50,
+          description: 'The mix the village fishes in.'
+        },
+        {
+          kind: 'add_action',
+          ref: 'cast',
+          surfaceRef: 'boat',
+          name: 'Cast a net',
+          intent: 'Catch what swims by.',
+          requiredStates: ['species.mix']
+        },
+        {
+          kind: 'add_action',
+          ref: 'restock',
+          surfaceRef: 'boat',
+          name: 'Restock the lagoon',
+          intent: 'Put fish back.'
+        },
+        {
+          kind: 'add_effect',
+          ref: 'putBack',
+          surfaceRef: 'boat',
+          actionRef: 'restock',
+          effect: {
+            type: 'set_state',
+            path: 'species.mix',
+            value: { kind: 'literal', value: 55 },
+            description: 'Puts the mix back up.'
+          }
+        },
+        {
+          kind: 'add_surface_rule',
+          ref: 'guard',
+          surfaceRef: 'boat',
+          rule: {
+            category: 'validation',
+            description: 'No fishing below a viable mix',
+            condition: { left: 'species.mix', operator: 'lower_than', right: 10 },
+            effect: { type: 'block_action', reason: 'The lagoon is too thin.', description: 'Blocks the cast.' }
+          }
+        }
+      ]);
+      expect(fishery.ok).toBe(true);
+
+      // A third feature of the same project that shares no path at all.
+      const weather = await batch(weatherId, [
+        { kind: 'add_surface', ref: 'sky', name: 'Sky', type: 'custom', description: 'The sky.' },
+        {
+          kind: 'add_state_definition',
+          ref: 'wind',
+          surfaceRef: 'sky',
+          path: 'weather.wind',
+          type: 'number',
+          defaultValue: 0,
+          description: 'How hard it blows.'
+        }
+      ]);
+      expect(weather.ok).toBe(true);
+
+      return { batch, reefId, fisheryId, reefRefs: reef.refs!, fisheryRefs: fishery.refs! };
+    };
+
+    it('names the other features that declare, read or write the paths the batch touched', async () => {
+      const { client, server } = await setup();
+      const t = await island(client);
+
+      const answer = await t.batch(t.reefId, [
+        {
+          kind: 'update_effect',
+          surfaceId: t.reefRefs.reef,
+          actionId: t.reefRefs.rebalance,
+          effectId: t.reefRefs.shift,
+          patch: { value: { kind: 'literal', value: 70 } }
+        }
+      ]);
+
+      expect(answer.ok).toBe(true);
+      const related = answer.relatedElsewhere!;
+      expect(related.truncated).toBeUndefined();
+      expect(related.statePaths.map((p) => p.path)).toEqual(['species.mix']);
+      const features = related.statePaths[0]!.features;
+      // The fishery only: the weather feature shares no path, and the reef
+      // itself is not its own neighbour.
+      expect(features).toHaveLength(1);
+      expect(features[0]).toMatchObject({
+        featureId: t.fisheryId,
+        featureName: 'Fishery',
+        declares: true
+      });
+      expect(features[0]!.readBy).toEqual([
+        { kind: 'action', id: t.fisheryRefs.cast, name: 'Cast a net' },
+        { kind: 'surface_rule', id: t.fisheryRefs.guard, name: 'No fishing below a viable mix' }
+      ]);
+      expect(features[0]!.writtenBy).toEqual([
+        { kind: 'action', id: t.fisheryRefs.restock, name: 'Restock the lagoon' }
+      ]);
+      await server.close();
+    });
+
+    it('says it in the dry run and in the commit, and leaves it out when no path is shared', async () => {
+      const { client, server } = await setup();
+      const t = await island(client);
+      const touchTheMix = [
+        {
+          kind: 'update_effect',
+          surfaceId: t.reefRefs.reef,
+          actionId: t.reefRefs.rebalance,
+          effectId: t.reefRefs.shift,
+          patch: { value: { kind: 'literal', value: 80 } }
+        }
+      ];
+
+      const dry = (await t.batch(t.reefId, touchTheMix, { dryRun: true })) as Answer & {
+        commitToken: string;
+      };
+      expect(dry.ok).toBe(true);
+      expect(dry.relatedElsewhere!.statePaths[0]!.path).toBe('species.mix');
+
+      const committed = parseTextContent(
+        await client.callTool({ name: 'apply_batch', arguments: { commit: dry.commitToken } })
+      ) as Answer & { committed?: boolean };
+      expect(committed).toMatchObject({ ok: true, committed: true });
+      expect(committed.relatedElsewhere!.statePaths[0]!.features[0]!.featureId).toBe(t.fisheryId);
+
+      // A change that involves no state path at all: nothing to relate.
+      const described = await t.batch(t.reefId, [
+        {
+          kind: 'update_surface',
+          surfaceId: t.reefRefs.reef,
+          description: 'The reef itself, seen from the shore.'
+        }
+      ]);
+      expect(described.ok).toBe(true);
+      expect(described.relatedElsewhere).toBeUndefined();
+
+      // Editing an action is another matter, prose or not: the paths it reads
+      // and writes are what its neighbours share, and it was touched.
+      const reworded = await t.batch(t.reefId, [
+        {
+          kind: 'update_action',
+          surfaceId: t.reefRefs.reef,
+          actionId: t.reefRefs.rebalance,
+          intent: 'Shift the species mix, gently.'
+        }
+      ]);
+      expect(reworded.relatedElsewhere!.statePaths.map((p) => p.path)).toEqual(['species.mix']);
+
+      // A feature no project claims has no siblings, so no block either.
+      const lone = parseTextContent(
+        await client.callTool({
+          name: 'create_feature',
+          arguments: { name: 'Lone', description: 'Belongs to no project.' }
+        })
+      ) as { id: string };
+      const alone = await t.batch(lone.id, [
+        { kind: 'add_surface', ref: 'only', name: 'Only', type: 'custom', description: 'The only surface.' },
+        {
+          kind: 'add_state_definition',
+          ref: 'mix',
+          surfaceRef: 'only',
+          path: 'species.mix',
+          type: 'number',
+          defaultValue: 1,
+          description: 'The same path, in no project.'
+        }
+      ]);
+      expect(alone.ok).toBe(true);
+      expect(alone.relatedElsewhere).toBeUndefined();
+      await server.close();
+    });
+  });
+
   describe('action actor and no_feedback', () => {
     type Ack = { ok: boolean; id?: string; refs?: Record<string, string> };
 

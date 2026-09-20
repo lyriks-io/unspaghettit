@@ -148,6 +148,11 @@ naming what changed since your read: re-read those, rebase, send again. The dry 
 apply and the commit by token are all guarded, and every successful answer carries
 previousUpdatedAt and updatedAt so the next batch can be guarded without a read in between.
 
+A batch answer also carries relatedElsewhere when the state paths it involves are declared, read or
+written by other features of the same project: { statePaths:[{ path, features:[{ featureId,
+featureName, declares, readBy, writtenBy }] }] }. A state path is a name and not a scope, so this is
+where you see that one feature's write lands under another feature's rule. Advisory only.
+
 ### transition_surface in a batch
 
 The transition_surface effect accepts targetRef (resolved to the surface ID created earlier

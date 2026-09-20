@@ -165,6 +165,15 @@ Every update op also accepts its editable fields under \`patch:{...}\` instead o
   dry run and the commit re-checks it; an explicit \`expectedUpdatedAt\` on the commit wins). Omitted =
   no check. Every successful answer carries \`previousUpdatedAt\` and \`updatedAt\` (equal on a dry run),
   so batches chain without a read in between.
+- Every successful answer also carries \`relatedElsewhere\` when the change involves state paths that
+  OTHER features of the same project declare, read or write:
+  \`{ statePaths: [{ path, features: [{ featureId, featureName, declares, readBy:[{kind,id,name}], writtenBy:[{kind,id,name}] }] }], truncated? }\`.
+  The paths are those of state definitions the batch added, changed or removed, plus what the actions
+  it touched read (rule and invariant conditions, requiredStates) or write (set_state, the list
+  mutations, parameter bindToStatePath). A state path is a NAME, not a scope: this is how you learn
+  that rebalancing \`species.mix\` here moves an action and two rules over there. Omitted when nothing
+  matches or the feature belongs to no project; capped at 20 paths, 10 features per path, 10 rows per
+  list (\`truncated:true\` when something was dropped). Advisory: it blocks nothing and never moves \`ok\`.
 
 Evaluation semantics (matters for scenario assertions and rule ordering):
 - Effects apply SEQUENTIALLY in the order written, and derived (computed) state is

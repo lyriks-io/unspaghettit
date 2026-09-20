@@ -23,6 +23,10 @@ import {
   staleWriteMessage
 } from '../../src/features/behavior-model/domain/services/StaleWrite';
 import {
+  relatedElsewhereForPaths,
+  statePathsOfChange
+} from '../../src/features/behavior-model/domain/services/RelatedElsewhere';
+import {
   recordingIdGenerator,
   replayingIdGenerator
 } from '../../src/shared/domain/IdGenerator';
@@ -86,6 +90,30 @@ const scenariosOfBatch = async (
   }
 };
 
+/**
+ * The `relatedElsewhere` block: what the state paths of this change also touch
+ * in the OTHER features of the project. The paths are derived first, so a batch
+ * that involves none never loads a sibling. Advisory to the last line: a failure
+ * to compute it leaves the block out rather than colouring a batch that is
+ * otherwise fine, since nothing here decides whether the batch was good.
+ */
+const relatedElsewhereOfBatch = async (
+  before: Feature,
+  after: Feature,
+  loadSiblings: () => Promise<readonly Feature[] | undefined>
+): Promise<{ readonly relatedElsewhere?: ReturnType<typeof relatedElsewhereForPaths> }> => {
+  try {
+    const paths = statePathsOfChange(before, after);
+    if (paths.length === 0) return {};
+    const siblings = await loadSiblings();
+    if (!siblings || siblings.length === 0) return {};
+    const related = relatedElsewhereForPaths(paths, siblings);
+    return related ? { relatedElsewhere: related } : {};
+  } catch {
+    return {};
+  }
+};
+
 const opSchemaDescription = `Each op: { kind, ref?, ...kindArgs }. ADD ops mint a new id and (when op.ref is set) remember it so later ops in the same batch can address it via *Ref strings. UPDATE ops take the existing id and a patch. REMOVE ops take the id. MOVE ops take { direction: "up"|"down" }. Full per-op-kind schema in the unspa://operations resource. Load it once before authoring a batch. Common gotcha: add_resource's resource entity has its own "kind" field which collides with the op-kind discriminator. Nest under "resource:{kind,...}" or pass "resourceKind" on the flat form.`;
 
 export const registerBatchTool = (deps: ToolDeps): void => {
@@ -95,7 +123,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
     'apply_batch',
     {
       description:
-        'Apply N add/update/remove/move ops to one Feature in a single atomic load+validate+save. Pass dryRun:true to validate and score without saving. Every successful answer (dry run, direct apply, commit by token) carries `scenarios: { scope, run, passed, failed[], truncated? }`: the scenarios of what the batch touched, run on the post-batch feature, so a dry run already says whether an expected value still holds. scope is "touched" when the batch stayed inside actions (an action it added or updated, or whose rule, effect, parameter, invariant, transition or scenario it added, updated, removed or moved): only the scenarios exercising those actions run, the ones testing them plus the multi-step ones replaying them. scope is "feature" when the batch touched anything wider (a state definition, a surface or feature invariant, a surface rule, a constant, a value set, a persona, an event, an entity, an event handler): every scenario runs. `failed` lists failing scenarios only ({ scenarioId, name, surfaceId, actionId, actionName, expectedStatus, actualStatus, firstFailingStep?, reason }); passing ones are the `passed` count. At most 300 scenarios run, in model order, and `truncated:true` says the cap was hit (finish with run_all_scenarios). A failing scenario NEVER rejects the batch, validation alone decides that: read `scenarios.failed` before committing. The default dryRun response is a slim summary (~1 KB), pair with verbose:true ONLY when you need the full per-issue maturity report and post-batch feature. A valid dryRun also returns a `commitToken`: call apply_batch again with just { commit: token } (no operations) to save that batch without resending the ops — the server re-loads the feature and re-validates before saving, and tokens are single-use, expiring after 5 minutes. A committed token keeps the ids of its dry run: the `refs` it returns are the ones the dry run returned (an id the feature gained in between is the only one re-minted). OPTIMISTIC CONCURRENCY (opt-in): pass `expectedUpdatedAt`, the feature `updatedAt` you read (get_feature and every write ack return it). When the loaded feature carries a different one, someone else wrote in between and NOTHING is applied: the answer is { ok:false, conflict:true, expectedUpdatedAt, currentUpdatedAt, changedSince, changedSinceTotal, errors:[one sentence] }, where `changedSince` lists the element keys (the index key space: action:<id>, scenario:<id>, rule:<id>, state:<path>, ...) stamped after your read, newest first, at most 50, and `changedSinceTotal` counts them all. Re-read those elements, rebase your operations, and send the batch again with the current stamp. The guard covers the dry run, the direct apply and the commit by token alike: a token remembers the `expectedUpdatedAt` of its dry run and the commit re-checks it against the reloaded feature (pass `expectedUpdatedAt` next to `commit` to override it). Without the argument nothing is checked, exactly as before. Every successful answer carries `previousUpdatedAt` and `updatedAt` (equal on a dry run, which saves nothing), so batches chain without a read in between: send the `updatedAt` of one answer as the `expectedUpdatedAt` of the next. Add ops can capture their new id under `ref` so later ops use *Ref instead of *Id; sharedWith also accepts refs created earlier in the same batch. Strongly preferred over many granular calls. See the unspa://operations resource for the full per-op-kind schema reference.',
+        'Apply N add/update/remove/move ops to one Feature in a single atomic load+validate+save. Pass dryRun:true to validate and score without saving. Every successful answer (dry run, direct apply, commit by token) carries `scenarios: { scope, run, passed, failed[], truncated? }`: the scenarios of what the batch touched, run on the post-batch feature, so a dry run already says whether an expected value still holds. scope is "touched" when the batch stayed inside actions (an action it added or updated, or whose rule, effect, parameter, invariant, transition or scenario it added, updated, removed or moved): only the scenarios exercising those actions run, the ones testing them plus the multi-step ones replaying them. scope is "feature" when the batch touched anything wider (a state definition, a surface or feature invariant, a surface rule, a constant, a value set, a persona, an event, an entity, an event handler): every scenario runs. `failed` lists failing scenarios only ({ scenarioId, name, surfaceId, actionId, actionName, expectedStatus, actualStatus, firstFailingStep?, reason }); passing ones are the `passed` count. At most 300 scenarios run, in model order, and `truncated:true` says the cap was hit (finish with run_all_scenarios). A failing scenario NEVER rejects the batch, validation alone decides that: read `scenarios.failed` before committing. The default dryRun response is a slim summary (~1 KB), pair with verbose:true ONLY when you need the full per-issue maturity report and post-batch feature. A valid dryRun also returns a `commitToken`: call apply_batch again with just { commit: token } (no operations) to save that batch without resending the ops — the server re-loads the feature and re-validates before saving, and tokens are single-use, expiring after 5 minutes. A committed token keeps the ids of its dry run: the `refs` it returns are the ones the dry run returned (an id the feature gained in between is the only one re-minted). OPTIMISTIC CONCURRENCY (opt-in): pass `expectedUpdatedAt`, the feature `updatedAt` you read (get_feature and every write ack return it). When the loaded feature carries a different one, someone else wrote in between and NOTHING is applied: the answer is { ok:false, conflict:true, expectedUpdatedAt, currentUpdatedAt, changedSince, changedSinceTotal, errors:[one sentence] }, where `changedSince` lists the element keys (the index key space: action:<id>, scenario:<id>, rule:<id>, state:<path>, ...) stamped after your read, newest first, at most 50, and `changedSinceTotal` counts them all. Re-read those elements, rebase your operations, and send the batch again with the current stamp. The guard covers the dry run, the direct apply and the commit by token alike: a token remembers the `expectedUpdatedAt` of its dry run and the commit re-checks it against the reloaded feature (pass `expectedUpdatedAt` next to `commit` to override it). Without the argument nothing is checked, exactly as before. Every successful answer carries `previousUpdatedAt` and `updatedAt` (equal on a dry run, which saves nothing), so batches chain without a read in between: send the `updatedAt` of one answer as the `expectedUpdatedAt` of the next. WHAT IT TOUCHES ELSEWHERE: when the change involves state paths (a state definition added, changed or removed; a path read or written by an action the batch touched) and other features of the same project declare, read or write those same paths, the answer carries `relatedElsewhere: { statePaths: [{ path, features: [{ featureId, featureName, declares, readBy:[{kind,id,name}], writtenBy:[{kind,id,name}] }] }], truncated? }`. A path is a name and not a scope, so one feature writing `species.mix` moves whatever another feature reads there: this names those neighbours instead of leaving you to grep a dump. Omitted when nothing matches, when the feature belongs to no project, and when the change involves no path. Capped at 20 paths, 10 features per path and 10 rows per list, with `truncated:true` when something was dropped (run find_state_references on the path that matters). Purely advisory: it blocks nothing and never changes `ok`. Add ops can capture their new id under `ref` so later ops use *Ref instead of *Id; sharedWith also accepts refs created earlier in the same batch. Strongly preferred over many granular calls. See the unspa://operations resource for the full per-op-kind schema reference.',
       inputSchema: {
         featureId: z.string().optional(),
         dryRun: z.boolean().optional(),
@@ -228,15 +256,25 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           introduced.length === 0
             ? { valid: true }
             : { valid: false, errors: annotateErrors(introduced) };
+        // One load of the project's other features per call, whichever block
+        // asks for them first: the scenarios need them to cascade events, and
+        // relatedElsewhere to look for shared state paths.
+        let siblings: Promise<readonly Feature[] | undefined> | null = null;
+        const loadSiblings = () =>
+          (siblings ??= loadProjectSiblings(repo, projectRepo, String(featureId)));
         // The scenarios of what the batch touched, run on the feature the batch
         // produces. Computed before anything is saved, so the dry run, the
         // direct apply and the commit all answer it the same way. A failure is
         // information: it never blocks the batch, and neither does a run that
         // cannot complete (the answer then says why instead of a verdict).
         const scenarioReport = validation.valid
-          ? await scenariosOfBatch(current, next, () =>
-              loadProjectSiblings(repo, projectRepo, String(featureId))
-            )
+          ? await scenariosOfBatch(current, next, loadSiblings)
+          : {};
+        // What this change touches in the other features of the project. Never
+        // blocks anything and never moves `ok`: a shared state path is ordinary
+        // modelling, and this only says where else to look.
+        const relatedReport = validation.valid
+          ? await relatedElsewhereOfBatch(current, next, loadSiblings)
           : {};
         // A batch that wrote acceptance criteria answers like the granular tools
         // do: it names every criterion that another one supersedes while it is
@@ -276,6 +314,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
               maturity: validation.valid ? scoreFeature(next) : null,
               ...(validation.valid ? { previousUpdatedAt, updatedAt: previousUpdatedAt } : {}),
               ...scenarioReport,
+              ...relatedReport,
               ...warningReport,
               ...(commitToken ? { commitToken } : {})
             });
@@ -290,6 +329,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
             maturity: validation.valid ? scoreFeatureTool(next) : null,
             ...(validation.valid ? { previousUpdatedAt, updatedAt: previousUpdatedAt } : {}),
             ...scenarioReport,
+            ...relatedReport,
             ...warningReport,
             ...(commitToken ? { commitToken } : {})
           });
@@ -328,6 +368,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           appliedCount: ops.length,
           refs,
           ...scenarioReport,
+          ...relatedReport,
           ...warningReport,
           ...(committing ? { committed: true } : {}),
           ...(codegen
