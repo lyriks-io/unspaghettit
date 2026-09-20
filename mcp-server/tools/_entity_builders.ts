@@ -23,7 +23,8 @@
 import type { Action } from '../../src/features/behavior-model/domain/entities/Action';
 import type {
   AcceptanceCriterion,
-  AcceptanceOutcome
+  AcceptanceOutcome,
+  CriterionRelation
 } from '../../src/features/behavior-model/domain/entities/AcceptanceCriterion';
 import { ALL_ACCEPTANCE_OUTCOMES } from '../../src/features/behavior-model/domain/entities/AcceptanceCriterion';
 import type {
@@ -378,6 +379,36 @@ const asAcceptanceOutcome = (raw: unknown): AcceptanceOutcome =>
 
 const asProse = (raw: unknown): string => (typeof raw === 'string' ? raw : '');
 
+// Status and relations are passed through as written, like the action actor:
+// the vocabulary, the resolution of `criterionId` and the no-self / no-duplicate
+// rules are enforced once, by the feature validator, so a batch and a granular
+// call are refused with the same sentence. Only the SHAPE is settled here, so a
+// stray key on a relation never reaches disk.
+
+const buildCriterionRelation = (raw: unknown): CriterionRelation => {
+  const r = (raw ?? {}) as Raw;
+  return {
+    kind: r.kind as CriterionRelation['kind'],
+    criterionId: typeof r.criterionId === 'string' ? r.criterionId : '',
+    ...(typeof r.featureId === 'string' && r.featureId.length > 0
+      ? { featureId: r.featureId }
+      : {}),
+    ...(typeof r.note === 'string' && r.note.length > 0 ? { note: r.note } : {})
+  };
+};
+
+/** `status` for a new criterion, or nothing when the caller did not name one. */
+const buildCriterionStatus = (input: Raw): Pick<AcceptanceCriterion, 'status'> =>
+  typeof input.status === 'string' && input.status.length > 0
+    ? { status: input.status as AcceptanceCriterion['status'] }
+    : {};
+
+/** `relations` for a new criterion. An empty list is the same as none, so it is not stored. */
+const buildCriterionRelations = (input: Raw): Pick<AcceptanceCriterion, 'relations'> =>
+  Array.isArray(input.relations) && input.relations.length > 0
+    ? { relations: input.relations.map(buildCriterionRelation) }
+    : {};
+
 export const buildAcceptanceCriterion = (
   input: Raw,
   mintId: () => string
@@ -391,7 +422,9 @@ export const buildAcceptanceCriterion = (
   ...(typeof input.relatedSurfaceId === 'string' && input.relatedSurfaceId.length > 0
     ? { relatedSurfaceId: input.relatedSurfaceId }
     : {}),
-  ...(typeof input.description === 'string' ? { description: input.description } : {})
+  ...(typeof input.description === 'string' ? { description: input.description } : {}),
+  ...buildCriterionStatus(input),
+  ...buildCriterionRelations(input)
 });
 
 /** Build an AcceptanceCriterion patch. Only keys the caller sent are included. */
@@ -412,7 +445,22 @@ export const buildAcceptanceCriterionPatch = (input: Raw): Partial<AcceptanceCri
             : undefined
       }
     : {}),
-  ...(typeof input.description === 'string' ? { description: input.description } : {})
+  ...(typeof input.description === 'string' ? { description: input.description } : {}),
+  // `status: null` clears it back to the default (active); a string sets it.
+  ...(input.status === null || input.status === ''
+    ? { status: undefined }
+    : typeof input.status === 'string'
+      ? { status: input.status as AcceptanceCriterion['status'] }
+      : {}),
+  // `relations` is a full replacement; `relations: []` (or null) clears them.
+  ...(input.relations === null
+    ? { relations: undefined }
+    : Array.isArray(input.relations)
+      ? {
+          relations:
+            input.relations.length > 0 ? input.relations.map(buildCriterionRelation) : undefined
+        }
+      : {})
 });
 
 // ─── Action actor ──────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 import { effectiveActor, type ActionActor } from '$features/behavior-model/domain/entities/Action';
+import type { CriterionStatus } from '$features/behavior-model/domain/entities/AcceptanceCriterion';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import { criterionStandings } from '$features/behavior-model/domain/services/CriterionStanding';
 import type { DevContext } from '$features/behavior-model/domain/value-objects/DevContext';
 import { humanizeStatePath } from '$features/behavior-model/domain/value-objects/humanize';
 import type {
@@ -14,6 +16,23 @@ export type ActionIndexEntry = {
   readonly name: string;
   /** Who fires it, defaults applied (see `effectiveActor`). */
   readonly actor: ActionActor;
+};
+
+/**
+ * One acceptance criterion as the index names it: enough to address it and to
+ * know whether it still holds. `standing` and `supersededBy` are computed on
+ * read from the relations the criteria declare (see CriterionStanding), so a
+ * criterion that was replaced never reads as current here, marked or not.
+ */
+export type CriterionIndexEntry = {
+  readonly id: string;
+  readonly title: string;
+  /** The declared status, defaults applied (absent means `active`). */
+  readonly status: CriterionStatus;
+  /** Criteria of this feature that declare they supersede it. */
+  readonly supersededBy: readonly string[];
+  /** One line: active | superseded by <ids> | superseded (no successor named) | draft | active, but superseded by <ids>. */
+  readonly standing: string;
 };
 
 export type StateDefinitionIndexEntry = {
@@ -54,8 +73,22 @@ export type FeatureIndex = {
   readonly personas: readonly { readonly id: string; readonly name: string }[];
   readonly resources: readonly { readonly id: string; readonly name: string }[];
   readonly entities: readonly { readonly id: string; readonly name: string }[];
+  readonly acceptanceCriteria: readonly CriterionIndexEntry[];
   readonly createdAt: string;
   readonly updatedAt: string;
+};
+
+const criterionIndexEntries = (feature: Feature): readonly CriterionIndexEntry[] => {
+  const titles = new Map(
+    (feature.acceptanceCriteria ?? []).map((c) => [String(c.id), c.title] as const)
+  );
+  return criterionStandings(feature).map((standing) => ({
+    id: standing.criterionId,
+    title: titles.get(standing.criterionId) ?? '',
+    status: standing.status,
+    supersededBy: standing.supersededBy,
+    standing: standing.standing
+  }));
 };
 
 export const getFeatureIndexTool = (feature: Feature): FeatureIndex => ({
@@ -77,6 +110,7 @@ export const getFeatureIndexTool = (feature: Feature): FeatureIndex => ({
   personas: feature.personas.map((p) => ({ id: p.id, name: p.name })),
   resources: feature.resources.map((r) => ({ id: r.id, name: r.name })),
   entities: feature.entities.map((d) => ({ id: d.id, name: humanizeStatePath(d.namespace) })),
+  acceptanceCriteria: criterionIndexEntries(feature),
   createdAt: feature.createdAt,
   updatedAt: feature.updatedAt
 });

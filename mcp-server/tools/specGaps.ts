@@ -8,6 +8,7 @@ import {
 import type { Effect } from '../../src/features/behavior-model/domain/value-objects/Effect';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import type { Surface } from '../../src/features/behavior-model/domain/entities/Surface';
+import { criterionStandings } from '../../src/features/behavior-model/domain/services/CriterionStanding';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { trackTokens } from '../metrics';
 import { errorText, text, type ToolDeps } from './_shared';
@@ -20,7 +21,7 @@ import { loadFeaturesByIds } from '../../src/features/behavior-model/application
 import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 
 type Severity = 'critical' | 'recommended';
-type EntityKind = 'feature' | 'surface' | 'action';
+type EntityKind = 'feature' | 'surface' | 'action' | 'criterion';
 
 export type SpecGap = {
   readonly severity: Severity;
@@ -349,6 +350,26 @@ export const detectSpecGaps = (
         });
       }
     }
+  }
+
+  // Acceptance criteria are prose and are never scored, but one failure is
+  // worth a line here: a criterion another one supersedes while it still says
+  // `active` reads as current to anyone who opens it. Recommended, never
+  // critical: it is a decision for the author, and nothing sets it for them.
+  const criterionTitles = new Map(
+    (feature.acceptanceCriteria ?? []).map((c) => [String(c.id), c.title] as const)
+  );
+  for (const standing of criterionStandings(feature)) {
+    if (!standing.contested) continue;
+    recommended.push({
+      severity: 'recommended',
+      entityType: 'criterion',
+      entityId: standing.criterionId,
+      entityName: criterionTitles.get(standing.criterionId) ?? '',
+      reason: `Acceptance criterion "${criterionTitles.get(standing.criterionId) ?? standing.criterionId}" is still active while ${standing.supersededBy.join(', ')} supersede${standing.supersededBy.length === 1 ? 's' : ''} it.`,
+      suggestedFix:
+        'Set its status to "superseded" (update_acceptance_criterion) if it no longer holds, or change the relation to "refines" / "exception_to" if it still does.'
+    });
   }
 
   return [...critical, ...recommended];

@@ -77,7 +77,7 @@ Feature
   ├── constants[]       Named reusable values { name, value } referenced by {kind:"const", name} in expressions
   ├── featureInvariants[]  Cross-surface post-conditions (checked after every action)
   ├── reachabilityGoals[]  Liveness goals — reachable / always_reachable target states (the complement to invariants)
-  └── acceptanceCriteria[] Prose Given/When/Then acceptance tests { title, given, when, then, expectedOutcome } — the documentation facet, NOT model-checked or scored (use a Scenario for a checkable assertion)
+  └── acceptanceCriteria[] Prose Given/When/Then acceptance tests { title, given, when, then, expectedOutcome, status?, relations? } — the documentation facet, NOT model-checked or scored (use a Scenario for a checkable assertion)
 
 State paths use dot notation: "cart.itemCount", "user.profile.name".
 StateDefinition: { path, type (string|number|boolean|enum|object|array; int/integer/bool/str/list/map synonyms fold to the canonical type), defaultValue, enumValues? | valueSetId?, sharedWith?: SurfaceId[] }

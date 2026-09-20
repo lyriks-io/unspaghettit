@@ -22,6 +22,56 @@ export const ALL_ACCEPTANCE_OUTCOMES: readonly AcceptanceOutcome[] = [
   'blocked'
 ];
 
+/**
+ * Where a criterion stands in the life of the spec. Absent means `active`.
+ *
+ *  - `active`: it describes what the product must do today.
+ *  - `superseded`: a later decision replaced it. Kept, because the history of a
+ *    behavior is part of its specification, but it must never read as current.
+ *  - `draft`: proposed, not yet agreed. It supersedes nothing until it is active.
+ *
+ * Authors set it; nothing in the engine flips it for them. What the engine does
+ * is compute, on every read, who supersedes whom (see `CriterionStanding`), so a
+ * criterion that was replaced without being marked says so.
+ */
+export type CriterionStatus = 'active' | 'superseded' | 'draft';
+
+export const ALL_CRITERION_STATUSES: readonly CriterionStatus[] = [
+  'active',
+  'superseded',
+  'draft'
+];
+
+/**
+ * How one criterion relates to another.
+ *
+ *  - `supersedes`: this one replaces the other.
+ *  - `refines`: this one narrows or details the other, which still holds.
+ *  - `exception_to`: this one carves a case out of the other, which still holds
+ *    everywhere else.
+ */
+export type CriterionRelationKind = 'supersedes' | 'refines' | 'exception_to';
+
+export const ALL_CRITERION_RELATION_KINDS: readonly CriterionRelationKind[] = [
+  'supersedes',
+  'refines',
+  'exception_to'
+];
+
+export type CriterionRelation = {
+  readonly kind: CriterionRelationKind;
+  /** The criterion this one relates to. Resolved in this feature unless `featureId` names another. */
+  readonly criterionId: string;
+  /**
+   * Set when the target lives in ANOTHER feature. The link is then carried but
+   * not resolved, for the same reason `relatedSurfaceId` is not: this feature
+   * is validated on its own and cannot see its siblings.
+   */
+  readonly featureId?: string;
+  /** Why, in the team's words ("shallow water is audible again since the reef level"). */
+  readonly note?: string;
+};
+
 export type AcceptanceCriterion = {
   readonly id: AcceptanceCriterionId;
   /** Short human label — the acceptance test's title. Validator requires it. */
@@ -44,4 +94,16 @@ export type AcceptanceCriterion = {
   readonly relatedSurfaceId?: string;
   /** Optional free-form note. */
   readonly description?: string;
+  /**
+   * Where the criterion stands. See {@link CriterionStatus}. Optional: absent
+   * means `active`, so a criterion written before this field reads as it did.
+   */
+  readonly status?: CriterionStatus;
+  /**
+   * What this criterion supersedes, refines or is an exception to. Optional;
+   * absent and empty mean the same. Like everything on a criterion it is
+   * documentation: it never affects maturity or any verification score (the
+   * MaturityScorer does not read criteria at all).
+   */
+  readonly relations?: readonly CriterionRelation[];
 };

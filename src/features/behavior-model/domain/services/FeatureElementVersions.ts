@@ -79,6 +79,12 @@ export const elementDigests = (feature: Feature): ReadonlyMap<ElementVersionKey,
   for (const persona of feature.personas ?? []) put('persona', persona.id, stable(persona));
   for (const resource of feature.resources ?? []) put('resource', resource.id, stable(resource));
   for (const entity of feature.entities ?? []) put('entity', entity.id, stable(entity));
+  // An acceptance criterion is prose, and prose is what a test or a manual check
+  // was written against: when its wording, status or relations move, whatever
+  // verifies it (an index entry keyed `criterion:<id>`) deserves a second look.
+  for (const criterion of feature.acceptanceCriteria ?? []) {
+    put('criterion', criterion.id, stable(criterion));
+  }
 
   for (const surface of feature.surfaces ?? []) {
     put(

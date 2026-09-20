@@ -1,3 +1,7 @@
+import {
+  ALL_CRITERION_RELATION_KINDS,
+  ALL_CRITERION_STATUSES
+} from '../../entities/AcceptanceCriterion';
 import type { Feature } from '../../entities/Feature';
 import { effectiveEnumValues } from '../EnumValues';
 import { isEventName } from '../../value-objects/EventName';
@@ -534,6 +538,70 @@ export const validateFeature = (feature: Feature): ValidationResult => {
     acceptanceCriterionIds.add(String(ac.id));
     if (!ac.title || ac.title.trim().length === 0) {
       errors.push(`Acceptance criterion ${ac.id} is missing a title.`);
+    }
+  }
+  // Status and relations stay as lenient as the rest: both are optional, and a
+  // criterion written before they existed carries neither. What IS checked is
+  // what would make the computed standing lie: a status outside the vocabulary,
+  // a relation to a criterion that is not there, a criterion related to itself,
+  // the same relation written twice. A relation that names ANOTHER feature is
+  // carried unresolved, like relatedSurfaceId, because a feature is validated on
+  // its own and cannot see its siblings.
+  for (const ac of feature.acceptanceCriteria ?? []) {
+    const status: unknown = ac.status;
+    if (
+      status !== undefined &&
+      !(ALL_CRITERION_STATUSES as readonly unknown[]).includes(status)
+    ) {
+      errors.push(
+        `Acceptance criterion ${ac.id}: unknown status ${JSON.stringify(status)}. One of: ${ALL_CRITERION_STATUSES.join(', ')} (omit it for an active criterion).`
+      );
+    }
+    const relations: unknown = ac.relations;
+    if (relations === undefined) continue;
+    if (!Array.isArray(relations)) {
+      errors.push(
+        `Acceptance criterion ${ac.id}: "relations" must be an array of { kind, criterionId, featureId?, note? }.`
+      );
+      continue;
+    }
+    const seen = new Set<string>();
+    for (const [index, raw] of relations.entries()) {
+      const label = `Acceptance criterion ${ac.id} relations[${index}]`;
+      const relation = (raw ?? {}) as Record<string, unknown>;
+      const kind = relation.kind;
+      if (!(ALL_CRITERION_RELATION_KINDS as readonly unknown[]).includes(kind)) {
+        errors.push(
+          `${label}: unknown kind ${JSON.stringify(kind)}. One of: ${ALL_CRITERION_RELATION_KINDS.join(', ')}.`
+        );
+        continue;
+      }
+      const target = relation.criterionId;
+      if (typeof target !== 'string' || target.trim().length === 0) {
+        errors.push(`${label}: "criterionId" is required.`);
+        continue;
+      }
+      const elsewhere =
+        typeof relation.featureId === 'string' &&
+        relation.featureId.length > 0 &&
+        relation.featureId !== String(feature.id);
+      if (!elsewhere) {
+        if (target === String(ac.id)) {
+          errors.push(`${label}: a criterion cannot be related to itself (${String(kind)} ${target}).`);
+          continue;
+        }
+        if (!acceptanceCriterionIds.has(target)) {
+          errors.push(
+            `${label}: criterionId "${target}" does not resolve to an acceptance criterion of this feature. Name the feature with "featureId" if it lives in another one.`
+          );
+          continue;
+        }
+      }
+      const pair = `${String(kind)} ${target}`;
+      if (seen.has(pair)) {
+        errors.push(`${label}: duplicate relation (${pair}).`);
+      }
+      seen.add(pair);
     }
   }
 

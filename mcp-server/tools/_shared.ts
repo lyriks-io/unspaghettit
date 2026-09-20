@@ -308,6 +308,10 @@ const scenarioImpact = (
  * commonly flip a previously-passing scenario into a failure). When set,
  * the ack includes `scenarioImpact: {passed, failed, breaking}` if any
  * scenarios cover the scope. Slim summary only.
+ *
+ * `opts.warn` reads the SAVED feature and returns advisory sentences. They ride
+ * the ack as `warnings` when there are any, and never fail the write: a warning
+ * is something the author should look at, not something the engine refuses.
  */
 export const runMutation = async (
   deps: ToolDeps,
@@ -315,6 +319,7 @@ export const runMutation = async (
   opts?: {
     readonly createdId?: string;
     readonly scenarioScope?: { readonly surfaceId?: SurfaceId; readonly actionId?: ActionId };
+    readonly warn?: (saved: Feature) => readonly string[];
   }
 ) => {
   try {
@@ -328,7 +333,11 @@ export const runMutation = async (
       featureId: expandedFeatureId as typeof input.featureId
     };
     const result = await deps.mutateFeature(expandedInput);
-    const baseAck = ack(result.id, result.updatedAt, opts?.createdId);
+    const warnings = opts?.warn ? opts.warn(result) : [];
+    const baseAck = {
+      ...ack(result.id, result.updatedAt, opts?.createdId),
+      ...(warnings.length > 0 ? { warnings } : {})
+    };
     if (!opts?.scenarioScope) return text(baseAck);
     // The write is already persisted at this point. A scenario-impact check
     // that throws (pre-existing broken scenario data in the covered scope)

@@ -114,6 +114,7 @@ transition:<id>
 surface_rule:<id>
 surface_invariant:<id>
 entity:<id>
+criterion:<id>                 # acceptance criterion: maps what VERIFIES it
 event:<event-name>             # event's string identifier (not an id)
 state:<dotted.path>            # e.g. cart.itemCount
 ```

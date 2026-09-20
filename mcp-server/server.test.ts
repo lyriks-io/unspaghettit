@@ -3277,6 +3277,414 @@ describe('MCP server', () => {
     });
   });
 
+  describe('acceptance criteria: standing, relations, index key', () => {
+    type Ack = { ok: boolean; id?: string; refs?: Record<string, string>; warnings?: readonly string[] };
+    type Criterion = {
+      id: string;
+      title: string;
+      status?: string;
+      relations?: readonly { kind: string; criterionId: string; featureId?: string; note?: string }[];
+    };
+
+    const footsteps = async (client: Client) => {
+      const project = parseTextContent(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Island',
+            description: 'A walk on an island.',
+            features: [{ name: 'Footsteps', description: 'What a step sounds like.' }]
+          }
+        })
+      ) as { id: string; features: readonly { id: string }[] };
+      const featureId = project.features[0]!.id;
+      const built = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            operations: [
+              {
+                kind: 'add_surface',
+                ref: 'shore',
+                name: 'Shore',
+                type: 'custom',
+                description: 'Where the player walks.'
+              },
+              {
+                kind: 'add_action',
+                ref: 'step',
+                surfaceRef: 'shore',
+                name: 'Take a step',
+                intent: 'The player takes one step.'
+              },
+              {
+                kind: 'add_acceptance_criterion',
+                ref: 'silent',
+                title: 'Footsteps are silent in water'
+              }
+            ]
+          }
+        })
+      ) as Ack;
+      expect(built.ok).toBe(true);
+      return { projectId: project.id, featureId, refs: built.refs! };
+    };
+
+    const criteriaOf = async (
+      repo: InMemoryFeatureRepository,
+      featureId: string
+    ): Promise<Record<string, Criterion>> => {
+      const feature = await repo.get(featureId as never);
+      return Object.fromEntries(
+        ((feature?.acceptanceCriteria ?? []) as unknown as Criterion[]).map((c) => [c.id, c])
+      );
+    };
+
+    it('round-trips status and relations through the batch and the granular tools', async () => {
+      const { client, server, repo } = await setup();
+      const { featureId, refs } = await footsteps(client);
+
+      // One batch adds the successor (pointing at the old one) and a second
+      // successor that points at the first by ref, then marks the old one.
+      const batch = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            operations: [
+              {
+                kind: 'add_acceptance_criterion',
+                ref: 'shallow',
+                title: 'Shallow water is audible',
+                relations: [
+                  { kind: 'supersedes', criterionId: refs.silent, note: 'Since the reef level.' }
+                ]
+              },
+              {
+                kind: 'add_acceptance_criterion',
+                ref: 'wading',
+                title: 'Wading is louder than walking',
+                status: 'draft',
+                relations: [{ kind: 'refines', criterionRef: 'shallow' }]
+              },
+              { kind: 'update_acceptance_criterion', criterionId: refs.silent, status: 'superseded' }
+            ]
+          }
+        })
+      ) as Ack;
+      expect(batch.ok).toBe(true);
+      // The old criterion is marked in the same batch: nothing to warn about.
+      expect(batch.warnings).toBeUndefined();
+
+      let stored = await criteriaOf(repo, featureId);
+      expect(stored[refs.silent!]!.status).toBe('superseded');
+      expect(stored[batch.refs!.shallow!]!.relations).toEqual([
+        { kind: 'supersedes', criterionId: refs.silent, note: 'Since the reef level.' }
+      ]);
+      expect(stored[batch.refs!.wading!]).toMatchObject({
+        status: 'draft',
+        relations: [{ kind: 'refines', criterionId: batch.refs!.shallow }]
+      });
+
+      // Granular update: `relations: []` clears them, `status: null` clears it.
+      const cleared = parseTextContent(
+        await client.callTool({
+          name: 'update_acceptance_criterion',
+          arguments: {
+            featureId,
+            criterionId: batch.refs!.wading,
+            patch: { relations: [], status: null }
+          }
+        })
+      ) as Ack;
+      expect(cleared.ok).toBe(true);
+      stored = await criteriaOf(repo, featureId);
+      // Cleared, and gone from the snapshot once it is serialized.
+      expect(stored[batch.refs!.wading!]!.relations).toBeUndefined();
+      expect(JSON.stringify(stored[batch.refs!.wading!])).not.toContain('relations');
+      expect(stored[batch.refs!.wading!]!.status).toBeUndefined();
+      await server.close();
+    });
+
+    it('refuses an unknown target, a self relation and a duplicate, and allows another feature', async () => {
+      const { client, server } = await setup();
+      const { featureId, refs } = await footsteps(client);
+      const tryRelations = async (relations: readonly Record<string, unknown>[]) =>
+        parseTextContent(
+          await client.callTool({
+            name: 'apply_batch',
+            arguments: {
+              featureId,
+              dryRun: true,
+              operations: [
+                { kind: 'update_acceptance_criterion', criterionId: refs.silent, relations }
+              ]
+            }
+          })
+        ) as { ok: boolean; validation: { errors?: readonly string[] } };
+
+      const unknown = await tryRelations([{ kind: 'supersedes', criterionId: 'nope' }]);
+      expect(unknown.ok).toBe(false);
+      expect(unknown.validation.errors!.join()).toContain('does not resolve');
+
+      const self = await tryRelations([{ kind: 'refines', criterionId: refs.silent }]);
+      expect(self.validation.errors!.join()).toContain('cannot be related to itself');
+
+      const elsewhere = await tryRelations([
+        { kind: 'supersedes', criterionId: 'nope', featureId: 'another-feature' }
+      ]);
+      expect(elsewhere.ok).toBe(true);
+
+      const granular = (await client.callTool({
+        name: 'add_acceptance_criterion',
+        arguments: {
+          featureId,
+          criterion: {
+            title: 'Twice the same',
+            relations: [
+              { kind: 'supersedes', criterionId: refs.silent },
+              { kind: 'supersedes', criterionId: refs.silent }
+            ]
+          }
+        }
+      })) as { isError?: boolean; content: readonly { text: string }[] };
+      expect(granular.isError).toBe(true);
+      expect(granular.content[0]?.text).toContain('duplicate relation');
+      await server.close();
+    });
+
+    it('warns when a criterion is superseded while still active, and never sets the status', async () => {
+      const { client, server, repo } = await setup();
+      const { featureId, refs } = await footsteps(client);
+
+      const added = parseTextContent(
+        await client.callTool({
+          name: 'add_acceptance_criterion',
+          arguments: {
+            featureId,
+            criterion: {
+              title: 'Shallow water is audible',
+              relations: [{ kind: 'supersedes', criterionId: refs.silent }]
+            }
+          }
+        })
+      ) as Ack;
+      expect(added.ok).toBe(true);
+      expect(added.warnings).toHaveLength(1);
+      expect(added.warnings![0]).toContain(refs.silent);
+      expect(added.warnings![0]).toContain('still active');
+      // Authors decide: the old criterion was not touched.
+      expect((await criteriaOf(repo, featureId))[refs.silent!]!.status).toBeUndefined();
+
+      // The same advisory from a batch that writes criteria, and from get_spec_gaps.
+      const batch = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            dryRun: true,
+            operations: [
+              { kind: 'update_acceptance_criterion', criterionId: added.id, given: 'ankle deep water' }
+            ]
+          }
+        })
+      ) as Ack;
+      expect(batch.warnings).toHaveLength(1);
+
+      const gaps = parseTextContent(
+        await client.callTool({ name: 'get_spec_gaps', arguments: { featureId } })
+      ) as { gaps: readonly { severity: string; entityType: string; entityId: string }[] };
+      expect(gaps.gaps).toContainEqual(
+        expect.objectContaining({
+          severity: 'recommended',
+          entityType: 'criterion',
+          entityId: refs.silent
+        })
+      );
+
+      // The index reads it as contested until the author marks it.
+      const index = parseTextContent(
+        await client.callTool({ name: 'get_feature', arguments: { featureId } })
+      ) as {
+        acceptanceCriteria: readonly {
+          id: string;
+          status: string;
+          supersededBy: readonly string[];
+          standing: string;
+        }[];
+      };
+      expect(index.acceptanceCriteria.find((c) => c.id === refs.silent)).toEqual({
+        id: refs.silent,
+        title: 'Footsteps are silent in water',
+        status: 'active',
+        supersededBy: [added.id],
+        standing: `active, but superseded by ${added.id}`
+      });
+
+      const marked = parseTextContent(
+        await client.callTool({
+          name: 'update_acceptance_criterion',
+          arguments: { featureId, criterionId: refs.silent, patch: { status: 'superseded' } }
+        })
+      ) as Ack;
+      expect(marked.warnings).toBeUndefined();
+      const after = parseTextContent(
+        await client.callTool({ name: 'get_feature', arguments: { featureId } })
+      ) as { acceptanceCriteria: readonly { id: string; standing: string }[] };
+      expect(after.acceptanceCriteria.find((c) => c.id === refs.silent)?.standing).toBe(
+        `superseded by ${added.id}`
+      );
+      await server.close();
+    });
+
+    it('a batch that writes no criterion carries no standing warning', async () => {
+      const { client, server } = await setup();
+      const { featureId, refs } = await footsteps(client);
+      await client.callTool({
+        name: 'add_acceptance_criterion',
+        arguments: {
+          featureId,
+          criterion: {
+            title: 'Shallow water is audible',
+            relations: [{ kind: 'supersedes', criterionId: refs.silent }]
+          }
+        }
+      });
+      const unrelated = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            dryRun: true,
+            operations: [
+              {
+                kind: 'update_action',
+                surfaceId: refs.shore,
+                actionId: refs.step,
+                intent: 'The player takes one step forward.'
+              }
+            ]
+          }
+        })
+      ) as Ack;
+      expect(unrelated.ok).toBe(true);
+      expect(unrelated.warnings).toBeUndefined();
+      await server.close();
+    });
+
+    it('sync_from_index answers a criteria block, and criterion entries move neither synced nor skipped', async () => {
+      const { client, server } = await setup();
+      const { projectId, featureId, refs } = await footsteps(client);
+      const added = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            operations: [
+              { kind: 'add_acceptance_criterion', ref: 'shallow', title: 'Shallow water is audible' },
+              { kind: 'add_acceptance_criterion', ref: 'wading', title: 'Wading is louder' },
+              { kind: 'add_acceptance_criterion', ref: 'mud', title: 'Mud muffles every step' }
+            ]
+          }
+        })
+      ) as Ack;
+      const code = {
+        [`surface:${refs.shore}`]: { status: 'implemented', file: 'shore.ts', line: 1, signature: 'export const shore' },
+        [`action:${refs.step}`]: { status: 'implemented', file: 'step.ts', line: 1, signature: 'export const step' }
+      };
+      const at = '2026-09-20T10:00:00.000Z';
+      const evidence = {
+        [`criterion:${refs.silent}`]: {
+          file: 'silent.test.ts',
+          verification: { kind: 'unit', command: 'npx vitest run silent.test.ts', lastResult: { passed: true, at } }
+        },
+        [`criterion:${added.refs!.shallow}`]: {
+          file: 'shallow.test.ts',
+          verification: { kind: 'e2e', lastResult: { passed: false, at, summary: '2 of 6 clips too quiet' } }
+        },
+        [`criterion:${added.refs!.wading}`]: { verification: { kind: 'manual' } }
+      };
+      type SyncAnswer = {
+        ok: boolean;
+        synced: number;
+        skipped: number;
+        orphans: { total: number };
+        criteria: {
+          total: number;
+          indexed: number;
+          verified: number;
+          failing: number;
+          unverified: number;
+          entries: readonly { criterionId: string; indexed: boolean; standing: string; file?: string }[];
+          malformed: readonly { key: string }[];
+        };
+      };
+      const sync = async (index: Record<string, unknown>) =>
+        parseTextContent(
+          await client.callTool({ name: 'sync_from_index', arguments: { index, projectId } })
+        ) as SyncAnswer;
+
+      const codeOnly = await sync(code);
+      const withEvidence = await sync({ ...code, ...evidence });
+
+      expect(withEvidence.criteria).toMatchObject({
+        total: 4,
+        indexed: 3,
+        verified: 1,
+        failing: 1,
+        unverified: 1,
+        malformed: []
+      });
+      expect(withEvidence.criteria.entries.find((e) => e.criterionId === added.refs!.mud)).toMatchObject({
+        indexed: false,
+        standing: 'active'
+      });
+      expect(withEvidence.criteria.entries.find((e) => e.criterionId === refs.silent)?.file).toBe(
+        'silent.test.ts'
+      );
+      // Criterion entries are neither orphans nor implementation reports.
+      expect(withEvidence.orphans.total).toBe(0);
+      expect(withEvidence.synced).toBe(codeOnly.synced);
+      expect(withEvidence.skipped).toBe(codeOnly.skipped);
+      expect(withEvidence.ok).toBe(codeOnly.ok);
+      expect(codeOnly.criteria).toMatchObject({ total: 4, indexed: 0, verified: 0, failing: 0, unverified: 0 });
+
+      // A malformed block is reported and the sync still answers.
+      const broken = await sync({
+        ...code,
+        [`criterion:${refs.silent}`]: { verification: { kind: 'vibes' } }
+      });
+      expect(broken.criteria.malformed.map((m) => m.key)).toEqual([`criterion:${refs.silent}`]);
+      expect(broken.criteria.unverified).toBe(1);
+      expect(broken.synced).toBe(codeOnly.synced);
+      await server.close();
+    });
+
+    it('get_drift reports a criterion entry stale after the criterion changed, never an orphan', async () => {
+      const { client, server } = await setup();
+      const { projectId, featureId, refs } = await footsteps(client);
+      const key = `criterion:${refs.silent}`;
+      // The fixed test clock stamps every write at 2026-05-09.
+      const drift = async (specVersion: string) =>
+        parseTextContent(
+          await client.callTool({
+            name: 'get_drift',
+            arguments: { projectId, index: { [key]: { specVersion, verification: { kind: 'unit' } } } }
+          })
+        ) as { stale: readonly { key: string; scope: string }[]; orphans: readonly unknown[]; checked: number };
+
+      const fresh = await drift('2026-06-01T00:00:00.000Z');
+      expect(fresh).toMatchObject({ stale: [], orphans: [], checked: 1 });
+
+      const old = await drift('2026-01-01T00:00:00.000Z');
+      expect(old.orphans).toEqual([]);
+      expect(old.stale).toEqual([expect.objectContaining({ key, scope: 'element' })]);
+      expect(featureId).toBeTruthy();
+      await server.close();
+    });
+  });
+
   it('stores a shared entity once and resolves it from every referencing feature', async () => {
     const { client, server, repo } = await setup();
 

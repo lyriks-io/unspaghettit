@@ -258,3 +258,51 @@ describe('detectDrift scoped to part of a project', () => {
     });
   });
 });
+
+describe('detectDrift on acceptance criteria', () => {
+  const audited = '2026-06-05T00:00:00.000Z';
+  const withCriteria = (versions: Record<string, string>): Feature =>
+    ({
+      ...stamped('2026-06-10T00:00:00.000Z', versions),
+      acceptanceCriteria: [
+        { id: 'c1', title: 'Footsteps are silent in water', given: '', when: '', then: '', expectedOutcome: 'success' },
+        { id: 'c2', title: 'Shallow water is audible', given: '', when: '', then: '', expectedOutcome: 'success' }
+      ]
+    }) as unknown as Feature;
+  const index: IndexedImplementation[] = [
+    { key: 'criterion:c1', status: 'implemented', auditedSpecVersion: audited },
+    { key: 'criterion:c2', status: 'implemented', auditedSpecVersion: audited }
+  ];
+
+  it('owns a criterion key, so it is checked and never an orphan', () => {
+    const report = detectDrift(
+      [withCriteria({ 'criterion:c1': '2026-06-01T00:00:00.000Z', 'criterion:c2': '2026-06-01T00:00:00.000Z' })],
+      index
+    );
+    expect(report.orphans).toEqual([]);
+    expect(report.checked).toBe(2);
+    expect(report.stale).toEqual([]);
+  });
+
+  it('reports the entry stale when the criterion changed after the recorded specVersion', () => {
+    const report = detectDrift(
+      [withCriteria({ 'criterion:c1': '2026-06-10T00:00:00.000Z', 'criterion:c2': '2026-06-01T00:00:00.000Z' })],
+      index
+    );
+    expect(report.stale.map((s) => s.key)).toEqual(['criterion:c1']);
+    expect(report.stale[0]).toMatchObject({
+      entitySuffix: 'c1',
+      scope: 'element',
+      currentSpecVersion: '2026-06-10T00:00:00.000Z'
+    });
+    expect(report.orphans).toEqual([]);
+  });
+
+  it('still reads a key for a criterion that no longer exists as an orphan', () => {
+    const report = detectDrift(
+      [withCriteria({})],
+      [{ key: 'criterion:gone', status: 'implemented', auditedSpecVersion: audited }]
+    );
+    expect(report.orphans.map((o) => o.key)).toEqual(['criterion:gone']);
+  });
+});

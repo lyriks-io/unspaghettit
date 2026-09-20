@@ -31,6 +31,8 @@ type IdentifierSets = {
   readonly invariantIds: ReadonlySet<string>;
   readonly transitionIds: ReadonlySet<string>;
   readonly eventNames: ReadonlySet<string>;
+  /** Acceptance criteria, keyed `criterion:<id>`: what verifies one is mapped like code. */
+  readonly criterionIds: ReadonlySet<string>;
   /** Personas, resources, entities, value sets — keyed by id for the generic fallback. */
   readonly otherIds: ReadonlySet<string>;
 };
@@ -43,10 +45,12 @@ const buildIdentifierSets = (feature: Feature): IdentifierSets => {
   const invariantIds = new Set<string>();
   const transitionIds = new Set<string>();
   const eventNames = new Set<string>();
+  const criterionIds = new Set<string>();
   const otherIds = new Set<string>();
 
   for (const inv of feature.featureInvariants ?? []) invariantIds.add(String(inv.id));
   for (const event of feature.events ?? []) eventNames.add(String(event.name));
+  for (const criterion of feature.acceptanceCriteria ?? []) criterionIds.add(String(criterion.id));
   for (const vs of feature.valueSets ?? []) otherIds.add(String(vs.id));
   for (const persona of feature.personas ?? []) otherIds.add(String(persona.id));
   for (const resource of feature.resources ?? []) otherIds.add(String(resource.id));
@@ -74,6 +78,7 @@ const buildIdentifierSets = (feature: Feature): IdentifierSets => {
     invariantIds,
     transitionIds,
     eventNames,
+    criterionIds,
     otherIds
   };
 };
@@ -97,6 +102,8 @@ const owns = (sets: IdentifierSets, type: string, suffix: string): boolean => {
       return sets.invariantIds.has(suffix);
     case 'transition':
       return sets.transitionIds.has(suffix);
+    case 'criterion':
+      return sets.criterionIds.has(suffix);
     default:
       return (
         sets.surfaceIds.has(suffix) ||
@@ -106,6 +113,7 @@ const owns = (sets: IdentifierSets, type: string, suffix: string): boolean => {
         sets.ruleIds.has(suffix) ||
         sets.invariantIds.has(suffix) ||
         sets.transitionIds.has(suffix) ||
+        sets.criterionIds.has(suffix) ||
         sets.otherIds.has(suffix)
       );
   }

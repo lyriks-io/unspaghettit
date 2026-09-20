@@ -99,7 +99,7 @@ id portion depends on the type:
 
 - `action:<id>`, `surface:<id>`, `rule:<id>`, `invariant:<id>`,
   `transition:<id>`, `surface_rule:<id>`, `surface_invariant:<id>`,
-  `entity:<id>` → id is the 8-char hex minted by the spec. Get it via
+  `entity:<id>`, `criterion:<id>` → id is the 8-char hex minted by the spec. Get it via
   `get_behavioral_index` or `get_feature(verbose:true)`. Slug-shaped
   keys are not accepted.
 - `event:<event-name>` → the event's literal string identifier.

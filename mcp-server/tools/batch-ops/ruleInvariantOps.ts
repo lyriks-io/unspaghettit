@@ -27,7 +27,8 @@ import {
   requireSomeChange,
   resolve,
   type Op,
-  type OpContext
+  type OpContext,
+  type Refs
 } from './opHelpers';
 
 /** The four patchable Rule fields, picked from either spelling. */
@@ -59,6 +60,32 @@ const mergeRule = (existing: Rule, picked: Record<string, unknown>): Rule => ({
     : {}),
   ...(typeof picked.description === 'string' ? { description: picked.description } : {})
 });
+
+/**
+ * Resolve `relations[].criterionRef` against the batch refs into `criterionId`,
+ * so a criterion can supersede one that was added earlier in the same batch. An
+ * explicit `criterionId` wins. The builders only ever see ids.
+ */
+const resolveCriterionRelationRefs = (
+  op: Op,
+  input: Record<string, unknown>,
+  refs: Refs
+): Record<string, unknown> => {
+  if (!Array.isArray(input.relations)) return input;
+  return {
+    ...input,
+    relations: input.relations.map((raw: unknown) => {
+      const relation = (raw ?? {}) as Record<string, unknown>;
+      const ref = relation.criterionRef;
+      if (typeof ref !== 'string' || ref.length === 0 || relation.criterionId !== undefined) {
+        return relation;
+      }
+      const id = refs[ref];
+      if (!id) throw new Error(`${op.kind}: unknown criterionRef "${ref}" in relations`);
+      return { ...relation, criterionId: id };
+    })
+  };
+};
 
 /**
  * Rule, Effect, Invariant (action, surface, and feature level), and
@@ -346,7 +373,7 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
     // Not simulated or scored; the only hard rule is a non-empty title.
     case 'add_acceptance_criterion': {
       const criterion = buildAcceptanceCriterion(
-        (op.criterion as Record<string, unknown>) ?? op,
+        resolveCriterionRelationRefs(op, (op.criterion as Record<string, unknown>) ?? op, refs),
         mintId
       );
       exp = T.addAcceptanceCriterion(exp, criterion);
@@ -355,7 +382,7 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
     }
     case 'update_acceptance_criterion': {
       const patch = buildAcceptanceCriterionPatch(
-        (op.patch as Record<string, unknown>) ?? op
+        resolveCriterionRelationRefs(op, (op.patch as Record<string, unknown>) ?? op, refs)
       );
       requireSomeChange(op, patch, [
         'title',
@@ -364,11 +391,15 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
         'then',
         'expectedOutcome',
         'relatedSurfaceId',
-        'description'
+        'description',
+        'status',
+        'relations'
       ]);
       exp = T.updateAcceptanceCriterion(
         exp,
-        asAcceptanceCriterionId(op.criterionId as string),
+        // `criterionRef` addresses a criterion added earlier in the same batch:
+        // the usual move is "add the new one, mark the old one superseded".
+        asAcceptanceCriterionId(resolve(op, refs, 'criterionRef', 'criterionId')),
         patch
       );
       break;

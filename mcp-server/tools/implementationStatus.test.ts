@@ -341,3 +341,28 @@ describe('findSharedKeys', () => {
     expect(owners.get('state:session.role')).toEqual(['feat-a', 'feat-b']);
   });
 });
+
+describe('criterion index keys', () => {
+  const feature = {
+    id: 'f1',
+    name: 'Footsteps',
+    surfaces: [],
+    acceptanceCriteria: [{ id: 'c0ffee12', title: 'Shallow water is audible' }]
+  } as unknown as Feature;
+
+  it('expects a criterion:<id> key for every acceptance criterion', () => {
+    expect(buildExpectedIndexKeys([feature]).has('criterion:c0ffee12')).toBe(true);
+  });
+
+  it('does not report such an entry as an orphan', () => {
+    const index: BehavioralIndex = { 'criterion:c0ffee12': indexEntry('footsteps.test.ts') };
+    expect(findOrphanKeys(index, buildExpectedIndexKeys([feature]))).toEqual([]);
+  });
+
+  it('gives a slug-shaped criterion key the hex id hint, like the other id keyed types', () => {
+    const index: BehavioralIndex = { 'criterion:shallow-water': indexEntry() };
+    const orphans = findOrphanKeys(index, buildExpectedIndexKeys([feature]));
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0]!.hint).toContain('8-char hex');
+  });
+});

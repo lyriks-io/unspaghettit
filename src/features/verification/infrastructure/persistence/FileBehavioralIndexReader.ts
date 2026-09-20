@@ -26,10 +26,18 @@ export const toIndexedImplementations = (
   index: Record<string, RawIndexEntry>
 ): readonly IndexedImplementation[] =>
   Object.entries(index).map(([key, raw]) => {
+    // A code entry without a valid status maps nothing yet, hence `missing`. A
+    // `criterion:<id>` entry is different: it exists to say what verifies the
+    // criterion, and authors routinely write it with a `verification` block and
+    // no status. Reading that as `missing` would hide it from drift for good, so
+    // it reads as `implemented` unless the author wrote a status of their own.
+    const fallback: IndexedImplementationStatus = key.startsWith('criterion:')
+      ? 'implemented'
+      : 'missing';
     const status: IndexedImplementationStatus =
       raw?.status && VALID_STATUS.has(raw.status as IndexedImplementationStatus)
         ? (raw.status as IndexedImplementationStatus)
-        : 'missing';
+        : fallback;
     return {
       key,
       status,

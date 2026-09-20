@@ -31,6 +31,7 @@ import { writeRepoLink, type BehavioralIndex, type IndexEntry, type RepoLink } f
 import type { RepoContext } from '../server';
 import { errorText, text, type ToolDeps } from './_shared';
 import { inlineIndexSchema, isIndexSourceError, resolveIndexSource } from './_index-source';
+import { buildCriteriaIndexReport } from './_criteria-index';
 import { trackTokens } from '../metrics';
 import { expandFeatureId, expandIdInFeature } from './short-ids';
 
@@ -274,7 +275,8 @@ const ID_KEYED_TYPES = new Set([
   'transition',
   'surface_rule',
   'surface_invariant',
-  'entity'
+  'entity',
+  'criterion'
 ]);
 const HEX_ID_RE = /^[a-f0-9]{8}$|^[a-f0-9-]{36}$/i;
 
@@ -299,6 +301,12 @@ export const buildKeyOwners = (features: readonly Feature[]): Map<string, string
     for (const inv of exp.featureInvariants ?? []) own(`invariant:${String(inv.id)}`);
     for (const ev of exp.events ?? []) own(`event:${String(ev.name)}`);
     for (const entity of exp.entities ?? []) own(`entity:${String(entity.id)}`);
+    // What verifies an acceptance criterion is mapped like code, under
+    // `criterion:<id>`. Such an entry feeds the `criteria` block of the sync and
+    // drift; it never produces an action or surface implementation report.
+    for (const criterion of exp.acceptanceCriteria ?? []) {
+      own(`criterion:${String(criterion.id)}`);
+    }
     for (const surface of exp.surfaces) {
       own(`surface:${String(surface.id)}`);
       for (const sd of surface.stateDefinitions) own(`state:${String(sd.path)}`);
@@ -750,7 +758,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'sync_from_index',
     {
       description:
-        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and disk snippets are then skipped, since both need the real files; each entry\'s `signature` becomes its code evidence, and an entry with no signature lands as `unverified` in the dashboard, so seed entries via seed_index_from_analysis or copy the real code line into `signature` yourself). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `shared` block lists keys that SEVERAL features declare (a state path is not unique across features): the index holds one entry per key, so its file and line describe whichever feature was seeded last, and coverage and drift for the others resolve to that same location. Reported, never fatal, and it does not affect `ok`. The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
+        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and disk snippets are then skipped, since both need the real files; each entry\'s `signature` becomes its code evidence, and an entry with no signature lands as `unverified` in the dashboard, so seed entries via seed_index_from_analysis or copy the real code line into `signature` yourself). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.). Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `shared` block lists keys that SEVERAL features declare (a state path is not unique across features): the index holds one entry per key, so its file and line describe whichever feature was seeded last, and coverage and drift for the others resolve to that same location. Reported, never fatal, and it does not affect `ok`. The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. A `criterion:<id>` key maps what VERIFIES an acceptance criterion (a test, a script, a manual check) and may carry `verification: { kind: unit|integration|e2e|visual|measurement|manual, command?, files?, artifacts?, lastResult?: { passed, at, summary?, revision? } }`. Criterion entries produce NO action or surface report and change neither `synced` nor `skipped`; they feed the `criteria` block: { total, indexed, verified (lastResult.passed true), failing (lastResult.passed false), unverified (indexed, no lastResult), entries: [{ key, criterionId, title, standing, indexed, file?, verification? }], malformed[] }, where `standing` is the computed one-liner (active | superseded by <ids> | draft | ...). A malformed verification block is listed in `criteria.malformed` and never rejects the sync. The block is recomputed from the index on every call and stored nowhere server side; it never affects maturity or any verification score. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
       inputSchema: { ...inlineIndexSchema }
     },
     async ({ index: inlineIndex, projectId: inlineProjectId }) => {
@@ -974,6 +982,12 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       const orphans = findOrphanKeys(index, expectedKeys);
       // Keys several features declare: one entry cannot describe them all.
       const shared = findSharedKeys(index, features);
+      // What verifies each acceptance criterion, read off the `criterion:<id>`
+      // entries. Those entries never enter the action/surface loop above, so
+      // they change neither `synced` nor `skipped`, and a malformed verification
+      // block is reported here instead of failing the sync. Answer-only: the
+      // status store has action and surface slots, nothing feature-level.
+      const criteria = buildCriteriaIndexReport(features, index);
 
       // `ok` is false when ANY of these hold: a per-entity report failed,
       // an index entry didn't match a spec entity, OR nothing landed at all
@@ -1009,6 +1023,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
             total: shared.length,
             entries: shared
           },
+          criteria,
           acks
         })
       );

@@ -39,13 +39,55 @@ export type IndexEntry = {
   /** Structured list of spec elements that are not yet implemented. */
   readonly knownGaps?: readonly string[];
   readonly notes?: string;
+  /**
+   * What verifies this entry, and how it last went. Written on `criterion:<id>`
+   * entries: a repository used to keep "what proves this criterion" in a private
+   * block of its index the engine never read. Read leniently: a malformed block
+   * is reported by sync_from_index, never a reason to refuse the sync.
+   */
+  readonly verification?: IndexVerification;
+};
+
+export type IndexVerificationKind =
+  | 'unit'
+  | 'integration'
+  | 'e2e'
+  | 'visual'
+  | 'measurement'
+  | 'manual';
+
+export const ALL_INDEX_VERIFICATION_KINDS: readonly IndexVerificationKind[] = [
+  'unit',
+  'integration',
+  'e2e',
+  'visual',
+  'measurement',
+  'manual'
+];
+
+export type IndexVerification = {
+  readonly kind: IndexVerificationKind;
+  /** How to run it, e.g. `npx vitest run src/audio/footsteps.test.ts`. */
+  readonly command?: string;
+  /** The test or script files that carry the check. */
+  readonly files?: readonly string[];
+  /** What the check produces: a recording, a screenshot, a measurement log. */
+  readonly artifacts?: readonly string[];
+  readonly lastResult?: {
+    readonly passed: boolean;
+    /** ISO timestamp of the run. */
+    readonly at: string;
+    readonly summary?: string;
+    /** The code revision the check ran against (a commit SHA). */
+    readonly revision?: string;
+  };
 };
 
 /**
  * Keyed by "<type>:<id-or-path>":
  *   action:<actionId>   surface:<surfaceId>    state:<dotted.path>
  *   rule:<ruleId>               invariant:<id>         event:<eventName>
- *   transition:<transitionId>
+ *   transition:<transitionId>   criterion:<criterionId>
  */
 export type BehavioralIndex = Record<string, IndexEntry>;
 

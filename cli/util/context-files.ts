@@ -68,6 +68,7 @@ is the only mapping between code and spec. Keys follow
 - \`transition:<id>\`
 - \`surface_rule:<id>\` / \`surface_invariant:<id>\`
 - \`entity:<id>\`
+- \`criterion:<id>\` (an acceptance criterion: the entry maps what VERIFIES it, and may carry a \`verification\` block: kind, command, files, artifacts, lastResult)
 - \`event:<event-name>\` (the event's string identifier, not an id)
 - \`state:<state.path>\` (e.g. \`cart.itemCount\`)
 

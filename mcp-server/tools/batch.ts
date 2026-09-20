@@ -17,6 +17,7 @@ import {
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
+import { criterionStandingWarnings } from '../../src/features/behavior-model/domain/services/CriterionStanding';
 import {
   recordingIdGenerator,
   replayingIdGenerator
@@ -202,6 +203,15 @@ export const registerBatchTool = (deps: ToolDeps): void => {
               loadProjectSiblings(repo, projectRepo, String(featureId))
             )
           : {};
+        // A batch that wrote acceptance criteria answers like the granular tools
+        // do: it names every criterion that another one supersedes while it is
+        // still marked active. Only such a batch, so that an old unresolved case
+        // does not ride along on every unrelated answer. Advisory: never a
+        // reason to refuse the batch, and statuses are never set for the author.
+        const touchedCriteria = ops.some((op) => op.kind.endsWith('_acceptance_criterion'));
+        const standingWarnings =
+          validation.valid && touchedCriteria ? criterionStandingWarnings(next) : [];
+        const warningReport = standingWarnings.length > 0 ? { warnings: standingWarnings } : {};
         // dryRun (never while committing): validate + score, don't save. On a
         // valid dry-run, cache the ops under a fresh single-use token so the
         // caller can commit later with just { commit } and no operations.
@@ -229,6 +239,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
               validation,
               maturity: validation.valid ? scoreFeature(next) : null,
               ...scenarioReport,
+              ...warningReport,
               ...(commitToken ? { commitToken } : {})
             });
           }
@@ -241,6 +252,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
             validation,
             maturity: validation.valid ? scoreFeatureTool(next) : null,
             ...scenarioReport,
+            ...warningReport,
             ...(commitToken ? { commitToken } : {})
           });
         }
@@ -277,6 +289,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           appliedCount: ops.length,
           refs,
           ...scenarioReport,
+          ...warningReport,
           ...(committing ? { committed: true } : {}),
           ...(codegen
             ? { generatedTypes: { outputPath: codegen.outputPath, stats: codegen.stats } }

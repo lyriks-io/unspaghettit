@@ -179,3 +179,63 @@ describe('elementVersionOf', () => {
     expect(elementVersionOf(build(), 'rule:r1')).toBeUndefined();
   });
 });
+
+describe('acceptance criteria are stamped like any other element', () => {
+  const NOW = '2026-06-20T00:00:00.000Z';
+  const CRITERIA = [
+    { id: 'c1', title: 'Footsteps are silent in water', given: '', when: '', then: '', expectedOutcome: 'success' },
+    { id: 'c2', title: 'Shallow water is audible', given: '', when: '', then: '', expectedOutcome: 'success' }
+  ];
+
+  it('keys each criterion as criterion:<id>', () => {
+    const keys = [...elementDigests(build({ acceptanceCriteria: CRITERIA })).keys()];
+    expect(keys).toContain('criterion:c1');
+    expect(keys).toContain('criterion:c2');
+  });
+
+  it('moves the stamp of the edited criterion only', () => {
+    const before = stampElementVersions(
+      null,
+      build({ acceptanceCriteria: CRITERIA }),
+      '2026-06-01T00:00:00.000Z'
+    );
+    const edited = JSON.parse(JSON.stringify(before)) as Feature;
+    (edited.acceptanceCriteria as unknown as Record<string, unknown>[])[0]!.status = 'superseded';
+    const after = nextElementVersions(before, edited, NOW);
+
+    expect(after['criterion:c1']).toBe(NOW);
+    expect(after['criterion:c2']).toBe('2026-06-01T00:00:00.000Z');
+    expect(after['action:a1']).toBe('2026-06-01T00:00:00.000Z');
+  });
+
+  it('moves the stamp when a relation is added, since it changes what the criterion means', () => {
+    const before = stampElementVersions(
+      null,
+      build({ acceptanceCriteria: CRITERIA }),
+      '2026-06-01T00:00:00.000Z'
+    );
+    const related = JSON.parse(JSON.stringify(before)) as Feature;
+    (related.acceptanceCriteria as unknown as Record<string, unknown>[])[1]!.relations = [
+      { kind: 'supersedes', criterionId: 'c1' }
+    ];
+    const after = nextElementVersions(before, related, NOW);
+
+    expect(after['criterion:c2']).toBe(NOW);
+    expect(after['criterion:c1']).toBe('2026-06-01T00:00:00.000Z');
+  });
+
+  it('calibrates criteria of a feature stamped before they were keyed, never later than its updatedAt', () => {
+    // A 0.23 snapshot: it carries stamps, but none for its criteria.
+    const legacy = {
+      ...stampElementVersions(null, build(), '2026-06-01T00:00:00.000Z'),
+      acceptanceCriteria: CRITERIA,
+      updatedAt: '2026-06-03T00:00:00.000Z'
+    } as unknown as Feature;
+    const touched = JSON.parse(JSON.stringify(legacy)) as Feature;
+    (touched.acceptanceCriteria as unknown as Record<string, unknown>[])[0]!.title = 'Reworded';
+    const after = nextElementVersions(legacy, touched, NOW);
+
+    expect(after['criterion:c1']).toBe(NOW);
+    expect(after['criterion:c2']).toBe('2026-06-03T00:00:00.000Z');
+  });
+});

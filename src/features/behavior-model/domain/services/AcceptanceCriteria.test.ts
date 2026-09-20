@@ -174,3 +174,133 @@ describe('acceptance criteria — score isolation (documentation must not move m
     expect(after.percentage).toBe(before.percentage);
   });
 });
+
+describe('acceptance criteria: status and relations', () => {
+  const withAC = (acs: readonly AcceptanceCriterion[]): Feature => ({
+    ...storefrontFeature,
+    acceptanceCriteria: acs
+  });
+  const errorsOf = (feature: Feature): readonly string[] => {
+    const res = validateFeature(feature);
+    return res.valid ? [] : res.errors;
+  };
+  const silent = criterion({ id: asAcceptanceCriterionId('silent'), title: 'Footsteps are silent in water' });
+  const shallow = (over: Partial<AcceptanceCriterion> = {}): AcceptanceCriterion =>
+    criterion({ id: asAcceptanceCriterionId('shallow'), title: 'Shallow water is audible', ...over });
+
+  it('accepts the three statuses, an absent one, and every relation kind', () => {
+    for (const status of ['active', 'superseded', 'draft'] as const) {
+      expect(errorsOf(withAC([criterion({ status })]))).toEqual([]);
+    }
+    expect(
+      errorsOf(
+        withAC([
+          silent,
+          shallow({
+            relations: [
+              { kind: 'supersedes', criterionId: 'silent', note: 'Since the reef level.' },
+              { kind: 'refines', criterionId: 'silent' },
+              { kind: 'exception_to', criterionId: 'silent' }
+            ]
+          })
+        ])
+      )
+    ).toEqual([]);
+  });
+
+  it('rejects a status or a relation kind outside the vocabulary', () => {
+    expect(errorsOf(withAC([criterion({ status: 'retired' as never })])).join()).toContain(
+      'unknown status "retired"'
+    );
+    expect(
+      errorsOf(
+        withAC([silent, shallow({ relations: [{ kind: 'replaces' as never, criterionId: 'silent' }] })])
+      ).join()
+    ).toContain('unknown kind "replaces"');
+  });
+
+  it('rejects a relation to a criterion this feature does not have', () => {
+    expect(
+      errorsOf(withAC([shallow({ relations: [{ kind: 'supersedes', criterionId: 'ghost' }] })])).join()
+    ).toContain('criterionId "ghost" does not resolve');
+  });
+
+  it('carries a relation into ANOTHER feature unresolved, like relatedSurfaceId', () => {
+    expect(
+      errorsOf(
+        withAC([
+          shallow({
+            relations: [{ kind: 'supersedes', criterionId: 'ghost', featureId: 'some-other-feature' }]
+          })
+        ])
+      )
+    ).toEqual([]);
+    // Naming this very feature is not "another feature": the id must resolve.
+    expect(
+      errorsOf(
+        withAC([
+          shallow({
+            relations: [
+              { kind: 'supersedes', criterionId: 'ghost', featureId: String(storefrontFeature.id) }
+            ]
+          })
+        ])
+      ).join()
+    ).toContain('does not resolve');
+  });
+
+  it('rejects a criterion related to itself', () => {
+    expect(
+      errorsOf(withAC([shallow({ relations: [{ kind: 'refines', criterionId: 'shallow' }] })])).join()
+    ).toContain('cannot be related to itself');
+  });
+
+  it('rejects the same (kind, criterionId) written twice, but not two kinds to one target', () => {
+    expect(
+      errorsOf(
+        withAC([
+          silent,
+          shallow({
+            relations: [
+              { kind: 'supersedes', criterionId: 'silent' },
+              { kind: 'supersedes', criterionId: 'silent', note: 'Again.' }
+            ]
+          })
+        ])
+      ).join()
+    ).toContain('duplicate relation (supersedes silent)');
+  });
+
+  it('reports a relations value that is not a list instead of throwing', () => {
+    expect(
+      errorsOf(withAC([criterion({ relations: 'silent' as never })])).join()
+    ).toContain('"relations" must be an array');
+  });
+
+  it('round-trips status and relations, and adds neither to a criterion that had none', () => {
+    const feature: Feature = {
+      ...base,
+      acceptanceCriteria: [
+        silent,
+        shallow({ status: 'active', relations: [{ kind: 'supersedes', criterionId: 'silent' }] })
+      ]
+    };
+    const back = importFeatureFromJson(exportFeatureToJson(feature));
+    expect(back.acceptanceCriteria).toEqual(feature.acceptanceCriteria);
+    expect(Object.keys(back.acceptanceCriteria![0]!)).not.toContain('status');
+    expect(Object.keys(back.acceptanceCriteria![0]!)).not.toContain('relations');
+  });
+
+  it('never moves maturity, whatever the statuses and relations say', () => {
+    const before = scoreFeature(storefrontFeature);
+    const after = scoreFeature(
+      withAC([
+        criterion({ id: asAcceptanceCriterionId('silent'), status: 'superseded' }),
+        shallow({ status: 'draft', relations: [{ kind: 'supersedes', criterionId: 'silent' }] })
+      ])
+    );
+    expect(after.score).toBe(before.score);
+    expect(after.maxScore).toBe(before.maxScore);
+    expect(after.percentage).toBe(before.percentage);
+  });
+});
