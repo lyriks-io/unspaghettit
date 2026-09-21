@@ -143,7 +143,37 @@ export const resolveScenarioRefs = (op: Op, refs: Refs): Op => {
     if (!resolved) throw new Error(`${op.kind}: unknown personaRef "${personaRef}"`);
     next = { ...next, personaId: resolved };
   }
+
+  // A multi-step scenario addresses one action per step, and those actions are
+  // routinely minted by the SAME batch. Without this, writing the flow meant a
+  // second batch just to copy the ids back in, so `steps[]` takes `actionRef` /
+  // `surfaceRef` exactly like every other op.
+  const steps = get(op, 'steps');
+  if (Array.isArray(steps)) {
+    next = { ...next, steps: steps.map((step) => resolveStepRefs(op, step, refs)) };
+  }
   return next;
+};
+
+const resolveStepRefs = (op: Op, step: unknown, refs: Refs): unknown => {
+  if (!step || typeof step !== 'object' || Array.isArray(step)) return step;
+  const raw = step as Record<string, unknown>;
+  let out = raw;
+  for (const [refKey, idKey] of [
+    ['actionRef', 'actionId'],
+    ['surfaceRef', 'surfaceId']
+  ] as const) {
+    const ref = raw[refKey];
+    if (typeof ref !== 'string' || ref.length === 0) continue;
+    if (raw[idKey] !== undefined) continue;
+    const resolved = refs[ref];
+    if (!resolved) throw new Error(`${op.kind}: unknown steps[].${refKey} "${ref}"`);
+    out = { ...out, [idKey]: resolved };
+  }
+  if (out === raw) return raw;
+  delete out.actionRef;
+  delete out.surfaceRef;
+  return out;
 };
 
 export const resolveSharedWith = (

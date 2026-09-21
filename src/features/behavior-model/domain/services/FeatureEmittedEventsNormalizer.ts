@@ -2,21 +2,32 @@ import type { Action } from '../entities/Action';
 import type { Feature } from '../entities/Feature';
 import type { Effect } from '../value-objects/Effect';
 import { asEventName, type EventName } from '../value-objects/EventName';
+import { asEffectId } from '../value-objects/ids';
 import type { Surface } from '../entities/Surface';
 
 /**
- * Ensure `Action.emittedEvents` contains every event name that appears in
- * an `emit_event` effect anywhere on the action (effects, onBlockedEffects,
- * or rule effects). Declaring an emit_event effect without also listing the
- * event in `emittedEvents` is the most common bookkeeping mistake when
- * authoring via the MCP: the scorer's "event declarations" check then
- * flags the action as recommended even though the emission is plainly
- * wired. Auto-syncing here removes one redundant `update_action` op per
- * emit_event effect added.
+ * Keep an action's declared emissions and its emitting effects saying the same
+ * thing, in BOTH directions. `emittedEvents` is what everyone reads as "this
+ * action emits that"; an `emit_event` effect is what actually fires at runtime
+ * (cascades, `triggeredByEvent` handlers). Letting the two drift is how a model
+ * ends up declaring thirteen events that emit nothing.
  *
- * Strategy: union (merge, never strip). `emittedEvents` is also a
- * declaration of intent, entries with no matching effect today might
- * fire from outside the spec or be planned for later. Keep them.
+ *  - effect → declaration: every event an `emit_event` effect fires (on the
+ *    action, its onBlocked fallbacks or one of its rules) is listed in
+ *    `emittedEvents`, so the scorer stops flagging a plainly wired emission.
+ *  - declaration → effect: every declared event that NO effect fires gets a
+ *    default `emit_event` effect on the action, so the declaration means what
+ *    its name promises: the event is emitted when the action succeeds.
+ *
+ * The synthesized effect carries a deterministic id (`eff-emit-<action>-<event>`),
+ * so re-running finds its work done instead of appending a second copy, and a
+ * saved feature keeps the same ids across loads.
+ *
+ * An event that must fire only under a condition is authored as an `emit_event`
+ * effect on the rule that carries the condition: the name is then already
+ * covered and nothing is synthesized for it.
+ *
+ * Strategy: union, never strip. Neither side loses what it declared.
  */
 export const normalizeFeatureEmittedEvents = (feature: Feature): Feature => ({
   ...feature,
@@ -30,21 +41,40 @@ const normalizeSurface = (surface: Surface): Surface => ({
 
 const normalizeAction = (action: Action): Action => {
   const fromEffects = collectEmittedEventNames(action);
-  if (fromEffects.size === 0) return action;
-  const existing = new Set(action.emittedEvents.map(String));
-  let changed = false;
+
+  // effect → declaration
+  const declared = new Set(action.emittedEvents.map(String));
+  let declarationsChanged = false;
   for (const name of fromEffects) {
-    if (!existing.has(name)) {
-      existing.add(name);
-      changed = true;
+    if (!declared.has(name)) {
+      declared.add(name);
+      declarationsChanged = true;
     }
   }
-  if (!changed) return action;
+
+  // declaration → effect: what is declared and nothing fires.
+  const unwired = [...declared].filter((name) => !fromEffects.has(name));
+  const effects = unwired.length
+    ? [...action.effects, ...unwired.map((name) => emitEffectFor(action, name))]
+    : action.effects;
+
+  if (!declarationsChanged && effects === action.effects) return action;
   return {
     ...action,
-    emittedEvents: [...existing].map((s) => asEventName(s)) as readonly EventName[]
+    ...(declarationsChanged
+      ? { emittedEvents: [...declared].map((s) => asEventName(s)) as readonly EventName[] }
+      : {}),
+    effects
   };
 };
+
+/** The default emission of a declared event: deterministic id, no condition. */
+const emitEffectFor = (action: Action, name: string): Effect => ({
+  id: asEffectId(`eff-emit-${String(action.id)}-${name.replace(/\./g, '-')}`),
+  type: 'emit_event',
+  event: asEventName(name),
+  description: `Emits "${name}" when ${action.name} succeeds (declared on the action).`
+});
 
 const collectEmittedEventNames = (action: Action): Set<string> => {
   const names = new Set<string>();

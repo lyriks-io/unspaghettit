@@ -77,14 +77,38 @@ describe('normalizeFeatureEmittedEvents', () => {
     expect(out).toHaveLength(2);
   });
 
-  it('does not strip declared events that have no corresponding effect', () => {
+  it('wires a declared event that no effect fires, instead of leaving it inert', () => {
     const action: Action = {
       ...baseAction,
       emittedEvents: [asEventName('declared.but.unwired')]
     };
-    const out = normalizeFeatureEmittedEvents(wrapFeature(action)).surfaces[0]!.actions[0]!
-      .emittedEvents.map(String);
-    expect(out).toEqual(['declared.but.unwired']);
+    const out = normalizeFeatureEmittedEvents(wrapFeature(action)).surfaces[0]!.actions[0]!;
+    expect(out.emittedEvents.map(String)).toEqual(['declared.but.unwired']);
+    expect(out.effects).toEqual([
+      {
+        id: 'eff-emit-c1-declared-but-unwired',
+        type: 'emit_event',
+        event: 'declared.but.unwired',
+        description: 'Emits "declared.but.unwired" when Do succeeds (declared on the action).'
+      }
+    ]);
+  });
+
+  it('synthesizes no effect for an event a rule already emits conditionally', () => {
+    const action: Action = {
+      ...baseAction,
+      emittedEvents: [asEventName('on.rule')],
+      rules: [
+        {
+          id: asRuleId('r1'),
+          category: 'business',
+          condition: { left: asStatePath('x'), operator: 'is_true' },
+          effect: { id: asEffectId('e1'), type: 'emit_event', event: asEventName('on.rule') }
+        }
+      ]
+    };
+    const out = normalizeFeatureEmittedEvents(wrapFeature(action)).surfaces[0]!.actions[0]!;
+    expect(out.effects).toEqual([]);
   });
 
   it('picks up emit_event from rule effects and onBlockedEffects', () => {
@@ -120,5 +144,16 @@ describe('normalizeFeatureEmittedEvents', () => {
     const first = normalizeFeatureEmittedEvents(wrapFeature(action));
     const second = normalizeFeatureEmittedEvents(first);
     expect(second.surfaces[0]!.actions[0]!.emittedEvents.map(String)).toEqual(['a.b']);
+  });
+
+  it('is idempotent on a synthesized emission: a second pass adds no second effect', () => {
+    const action: Action = {
+      ...baseAction,
+      emittedEvents: [asEventName('a.b')]
+    };
+    const first = normalizeFeatureEmittedEvents(wrapFeature(action));
+    const second = normalizeFeatureEmittedEvents(first);
+    expect(second.surfaces[0]!.actions[0]!.effects).toHaveLength(1);
+    expect(second).toEqual(first);
   });
 });

@@ -192,9 +192,10 @@ export const detectSpecGaps = (
         });
       }
 
-      // emittedEvents is a declaration; only an emit_event *effect* fires a
-      // cascade at runtime. Flag any declared event that nothing emits so a
-      // dangling declaration doesn't read as working wiring.
+      // A feature saved through this server has every declared event wired to an
+      // emit_event effect (FeatureEmittedEventsNormalizer), so this fires only on
+      // a model written by another tool, or on one loaded read-only. It stays as
+      // the statement of the rule: a declaration nothing emits is inert.
       const emitted = emittedEventNames(cap);
       for (const declared of cap.emittedEvents) {
         if (!emitted.has(String(declared))) {

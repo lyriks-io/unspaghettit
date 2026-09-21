@@ -30,6 +30,7 @@ import {
   recordingIdGenerator,
   replayingIdGenerator
 } from '../../src/shared/domain/IdGenerator';
+import { normalizeFeatureEmittedEvents } from '../../src/features/behavior-model/domain/services/FeatureEmittedEventsNormalizer';
 import { applyOps } from './batch-ops/applyOps';
 import type { Op } from './batch-ops/opHelpers';
 import { errorText, loadProjectSiblings, text, type ToolDeps } from './_shared';
@@ -210,7 +211,16 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         const recorder = recordingIdGenerator(
           presentIds ? replayingIdGenerator(dryRunIds, ids, (id) => presentIds.has(id)) : ids
         );
-        const { next, refs, mintIdToOp, removedIdToOp } = applyOps(current, ops, recorder.mint);
+        const applied = applyOps(current, ops, recorder.mint);
+        const { refs, mintIdToOp, removedIdToOp } = applied;
+        // Declared emissions and emitting effects are reconciled HERE, before
+        // validation, so the batch answers on the model it saves: an event
+        // listed in `emittedEvents` gets its default emit_event effect and
+        // really fires, and the scenarios this call runs already see the
+        // cascade. Doing it only on the next read would leave the author
+        // reading a batch that says nothing about a declaration that did not
+        // work yet.
+        const next = normalizeFeatureEmittedEvents(applied.next);
         // Diff-aware validation (structural + reference-integrity): a batch is
         // blocked only when it INTRODUCES a new error versus the loaded
         // snapshot. Pre-existing issues on a partially-built feature (e.g.
@@ -249,9 +259,10 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         };
         const annotateErrors = (errs: readonly string[]): readonly string[] =>
           errs.map(annotateError);
-        // Both `current` and `next` are at the same (un-normalized) level here,
-        // so the diff reflects only what the ops changed.
-        const introduced = introducedValidationErrors(current, next);
+        // The baseline is normalized the same way as `next`, so an emission the
+        // normalizer wires on an action the batch never touched cannot read as
+        // an error this batch introduced.
+        const introduced = introducedValidationErrors(normalizeFeatureEmittedEvents(current), next);
         const validation: ValidationResult =
           introduced.length === 0
             ? { valid: true }

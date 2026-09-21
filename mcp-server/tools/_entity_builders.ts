@@ -113,7 +113,9 @@ const buildStep = (raw: unknown): ScenarioStep => {
   const x = (raw as Raw) ?? {};
   if (typeof x.actionId !== 'string' || x.actionId.length === 0) {
     throw new Error(
-      `scenario step: actionId (string) is required. Got ${JSON.stringify(x)}.`
+      `scenario step: actionId (string) is required, or actionRef, naming an action ` +
+        `minted earlier in the SAME batch (surfaceRef works the same way). ` +
+        `Got ${JSON.stringify(x)}.`
     );
   }
   const { param } = buildOverrides(x);

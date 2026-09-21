@@ -1577,6 +1577,83 @@ describe('MCP server', () => {
     await server.close();
   });
 
+  it('takes actionRef inside a scenario step, for an action minted in the same batch', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Flow', description: 'Validates step refs in one batch.' }
+      })
+    ) as { id: string };
+
+    const result = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            { kind: 'add_surface', ref: 'screen', name: 'Screen', type: 'screen', description: 'Screen carrying the flow.' },
+            { kind: 'add_action', ref: 'first', surfaceRef: 'screen', name: 'Open', intent: 'Open the basket.' },
+            { kind: 'add_action', ref: 'second', surfaceRef: 'screen', name: 'Pay', intent: 'Pay the basket.' },
+            {
+              kind: 'add_scenario',
+              surfaceRef: 'screen',
+              actionRef: 'second',
+              name: 'Open then pay',
+              description: 'Replays the opening step before paying.',
+              expectedStatus: 'success',
+              steps: [{ actionRef: 'first', surfaceRef: 'screen', description: 'Open the basket first.' }]
+            }
+          ]
+        }
+      })
+    ) as { ok: boolean; refs: Record<string, string> };
+    expect(result.ok).toBe(true);
+
+    const persisted = await repo.get(created.id as never);
+    const step = persisted?.surfaces[0]?.actions[1]?.scenarios[0]?.steps?.[0];
+    expect(step?.actionId).toBe(result.refs.first);
+    expect(step?.surfaceId).toBe(result.refs.screen);
+    await server.close();
+  });
+
+  it('wires a declared emittedEvent so it fires: the handler cascades', async () => {
+    const { client, server, repo } = await setup();
+    const created = parseTextContent(
+      await client.callTool({
+        name: 'create_feature',
+        arguments: { name: 'Emits', description: 'Validates that a declaration emits.' }
+      })
+    ) as { id: string };
+
+    const result = parseTextContent(
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId: created.id,
+          operations: [
+            { kind: 'add_surface', ref: 'screen', name: 'Screen', type: 'screen', description: 'Screen carrying the emitter.' },
+            { kind: 'add_event', name: 'basket.opened', description: 'The basket was opened.' },
+            {
+              kind: 'add_action',
+              ref: 'open',
+              surfaceRef: 'screen',
+              name: 'Open',
+              intent: 'Open the basket.',
+              emittedEvents: ['basket.opened']
+            }
+          ]
+        }
+      })
+    ) as { ok: boolean };
+    expect(result.ok).toBe(true);
+
+    const persisted = await repo.get(created.id as never);
+    const effects = persisted?.surfaces[0]?.actions[0]?.effects ?? [];
+    expect(effects.filter((e) => e.type === 'emit_event' && String(e.event) === 'basket.opened')).toHaveLength(1);
+    await server.close();
+  });
+
   describe('get_spec_gaps', () => {
     type Gap = {
       severity: 'critical' | 'recommended';

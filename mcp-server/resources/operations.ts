@@ -20,6 +20,20 @@ batches. To reference an entity that already exists (returned by a previous call
 Mixing them in one op is allowed: e.g. \`add_scenario { surfaceId: existing-uuid,
 actionRef: a_new }\` works when only the action was minted in this batch.
 
+**Naming rules the validator enforces.** An event name is lowercase, dot-separated,
+with at least one dot: \`schedule.opened\`, \`invoice.payment_failed\`. camelCase
+(\`scheduleOpened\`), a single word with no dot and capitals are all refused, in
+\`add_event\`, in \`emittedEvents\` and in every \`emit_event\` effect alike. A state
+path is dotted too (\`cart.itemCount\`), and its segments are the product's words.
+
+**\`emittedEvents\` really emits.** An event listed on an action is wired to a
+default \`emit_event\` effect on save, so the declaration fires the event when the
+action succeeds: cascades and \`triggeredByEvent\` handlers run. Declare it when the
+action always emits it. When it must fire only under a condition, author the
+\`emit_event\` effect on the rule that carries the condition: the name is then
+already covered and nothing is added. The two sides are kept in sync both ways,
+and nothing is ever stripped.
+
 ## ADD ops
 
   add_surface              { ref?, name, type, description, parentRef?|parentSurfaceId?, presentation? }
@@ -74,7 +88,7 @@ actionRef: a_new }\` works when only the action was minted in this batch.
 . Drops the ref AND the resolved copy, so the feature doesn't silently keep an inline duplicate. Use to clear a dangling ref.
   add_scenario             { ref?, surfaceRef|surfaceId, actionRef|actionId, name, description, personaId?|personaRef?, stateOverrides?, parameterOverrides?, expectedStatus?, expectedAssertions?, expectedTransition?|expectedTransitionRef?, timeAdvance?, steps? }
 . \`parameterOverrides\` items are \`{parameterName, value}\` - must match a declared parameter on the target action (NOT parameterId, NOT name). \`stateOverrides\` items are \`{path, value}\`. \`expectedAssertions\` items are \`{path, operator, value, description}\` - NOT the rule-condition \`{left, operator, right}\` shape: \`path\` is the state path (a string), \`value\` is the comparison operand, and \`description\` is REQUIRED. Omitting \`path\` (or misnaming it \`left\`) surfaces as the confusing "Scenario assertion for 'undefined' is missing a description" - the real fix is to use \`path\`/\`value\` and add a \`description\`. \`expectedStatus\` enum: \`"success"\` | \`"blocked"\` (NOT "ok"). \`expectedTransition\` is the target surfaceId, or null to assert "no transition fires", or omitted to skip the check. If you author expectedAssertions but the action gets blocked, the scenario FAILS - set expectedStatus:"blocked" if the block is intentional.
-. \`steps\` makes the scenario multi-step: an ordered array of \`{actionId, surfaceId?, parameterOverrides?, expectedStatus?, expectedAssertions?, timeAdvance?, description?}\` REPLAYED before the subject action (each a real simulate, threading state forward). The subject action's stateOverrides set the INITIAL snapshot. A step defaults to expectedStatus:"success"; a step that blocks unexpectedly fails the whole scenario. Use for flows: add to cart -> apply coupon -> checkout. \`timeAdvance\` (a positive number, on a step or on the scenario itself) advances the simulation clock (\`clock.now\`) by that many logical units before the step runs, or for the scenario before the subject action runs once every step has replayed: "let N pass, then act", e.g. to drive an action past an expiry.
+. \`steps\` makes the scenario multi-step: an ordered array of \`{actionId|actionRef, surfaceId?|surfaceRef?, parameterOverrides?, expectedStatus?, expectedAssertions?, timeAdvance?, description?}\` (a step takes \`actionRef\`/\`surfaceRef\` for something minted in the SAME batch, exactly like every other op, so a flow and the actions it replays go in one batch) REPLAYED before the subject action (each a real simulate, threading state forward). The subject action's stateOverrides set the INITIAL snapshot. A step defaults to expectedStatus:"success"; a step that blocks unexpectedly fails the whole scenario. Use for flows: add to cart -> apply coupon -> checkout. \`timeAdvance\` (a positive number, on a step or on the scenario itself) advances the simulation clock (\`clock.now\`) by that many logical units before the step runs, or for the scenario before the subject action runs once every step has replayed: "let N pass, then act", e.g. to drive an action past an expiry.
   add_event                { ref?, name, description, payloadSchema?, delivery? }
 . \`delivery\` is the handler guarantee: best_effort (default, a failing handler never touches the emitter), required (a failing handler blocks the emitting action), or transactional (a failing handler also rolls the emitter's state back). Lets you model "the command was accepted but a mandatory downstream update failed" instead of a silent success.
 
