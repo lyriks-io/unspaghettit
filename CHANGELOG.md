@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-09-21
+
+A declared emission really emits.
+
+### Changed
+
+- An event listed in an action's `emittedEvents` is wired to a default
+  `emit_event` effect on save, so the declaration fires the event when the
+  action succeeds and every `triggeredByEvent` handler cascades. It used to be
+  a declaration and nothing more: a model could carry a dozen declared events
+  and not one live cascade, with nothing saying so at the moment of writing.
+  An event a rule already emits conditionally is left untouched, the condition
+  stays where the author put it, and the synthesized effect carries a
+  deterministic id so re-running adds nothing. `apply_batch` reconciles before
+  validation, so the scenarios it runs already exercise the cascade.
+
+### Added
+
+- A scenario `steps[]` entry takes `actionRef` / `surfaceRef` for an action
+  minted by the same batch, like every other op, so a multi-step flow and the
+  actions it replays are written in one call instead of two.
+- The operations reference states the naming rules the validator enforces
+  (an event name is lowercase, dot-separated, with at least one dot) and what
+  declaring an emission now does.
+
 ## [0.24.0] - 2026-09-20
 
 An acceptance criterion is a first-class object, and a batch says what it
