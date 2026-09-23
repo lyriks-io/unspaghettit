@@ -401,6 +401,22 @@ export const findOrphanKeys = (
     }
     const type = key.slice(0, colon);
     const idPart = key.slice(colon + 1);
+    // A criterion carried by a FEATURE is keyed `ac-leaf-<its id>`, and the id it
+    // carries is whatever the features section minted, not a hex. Telling such a
+    // caller that criterion keys are 8-char hex sends them hunting for an id that
+    // does not exist, which is worse than saying nothing: the form they used was
+    // nearly right and the hint denied it.
+    if (type === 'criterion') {
+      out.push({
+        key,
+        hint:
+          'A `criterion` key takes either the 8-char hex id of a criterion declared in the ' +
+          'behaviour model, or `ac-leaf-<id>` for one carried by a feature: the features ' +
+          `section reports that id bare, so prefix it. Got \`${idPart}\`. ` +
+          '`get_feature(verbose:true)` lists the first, `get_section(features)` the second.'
+      });
+      continue;
+    }
     if (ID_KEYED_TYPES.has(type) && !HEX_ID_RE.test(idPart)) {
       out.push({
         key,
@@ -1055,11 +1071,16 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       // `ok` is false when ANY of these hold: a per-entity report failed,
       // an index entry didn't match a spec entity, OR nothing landed at all
       // (synced=0 is overwhelmingly a misconfiguration, not a no-op success).
-      const allFailedOrEmpty = acks.length === 0;
+      //
+      // An index carrying only acceptance criteria posts no action or surface
+      // report, and that is NOT a misconfiguration: the criteria are what it came
+      // to say, and they landed. Reporting failure there sent a caller looking for
+      // a problem that did not exist, right after it had done the work correctly.
+      const nothingLanded = acks.length === 0 && criteria.indexed === 0;
       const ok =
         successes === acks.length &&
         orphans.length === 0 &&
-        !allFailedOrEmpty &&
+        !nothingLanded &&
         criteriaNotKept.length === 0;
 
       return text(
