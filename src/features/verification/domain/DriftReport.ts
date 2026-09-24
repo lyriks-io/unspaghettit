@@ -31,6 +31,8 @@ export type DriftEntry = {
 export type OrphanEntry = {
   readonly key: string;
   readonly reason: string;
+  /** For a `state:<path>` key whose path was renamed: the current key(s) to migrate it to. */
+  readonly renamedTo?: readonly string[];
 };
 
 export type DriftReport = {

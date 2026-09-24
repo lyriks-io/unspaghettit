@@ -7,6 +7,10 @@ import {
   asSurfaceId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
+import {
+  closestStateKeys,
+  stateRenameTargets
+} from '../../src/features/behavior-model/domain/services/StateRenames';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import {
   ActionNotFoundForReportError,
@@ -270,6 +274,12 @@ export type HealedEntry = {
 export type OrphanKeyReport = {
   readonly key: string;
   readonly hint: string;
+  /**
+   * For a `state:<path>` key whose path was renamed: the current key(s) to
+   * migrate the entry to. Several only when a shared path was renamed
+   * differently in several features.
+   */
+  readonly renamedTo?: readonly string[];
 };
 
 /**
@@ -386,7 +396,8 @@ export const findSharedKeys = (
  */
 export const findOrphanKeys = (
   index: BehavioralIndex,
-  expectedKeys: ReadonlySet<string>
+  expectedKeys: ReadonlySet<string>,
+  renamedStates: ReadonlyMap<string, readonly string[]> = new Map()
 ): OrphanKeyReport[] => {
   const out: OrphanKeyReport[] = [];
   for (const key of Object.keys(index)) {
@@ -427,11 +438,32 @@ export const findOrphanKeys = (
       });
       continue;
     }
+    // A state path the spec renamed: say where it went, so the caller moves
+    // the entry instead of deleting it or hunting for the new path by hand.
+    const renamedTo = type === 'state' ? renamedStates.get(key) : undefined;
+    if (renamedTo && renamedTo.length > 0) {
+      out.push({
+        key,
+        hint:
+          `State renamed to ${renamedTo.map((k) => `\`${k}\``).join(' or ')}: ` +
+          'move this entry to that key, keeping its file and line.',
+        renamedTo
+      });
+      continue;
+    }
+    // No recorded rename (made before the history existed, or not kept by the
+    // host): name the current paths that look like it, as a guess to check.
+    const closest = type === 'state' ? closestStateKeys(key, expectedKeys) : [];
     out.push({
       key,
       hint:
         'Key not found in any feature spec. Possible causes: spec entity removed, ' +
-        'typo in id/name/path, or wrong key format.'
+        'typo in id/name/path, or wrong key format.' +
+        (closest.length > 0
+          ? ` If the state was renamed, the closest current paths are ${closest
+              .map((k) => `\`${k}\``)
+              .join(', ')}.`
+          : '')
     });
   }
   return out;
@@ -1062,7 +1094,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       // Surface any keys in `.unspa.json` that don't correspond to a spec
       // entity. Pre-0.1.5 these were silently ignored, masking wrong-format
       // keys (e.g. `action:add-to-cart` when the spec uses 8-char hex ids).
-      const orphans = findOrphanKeys(index, expectedKeys);
+      const orphans = findOrphanKeys(index, expectedKeys, stateRenameTargets(features));
       // Keys several features declare: one entry cannot describe them all.
       const shared = findSharedKeys(index, features);
       // What verifies each acceptance criterion, read off the `criterion:<id>`

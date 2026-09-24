@@ -210,6 +210,33 @@ describe('findOrphanKeys', () => {
     }
   });
 
+  it('names the key a renamed state path moved to', () => {
+    const orphans = findOrphanKeys(
+      { 'state:tide.level': indexEntry() },
+      new Set(['state:tide.height']),
+      new Map([['state:tide.level', ['state:tide.height']]])
+    );
+    expect(orphans).toEqual([
+      {
+        key: 'state:tide.level',
+        hint: 'State renamed to `state:tide.height`: move this entry to that key, keeping its file and line.',
+        renamedTo: ['state:tide.height']
+      }
+    ]);
+  });
+
+  it('without a recorded rename, suggests the current state paths that look like it', () => {
+    const orphans = findOrphanKeys(
+      { 'state:tide.level': indexEntry() },
+      new Set(['state:sea.level', 'state:tide.height', 'state:wind.speed', 'action:a1b2c3d4'])
+    );
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0]?.renamedTo).toBeUndefined();
+    expect(orphans[0]?.hint).toMatch(/not found in any feature spec/i);
+    // Same last segment first, then same parent; unrelated paths are left out.
+    expect(orphans[0]?.hint).toMatch(/closest current paths are `state:sea\.level`, `state:tide\.height`\.$/);
+  });
+
   it('accepts 36-char legacy UUIDs as valid id-portion shape', () => {
     const index: BehavioralIndex = {
       'action:11111111-2222-3333-4444-555555555555': indexEntry()

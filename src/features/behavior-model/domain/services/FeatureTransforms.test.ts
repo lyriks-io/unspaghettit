@@ -457,6 +457,39 @@ describe('FeatureTransforms', () => {
       expect(params[1]?.bindToStatePath).toBe(asStatePath('other.path'));
     });
 
+    it('remembers the path a rename leaves behind, and forgets one it returns to', () => {
+      const at = (f: Feature) => f.surfaces[0]!.stateDefinitions[0]!;
+      const once = updateStateDefinition(enumFeature, baseSurface.id, enumStateDef.id, {
+        path: asStatePath('user.pick')
+      });
+      expect(at(once).previousPaths).toEqual(['user.choice']);
+      const twice = updateStateDefinition(once, baseSurface.id, enumStateDef.id, {
+        path: asStatePath('user.option')
+      });
+      expect(at(twice).previousPaths).toEqual(['user.choice', 'user.pick']);
+      const back = updateStateDefinition(twice, baseSurface.id, enumStateDef.id, {
+        path: asStatePath('user.choice')
+      });
+      expect(at(back).previousPaths).toEqual(['user.pick', 'user.option']);
+      // An update that keeps the path writes no history at all.
+      const untouched = updateStateDefinition(enumFeature, baseSurface.id, enumStateDef.id, {
+        description: 'What the user picked.'
+      });
+      expect('previousPaths' in at(untouched)).toBe(false);
+    });
+
+    it('keeps the path a round trip passed through, not the one it came back to', () => {
+      const at = (f: Feature) => f.surfaces[0]!.stateDefinitions[0]!;
+      const once = updateStateDefinition(enumFeature, baseSurface.id, enumStateDef.id, {
+        path: asStatePath('user.pick')
+      });
+      const back = updateStateDefinition(once, baseSurface.id, enumStateDef.id, {
+        path: asStatePath('user.choice')
+      });
+      // An entry keyed on the detour still has somewhere to go.
+      expect(at(back).previousPaths).toEqual(['user.pick']);
+    });
+
     it('is a no-op when neither enumValues nor type changes', () => {
       const before = enumFeature.surfaces[0]?.actions[0]?.parameters[0];
       const next = updateStateDefinition(enumFeature, baseSurface.id, enumStateDef.id, {

@@ -286,6 +286,28 @@ export const addStateDefinition = (
     stateDefinitions: [...s.stateDefinitions, definition]
   }));
 
+// Enough to migrate an index across a few successive renames without letting
+// the list grow for good on a path that keeps being reworded.
+const MAX_PREVIOUS_PATHS = 10;
+
+/**
+ * Remember the path a definition leaves behind when its path changes, so the
+ * index sync can tell an entry keyed on the old path where it went. A path it
+ * returns to is dropped from the history, since that key is current again.
+ */
+const withRenameHistory = (target: StateDefinition, next: StateDefinition): StateDefinition => {
+  if (next.path === target.path) return next;
+  const history = [...(target.previousPaths ?? []), target.path].filter(
+    (p, i, all) => p !== next.path && all.indexOf(p) === i
+  );
+  const kept = history.slice(-MAX_PREVIOUS_PATHS);
+  if (kept.length === 0) {
+    const { previousPaths: _drop, ...rest } = next;
+    return rest;
+  }
+  return { ...next, previousPaths: kept };
+};
+
 /**
  * Update a single StateDefinition and propagate enumValues to every Parameter
  * that binds to its path.
@@ -307,7 +329,7 @@ export const updateStateDefinition = (
   updateSurface(feature, surfaceId, (s) => {
     const target = s.stateDefinitions.find((d) => d.id === definitionId);
     if (!target) throw new EntityNotFoundInFeatureError('stateDefinition', String(definitionId));
-    const next: StateDefinition = { ...target, ...patch };
+    const next: StateDefinition = withRenameHistory(target, { ...target, ...patch });
 
     const enumChanged =
       'enumValues' in patch && !arraysShallowEqual(target.enumValues, next.enumValues);

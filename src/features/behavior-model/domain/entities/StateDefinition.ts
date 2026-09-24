@@ -41,4 +41,13 @@ export type StateDefinition = {
    * only".
    */
   readonly sharedWith?: readonly SurfaceId[];
+  /**
+   * The paths this definition carried before it was renamed, oldest first,
+   * never including the current one. Written by `updateStateDefinition` when a
+   * patch changes `path`, and read only by the implementation index sync: an
+   * index entry still keyed `state:<old path>` is then reported as renamed,
+   * with the key to migrate it to, instead of as an unexplained orphan. Absent
+   * on every definition that was never renamed.
+   */
+  readonly previousPaths?: readonly StatePath[];
 };

@@ -306,3 +306,33 @@ describe('detectDrift on acceptance criteria', () => {
     expect(report.orphans.map((o) => o.key)).toEqual(['criterion:gone']);
   });
 });
+
+describe('detectDrift on a renamed state path', () => {
+  it('tells an entry on the old path which key it moved to', () => {
+    const base = feature('2026-06-10T00:00:00.000Z');
+    const surface = base.surfaces[0]!;
+    const renamed: Feature = {
+      ...base,
+      surfaces: [
+        {
+          ...surface,
+          stateDefinitions: [
+            { ...surface.stateDefinitions[0]!, previousPaths: [asStatePath('cart.sum')] }
+          ]
+        }
+      ]
+    };
+    const report = detectDrift([renamed], [
+      { key: 'state:cart.sum', status: 'implemented' },
+      { key: 'state:cart.gone', status: 'implemented' }
+    ]);
+    expect(report.orphans).toEqual([
+      {
+        key: 'state:cart.sum',
+        reason: 'state renamed to state:cart.total: move the entry to that key',
+        renamedTo: ['state:cart.total']
+      },
+      { key: 'state:cart.gone', reason: 'no spec entity matches this key (renamed or removed?)' }
+    ]);
+  });
+});

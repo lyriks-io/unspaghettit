@@ -1,5 +1,6 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import { elementVersionOf } from '$features/behavior-model/domain/services/FeatureElementVersions';
+import { stateRenameTargets } from '$features/behavior-model/domain/services/StateRenames';
 import { summarizeStale, type DriftEntry, type DriftReport, type OrphanEntry } from './DriftReport';
 import type { IndexedImplementation } from './IndexedImplementation';
 
@@ -143,6 +144,8 @@ export const detectDrift = (
   const orphans: OrphanEntry[] = [];
   let checked = 0;
   let outOfScope = 0;
+  // Built lazily: most sweeps have no orphan at all.
+  let renames: ReadonlyMap<string, readonly string[]> | null = null;
 
   for (const entry of index) {
     // A 'missing' entry maps nothing to code yet, so it can't have drifted.
@@ -165,7 +168,17 @@ export const detectDrift = (
         outOfScope += 1;
         continue;
       }
-      orphans.push({ key: entry.key, reason: 'no spec entity matches this key (renamed or removed?)' });
+      renames ??= stateRenameTargets([...features, ...(ownershipUniverse ?? [])]);
+      const renamedTo = type === 'state' ? renames.get(entry.key) : undefined;
+      orphans.push(
+        renamedTo && renamedTo.length > 0
+          ? {
+              key: entry.key,
+              reason: `state renamed to ${renamedTo.join(' or ')}: move the entry to that key`,
+              renamedTo
+            }
+          : { key: entry.key, reason: 'no spec entity matches this key (renamed or removed?)' }
+      );
       continue;
     }
 
