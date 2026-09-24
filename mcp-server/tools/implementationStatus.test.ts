@@ -153,6 +153,31 @@ describe('findOrphanKeys', () => {
     expect(orphans[0]?.hint).toMatch(/get_behavioral_index|get_feature/);
   });
 
+  // A criterion carried by a feature is keyed `ac-leaf-<id>`, and that id is not a
+  // hex. The old hint asserted it was, which sent a caller hunting for an id that
+  // does not exist right after it had nearly got the key right.
+  it('tells a criterion key both forms it accepts, whatever shape it was given', () => {
+    // The three shapes a caller actually tries: the bare uuid the features section
+    // reports, its first 8 characters, and a hand-written slug. None of them is the
+    // key, and all three used to be answered with something that was not the fix.
+    for (const key of [
+      'criterion:b69aca3f-bf96-4e8e-875d-7b38e6ae16c9',
+      'criterion:b69aca3f',
+      'criterion:ac-cadence-1'
+    ]) {
+      const orphans = findOrphanKeys({ [key]: indexEntry() }, new Set());
+      expect(orphans).toHaveLength(1);
+      expect(orphans[0]?.hint).toMatch(/ac-leaf-/);
+      expect(orphans[0]?.hint).toMatch(/get_section\(features\)/);
+    }
+  });
+
+  it('keeps naming hex alone for the types that only take one', () => {
+    const orphans = findOrphanKeys({ 'action:add-to-cart': indexEntry() }, new Set());
+    expect(orphans[0]?.hint).toMatch(/8-char hex/);
+    expect(orphans[0]?.hint).not.toMatch(/ac-leaf-/);
+  });
+
   it('flags slug-shaped keys for every id-keyed type', () => {
     const index: BehavioralIndex = {
       'surface:checkout': indexEntry(),
