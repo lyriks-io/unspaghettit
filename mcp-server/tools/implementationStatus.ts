@@ -997,7 +997,11 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
 
         const surfFoundEntities: ReportEntityInput[] = [];
 
-        if (surfEntry.status === 'implemented') {
+        // Same gate as actions: any status but `missing` resolves the children.
+        // A `partial` surface still has its indexed states and invariants in the
+        // code; gating on `implemented` reported every one of them missing while
+        // the sync said ok with zero orphans.
+        if (surfEntry.status !== 'missing') {
           for (const sd of surface.stateDefinitions) {
             const childKey = `state:${String(sd.path)}`;
             const loc = resolveChildLocation(childKey, index, repoRoot, fileCache);

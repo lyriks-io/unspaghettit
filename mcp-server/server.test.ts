@@ -4639,4 +4639,93 @@ describe('MCP server', () => {
 
     await server.close();
   });
+
+  describe('sync_from_index: a surface resolves its children unless it is missing', () => {
+    type SurfaceAck = { ok: boolean; scope: string; found: number; missing: number };
+    type SyncAnswer = { ok: boolean; orphans: { total: number }; acks: readonly SurfaceAck[] };
+
+    // One surface with two states and one invariant, every one of them indexed.
+    // Only the status of the `surface:<id>` entry changes between runs.
+    const island = async (client: Client) => {
+      const project = parseTextContent(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Island',
+            description: 'A walk on an island.',
+            features: [{ name: 'Tide', description: 'What the sea does.' }]
+          }
+        })
+      ) as { id: string; features: readonly { id: string }[] };
+      const featureId = project.features[0]!.id;
+      const built = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            operations: [
+              { kind: 'add_surface', ref: 'shore', name: 'Shore', type: 'custom', description: 'Where the tide reaches.' },
+              { kind: 'add_state_definition', surfaceRef: 'shore', path: 'tide.level', type: 'number', defaultValue: 0, description: 'How high the water is.' },
+              { kind: 'add_state_definition', surfaceRef: 'shore', path: 'tide.rising', type: 'boolean', defaultValue: false, description: 'Whether it comes in.' },
+              {
+                kind: 'add_surface_invariant',
+                ref: 'floor',
+                surfaceRef: 'shore',
+                name: 'Level never negative',
+                description: 'The water level is never below zero.',
+                condition: { left: 'tide.level', operator: 'greater_or_equal', right: 0 },
+                message: 'The tide cannot go below zero.'
+              }
+            ]
+          }
+        })
+      ) as { ok: boolean; refs: Record<string, string> };
+      expect(built, JSON.stringify(built)).toMatchObject({ ok: true });
+      return { projectId: project.id, refs: built.refs };
+    };
+
+    const run = async (client: Client, projectId: string, refs: Record<string, string>, status: string) => {
+      const at = (file: string) => ({ status: 'implemented', file, line: 1, signature: `export const ${file}` });
+      const answer = parseTextContent(
+        await client.callTool({
+          name: 'sync_from_index',
+          arguments: {
+            projectId,
+            index: {
+              [`surface:${refs.shore}`]: { status, file: 'shore.ts', line: 1, signature: 'export const shore' },
+              'state:tide.level': at('level'),
+              'state:tide.rising': at('rising'),
+              [`surface_invariant:${refs.floor}`]: at('floor')
+            }
+          }
+        })
+      ) as SyncAnswer;
+      return { answer, surface: answer.acks.find((a) => a.scope === 'surface')! };
+    };
+
+    it('a partial surface still reports its indexed states and invariants as found', async () => {
+      const { client, server } = await setup();
+      const { projectId, refs } = await island(client);
+
+      const implemented = await run(client, projectId, refs, 'implemented');
+      const partial = await run(client, projectId, refs, 'partial');
+
+      expect(implemented.surface).toMatchObject({ ok: true, found: 3, missing: 0 });
+      // The field report: every state of a partial surface came back missing
+      // while the sync said ok with zero orphans.
+      expect(partial.surface).toMatchObject({ ok: true, found: 3, missing: 0 });
+      expect(partial.answer.orphans.total).toBe(0);
+      await server.close();
+    });
+
+    it('a missing surface resolves none of its children', async () => {
+      const { client, server } = await setup();
+      const { projectId, refs } = await island(client);
+
+      const missing = await run(client, projectId, refs, 'missing');
+
+      expect(missing.surface).toMatchObject({ ok: true, found: 0, missing: 3 });
+      await server.close();
+    });
+  });
 });
