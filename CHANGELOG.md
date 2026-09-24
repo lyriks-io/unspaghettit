@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-09-24
+
+Two answers that sent a caller looking in the wrong place.
+
+### Fixed
+
+- An orphan `criterion:` key is told both the forms it accepts. It used to be
+  answered that criterion keys are 8-character hex ids, which is false for a
+  criterion carried by a feature: that one is keyed `ac-leaf-<id>`, with whatever
+  id the features section minted. The hint sent the caller hunting for an id that
+  does not exist, and the bare uuid form fell through to a generic message naming
+  no form at all.
+- A sync carrying only acceptance criteria no longer reports failure. `ok` was
+  false whenever no action or surface report landed, so an index that indexed
+  every criterion it carried, with nothing orphaned and nothing refused, still
+  came back as a failure. Criteria now count as landing; an index that indexes
+  nothing at all still does not.
+
 ## [0.25.0] - 2026-09-21
 
 A declared emission really emits.
