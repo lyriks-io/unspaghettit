@@ -4639,4 +4639,280 @@ describe('MCP server', () => {
 
     await server.close();
   });
+
+  describe('sync_from_index: a surface resolves its children unless it is missing', () => {
+    type SurfaceAck = { ok: boolean; scope: string; found: number; missing: number };
+    type SyncAnswer = { ok: boolean; orphans: { total: number }; acks: readonly SurfaceAck[] };
+
+    // One surface with two states and one invariant, every one of them indexed.
+    // Only the status of the `surface:<id>` entry changes between runs.
+    const island = async (client: Client) => {
+      const project = parseTextContent(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Island',
+            description: 'A walk on an island.',
+            features: [{ name: 'Tide', description: 'What the sea does.' }]
+          }
+        })
+      ) as { id: string; features: readonly { id: string }[] };
+      const featureId = project.features[0]!.id;
+      const built = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            operations: [
+              { kind: 'add_surface', ref: 'shore', name: 'Shore', type: 'custom', description: 'Where the tide reaches.' },
+              { kind: 'add_state_definition', surfaceRef: 'shore', path: 'tide.level', type: 'number', defaultValue: 0, description: 'How high the water is.' },
+              { kind: 'add_state_definition', surfaceRef: 'shore', path: 'tide.rising', type: 'boolean', defaultValue: false, description: 'Whether it comes in.' },
+              {
+                kind: 'add_surface_invariant',
+                ref: 'floor',
+                surfaceRef: 'shore',
+                name: 'Level never negative',
+                description: 'The water level is never below zero.',
+                condition: { left: 'tide.level', operator: 'greater_or_equal', right: 0 },
+                message: 'The tide cannot go below zero.'
+              }
+            ]
+          }
+        })
+      ) as { ok: boolean; refs: Record<string, string> };
+      expect(built, JSON.stringify(built)).toMatchObject({ ok: true });
+      return { projectId: project.id, refs: built.refs };
+    };
+
+    const run = async (client: Client, projectId: string, refs: Record<string, string>, status: string) => {
+      const at = (file: string) => ({ status: 'implemented', file, line: 1, signature: `export const ${file}` });
+      const answer = parseTextContent(
+        await client.callTool({
+          name: 'sync_from_index',
+          arguments: {
+            projectId,
+            index: {
+              [`surface:${refs.shore}`]: { status, file: 'shore.ts', line: 1, signature: 'export const shore' },
+              'state:tide.level': at('level'),
+              'state:tide.rising': at('rising'),
+              [`surface_invariant:${refs.floor}`]: at('floor')
+            }
+          }
+        })
+      ) as SyncAnswer;
+      return { answer, surface: answer.acks.find((a) => a.scope === 'surface')! };
+    };
+
+    it('a partial surface still reports its indexed states and invariants as found', async () => {
+      const { client, server } = await setup();
+      const { projectId, refs } = await island(client);
+
+      const implemented = await run(client, projectId, refs, 'implemented');
+      const partial = await run(client, projectId, refs, 'partial');
+
+      expect(implemented.surface).toMatchObject({ ok: true, found: 3, missing: 0 });
+      // The field report: every state of a partial surface came back missing
+      // while the sync said ok with zero orphans.
+      expect(partial.surface).toMatchObject({ ok: true, found: 3, missing: 0 });
+      expect(partial.answer.orphans.total).toBe(0);
+      await server.close();
+    });
+
+    it('a missing surface resolves none of its children', async () => {
+      const { client, server } = await setup();
+      const { projectId, refs } = await island(client);
+
+      const missing = await run(client, projectId, refs, 'missing');
+
+      expect(missing.surface).toMatchObject({ ok: true, found: 0, missing: 3 });
+      await server.close();
+    });
+  });
+
+  describe('apply_batch: every minted id and every state rename in the answer', () => {
+    type Created = { op: number; kind: string; id: string; path?: string; key?: string };
+    type Renamed = { from: string; to: string; stateDefinitionId: string; surfaceId: string; featureId: string };
+    type Answer = {
+      ok: boolean;
+      refs: Record<string, string>;
+      created: readonly Created[];
+      renamed?: readonly Renamed[];
+      commitToken?: string;
+    };
+
+    const newFeature = async (client: Client) => {
+      const project = parseTextContent(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Island',
+            description: 'A walk on an island.',
+            features: [{ name: 'Tide', description: 'What the sea does.' }]
+          }
+        })
+      ) as { id: string; features: readonly { id: string }[] };
+      return { projectId: project.id, featureId: project.features[0]!.id };
+    };
+    const batch = async (client: Client, args: Record<string, unknown>) =>
+      parseTextContent(await client.callTool({ name: 'apply_batch', arguments: args })) as Answer;
+
+    // Only the surface and the action carry a ref: the rest is what agents
+    // used to re-read the feature for.
+    const operations = [
+      { kind: 'add_surface', ref: 'shore', name: 'Shore', type: 'custom', description: 'Where the tide reaches.' },
+      { kind: 'add_state_definition', surfaceRef: 'shore', path: 'tide.level', type: 'number', defaultValue: 0, description: 'How high the water is.' },
+      { kind: 'add_action', ref: 'wait', surfaceRef: 'shore', name: 'Wait', intent: 'Let the tide come in.' },
+      {
+        kind: 'add_action_rule',
+        surfaceRef: 'shore',
+        actionRef: 'wait',
+        rule: {
+          category: 'validation',
+          condition: { left: 'tide.level', operator: 'greater_than', right: 9 },
+          description: 'No waiting once the shore is flooded.',
+          effect: { type: 'block_action', reason: 'The shore is under water.', description: 'Blocks the wait.' }
+        }
+      },
+      {
+        kind: 'add_surface_invariant',
+        surfaceRef: 'shore',
+        name: 'Level never negative',
+        description: 'The water level is never below zero.',
+        condition: { left: 'tide.level', operator: 'greater_or_equal', right: 0 },
+        message: 'The tide cannot go below zero.'
+      },
+      { kind: 'add_event', name: 'tide.turned', description: 'The tide changed direction.' },
+      { kind: 'add_acceptance_criterion', title: 'The tide never floods the path' }
+    ];
+
+    it('lists what every add op created, ref or not, the same way in the dry run and the commit', async () => {
+      const { client, server, repo } = await setup();
+      const { featureId } = await newFeature(client);
+
+      const dry = await batch(client, { featureId, dryRun: true, operations });
+      expect(dry.ok).toBe(true);
+      const committed = await batch(client, { commit: dry.commitToken });
+      expect(committed.ok).toBe(true);
+
+      // Refs are unchanged: only the ops that carried one.
+      expect(Object.keys(committed.refs).sort()).toEqual(['shore', 'wait']);
+      expect(committed.created).toEqual(dry.created);
+      expect(committed.renamed).toBeUndefined();
+
+      const feature = (await repo.get(featureId as never))!;
+      const surface = feature.surfaces[0]!;
+      const action = surface.actions[0]!;
+      expect(committed.created).toEqual([
+        { op: 0, kind: 'surface', id: String(surface.id), key: `surface:${surface.id}` },
+        {
+          op: 1,
+          kind: 'state_definition',
+          id: String(surface.stateDefinitions[0]!.id),
+          path: 'tide.level',
+          key: 'state:tide.level'
+        },
+        { op: 2, kind: 'action', id: String(action.id), key: `action:${action.id}` },
+        { op: 3, kind: 'action_rule', id: String(action.rules[0]!.id), key: `rule:${action.rules[0]!.id}` },
+        {
+          op: 4,
+          kind: 'surface_invariant',
+          id: String(surface.invariants[0]!.id),
+          key: `surface_invariant:${surface.invariants[0]!.id}`
+        },
+        { op: 5, kind: 'event', id: String(feature.events![0]!.id), key: 'event:tide.turned' },
+        {
+          op: 6,
+          kind: 'acceptance_criterion',
+          id: String(feature.acceptanceCriteria![0]!.id),
+          key: `criterion:${feature.acceptanceCriteria![0]!.id}`
+        }
+      ]);
+      await server.close();
+    });
+
+    it('a direct apply and a refused batch carry it too', async () => {
+      const { client, server } = await setup();
+      const { featureId } = await newFeature(client);
+
+      const direct = await batch(client, { featureId, operations: operations.slice(0, 2) });
+      expect(direct.ok).toBe(true);
+      expect(direct.created.map((c) => c.kind)).toEqual(['surface', 'state_definition']);
+
+      // A second state on the same path is refused: the answer still says what
+      // would have been minted, as `refs` always did.
+      const refused = await batch(client, {
+        featureId,
+        operations: [
+          { kind: 'add_state_definition', surfaceId: direct.refs.shore, path: 'tide.level', type: 'number', defaultValue: 0, description: 'Twice.' }
+        ]
+      });
+      expect(refused.ok).toBe(false);
+      expect(refused.created).toHaveLength(1);
+      expect(refused.created[0]).toMatchObject({ op: 0, kind: 'state_definition', path: 'tide.level' });
+      await server.close();
+    });
+
+    it('reports a state rename as index keys, and sync_from_index names where the old key went', async () => {
+      const { client, server } = await setup();
+      const { projectId, featureId } = await newFeature(client);
+      const built = await batch(client, { featureId, operations: operations.slice(0, 3) });
+      const stateId = built.created.find((c) => c.kind === 'state_definition')!.id;
+      const shore = built.refs.shore!;
+
+      const renamed = await batch(client, {
+        featureId,
+        operations: [
+          { kind: 'update_state_definition', surfaceId: shore, stateDefinitionId: stateId, path: 'tide.depth' },
+          { kind: 'update_state_definition', surfaceId: shore, stateDefinitionId: stateId, path: 'tide.height' }
+        ]
+      });
+      expect(renamed.ok).toBe(true);
+      expect(renamed.created).toEqual([]);
+      // Two renames in one batch are one move, from where the index last saw it.
+      expect(renamed.renamed).toEqual([
+        { from: 'state:tide.level', to: 'state:tide.height', stateDefinitionId: stateId, surfaceId: shore, featureId }
+      ]);
+
+      type Orphan = { key: string; hint: string; renamedTo?: readonly string[] };
+      const sync = parseTextContent(
+        await client.callTool({
+          name: 'sync_from_index',
+          arguments: {
+            projectId,
+            index: {
+              [`surface:${shore}`]: { status: 'implemented', file: 'shore.ts', line: 1, signature: 'export const shore' },
+              'state:tide.level': { status: 'implemented', file: 'tide.ts', line: 1, signature: 'export const level' },
+              'state:tide.depth': { status: 'implemented', file: 'tide.ts', line: 2, signature: 'export const depth' }
+            }
+          }
+        })
+      ) as { orphans: { entries: readonly Orphan[] } };
+      const byKey = Object.fromEntries(sync.orphans.entries.map((o) => [o.key, o]));
+      expect(byKey['state:tide.level']?.renamedTo).toEqual(['state:tide.height']);
+      expect(byKey['state:tide.level']?.hint).toMatch(/renamed to `state:tide\.height`/);
+      expect(byKey['state:tide.depth']?.renamedTo).toEqual(['state:tide.height']);
+      await server.close();
+    });
+
+    it('says nothing about a rename the same batch undid', async () => {
+      const { client, server } = await setup();
+      const { featureId } = await newFeature(client);
+      const built = await batch(client, { featureId, operations: operations.slice(0, 3) });
+      const stateId = built.created.find((c) => c.kind === 'state_definition')!.id;
+      const shore = built.refs.shore!;
+
+      const undone = await batch(client, {
+        featureId,
+        dryRun: true,
+        operations: [
+          { kind: 'update_state_definition', surfaceId: shore, stateDefinitionId: stateId, path: 'tide.depth' },
+          { kind: 'update_state_definition', surfaceId: shore, stateDefinitionId: stateId, path: 'tide.level' }
+        ]
+      });
+      expect(undone.ok).toBe(true);
+      expect(undone.renamed).toBeUndefined();
+
+      await server.close();
+    });
+  });
 });

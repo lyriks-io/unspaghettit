@@ -133,7 +133,7 @@ export const registerStateDefinitionTools = (deps: ToolDeps): void => {
     'update_state_definition',
     {
       description:
-        'Patch StateDefinition fields. Path renames are not auto-rewritten. Run find_state_references first. sharedWith:[] clears all sharing entries. valueSetId references a feature-level value set (mutually exclusive with enumValues); valueSetId:null clears it. `derived` (an Expression) makes the path computed/read-only; derived:null clears it back to an authored path.',
+        'Patch StateDefinition fields. Path renames are not auto-rewritten. Run find_state_references first. A rename is remembered on the definition (previousPaths), so sync_from_index reports an index entry still keyed state:<old path> as renamed and names the key to move it to. sharedWith:[] clears all sharing entries. valueSetId references a feature-level value set (mutually exclusive with enumValues); valueSetId:null clears it. `derived` (an Expression) makes the path computed/read-only; derived:null clears it back to an authored path.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string(),

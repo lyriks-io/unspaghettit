@@ -131,7 +131,12 @@ Use this to check a proposal before committing:
 
   apply_batch({ featureId, dryRun:true, operations:[…] })
   → { ok, dryRun:true, validation:{ valid, errors? }, maturity:{ percentage } | null, refs,
+      created:[{ op, kind, id, path?, key? }], renamed?:[{ from, to, stateDefinitionId, surfaceId, featureId }],
       scenarios:{ scope:"touched"|"feature", run, passed, failed:[…], truncated? }, commitToken }
+
+\`created\` names what every add op minted, ref or not, with its index \`key\` when the
+index maps that kind; \`renamed\` lists the state paths an update changed, as index keys to
+migrate. Both ride on every answer, the direct apply and the commit included.
 
 Every successful apply_batch answer (dry run, direct apply, commit by token) carries that
 scenarios block: the scenarios of what the batch touched, run on the post-batch feature.

@@ -137,7 +137,8 @@ Every update op also accepts its editable fields under \`patch:{...}\` instead o
 ## Tips
 
 - IDs are opaque server-minted strings. Never invent them. Use refs in the same batch
-  or values read from list_*/get_* calls.
+  or values read from list_*/get_* calls. The answer's \`created\` lists the id (and index
+  key) of everything the add ops minted, whether or not they carried a ref.
 - \`condition.right\` and \`set_state.value\` accept either a raw literal OR a structured
   Expression: { kind:"literal"|"state"|"param"|"add"|"sub"|"mul"|"div"|"mod"|"min"|"max"|"neg"|"not"|"sum"|"count"|"sum_pluck"|"count_where"|"switch", ... }.
   \`not\` flips a boolean operand, use it for toggle effects (\`set_state value:{kind:"not", operand:{kind:"state", path:"x.isPublic"}}\`)

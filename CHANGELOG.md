@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-09-25
+
+A partial surface is read, and a batch says what it minted.
+
+### Fixed
+
+- A surface entry marked `partial` in the index now resolves its states,
+  surface rules and surface invariants, like an action does. It used to resolve
+  them only when marked `implemented`, so every indexed state of a partial
+  surface was reported missing while the sync answered ok with no orphan.
+
+### Added
+
+- Every batch answer carries `created`: one row per element an add operation
+  minted, ref or not, with its id, its kind and, for the kinds the index maps,
+  its `.unspa.json` key. The dry run and the commit list the same ids.
+- A batch that moves a state path answers `renamed: [{ from, to }]`. A state
+  definition remembers its previous paths (`previousPaths`, optional), so an
+  index entry left on an old path is reported as an orphan with `renamedTo`;
+  without a recorded rename the hint suggests the current paths that look like it.
+
 ## [0.25.1] - 2026-09-24
 
 Two answers that sent a caller looking in the wrong place.
