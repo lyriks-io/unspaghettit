@@ -1,6 +1,7 @@
 import type { Action } from '../entities/Action';
 import type { Rule } from '../entities/Rule';
 import type { Effect } from '../value-objects/Effect';
+import { NBSP, quoteName, type ReportLanguage } from '$shared/language';
 import { isExpression } from '../value-objects/Expression';
 import {
   isCompositeCondition,
@@ -150,8 +151,57 @@ const isSelfContradictory = (condition: RuleCondition | undefined): boolean => {
   return false;
 };
 
-const ruleLabel = (rule: Rule, position: number): string =>
-  rule.description?.trim() ? `"${rule.description.trim()}"` : `#${position} (${rule.category})`;
+const ruleLabel = (rule: Rule, position: number, lang: ReportLanguage = 'en'): string =>
+  rule.description?.trim()
+    ? quoteName(lang, rule.description.trim())
+    : lang === 'fr'
+      ? `n°${NBSP}${position} (${rule.category})`
+      : `#${position} (${rule.category})`;
+
+/**
+ * The sentence of a decision finding in the spec's language, rebuilt from its
+ * kind and the positions of the rules involved. Rule descriptions are quoted as
+ * authored, never translated. English is the wording `analyzeActionDecisions`
+ * has always written.
+ */
+export const decisionDetail = (
+  kind: DecisionFindingKind,
+  rules: readonly Rule[],
+  rulePositions: readonly number[],
+  lang: ReportLanguage = 'en'
+): string => {
+  const [first = 0, second = 0] = rulePositions;
+  const label = (position: number): string => {
+    const rule = rules[position - 1];
+    return rule ? ruleLabel(rule, position, lang) : lang === 'fr' ? `n°${NBSP}${position}` : `#${position}`;
+  };
+  if (lang === 'fr') {
+    switch (kind) {
+      case 'dead-rule':
+        return `La règle ${label(first)} ne peut jamais se déclencher${NBSP}: sa condition exige qu'un état ait deux valeurs incompatibles à la fois.`;
+      case 'always-blocked':
+        return `La règle ${label(first)} bloque sans condition, donc cette action ne peut jamais réussir et ses effets de succès ne s'exécutent jamais.`;
+      case 'shadowed-rule':
+        return `La règle ${label(first)} s'exécute après un blocage sans condition, donc son effet est toujours supprimé.`;
+      case 'redundant-rule':
+        return `Les règles n°${NBSP}${first} et n°${NBSP}${second} ont la même condition et le même effet${NBSP}: l'une des deux est redondante.`;
+      case 'conflicting-rules':
+        return `Les règles n°${NBSP}${first} et n°${NBSP}${second} se déclenchent sur la même condition mais leurs effets divergent, donc le résultat dépend de l'ordre des règles et non de l'intention.`;
+    }
+  }
+  switch (kind) {
+    case 'dead-rule':
+      return `Rule ${label(first)} can never fire: its condition requires a state to hold two incompatible values at once.`;
+    case 'always-blocked':
+      return `Rule ${label(first)} blocks unconditionally, so this action can never succeed and its success effects never run.`;
+    case 'shadowed-rule':
+      return `Rule ${label(first)} runs after an unconditional block, so its effect is always suppressed.`;
+    case 'redundant-rule':
+      return `Rules #${first} and #${second} share the same condition and the same effect; one is redundant.`;
+    case 'conflicting-rules':
+      return `Rules #${first} and #${second} fire on the same condition but their effects disagree, so the outcome depends on rule order rather than intent.`;
+  }
+};
 
 /**
  * Analyse one action's rule set for decision-table defects. Order matters:
@@ -170,7 +220,7 @@ export const analyzeActionDecisions = (action: Action): readonly DecisionFinding
         kind: 'dead-rule',
         severity: 'critical',
         rulePositions: [index + 1],
-        detail: `Rule ${ruleLabel(rule, index + 1)} can never fire: its condition requires a state to hold two incompatible values at once.`
+        detail: decisionDetail('dead-rule', rules, [index + 1])
       });
     }
   });
@@ -179,12 +229,11 @@ export const analyzeActionDecisions = (action: Action): readonly DecisionFinding
     (rule) => rule.condition === undefined && rule.effect.type === 'block_action'
   );
   if (blockIndex >= 0) {
-    const blockRule = rules[blockIndex]!;
     findings.push({
       kind: 'always-blocked',
       severity: 'recommended',
       rulePositions: [blockIndex + 1],
-      detail: `Rule ${ruleLabel(blockRule, blockIndex + 1)} blocks unconditionally, so this action can never succeed and its success effects never run.`
+      detail: decisionDetail('always-blocked', rules, [blockIndex + 1])
     });
     for (let after = blockIndex + 1; after < rules.length; after++) {
       inert.add(after);
@@ -192,7 +241,7 @@ export const analyzeActionDecisions = (action: Action): readonly DecisionFinding
         kind: 'shadowed-rule',
         severity: 'recommended',
         rulePositions: [after + 1],
-        detail: `Rule ${ruleLabel(rules[after]!, after + 1)} runs after an unconditional block, so its effect is always suppressed.`
+        detail: decisionDetail('shadowed-rule', rules, [after + 1])
       });
     }
   }
@@ -209,14 +258,14 @@ export const analyzeActionDecisions = (action: Action): readonly DecisionFinding
           kind: 'redundant-rule',
           severity: 'recommended',
           rulePositions: [i + 1, j + 1],
-          detail: `Rules #${i + 1} and #${j + 1} share the same condition and the same effect; one is redundant.`
+          detail: decisionDetail('redundant-rule', rules, [i + 1, j + 1])
         });
       } else if (effectsConflict(left.effect, right.effect)) {
         findings.push({
           kind: 'conflicting-rules',
           severity: 'critical',
           rulePositions: [i + 1, j + 1],
-          detail: `Rules #${i + 1} and #${j + 1} fire on the same condition but their effects disagree, so the outcome depends on rule order rather than intent.`
+          detail: decisionDetail('conflicting-rules', rules, [i + 1, j + 1])
         });
       }
     }

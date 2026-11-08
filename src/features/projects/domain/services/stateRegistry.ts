@@ -1,10 +1,12 @@
 import type { EntityField } from '$features/behavior-model/domain/entities/Entity';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { ValueSetId } from '$features/behavior-model/domain/value-objects/ids';
-import { asStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
+import { asStatePath, isStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
 import type { Project } from '../entities/Project';
 import type { StateVariable, StateVariableProjection } from '../entities/StateVariable';
 import { asStateVariableId } from '../value-objects/ids';
+import { quoteName, type ReportLanguage } from '$shared/language';
 
 const projectionKey = (p: StateVariableProjection): string => `${p.featureId}:${p.surfaceId}`;
 
@@ -48,6 +50,10 @@ export const projectStateVariables = (
           continue;
         }
         const path = String(definition.path);
+        // A path that is not a state path cannot be a canonical state; the
+        // feature holding it reports it in its own gaps, and one bad state
+        // never stops the reading of the whole project.
+        if (!isStatePath(path)) continue;
         const registered = explicitByPath.get(path);
         if (registered) {
           const id = String(registered.id);
@@ -134,8 +140,122 @@ export type StateCoherenceIssue = {
   readonly severity: 'error' | 'warning';
   readonly stateId: string;
   readonly path: string;
-  readonly kind: 'missing-data-field' | 'field-type-mismatch' | 'field-enum-mismatch';
+  readonly kind:
+    | 'missing-data-field'
+    | 'field-type-mismatch'
+    | 'field-enum-mismatch'
+    | 'declaration-type-mismatch'
+    | 'declaration-choices-mismatch';
   readonly message: string;
+  /** Every feature the issue involves, so each of them reports it (a declaration disagreement). */
+  readonly featureIds?: readonly string[];
+};
+
+/** Every state path a condition reads: the left of each comparison and any state it compares to. */
+const pathsReadBy = (condition: unknown): string[] => {
+  const out: string[] = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const node = value as { [key: string]: unknown };
+    if (typeof node.left === 'string' && 'operator' in node) out.push(node.left);
+    if (node.kind === 'state' && typeof node.path === 'string') out.push(node.path);
+    if (typeof node.overPath === 'string') out.push(node.overPath);
+    for (const child of Object.values(node)) if (child && typeof child === 'object') visit(child);
+  };
+  visit(condition);
+  return out;
+};
+
+type Declaration = {
+  readonly featureId: string;
+  readonly featureName: string;
+  readonly type: string;
+  readonly values: readonly string[] | undefined;
+};
+
+/**
+ * Where two features of a project declare one state path differently. A path
+ * is one variable for the whole project, so a disagreement on its kind of value
+ * makes every proof about it depend on which declaration was read first: an
+ * error. A disagreement on the values a choice allows is an error when a
+ * project invariant reads the path (the proofs across features then rest on
+ * it), a warning otherwise (each feature may be using the path on its own).
+ * Different starting values are never reported: every engine starts a feature
+ * from its own (startingDeclarations).
+ */
+export const stateDeclarationIssues = (
+  features: readonly Feature[],
+  projectInvariants: readonly Invariant[] = [],
+  language: ReportLanguage = 'en'
+): StateCoherenceIssue[] => {
+  const readByProject = new Set(projectInvariants.flatMap((invariant) => pathsReadBy(invariant.condition)));
+  const fr = language === 'fr';
+  const byPath = new Map<string, { id: string; declarations: Declaration[] }>();
+  for (const feature of features) {
+    const seen = new Set<string>();
+    for (const surface of feature.surfaces) {
+      for (const definition of surface.stateDefinitions) {
+        const path = String(definition.path);
+        if (!isStatePath(path) || seen.has(path)) continue;
+        seen.add(path);
+        const entry = byPath.get(path) ?? { id: String(definition.id), declarations: [] };
+        entry.declarations.push({
+          featureId: String(feature.id),
+          featureName: feature.name,
+          type: definition.type,
+          values:
+            definition.type === 'enum'
+              ? (definition.enumValues ?? valuesFor(features, definition.valueSetId))
+              : undefined
+        });
+        byPath.set(path, entry);
+      }
+    }
+  }
+  const issues: StateCoherenceIssue[] = [];
+  const sameSet = (a: readonly string[] | undefined, b: readonly string[] | undefined) =>
+    a !== undefined && b !== undefined && a.length === b.length && a.every((v) => b.includes(v));
+  const list = (declarations: readonly Declaration[], show: (d: Declaration) => string) =>
+    declarations
+      .map((d) => (fr ? `${quoteName('fr', d.featureName)} (${show(d)})` : `"${d.featureName}" (${show(d)})`))
+      .join(fr ? ', ' : ', ');
+  for (const [path, { id, declarations }] of byPath) {
+    if (declarations.length < 2) continue;
+    const featureIds = declarations.map((d) => d.featureId);
+    const quoted = fr ? quoteName('fr', path) : `"${path}"`;
+    if (new Set(declarations.map((d) => d.type)).size > 1) {
+      issues.push({
+        severity: 'error',
+        stateId: id,
+        path,
+        kind: 'declaration-type-mismatch',
+        featureIds,
+        message: fr
+          ? `L'état ${quoted} est déclaré avec des types différents : ${list(declarations, (d) => d.type)}. Un chemin est une seule variable pour tout le projet, donc chaque preuve qui le lit dépend de la déclaration lue en premier.`
+          : `State ${quoted} is declared with different kinds of value: ${list(declarations, (d) => d.type)}. A path is one variable for the whole project, so every proof that reads it depends on which declaration was read first.`
+      });
+      continue;
+    }
+    if (declarations[0]!.type !== 'enum') continue;
+    const first = declarations[0]!.values;
+    if (declarations.every((d) => sameSet(d.values, first))) continue;
+    const shared = readByProject.has(path);
+    issues.push({
+      severity: shared ? 'error' : 'warning',
+      stateId: id,
+      path,
+      kind: 'declaration-choices-mismatch',
+      featureIds,
+      message: fr
+        ? `L'état ${quoted} n'autorise pas les mêmes valeurs selon la feature : ${list(declarations, (d) => (d.values ?? []).join(', '))}.${shared ? ' Un invariant du projet le lit, donc les preuves entre features reposent sur ce désaccord.' : ''}`
+        : `State ${quoted} allows different values depending on the feature: ${list(declarations, (d) => (d.values ?? []).join(', '))}.${shared ? ' A project invariant reads it, so the proofs across features rest on this disagreement.' : ''}`
+    });
+  }
+  return issues;
 };
 
 const findField = (fields: readonly EntityField[], id: string): EntityField | undefined => {
@@ -166,11 +286,30 @@ const sameValues = (left: readonly string[] | undefined, right: readonly string[
   left.length === right.length &&
   left.every((value, index) => value === right[index]);
 
+/**
+ * Whether a state of one kind can carry a data field of another: the same kind,
+ * or a date, a timestamp or a JSON document held as text (a JSON one also as
+ * an object), the way a behaviour model writes them.
+ */
+const carries = (stateType: string, fieldType: string): boolean =>
+  stateType === fieldType ||
+  ((fieldType === 'date' || fieldType === 'timestamp') && stateType === 'string') ||
+  (fieldType === 'json' && (stateType === 'string' || stateType === 'object'));
+
+/**
+ * Where a canonical state and the entity field it links to disagree. `message`
+ * follows `language` (the spec's); ids, paths and types are quoted as they are.
+ */
 export const stateCoherenceIssues = (
   states: readonly StateVariable[],
-  features: readonly Feature[]
+  features: readonly Feature[],
+  language: ReportLanguage = 'en',
+  projectInvariants: readonly Invariant[] = []
 ): readonly StateCoherenceIssue[] => {
-  const issues: StateCoherenceIssue[] = [];
+  const fr = language === 'fr';
+  const issues: StateCoherenceIssue[] = [
+    ...stateDeclarationIssues(features, projectInvariants, language)
+  ];
   for (const state of states) {
     const link = state.links?.dataField;
     if (!link) continue;
@@ -183,17 +322,21 @@ export const stateCoherenceIssues = (
         stateId: String(state.id),
         path: String(state.path),
         kind: 'missing-data-field',
-        message: `Linked data field ${link.featureId}/${link.entityId}/${link.fieldId} does not exist.`
+        message: fr
+          ? `Le champ de données lié ${link.featureId}/${link.entityId}/${link.fieldId} n'existe pas.`
+          : `Linked data field ${link.featureId}/${link.entityId}/${link.fieldId} does not exist.`
       });
       continue;
     }
-    if (field.type !== state.type) {
+    if (!carries(state.type, field.type)) {
       issues.push({
         severity: 'error',
         stateId: String(state.id),
         path: String(state.path),
         kind: 'field-type-mismatch',
-        message: `Linked field type "${field.type}" differs from state type "${state.type}".`
+        message: fr
+          ? `Le type du champ lié, ${quoteName('fr', field.type)}, diffère du type de l'état, ${quoteName('fr', state.type)}.`
+          : `Linked field type "${field.type}" differs from state type "${state.type}".`
       });
     }
     if (state.type === 'enum') {
@@ -205,7 +348,9 @@ export const stateCoherenceIssues = (
           stateId: String(state.id),
           path: String(state.path),
           kind: 'field-enum-mismatch',
-          message: 'Linked field enum values differ from the canonical state value set.'
+          message: fr
+            ? "Les valeurs d'énumération du champ lié diffèrent de l'ensemble de valeurs de l'état canonique."
+            : 'Linked field enum values differ from the canonical state value set.'
         });
       }
     }

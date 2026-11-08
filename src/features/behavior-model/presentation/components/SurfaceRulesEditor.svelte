@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { earsReading } from '$features/behavior-model/presentation/view-models/earsReading.svelte';
   import type { Surface } from '$features/behavior-model/domain/entities/Surface';
   import type { Rule } from '$features/behavior-model/domain/entities/Rule';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
@@ -60,6 +61,7 @@
         <RuleEditor
           {rule}
           {availablePaths}
+          sentence={earsReading.surfaceRule(rule, surface.name)}
           onChange={(next) => update(next)}
           onRemove={() => remove(rule)}
         />

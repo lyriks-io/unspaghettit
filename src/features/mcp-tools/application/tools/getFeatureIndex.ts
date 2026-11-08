@@ -1,4 +1,9 @@
-import { effectiveActor, type ActionActor } from '$features/behavior-model/domain/entities/Action';
+import {
+  effectiveActor,
+  withExposures,
+  type ActionActor,
+  type ExposureSummary
+} from '$features/behavior-model/domain/entities/Action';
 import type { CriterionStatus } from '$features/behavior-model/domain/entities/AcceptanceCriterion';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import { criterionStandings } from '$features/behavior-model/domain/services/CriterionStanding';
@@ -16,6 +21,8 @@ export type ActionIndexEntry = {
   readonly name: string;
   /** Who fires it, defaults applied (see `effectiveActor`). */
   readonly actor: ActionActor;
+  /** The channels it declares, offered or withheld; absent when it declares none. */
+  readonly exposures?: ExposureSummary;
 };
 
 /**
@@ -104,7 +111,12 @@ export const getFeatureIndexTool = (feature: Feature): FeatureIndex => ({
     ruleCount: s.rules.length,
     invariantCount: s.invariants.length,
     transitionCount: s.transitions.length,
-    actions: s.actions.map((c) => ({ id: c.id, name: c.name, actor: effectiveActor(c) })),
+    actions: s.actions.map((c) => ({
+      id: c.id,
+      name: c.name,
+      actor: effectiveActor(c),
+      ...withExposures(c)
+    })),
     stateDefinitions: s.stateDefinitions.map((d) => ({ id: d.id, path: String(d.path) }))
   })),
   personas: feature.personas.map((p) => ({ id: p.id, name: p.name })),

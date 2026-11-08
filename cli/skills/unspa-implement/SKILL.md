@@ -115,6 +115,7 @@ surface_rule:<id>
 surface_invariant:<id>
 entity:<id>
 criterion:<id>                 # acceptance criterion: maps what VERIFIES it
+exposure:<id>                  # an action's exposure: maps the route / MCP tool serving it
 event:<event-name>             # event's string identifier (not an id)
 state:<dotted.path>            # e.g. cart.itemCount
 ```

@@ -2,6 +2,11 @@ import {
   ALL_CRITERION_RELATION_KINDS,
   ALL_CRITERION_STATUSES
 } from '../../entities/AcceptanceCriterion';
+import {
+  CALLER_CHANNEL_PARAM,
+  callableParameterNames,
+  type Action
+} from '../../entities/Action';
 import type { Feature } from '../../entities/Feature';
 import { effectiveEnumValues } from '../EnumValues';
 import { isEventName } from '../../value-objects/EventName';
@@ -36,6 +41,27 @@ import {
  * programmatically. This service catches the higher-level issues that
  * those branded types cannot see.
  */
+/** A scenario's caller channel must be one the action declares, offered or withheld. */
+const checkCallerChannelValues = (
+  errors: string[],
+  label: string,
+  action: Action,
+  runs: readonly { readonly parameterOverrides?: readonly { readonly parameterName: string; readonly value: unknown }[] }[]
+): void => {
+  const declared = new Set((action.exposures ?? []).map((e) => String(e.channel)));
+  if (declared.size === 0) return;
+  for (const run of runs) {
+    for (const override of run.parameterOverrides ?? []) {
+      if (override.parameterName !== CALLER_CHANNEL_PARAM) continue;
+      if (typeof override.value !== 'string' || !declared.has(override.value)) {
+        errors.push(
+          `${label}: ${CALLER_CHANNEL_PARAM} is ${JSON.stringify(override.value)}, a channel the action declares nothing about. Declared: ${[...declared].join(', ')}.`
+        );
+      }
+    }
+  }
+};
+
 export const validateFeature = (feature: Feature): ValidationResult => {
   const errors: string[] = [];
   const personaIds = new Set<string>();
@@ -346,7 +372,8 @@ export const validateFeature = (feature: Feature): ValidationResult => {
       }
 
       const scenarioIds = new Set<string>();
-      const actionParameterNames = new Set(cap.parameters.map((p) => p.name));
+      const actionParameterNames = callableParameterNames(cap);
+      checkCallerChannelValues(errors, `Scenario in action ${cap.id}`, cap, cap.scenarios ?? []);
       for (const scenario of cap.scenarios ?? []) {
         if (scenarioIds.has(scenario.id)) {
           errors.push(`Duplicate scenario id "${scenario.id}" in action ${cap.id}`);
@@ -412,7 +439,13 @@ export const validateFeature = (feature: Feature): ValidationResult => {
             );
             continue;
           }
-          const stepParamNames = new Set(stepAction.parameters.map((p) => p.name));
+          const stepParamNames = callableParameterNames(stepAction);
+          checkCallerChannelValues(
+            errors,
+            `Scenario ${scenario.id} in action ${cap.id}: step ${stepIdx}`,
+            stepAction,
+            [step]
+          );
           for (const override of step.parameterOverrides ?? []) {
             if (
               typeof override.parameterName !== 'string' ||

@@ -165,7 +165,8 @@
         {@const validationCount = parameter.validations?.length ?? 0}
         <li
           data-parameter-id={parameter.id}
-          class="rounded-md border bg-white {isExpanded
+          data-focus-target={`parameter:${parameter.id}`}
+          class="scroll-mt-24 rounded-md border bg-white {isExpanded
             ? 'border-brand-300 ring-1 ring-brand-200'
             : 'border-neutral-200'}"
         >

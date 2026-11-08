@@ -1,5 +1,6 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Project } from '$features/projects/domain/entities/Project';
+import type { ReportLanguage } from '$shared/language';
 import type { DigestDetailLevel, DigestSpec } from '../DigestSpec';
 
 /**
@@ -30,6 +31,11 @@ export type DigestSource = {
   readonly scope: DigestScopeRef;
   /** Defaults to `standard` when omitted. */
   readonly detailLevel?: DigestDetailLevel;
+  /**
+   * The spec's language: every sentence the digest writes itself follows it,
+   * text from the model is kept as authored. Defaults to English.
+   */
+  readonly language?: ReportLanguage;
 };
 
 /**

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EarsSentence from './EarsSentence.svelte';
   import type { Rule } from '$features/behavior-model/domain/entities/Rule';
   import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
   import {
@@ -38,13 +39,16 @@
     availableParameters?: readonly { readonly name: string }[];
     onChange: (next: Rule) => void;
     onRemove: () => void;
+    /** The element's EARS sentence, shown under its header. */
+    sentence?: string;
   };
   let {
     rule,
     availablePaths,
     availableParameters = [],
     onChange,
-    onRemove
+    onRemove,
+    sentence = ''
   }: Props = $props();
 
   // The form fields below speak the leaf {left, operator, right} shape.
@@ -216,6 +220,7 @@
       Remove
     </button>
   </div>
+  <EarsSentence text={sentence} />
 
   <div class="rounded-md bg-slate-50 p-3">
     <!-- Mode picker: leaf (default) / unconditional / composite. -->

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { earsReading } from '$features/behavior-model/presentation/view-models/earsReading.svelte';
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
   import type { ReachabilityGoal } from '$features/behavior-model/domain/entities/ReachabilityGoal';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
@@ -77,6 +78,7 @@
         <ReachabilityGoalEditor
           {goal}
           {availablePaths}
+          sentence={earsReading.goal(goal)}
           onChange={(next) => update(next)}
           onRemove={() => remove(goal.id)}
         />

@@ -288,3 +288,69 @@ describe('JsonFolderFeatureRepository file naming', () => {
     expect((await byId.get(exp.id))?.name).toBe('Basket');
   });
 });
+
+describe('JsonFolderFeatureRepository twins under one id', () => {
+  // A folder that switched from slug to id naming while another writer kept
+  // writing the id-named file: the stale slug-named copy sorts first.
+  const seedTwins = (dir: string) => {
+    const folder = join(dir, UNASSIGNED_FOLDER);
+    mkdirSync(folder, { recursive: true });
+    const id = 'feat-feature-tree';
+    const stale = buildFeature({
+      id: asFeatureId(id),
+      name: 'Build the feature tree',
+      description: 'stale',
+      updatedAt: '2026-09-10T16:32:00.223Z'
+    });
+    const current = { ...stale, description: 'current', updatedAt: '2026-10-12T17:22:51.186Z' };
+    writeFileSync(join(folder, 'build-the-feature-tree.feature.json'), exportFeatureToJson(stale), 'utf8');
+    writeFileSync(join(folder, `${id}.feature.json`), exportFeatureToJson(current), 'utf8');
+    return { folder, id: asFeatureId(id) };
+  };
+
+  it('reads the id-named file, not the stale twin that sorts first', async () => {
+    const dir = makeTempRoot();
+    const { id } = seedTwins(dir);
+    const repo = new JsonFolderFeatureRepository(dir);
+    expect((await repo.get(id))?.description).toBe('current');
+    expect(await repo.list()).toHaveLength(1);
+    expect((await repo.listFull()).map((f) => f.description)).toEqual(['current']);
+  });
+
+  it('prefers the most recently updated twin when neither is named by id', async () => {
+    const dir = makeTempRoot();
+    const folder = join(dir, UNASSIGNED_FOLDER);
+    mkdirSync(folder, { recursive: true });
+    const base = buildFeature({ id: asFeatureId('exp-x-1234abcd'), name: 'X' });
+    writeFileSync(
+      join(folder, 'a-old.feature.json'),
+      exportFeatureToJson({ ...base, description: 'old', updatedAt: '2026-01-01T00:00:00.000Z' }),
+      'utf8'
+    );
+    writeFileSync(
+      join(folder, 'b-new.feature.json'),
+      exportFeatureToJson({ ...base, description: 'new', updatedAt: '2026-02-01T00:00:00.000Z' }),
+      'utf8'
+    );
+    expect((await new JsonFolderFeatureRepository(dir).get(base.id))?.description).toBe('new');
+  });
+
+  it('removes every twin on save, so the feature is one file again', async () => {
+    const dir = makeTempRoot();
+    const { folder, id } = seedTwins(dir);
+    const repo = new JsonFolderFeatureRepository(dir, { fileNaming: 'id' });
+    const current = await repo.get(id);
+    await repo.save({ ...current!, updatedAt: '2026-10-13T08:00:00.000Z' });
+    expect(readdirSync(folder)).toEqual(['feat-feature-tree.feature.json']);
+    expect((await repo.get(id))?.description).toBe('current');
+  });
+
+  it('deletes every twin, so a deleted feature does not come back', async () => {
+    const dir = makeTempRoot();
+    const { folder, id } = seedTwins(dir);
+    const repo = new JsonFolderFeatureRepository(dir);
+    await repo.delete(id);
+    expect(readdirSync(folder)).toEqual([]);
+    expect(await repo.get(id)).toBeNull();
+  });
+});

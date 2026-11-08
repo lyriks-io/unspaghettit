@@ -16,6 +16,7 @@ import {
 } from '../../src/features/verification/infrastructure/persistence/StaticBehavioralIndexReader';
 import type { BehavioralIndexReader } from '../../src/features/verification/application/ports/BehavioralIndexReader';
 import { strictThresholds } from '../../src/features/verification/domain/VerificationThresholds';
+import { activeProver } from '../../src/features/prover/loadProver';
 import { trackTokens } from '../metrics';
 import { errorText, text, type ToolDeps } from './_shared';
 import { expandFeatureId } from './short-ids';
@@ -52,6 +53,8 @@ const resolveCohort = async (
   projectInvariants: readonly Invariant[];
   /** Set only for a one-feature cohort: who else may own keys of the index. */
   driftOwnership?: DriftOwnership;
+  /** Set only for a one-feature cohort: its project, whose actions the solver's paths may play. */
+  projectFeatures?: readonly Feature[];
 }> => {
   const { repo, projectRepo, repoContext } = deps;
 
@@ -66,7 +69,14 @@ const resolveCohort = async (
     return {
       features: [feature],
       projectInvariants: owner?.projectInvariants ?? [],
-      driftOwnership: owner ? owner.featureIds : 'all'
+      driftOwnership: owner ? owner.featureIds : 'all',
+      ...(owner
+        ? {
+            projectFeatures: (await loadFeaturesByIds(repo, owner.featureIds)).filter(
+              (member): member is Feature => member !== null
+            )
+          }
+        : {})
     };
   }
 
@@ -86,6 +96,9 @@ const resolveCohort = async (
 
 export const registerVerificationTools = (deps: ToolDeps): void => {
   const { server, repo, repoContext } = deps;
+  // The proof module, where one was asked for: every feature is proven before it is judged.
+  const prover = activeProver(deps.prover ?? { state: 'not-asked' });
+  const verifyNote = prover?.toolNotes?.verify;
 
   server.registerTool(
     'get_drift',
@@ -124,7 +137,7 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
     'verify',
     {
       description:
-        'Run the whole verification spine and return a gated verdict — the in-chat form of `unspa check`. Per feature: runs every scenario as an executable spec test, scores maturity, analyses surface (navigation) reachability, optionally model-checks the reachable state space, and folds in spec→code drift. Each check is pass / warn / fail; `passed` is true when nothing failed (warnings are advisory — bounded-search caveats, drift, ungated maturity). Defaults fail only on the unambiguous things (a failing scenario, a reachable invariant violation). Every feature verdict also carries `scenarios[]`: one machine-readable row per AUTHORED scenario (scenarioId, name, surfaceId/actionId, passed, expected vs actual status, assertion counts, firstFailingStep + its action, and a one-line reason) — passing rows included, so you can trace an acceptance criterion to the scenario that exercises it and to its result without parsing prose. Use after a build/edit pass to confirm the spec is sound before claiming done.',
+        'Run the whole verification spine and return a gated verdict — the in-chat form of `unspa check`. Per feature: runs every scenario as an executable spec test, ' + (verifyNote ? `${verifyNote} ` : '') + 'scores maturity, analyses surface (navigation) reachability, optionally model-checks the reachable state space, and folds in spec→code drift. Each check is pass / warn / fail; `passed` is true when nothing failed (warnings are advisory — bounded-search caveats, drift, ungated maturity). Defaults fail only on the unambiguous things (a failing scenario, a reachable invariant violation). Every feature verdict also carries `scenarios[]`: one machine-readable row per AUTHORED scenario (scenarioId, name, surfaceId/actionId, passed, expected vs actual status, assertion counts, firstFailingStep + its action, and a one-line reason) — passing rows included, so you can trace an acceptance criterion to the scenario that exercises it and to its result without parsing prose. Use after a build/edit pass to confirm the spec is sound before claiming done.',
       inputSchema: {
         featureId: z.string().optional(),
         strict: z.boolean().optional(),
@@ -137,16 +150,28 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
         failOnDrift: z.boolean().optional(),
         failOnUnmetGoals: z.boolean().optional(),
         failOnSkippedActions: z.boolean().optional(),
-        failOnTruncatedExploration: z.boolean().optional()
+        failOnTruncatedExploration: z.boolean().optional(),
+        solver: z
+          .boolean()
+          .optional()
+          .describe('Ask the proof module, where one is loaded (default true). false turns it off for this run: each verdict then says nothing was proven.'),
+        failOnProvenFlaws: z.boolean().optional(),
+        failOnOpenProofs: z.boolean().optional()
       }
     },
     async (args) => {
       try {
-        const { features, projectInvariants, driftOwnership } = await resolveCohort(
+        const { features, projectInvariants, driftOwnership, projectFeatures } = await resolveCohort(
           deps,
           args.featureId
         );
-        const verify = verifyFeaturesUseCase({ features: repo, index: indexReader(repoContext) });
+        const verify = verifyFeaturesUseCase({
+          features: repo,
+          index: indexReader(repoContext),
+          // The first pass: a verdict read by pages with a budget of seconds;
+          // the rounds that settle more run where the full proof is asked for.
+          ...(prover ? { prove: (feature, context) => prover.verdictProof(feature, { ...context, depth: 'first-pass' }) } : {})
+        });
         const report = await verify({
           featureIds: features.map((f) => f.id),
           projectInvariants,
@@ -160,8 +185,12 @@ export const registerVerificationTools = (deps: ToolDeps): void => {
             failOnUnmetGoals: args.strict || args.failOnUnmetGoals === true,
             failOnSkippedActions: args.strict || args.failOnSkippedActions === true,
             failOnTruncatedExploration: args.strict || args.failOnTruncatedExploration === true,
-            failOnDeadActions: args.strict === true
+            failOnDeadActions: args.strict === true,
+            failOnProvenFlaws: args.strict || args.failOnProvenFlaws === true,
+            failOnOpenProofs: args.strict || args.failOnOpenProofs === true
           },
+          prove: args.solver !== false,
+          ...(projectFeatures ? { projectFeatures } : {}),
           modelCheck: args.modelCheck || args.strict
             ? {
                 ...(args.maxDepth !== undefined ? { maxDepth: args.maxDepth } : {}),

@@ -51,6 +51,7 @@ is the only mapping between code and spec. Keys follow
 - `surface_rule:<id>` / `surface_invariant:<id>`
 - `entity:<id>`
 - `criterion:<id>` (an acceptance criterion: the entry maps what VERIFIES it, and may carry a `verification` block: kind, command, files, artifacts, lastResult)
+- `exposure:<id>` (an action's exposure on a channel: the entry maps the route handler, MCP tool or command that serves it)
 - `event:<event-name>` (the event's string identifier, not an id)
 - `state:<state.path>` (e.g. `cart.itemCount`)
 

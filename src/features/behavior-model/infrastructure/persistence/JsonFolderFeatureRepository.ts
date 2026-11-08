@@ -31,6 +31,21 @@ type LoadedSnapshot = {
   readonly feature: Feature;
 };
 
+/**
+ * Of two files holding the same feature id, the one that speaks for it: the
+ * file named after the id (what a host that owns the folder writes, and what
+ * its own reader resolves to), else the most recently updated. A folder that
+ * switched from slug to id naming keeps the slug-named copy beside the new one
+ * until something removes it; reading that stale twin hid every later write.
+ */
+const speaksFor = (a: LoadedSnapshot, b: LoadedSnapshot): LoadedSnapshot => {
+  const id = String(a.feature.id);
+  const aNamed = a.slug === id;
+  const bNamed = b.slug === id;
+  if (aNamed !== bNamed) return aNamed ? a : b;
+  return (b.feature.updatedAt ?? '') > (a.feature.updatedAt ?? '') ? b : a;
+};
+
 /** A parsed file, valid while its inode, size and mtime all hold. */
 type CachedSnapshot = {
   readonly ino: number;
@@ -81,14 +96,14 @@ export class JsonFolderFeatureRepository implements FeatureRepository {
   }
 
   async list(): Promise<readonly FeatureSummary[]> {
-    return this.readAll()
+    return this.readCurrent()
       .map((s) => s.feature)
       .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       .map(toSummary);
   }
 
   async get(id: FeatureId): Promise<Feature | null> {
-    const found = this.readAll().find((s) => s.feature.id === id);
+    const found = this.readCurrent().find((s) => s.feature.id === id);
     return found ? found.feature : null;
   }
 
@@ -99,7 +114,7 @@ export class JsonFolderFeatureRepository implements FeatureRepository {
    * `list()` + a `get()` per id incurs (each `get` re-walks the whole folder).
    */
   async listFull(): Promise<readonly Feature[]> {
-    return this.readAll().map((s) => s.feature);
+    return this.readCurrent().map((s) => s.feature);
   }
 
   async save(feature: Feature): Promise<void> {
@@ -111,7 +126,6 @@ export class JsonFolderFeatureRepository implements FeatureRepository {
     ensureProjectDir(this.directory, ownerSlug);
 
     const all = this.readAll();
-    const previous = all.find((s) => s.feature.id === feature.id);
     const taken = all
       .filter((s) => s.folder === ownerFolder && s.feature.id !== feature.id)
       .map((s) => s.slug);
@@ -120,12 +134,13 @@ export class JsonFolderFeatureRepository implements FeatureRepository {
       ? `${target}-${feature.id.slice(0, 8)}`
       : target;
 
-    if (previous && (previous.folder !== ownerFolder || previous.slug !== finalSlug)) {
-      const oldPath = featureFilePath(
-        this.directory,
-        folderToSlug(previous.folder),
-        previous.slug
-      );
+    // Every other file holding this id goes: the previous name after a rename
+    // or a move, and any stale twin left by a change of naming, so the feature
+    // is one file again after its next save.
+    for (const twin of all) {
+      if (twin.feature.id !== feature.id) continue;
+      if (twin.folder === ownerFolder && twin.slug === finalSlug) continue;
+      const oldPath = featureFilePath(this.directory, folderToSlug(twin.folder), twin.slug);
       if (existsSync(oldPath)) unlinkSync(oldPath);
     }
 
@@ -137,10 +152,24 @@ export class JsonFolderFeatureRepository implements FeatureRepository {
   }
 
   async delete(id: FeatureId): Promise<void> {
-    const found = this.readAll().find((s) => s.feature.id === id);
-    if (!found) return;
-    const path = featureFilePath(this.directory, folderToSlug(found.folder), found.slug);
-    if (existsSync(path)) unlinkSync(path);
+    // Every file holding the id, twins included, or a stale twin would bring
+    // the deleted feature back on the next read.
+    for (const found of this.readAll()) {
+      if (found.feature.id !== id) continue;
+      const path = featureFilePath(this.directory, folderToSlug(found.folder), found.slug);
+      if (existsSync(path)) unlinkSync(path);
+    }
+  }
+
+  /** One snapshot per feature id: the file that speaks for it (see {@link speaksFor}). */
+  private readCurrent(): readonly LoadedSnapshot[] {
+    const byId = new Map<string, LoadedSnapshot>();
+    for (const snapshot of this.readAll()) {
+      const id = String(snapshot.feature.id);
+      const held = byId.get(id);
+      byId.set(id, held ? speaksFor(held, snapshot) : snapshot);
+    }
+    return [...byId.values()];
   }
 
   private readAll(): readonly LoadedSnapshot[] {

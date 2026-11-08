@@ -5,6 +5,8 @@ import type {
 } from '$features/behavior-model/domain/value-objects/ids';
 import type { ParameterValues } from '$features/behavior-model/domain/services/ParameterValidator';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
+import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
+import { seedOtherFeatureDefaults } from '$features/behavior-model/domain/services/StateSnapshot';
 import { simulate } from '$features/simulator/domain/SimulatorEngine';
 import type { SimulationResult } from '$features/simulator/domain/SimulationResult';
 
@@ -22,6 +24,13 @@ export type SimulateActionInput = {
    * (typically: load the project, fetch every featureId except the focal).
    */
   readonly projectFeatures?: readonly Feature[];
+  /**
+   * The project's invariants: checked after the action like the feature's own,
+   * the other features' state starting from their defaults
+   * (seedOtherFeatureDefaults), so a dry run refuses what every other engine
+   * refuses.
+   */
+  readonly projectInvariants?: readonly Invariant[];
 };
 
 export const simulateActionUseCase = () => {
@@ -34,12 +43,23 @@ export const simulateActionUseCase = () => {
     if (!action) {
       throw new Error(`Action ${input.actionId} not found`);
     }
+    const projectInvariants = input.projectInvariants ?? [];
+    const snapshot =
+      projectInvariants.length > 0 && input.projectFeatures
+        ? seedOtherFeatureDefaults(
+            input.snapshot,
+            input.feature.surfaces.flatMap((s) => s.stateDefinitions),
+            input.projectFeatures
+              .filter((other) => other.id !== input.feature.id)
+              .flatMap((other) => other.surfaces.flatMap((s) => s.stateDefinitions))
+          )
+        : input.snapshot;
     return simulate({
       surface,
       action,
-      snapshot: input.snapshot,
+      snapshot,
       parameters: input.parameters,
-      featureInvariants: input.feature.featureInvariants,
+      featureInvariants: [...(input.feature.featureInvariants ?? []), ...projectInvariants],
       feature: input.feature,
       ...(input.projectFeatures ? { projectFeatures: input.projectFeatures } : {})
     });

@@ -1,3 +1,4 @@
+import type { ProverLoad } from '../../src/features/prover/loadProver';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { FeatureRepository } from '../../src/features/behavior-model/application/ports/FeatureRepository';
 import {
@@ -20,6 +21,7 @@ import type { Clock } from '../../src/shared/domain/Clock';
 import type { IdGenerator } from '../../src/shared/domain/IdGenerator';
 import { runScenariosUseCase } from '../../src/features/simulator/application/use-cases/RunScenarios';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
+import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
 import { loadFeaturesByIds } from '../../src/features/behavior-model/application/services/bulkRead';
 import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 import type { RepoContext } from '../server';
@@ -45,6 +47,8 @@ export type ToolDeps = {
    * skip the update check, keeping the network out of the test path).
    */
   readonly version?: string;
+  /** The proof module, when one was asked for (UNSPA_PROVER); absent, nothing is proven and nothing is said about proofs. */
+  readonly prover?: ProverLoad;
 };
 
 /**
@@ -66,6 +70,28 @@ export const loadProjectSiblings = async (
   const ids = project.featureIds.map(String).filter((id) => id !== focalFeatureId);
   const siblings = await loadFeaturesByIds(repo, ids);
   return siblings.filter((f): f is Feature => f !== null);
+};
+
+/**
+ * What a run of one feature needs from its project: the other features (their
+ * handlers, their state) and the invariants that span them. Every replay of a
+ * feature's examples (scenarios, dry runs, step walks, what-ifs) takes both, so
+ * a project rule holds the same way in every engine. A feature that belongs to
+ * no project runs alone.
+ */
+export const loadProjectContext = async (
+  repo: FeatureRepository,
+  projectRepo: ProjectRepository,
+  focalFeatureId: string
+): Promise<{
+  readonly projectFeatures: readonly Feature[] | undefined;
+  readonly projectInvariants: readonly Invariant[];
+}> => {
+  const project = await findOwningProject(projectRepo, focalFeatureId);
+  if (!project) return { projectFeatures: undefined, projectInvariants: [] };
+  const ids = project.featureIds.map(String).filter((id) => id !== focalFeatureId);
+  const siblings = (await loadFeaturesByIds(repo, ids)).filter((f): f is Feature => f !== null);
+  return { projectFeatures: siblings, projectInvariants: project.projectInvariants ?? [] };
 };
 
 // Compact JSON: every byte of whitespace is a token sent to / from the LLM.
@@ -268,7 +294,8 @@ const runScenarios = runScenariosUseCase();
  */
 const scenarioImpact = (
   result: Awaited<ReturnType<ToolDeps['mutateFeature']>>,
-  scope: { readonly surfaceId?: SurfaceId; readonly actionId?: ActionId }
+  scope: { readonly surfaceId?: SurfaceId; readonly actionId?: ActionId },
+  project: Awaited<ReturnType<typeof loadProjectContext>>
 ): {
   readonly total: number;
   readonly passed: number;
@@ -282,7 +309,9 @@ const scenarioImpact = (
   const out = runScenarios({
     feature: result,
     ...(scope.surfaceId ? { surfaceId: scope.surfaceId } : {}),
-    ...(scope.actionId ? { actionId: scope.actionId } : {})
+    ...(scope.actionId ? { actionId: scope.actionId } : {}),
+    ...(project.projectFeatures ? { projectFeatures: project.projectFeatures } : {}),
+    ...(project.projectInvariants.length > 0 ? { projectInvariants: project.projectInvariants } : {})
   });
   if (out.total === 0) return null;
   return {
@@ -347,7 +376,8 @@ export const runMutation = async (
     // taught agents that update_* is broken and pushed them into remove+add
     // loops while their writes were silently stacking up on disk.
     try {
-      const impact = scenarioImpact(result, opts.scenarioScope);
+      const project = await loadProjectContext(deps.repo, deps.projectRepo, String(result.id));
+      const impact = scenarioImpact(result, opts.scenarioScope, project);
       return text(impact === null ? baseAck : { ...baseAck, scenarioImpact: impact });
     } catch (impactError) {
       return text({

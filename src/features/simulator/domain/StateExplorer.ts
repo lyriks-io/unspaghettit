@@ -11,7 +11,10 @@ import {
 } from '$features/behavior-model/domain/services/DerivedState';
 import type { ParameterValues } from '$features/behavior-model/domain/services/ParameterValidator';
 import { evaluateCondition } from '$features/behavior-model/domain/services/RuleEvaluator';
-import { buildInitialSnapshot } from '$features/behavior-model/domain/services/StateSnapshot';
+import {
+  buildInitialSnapshot,
+  startingDeclarations
+} from '$features/behavior-model/domain/services/StateSnapshot';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
 import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
 import {
@@ -63,6 +66,12 @@ export type ExplorerOptions = {
    * defaults instead of undefined.
    */
   readonly seedStateDefs?: readonly StateDefinition[];
+  /**
+   * Inputs the solver chose, by action id: one set per branch it witnessed.
+   * Tried first for that action, and they let an action whose required input
+   * has no enumerable domain be explored instead of skipped.
+   */
+  readonly witnessedInputs?: ReadonlyMap<string, readonly ParameterValues[]>;
 };
 
 export type InvariantCounterexample = {
@@ -121,7 +130,7 @@ export type GoalResult = {
 export type ExplorationReport = {
   readonly statesExplored: number;
   readonly depthReached: number;
-  /** True if a cap (the states cap, or a sampled parameter grid) cut the search short — findings are then "within bounds". */
+  /** True if a cap (the states cap, a sampled parameter grid), a skipped action or an input tried at its sign edge alone cut the search short: findings are then "within bounds". */
   readonly truncated: boolean;
   readonly invariantViolations: readonly InvariantCounterexample[];
   /**
@@ -179,12 +188,14 @@ export const exploreStateSpace = (
   const maxStates = options.maxStates ?? DEFAULT_MAX_STATES;
 
   // Seed sibling/project state alongside the feature's own so cross-feature
-  // invariants resolve against real defaults. The focal feature's derived state
-  // recomputes after every effect; seeded paths ride along as static values.
-  const allDefs = [
-    ...feature.surfaces.flatMap((s) => s.stateDefinitions),
-    ...(options.seedStateDefs ?? [])
-  ];
+  // invariants resolve against real defaults. A path the feature declares keeps
+  // its own value, as in the step simulation and the solver. The focal
+  // feature's derived state recomputes after every effect; seeded paths ride
+  // along as static values.
+  const allDefs = startingDeclarations(
+    feature.surfaces.flatMap((s) => s.stateDefinitions),
+    options.seedStateDefs ?? []
+  );
   const derivedDefs = collectDerivedDefs(allDefs);
   const checkedInvariants = [
     ...(feature.featureInvariants ?? []),
@@ -197,13 +208,17 @@ export const exploreStateSpace = (
   const moves: Move[] = [];
   const skippedActions: SkippedAction[] = [];
   const sampledActions: SampledAction[] = [];
+  /** Actions whose number inputs were tried only at the edge of their sign. */
+  const edgeOnlyActions: { readonly actionName: string; readonly inputs: readonly string[] }[] = [];
   for (const surface of feature.surfaces) {
     for (const action of surface.actions) {
       if (isEvolution(action)) continue;
       const domains = parameterCombinations(action, feature.valueSets, DEFAULT_MAX_COMBOS, {
         surfaceRules: surface.rules,
         surfaceInvariants: surface.invariants,
-        featureInvariants: feature.featureInvariants
+        featureInvariants: feature.featureInvariants,
+        constants: feature.constants,
+        witnessed: options.witnessedInputs?.get(String(action.id)) ?? []
       });
       if (!domains.explorable) {
         skippedActions.push({
@@ -222,6 +237,9 @@ export const exploreStateSpace = (
           fullGridSize: domains.coverage.fullGridSize,
           sampled: domains.coverage.sampled
         });
+      }
+      if (domains.edgeOnlyInputs) {
+        edgeOnlyActions.push({ actionName: action.name, inputs: domains.edgeOnlyInputs });
       }
       moves.push({ surface, action, combos: domains.combos });
     }
@@ -353,9 +371,12 @@ export const exploreStateSpace = (
 
   // Only an exhaustive search can call an action dead. Cut short, the state
   // that enables it may lie past the cut, so the same rows are reported as
-  // unreached, each saying which bound hit.
+  // unreached, each saying which bound hit. A skipped action cuts the search
+  // too: the states it produces were never explored.
   const combosCapped = sampledActions.length > 0;
-  const cutShort = truncated || combosCapped;
+  const skippedNames = skippedActions.map((a) => `"${a.actionName}"`);
+  const cutShort =
+    truncated || combosCapped || skippedNames.length > 0 || edgeOnlyActions.length > 0;
   const sampledById = new Map(sampledActions.map((a) => [a.actionId, a]));
   const unreachedReason = (actionId: string): string => {
     const own = sampledById.get(actionId);
@@ -367,7 +388,15 @@ export const exploreStateSpace = (
         ? `only ${own.sampled} of its ${own.fullGridSize} parameter combinations were tried`
         : combosCapped
           ? 'another action ran on a sampled parameter grid'
-          : null
+          : null,
+      skippedNames.length > 0
+        ? `the exploration skipped ${skippedNames.join(', ')}, so the states ${skippedNames.length > 1 ? 'they produce' : 'it produces'} were never explored`
+        : null,
+      edgeOnlyActions.length > 0
+        ? `${edgeOnlyActions
+            .map((a) => `"${a.actionName}" was tried with ${a.inputs.map((i) => `"${i}"`).join(', ')} at the edge of its sign only`)
+            .join('; ')}, an open domain that one value does not cover`
+        : null
     ]
       .filter((part): part is string => part !== null)
       .join('; ');
@@ -409,8 +438,9 @@ export const exploreStateSpace = (
   return {
     statesExplored,
     depthReached,
-    // A capped parameter grid means some combinations were never tried, so the
-    // result is bounded in the same honest sense as a depth/state cutoff.
+    // A capped parameter grid, a skipped action or an input tried at its sign
+    // edge alone means some runs were never tried, so the result is bounded in
+    // the same honest sense as a depth/state cutoff.
     truncated: cutShort,
     invariantViolations: violations,
     deadActions,

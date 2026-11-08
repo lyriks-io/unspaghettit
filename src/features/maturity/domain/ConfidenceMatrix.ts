@@ -1,6 +1,14 @@
 import { committedActions } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import { analyzeActionDecisions } from '$features/behavior-model/domain/services/DecisionAnalysis';
+import { frenchTypography, type ReportLanguage } from '$shared/language';
+
+/** English as is; French with its typography (no-break spaces). */
+const say = (lang: ReportLanguage, en: string, fr: string): string =>
+  lang === 'fr' ? frenchTypography(fr) : en;
+
+/** The French word for a count: singular up to 1, plural from 2. */
+const frWord = (n: number, one: string, many: string): string => (n >= 2 ? many : one);
 
 /**
  * A single maturity percentage mixes very different things — "are the fields
@@ -53,8 +61,10 @@ const share = (covered: number, total: number): number =>
  */
 export const computeConfidence = (
   feature: Feature,
-  structural: { readonly passed: number; readonly total: number }
+  structural: { readonly passed: number; readonly total: number },
+  language: ReportLanguage = 'en'
 ): ConfidenceMatrix => {
+  const lang = language;
   // Presentation surfaces are excluded from the feature rollup (same rule as
   // MaturityScorer): scoring a view-only screen's actions would only skew the
   // denominators without saying anything about the modeled behavior.
@@ -93,55 +103,79 @@ export const computeConfidence = (
   const dimensions: ConfidenceDimension[] = [
     {
       key: 'structural',
-      label: 'Structural completeness',
+      label: say(lang, 'Structural completeness', 'Complétude structurelle'),
       score: share(structural.passed, structural.total),
       covered: structural.passed,
       total: structural.total,
-      detail: `${structural.passed} of ${structural.total} maturity checks pass`
+      detail: say(
+        lang,
+        `${structural.passed} of ${structural.total} maturity checks pass`,
+        `${structural.passed} ${frWord(structural.passed, 'vérification', 'vérifications')} de maturité sur ${structural.total} ${frWord(structural.passed, 'réussit', 'réussissent')}`
+      )
     },
     {
       key: 'behavioral',
-      label: 'Behavioral coverage',
+      label: say(lang, 'Behavioral coverage', 'Couverture comportementale'),
       score: share(withScenario.length, nonTrivial.length),
       covered: withScenario.length,
       total: nonTrivial.length,
       detail:
         nonTrivial.length === 0
-          ? 'no non-trivial actions to cover with scenarios'
-          : `${withScenario.length} of ${nonTrivial.length} non-trivial actions have a scenario`
+          ? say(
+              lang,
+              'no non-trivial actions to cover with scenarios',
+              'aucune action non triviale à couvrir par des scénarios'
+            )
+          : say(
+              lang,
+              `${withScenario.length} of ${nonTrivial.length} non-trivial actions have a scenario`,
+              `${withScenario.length} ${frWord(withScenario.length, 'action non triviale', 'actions non triviales')} sur ${nonTrivial.length} ${frWord(withScenario.length, 'a', 'ont')} un scénario`
+            )
     },
     {
       key: 'guardrails',
-      label: 'Guardrails',
+      label: say(lang, 'Guardrails', 'Garde-fous'),
       score: share(guarded.length, surfaces.length),
       covered: guarded.length,
       total: surfaces.length,
       detail:
         surfaces.length === 0
-          ? 'no surfaces yet'
-          : `${guarded.length} of ${surfaces.length} surfaces are covered by an invariant`
+          ? say(lang, 'no surfaces yet', "aucune surface pour l'instant")
+          : say(
+              lang,
+              `${guarded.length} of ${surfaces.length} surfaces are covered by an invariant`,
+              `${guarded.length} ${frWord(guarded.length, 'surface', 'surfaces')} sur ${surfaces.length} ${frWord(guarded.length, 'est couverte', 'sont couvertes')} par un invariant`
+            )
     },
     {
       key: 'executability',
-      label: 'Executability',
+      label: say(lang, 'Executability', 'Exécutabilité'),
       score: share(runnable.length, actions.length),
       covered: runnable.length,
       total: actions.length,
       detail:
         actions.length === 0
-          ? 'no actions yet'
-          : `${runnable.length} of ${actions.length} actions run to an effect, rule, or outcome`
+          ? say(lang, 'no actions yet', "aucune action pour l'instant")
+          : say(
+              lang,
+              `${runnable.length} of ${actions.length} actions run to an effect, rule, or outcome`,
+              `${runnable.length} ${frWord(runnable.length, 'action', 'actions')} sur ${actions.length} ${frWord(runnable.length, "s'exécute", "s'exécutent")} jusqu'à un effet, une règle ou un résultat`
+            )
     },
     {
       key: 'consistency',
-      label: 'Consistency',
+      label: say(lang, 'Consistency', 'Cohérence'),
       score: share(actions.length - conflicted.length, actions.length),
       covered: actions.length - conflicted.length,
       total: actions.length,
       detail:
         conflicted.length === 0
-          ? 'no contradictory or dead rules'
-          : `${conflicted.length} of ${actions.length} actions have a contradictory or dead rule`
+          ? say(lang, 'no contradictory or dead rules', 'aucune règle contradictoire ou morte')
+          : say(
+              lang,
+              `${conflicted.length} of ${actions.length} actions have a contradictory or dead rule`,
+              `${conflicted.length} ${frWord(conflicted.length, 'action', 'actions')} sur ${actions.length} ${frWord(conflicted.length, 'a', 'ont')} une règle contradictoire ou morte`
+            )
     }
   ];
 

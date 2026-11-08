@@ -1,9 +1,15 @@
-import type { Action } from '../../entities/Action';
+import type { Action, ActionExposure } from '../../entities/Action';
 import type { Feature } from '../../entities/Feature';
 import type { Parameter } from '../../entities/Parameter';
 import { parameterTypeToStateType } from '../../value-objects/ParameterType';
-import type { ActionId, ParameterId, SurfaceId } from '../../value-objects/ids';
-import { mustMap, swapAt, updateActionIn, updateSurface } from './internal';
+import type { ActionId, ExposureId, ParameterId, SurfaceId } from '../../value-objects/ids';
+import {
+  EntityNotFoundInFeatureError,
+  mustMap,
+  swapAt,
+  updateActionIn,
+  updateSurface
+} from './internal';
 
 export const addAction = (
   feature: Feature,
@@ -187,4 +193,50 @@ export const removeParameter = (
       ...c,
       parameters: c.parameters.filter((p) => p.id !== parameterId)
     }))
+  );
+
+export const addExposureToAction = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  exposure: ActionExposure
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (a) => ({ ...a, exposures: [...(a.exposures ?? []), exposure] }))
+  );
+
+/**
+ * Replaces one exposure whole. The caller builds the next value, so clearing an
+ * operation or turning an offered exposure into a withheld one is the same call.
+ */
+export const updateExposureOnAction = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  exposureId: ExposureId,
+  fn: (exposure: ActionExposure) => ActionExposure
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (a) => ({
+      ...a,
+      exposures: mustMap(a.exposures ?? [], String(exposureId), 'exposure', fn)
+    }))
+  );
+
+/** The last exposure removed drops the field, so the action reads as it did before any. */
+export const removeExposureFromAction = (
+  feature: Feature,
+  surfaceId: SurfaceId,
+  actionId: ActionId,
+  exposureId: ExposureId
+): Feature =>
+  updateSurface(feature, surfaceId, (s) =>
+    updateActionIn(s, actionId, (a) => {
+      const { exposures, ...rest } = a;
+      const kept = (exposures ?? []).filter((e) => e.id !== exposureId);
+      if (kept.length === (exposures ?? []).length) {
+        throw new EntityNotFoundInFeatureError('exposure', String(exposureId));
+      }
+      return kept.length > 0 ? { ...rest, exposures: kept } : rest;
+    })
   );

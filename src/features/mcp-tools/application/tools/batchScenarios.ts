@@ -1,4 +1,5 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import { runScenariosUseCase } from '$features/simulator/application/use-cases/RunScenarios';
 import { scenarioScopeOfChange } from '$features/simulator/domain/ScenarioScope';
 import { scenarioVerdict } from '$features/verification/domain/aggregateVerdict';
@@ -54,14 +55,16 @@ const runScenarios = runScenariosUseCase();
 export const batchScenariosTool = (
   before: Feature,
   after: Feature,
-  projectFeatures?: readonly Feature[]
+  projectFeatures?: readonly Feature[],
+  projectInvariants: readonly Invariant[] = []
 ): BatchScenarios => {
   const scope = scenarioScopeOfChange(before, after);
   const output = runScenarios({
     feature: after,
     limit: BATCH_SCENARIO_LIMIT,
     ...(scope.scope === 'touched' ? { exercisingActionIds: scope.actionIds } : {}),
-    ...(projectFeatures ? { projectFeatures } : {})
+    ...(projectFeatures ? { projectFeatures } : {}),
+    ...(projectInvariants.length > 0 ? { projectInvariants } : {})
   });
   return {
     scope: scope.scope,

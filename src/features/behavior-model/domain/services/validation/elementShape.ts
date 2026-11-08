@@ -1,5 +1,12 @@
 import type { Feature } from '../../entities/Feature';
-import { ALL_ACTION_ACTORS } from '../../entities/Action';
+import {
+  ALL_ACTION_ACTORS,
+  ALL_EXPOSURE_CHANNELS,
+  CALLER_CHANNEL_PARAM,
+  offeredChannels,
+  type Action
+} from '../../entities/Action';
+import { flattenLeafConditions, isParamLeft } from '../../value-objects/RuleCondition';
 import { ALL_ACTION_OUTCOME_KINDS } from '../../entities/ActionOutcome';
 import { ALL_EFFECT_TYPES, isOnBlockedOnlyEffectType } from '../../value-objects/Effect';
 import { ALL_OPERATORS, operatorRequiresRightOperand, type Operator } from '../../value-objects/Operator';
@@ -28,6 +35,126 @@ const effectTypeList = ALL_EFFECT_TYPES.join(', ');
 const OPERATOR_SET = new Set<string>(ALL_OPERATORS);
 
 const ACTOR_SET = new Set<string>(ALL_ACTION_ACTORS);
+
+/**
+ * A rule that reads the caller channel compares it with channels. One the action
+ * is not offered on can never arrive (a withheld one is refused before any rule
+ * runs), so the branch would be dead on arrival: refused, like an enum value
+ * outside its domain.
+ */
+const checkCallerChannelReads = (errors: string[], action: Action): void => {
+  const offered = new Set<string>(offeredChannels(action));
+  const conditions = [
+    ...action.rules.map((r) => ({ label: `Rule ${r.id}`, condition: r.condition })),
+    ...action.invariants.map((i) => ({ label: `Invariant ${i.id}`, condition: i.condition }))
+  ];
+  for (const { label, condition } of conditions) {
+    for (const leaf of flattenLeafConditions(condition)) {
+      if (!isParamLeft(leaf.left) || leaf.left.name !== CALLER_CHANNEL_PARAM) continue;
+      const right = leaf.right as unknown;
+      const literal =
+        right !== null && typeof right === 'object' && (right as { kind?: unknown }).kind === 'literal'
+          ? (right as { value?: unknown }).value
+          : right;
+      const values = Array.isArray(literal) ? literal : literal === undefined ? [] : [literal];
+      for (const value of values) {
+        if (typeof value === 'string' && !offered.has(value)) {
+          errors.push(
+            `${label} in action ${action.id}: compares ${CALLER_CHANNEL_PARAM} with "${value}", a channel the action is not offered on (offered: ${[...offered].join(', ') || 'none'}). A call can never arrive through it.`
+          );
+        }
+      }
+    }
+  }
+};
+
+const CHANNEL_SET = new Set<string>(ALL_EXPOSURE_CHANNELS);
+
+/** Two spellings of one operation that differ only by spacing are the same operation. */
+const operationKey = (channel: string, operation: string): string =>
+  `${channel} ${operation.trim().replace(/\s+/g, ' ')}`;
+
+/**
+ * The exposures of one action. `claimed` collects every offered operation of the
+ * feature so two actions answering on the same address are caught: one endpoint
+ * cannot run two behaviors. A channel no exposure names is legal and says
+ * nothing; only what IS declared is checked.
+ */
+const checkExposures = (
+  errors: string[],
+  actionId: string,
+  exposures: unknown,
+  claimed: Map<string, string>
+): void => {
+  if (exposures === undefined) return;
+  if (!Array.isArray(exposures)) {
+    errors.push(
+      `Action ${actionId}: exposures must be an array, got ${JSON.stringify(exposures)}.`
+    );
+    return;
+  }
+  const offered = new Set<string>();
+  const withheld = new Set<string>();
+  for (const exposure of exposures as unknown[]) {
+    const raw = (exposure ?? {}) as Record<string, unknown>;
+    const label = `Exposure ${String(raw.id ?? '?')} in action ${actionId}`;
+    const channel = raw.channel;
+    if (typeof channel !== 'string' || !CHANNEL_SET.has(channel)) {
+      errors.push(
+        `${label}: unknown channel ${JSON.stringify(channel)}. One of: ${ALL_EXPOSURE_CHANNELS.join(', ')}.`
+      );
+      continue;
+    }
+    if (raw.operation !== undefined && !isText(raw.operation)) {
+      errors.push(
+        `${label}: operation must be non-empty text (e.g. "PUT /issues/:id", "update_issue").`
+      );
+    }
+    if (raw.withheld !== undefined) {
+      const reason = (raw.withheld as { readonly reason?: unknown } | null)?.reason;
+      if (!isText(reason)) {
+        errors.push(
+          `${label}: a withheld exposure needs withheld.reason, saying why the action is kept off ${channel}. Without it the refusal reads like an oversight.`
+        );
+      }
+      if (raw.operation !== undefined) {
+        errors.push(
+          `${label}: a withheld exposure takes no operation, since nothing answers on ${channel}.`
+        );
+      }
+      if (withheld.has(channel)) {
+        errors.push(
+          `${label}: the action is already withheld from ${channel}; one reason per channel.`
+        );
+      }
+      withheld.add(channel);
+      continue;
+    }
+    offered.add(channel);
+    if (isText(raw.operation)) {
+      const key = operationKey(channel, raw.operation);
+      const owner = claimed.get(key);
+      if (owner !== undefined && owner !== actionId) {
+        errors.push(
+          `${label}: ${channel} operation "${raw.operation.trim()}" is already exposed by action ${owner}. One operation runs one behavior.`
+        );
+      } else if (owner === actionId) {
+        errors.push(
+          `${label}: ${channel} operation "${raw.operation.trim()}" is declared twice on this action.`
+        );
+      } else {
+        claimed.set(key, actionId);
+      }
+    }
+  }
+  for (const channel of offered) {
+    if (withheld.has(channel)) {
+      errors.push(
+        `Action ${actionId}: exposed on ${channel} and withheld from ${channel} at once. Remove one of the two statements.`
+      );
+    }
+  }
+};
 
 const COMPOSITE_KINDS = new Set<string>(['all', 'any', 'not']);
 const QUANTIFIER_KINDS = new Set<string>(['all_match', 'any_match']);
@@ -316,6 +443,7 @@ export const validateElementShapes = (feature: Feature): readonly string[] => {
     checkCondition(errors, `Reachability goal ${goal.id}`, goal.condition);
   }
 
+  const claimedOperations = new Map<string, string>();
   for (const surface of feature.surfaces) {
     for (const rule of surface.rules) {
       checkRule(errors, `Surface rule ${rule.id} in surface ${surface.id}`, rule);
@@ -332,6 +460,13 @@ export const validateElementShapes = (feature: Feature): readonly string[] => {
       if (actor !== undefined && (typeof actor !== 'string' || !ACTOR_SET.has(actor))) {
         errors.push(
           `Action ${action.id}: unknown actor ${JSON.stringify(actor)}. One of: ${ALL_ACTION_ACTORS.join(', ')} (omit it for a person-fired action).`
+        );
+      }
+      checkExposures(errors, String(action.id), action.exposures, claimedOperations);
+      checkCallerChannelReads(errors, action);
+      if (action.parameters.some((p) => p.name === CALLER_CHANNEL_PARAM)) {
+        errors.push(
+          `Action ${action.id}: "${CALLER_CHANNEL_PARAM}" is reserved for the channel the call arrives through; name the parameter differently.`
         );
       }
       for (const rule of action.rules) {

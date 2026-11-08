@@ -15,6 +15,21 @@ export type VerificationSummary = {
   readonly scenariosRun: number;
   readonly scenariosFailed: number;
   readonly invariantViolations: number;
+  /** Set when the solver was wired: how much of the cohort it proved. */
+  readonly proof?: ProofSummary;
+};
+
+export type ProofSummary = {
+  /** Features the solver ran on. */
+  readonly proven: number;
+  /** Features it did not prove: turned off, or it did not start. */
+  readonly notProven: number;
+  /** Broken statements it reached on a replayed path from the start. */
+  readonly provenViolations: number;
+  /** Questions it left unsettled; never counted as flaws. */
+  readonly unsettled: number;
+  /** Features whose exploration was asked for and not run, the solver having settled everything. */
+  readonly explorationsSkipped: number;
 };
 
 export type VerificationReport = {
@@ -58,7 +73,21 @@ export const mergeVerificationReports = (
       featuresFailed: features.filter((f) => !f.passed).length,
       scenariosRun: reports.reduce((n, r) => n + r.summary.scenariosRun, 0),
       scenariosFailed: reports.reduce((n, r) => n + r.summary.scenariosFailed, 0),
-      invariantViolations: reports.reduce((n, r) => n + r.summary.invariantViolations, 0)
+      invariantViolations: reports.reduce((n, r) => n + r.summary.invariantViolations, 0),
+      ...(reports.some((r) => r.summary.proof)
+        ? {
+            proof: {
+              proven: reports.reduce((n, r) => n + (r.summary.proof?.proven ?? 0), 0),
+              notProven: reports.reduce((n, r) => n + (r.summary.proof?.notProven ?? 0), 0),
+              provenViolations: reports.reduce((n, r) => n + (r.summary.proof?.provenViolations ?? 0), 0),
+              unsettled: reports.reduce((n, r) => n + (r.summary.proof?.unsettled ?? 0), 0),
+              explorationsSkipped: reports.reduce(
+                (n, r) => n + (r.summary.proof?.explorationsSkipped ?? 0),
+                0
+              )
+            }
+          }
+        : {})
     }
   };
 };

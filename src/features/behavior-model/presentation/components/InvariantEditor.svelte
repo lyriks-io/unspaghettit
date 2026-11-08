@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EarsSentence from './EarsSentence.svelte';
   import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
   import {
     ALL_OPERATORS,
@@ -23,8 +24,10 @@
     availablePaths: readonly StatePath[];
     onChange: (next: Invariant) => void;
     onRemove: () => void;
+    /** The element's EARS sentence, shown under its header. */
+    sentence?: string;
   };
-  let { invariant, availablePaths, onChange, onRemove }: Props = $props();
+  let { invariant, availablePaths, onChange, onRemove, sentence = '' }: Props = $props();
 
   // Composite conditions are read-only here, see apply_batch for the
   // structured editor.
@@ -118,6 +121,7 @@
       Remove
     </button>
   </div>
+  <EarsSentence text={sentence} />
 
   <div class="rounded-md bg-slate-50 p-3">
     <div class="mb-2 flex flex-wrap items-center gap-1 text-[10px]">

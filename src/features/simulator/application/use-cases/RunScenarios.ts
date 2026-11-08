@@ -1,4 +1,8 @@
-import type { Action } from '$features/behavior-model/domain/entities/Action';
+import { createHash } from 'node:crypto';
+import {
+  callableParameterNames,
+  type Action
+} from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Persona } from '$features/behavior-model/domain/entities/Persona';
 import type {
@@ -7,6 +11,8 @@ import type {
 } from '$features/behavior-model/domain/entities/Scenario';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
+import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
+import { seedOtherFeatureDefaults } from '$features/behavior-model/domain/services/StateSnapshot';
 import { advanceClock } from '$features/behavior-model/domain/value-objects/SimulationClock';
 import {
   fillDefaults,
@@ -30,6 +36,12 @@ import type {
 } from '$features/behavior-model/domain/value-objects/ids';
 import { scenarioExercises } from '$features/simulator/domain/ScenarioScope';
 import { simulate } from '$features/simulator/domain/SimulatorEngine';
+import type { EvaluatedRuleRecord } from '$features/simulator/domain/SimulationResult';
+
+import { NBSP, quoteName, type ReportLanguage } from '$shared/language';
+
+/** French plural: the singular up to 1, the plural from 2. */
+const frPlural = (n: number, one: string, many: string): string => (n >= 2 ? many : one);
 
 export type ScenarioAssertionResult = {
   readonly path: string;
@@ -112,6 +124,10 @@ export type ScenarioRunResult = {
   readonly invariantViolations: readonly InvariantViolation[];
   /** Short human-readable summary suitable for CI output. */
   readonly summary: string;
+  /** The rules the subject action evaluated, in order: which branch the scenario takes. */
+  readonly evaluatedRules?: readonly EvaluatedRuleRecord[];
+  /** The declared outcome the subject action resolved to, when it has outcomes. */
+  readonly outcomeId?: string;
 };
 
 export type RunScenariosInput = {
@@ -125,6 +141,21 @@ export type RunScenariosInput = {
    * these via projectRepo when running scenarios with a project context.
    */
   readonly projectFeatures?: readonly Feature[];
+  /**
+   * The invariants of the project the feature belongs to (they read state any
+   * of its features declares). Every scenario holds them the way it holds the
+   * feature's own, at every step and at the action it tests, so a scenario that
+   * breaks one fails here exactly as it fails in a step-by-step simulation; the
+   * other features' state then starts from their defaults, the checked
+   * feature's own declaration winning (startingDeclarations).
+   */
+  readonly projectInvariants?: readonly Invariant[];
+  /**
+   * The language the project's spec is written in: each result's `summary`
+   * follows it (a reader relays it as is). Statuses, names and assertion paths
+   * stay the model's own. Default English.
+   */
+  readonly language?: ReportLanguage;
   /**
    * Run only the scenarios that exercise one of these actions: the ones that
    * test it, and the multi-step ones that replay it on the way to another
@@ -201,13 +232,37 @@ const evaluateAssertions = (
     };
   });
 
+/**
+ * The other features' state a scenario starts from when project invariants
+ * read it (seedOtherFeatureDefaults): the checked feature starts from its own
+ * values, as in every other engine.
+ */
+const seedOtherFeatures = (
+  snapshot: StateSnapshot,
+  feature: Feature,
+  others: readonly Feature[] | undefined
+): StateSnapshot =>
+  others && others.length > 0
+    ? seedOtherFeatureDefaults(
+        snapshot,
+        feature.surfaces.flatMap((s) => s.stateDefinitions),
+        others
+          .filter((other) => other.id !== feature.id)
+          .flatMap((other) => other.surfaces.flatMap((s) => s.stateDefinitions))
+      )
+    : snapshot;
+
 const runOne = (
   surface: Surface,
   action: Action,
   scenario: Scenario,
   feature: Feature,
-  projectFeatures: readonly Feature[] | undefined
+  projectFeatures: readonly Feature[] | undefined,
+  language: ReportLanguage = 'en',
+  projectInvariants: readonly Invariant[] = []
 ): ScenarioRunResult => {
+  const invariants = [...(feature.featureInvariants ?? []), ...projectInvariants];
+  const fr = language === 'fr';
   const persona: Persona | null =
     scenario.personaId !== undefined
       ? feature.personas.find((p) => p.id === scenario.personaId) ?? null
@@ -225,7 +280,11 @@ const runOne = (
   const personaParams: ParameterValues = persona
     ? applyPersonaToParameters(persona, action, {})
     : {};
-  const baseSnapshot = applyScenarioToSnapshot(scenario, personaSnapshot);
+  const baseSnapshot = seedOtherFeatures(
+    applyScenarioToSnapshot(scenario, personaSnapshot),
+    feature,
+    projectInvariants.length > 0 ? projectFeatures : undefined
+  );
 
   // Replay any preceding steps, threading the resulting snapshot forward.
   // Each step is a real simulate() call (not a fake state poke), so the
@@ -251,7 +310,7 @@ const runOne = (
     const stepPersonaParams: ParameterValues = persona
       ? applyPersonaToParameters(persona, stepAction, {})
       : {};
-    const stepParamNames = new Set(stepAction.parameters.map((p) => p.name));
+    const stepParamNames = callableParameterNames(stepAction);
     const stepOverrideParams: { [k: string]: ParameterValues[string] } = {};
     for (const ov of step.parameterOverrides) {
       if (stepParamNames.has(ov.parameterName)) {
@@ -269,7 +328,7 @@ const runOne = (
       action: stepAction,
       snapshot,
       parameters: stepParams,
-      featureInvariants: feature.featureInvariants,
+      featureInvariants: invariants,
       feature,
       ...(projectFeatures ? { projectFeatures } : {})
     });
@@ -306,11 +365,17 @@ const runOne = (
       parameterErrors: stepResult.parameterErrors,
       invariantViolations: stepResult.invariantViolations,
       pass: stepPass,
-      summary: stepPass
-        ? `pass. ${stepStatus}`
-        : !stepStatusMatches
-          ? `status was ${stepStatus} but expected ${stepExpected}`
-          : `${stepFailedAssertions} assertion${stepFailedAssertions === 1 ? '' : 's'} did not hold`
+      summary: fr
+        ? stepPass
+          ? `réussite. ${stepStatus}`
+          : !stepStatusMatches
+            ? `le statut était ${stepStatus} alors que ${stepExpected} était attendu`
+            : `${stepFailedAssertions}${NBSP}${frPlural(stepFailedAssertions, 'assertion non vérifiée', 'assertions non vérifiées')}`
+        : stepPass
+          ? `pass. ${stepStatus}`
+          : !stepStatusMatches
+            ? `status was ${stepStatus} but expected ${stepExpected}`
+            : `${stepFailedAssertions} assertion${stepFailedAssertions === 1 ? '' : 's'} did not hold`
     });
   }
 
@@ -328,7 +393,7 @@ const runOne = (
     action,
     snapshot,
     parameters: baseParams,
-    featureInvariants: feature.featureInvariants,
+    featureInvariants: invariants,
     feature,
     ...(projectFeatures ? { projectFeatures } : {})
   });
@@ -396,6 +461,60 @@ const runOne = (
   const pass =
     stepsPass && statusMatches && assertionsHold && transitionOk && !silentSkipFail;
 
+  /** The same summary in French: statuses, names and parameter reasons kept as the engine gives them. */
+  const frenchSummary = (): string => {
+    const failed = assertions.filter((a) => !a.skipped && !a.held).length;
+    const evaluated = assertions.filter((a) => !a.skipped).length;
+    const skipped = assertions.length - evaluated;
+    const params =
+      result.parameterErrors.length > 0
+        ? ` (validation des paramètres refusée${NBSP}: ${result.parameterErrors
+            .map((e) => `${e.parameterName}. ${e.reason}`)
+            .join(`${NBSP}; `)})`
+        : '';
+    const broken =
+      result.invariantViolations.length > 0
+        ? ` (invariants enfreints${NBSP}: ${result.invariantViolations
+            .map((v) => quoteName('fr', v.invariantName))
+            .join(', ')})`
+        : '';
+    if (pass) {
+      const stepsOk =
+        stepResults.length > 0
+          ? `${stepResults.length}${NBSP}${frPlural(stepResults.length, 'étape réussie', 'étapes réussies')}, `
+          : '';
+      const held =
+        evaluated > 0
+          ? `, ${evaluated}${NBSP}${frPlural(evaluated, 'assertion vérifiée', 'assertions vérifiées')}`
+          : '';
+      const skippedText =
+        skipped > 0
+          ? `, ${skipped}${NBSP}${frPlural(skipped, 'ignorée', 'ignorées')} (l'action a été bloquée)`
+          : '';
+      return `réussite. ${stepsOk}${actualStatus}${held}${skippedText}`;
+    }
+    if (!stepsPass && firstFailedStep) {
+      return `échec. étape ${firstFailedStep.index} (${firstFailedStep.actionName})${NBSP}: ${firstFailedStep.summary}`;
+    }
+    if (!statusMatches) {
+      return `échec. le statut était ${actualStatus} alors que ${expectedStatus} était attendu${params}${broken}`;
+    }
+    if (!transitionOk) {
+      return `échec. transition inattendue${
+        transitionCheck && !transitionCheck.matches
+          ? ` (la transition a mené à ${String(transitionCheck.actual)} alors que ${String(transitionCheck.expected)} était attendu)`
+          : ''
+      }`;
+    }
+    if (silentSkipFail) {
+      const all =
+        assertions.length >= 2
+          ? `les ${assertions.length}${NBSP}assertions ont été ignorées`
+          : `l'assertion a été ignorée`;
+      return `échec. l'action a été bloquée, donc ${all}. Mettez expectedStatus:"blocked" si le blocage est voulu${NBSP}; sinon, corrigez le scénario pour que l'action s'exécute.${params}${broken}`;
+    }
+    return `échec. ${failed}/${evaluated}${NBSP}${frPlural(evaluated, 'assertion non vérifiée', 'assertions non vérifiées')}${broken}`;
+  };
   const failedAssertionCount = assertions.filter((a) => !a.skipped && !a.held).length;
   const paramErrorBlurb =
     result.parameterErrors.length > 0
@@ -423,7 +542,9 @@ const runOne = (
     stepResults.length > 0
       ? `${stepResults.length} step${stepResults.length === 1 ? '' : 's'} ok, `
       : '';
-  const summary = pass
+  const summary = fr
+    ? frenchSummary()
+    : pass
     ? `pass. ${stepPrefix}${actualStatus}${evaluatedAssertionCount > 0 ? `, ${evaluatedAssertionCount} assertion${evaluatedAssertionCount === 1 ? '' : 's'} held` : ''}${skippedBlurb}`
     : `fail. ${
         !stepsPass && firstFailedStep
@@ -454,7 +575,9 @@ const runOne = (
     transitionCheck,
     parameterErrors: result.parameterErrors,
     invariantViolations: result.invariantViolations,
-    summary
+    summary,
+    evaluatedRules: result.evaluatedRules,
+    ...(result.outcome?.outcomeId !== undefined ? { outcomeId: String(result.outcome.outcomeId) } : {})
   };
 };
 
@@ -464,8 +587,45 @@ const runOne = (
  * pass/fail per scenario so scenarios become executable specs (the report's
  * "scenarios are decorative" complaint).
  */
+/**
+ * Runs kept by what they were asked: a feature's scenarios replayed with the
+ * same model, project and filters answer the same, and one reading of a
+ * feature (its gaps, its verdict, its scenarios) asked for them three times,
+ * each a full replay holding every project invariant at every step.
+ */
+const runs = new Map<string, RunScenariosOutput>();
+const KEPT_RUNS = 16;
+
+const runKey = (input: RunScenariosInput): string =>
+  createHash('sha1')
+    .update(
+      JSON.stringify([
+        input.feature,
+        input.surfaceId ?? null,
+        input.actionId ?? null,
+        input.projectFeatures ?? null,
+        input.projectInvariants ?? null,
+        input.language ?? null,
+        input.exercisingActionIds ? [...input.exercisingActionIds] : null,
+        input.limit ?? null
+      ])
+    )
+    .digest('hex');
+
 export const runScenariosUseCase = () => {
   return (input: RunScenariosInput): RunScenariosOutput => {
+    const key = runKey(input);
+    const known = runs.get(key);
+    if (known) return known;
+    const output = runAll(input);
+    runs.set(key, output);
+    if (runs.size > KEPT_RUNS) runs.delete(runs.keys().next().value!);
+    return output;
+  };
+};
+
+const runAll = (input: RunScenariosInput): RunScenariosOutput => {
+  {
     const results: ScenarioRunResult[] = [];
     const exercising = input.exercisingActionIds;
     const limit = input.limit ?? Number.POSITIVE_INFINITY;
@@ -482,7 +642,17 @@ export const runScenariosUseCase = () => {
             continue;
           }
           try {
-            results.push(runOne(surface, action, scenario, input.feature, input.projectFeatures));
+            results.push(
+              runOne(
+                surface,
+                action,
+                scenario,
+                input.feature,
+                input.projectFeatures,
+                input.language,
+                input.projectInvariants ?? []
+              )
+            );
           } catch (e) {
             // A scenario whose references no longer resolve (a step's action
             // or surface removed, a persona gone: legacy data written before
@@ -507,7 +677,10 @@ export const runScenariosUseCase = () => {
               transitionCheck: null,
               parameterErrors: [],
               invariantViolations: [],
-              summary: `fail. scenario could not run: ${(e as Error).message}`
+              summary:
+                input.language === 'fr'
+                  ? `échec. le scénario n'a pas pu s'exécuter${NBSP}: ${(e as Error).message}`
+                  : `fail. scenario could not run: ${(e as Error).message}`
             });
           }
         }

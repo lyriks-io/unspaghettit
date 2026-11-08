@@ -239,3 +239,27 @@ describe('acceptance criteria are stamped like any other element', () => {
     expect(after['criterion:c2']).toBe('2026-06-03T00:00:00.000Z');
   });
 });
+
+describe('elementDigests: action exposures', () => {
+  const withExposures = (exposures: unknown[]): Feature => {
+    const base = build();
+    const [surface] = base.surfaces;
+    return {
+      ...base,
+      surfaces: [{ ...surface!, actions: [{ ...surface!.actions[0]!, exposures }] }]
+    } as unknown as Feature;
+  };
+
+  it('keys each exposure on its own and leaves the action digest alone', () => {
+    const before = elementDigests(
+      withExposures([{ id: 'x1', channel: 'api', operation: 'PUT /carts/:id' }])
+    );
+    const after = elementDigests(
+      withExposures([{ id: 'x1', channel: 'api', operation: 'PATCH /carts/:id' }])
+    );
+    expect(after.get('exposure:x1')).not.toBe(before.get('exposure:x1'));
+    expect(after.get('action:a1')).toBe(before.get('action:a1'));
+    // An action with no exposure digests exactly as it did before the field existed.
+    expect(elementDigests(build()).get('action:a1')).toBe(before.get('action:a1'));
+  });
+});

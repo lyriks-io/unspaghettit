@@ -1,4 +1,5 @@
 import type { Feature } from '../../entities/Feature';
+import { CALLER_CHANNEL_PARAM, offeredChannels } from '../../entities/Action';
 import type { Parameter } from '../../entities/Parameter';
 import { ALL_EFFECT_TYPES } from '../../value-objects/Effect';
 import { isParameterType, parameterTypeToStateType } from '../../value-objects/ParameterType';
@@ -113,6 +114,16 @@ const collectExpressionConstNames = (expr: Expression, out: Set<string>): void =
  * parameter of that action. Anywhere else (surface rules, feature invariants,
  * goals, derived state) there is no parameter scope, so ANY param node is a bug.
  */
+/**
+ * The caller channel is a parameter only an exposed action has: said plainly,
+ * since "no parameter with that name" would send the author hunting for a
+ * declaration that must not exist.
+ */
+const channelHint = (name: string): string =>
+  name === CALLER_CHANNEL_PARAM
+    ? ` "${CALLER_CHANNEL_PARAM}" is the channel the call arrives through; it exists only on an action offered on at least one channel (add_action_exposure).`
+    : '';
+
 const collectExpressionParamNames = (expr: Expression, out: Set<string>): void => {
   if (!isExpression(expr)) return;
   switch (expr.kind) {
@@ -390,7 +401,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         );
       } else if (!paramNames.has(name)) {
         errors.push(
-          `${label}: references parameter "${name}" but the action has no parameter with that name.`
+          `${label}: references parameter "${name}" but the action has no parameter with that name.${channelHint(name)}`
         );
       }
     }
@@ -439,7 +450,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
         } else if (!paramNames.has(name)) {
           errors.push(
-            `${label}: quantifier body references parameter "${name}" but the action has no parameter with that name.`
+            `${label}: quantifier body references parameter "${name}" but the action has no parameter with that name.${channelHint(name)}`
           );
         }
       } else if (
@@ -658,7 +669,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
         } else if (!paramNames.has(leaf.left.name)) {
           errors.push(
-            `${label}: condition.left references parameter "${leaf.left.name}" but the action has no parameter with that name.`
+            `${label}: condition.left references parameter "${leaf.left.name}" but the action has no parameter with that name.${channelHint(leaf.left.name)}`
           );
         }
       } else if (typeof leaf.left !== 'string') {
@@ -773,6 +784,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         }
       }
       const capParamNames = new Set(cap.parameters.map((p) => p.name));
+      // The channel the call arrives through is in scope once the action is
+      // offered somewhere; see CALLER_CHANNEL_PARAM.
+      if (offeredChannels(cap).length > 0) capParamNames.add(CALLER_CHANNEL_PARAM);
       // A parameter's bindToStatePath writes the param value into the snapshot
       // before rules run, so it must target a path declared on (or shared into)
       // this surface — otherwise the write lands nowhere the rules can read.

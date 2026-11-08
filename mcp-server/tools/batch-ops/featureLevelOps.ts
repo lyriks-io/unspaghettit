@@ -481,6 +481,22 @@ export const applyFeatureLevelOps = (op: Op, ctx: OpContext): Feature | null => 
       break;
     }
 
+    // ── Scope fence ───────────────────────────────────────────────────
+    // Feature-level lists, replaced whole like their granular tools: what the
+    // feature deliberately will not do, and the actions it commits to building
+    // (spec gaps flag every one with no Action of that name). [] clears.
+    case 'set_non_goals':
+    case 'set_expected_actions': {
+      const key = op.kind === 'set_non_goals' ? 'nonGoals' : 'expectedActions';
+      const list = op[key];
+      if (!Array.isArray(list) || !list.every((v) => typeof v === 'string' && v.trim().length > 0)) {
+        throw new Error(`${op.kind}: ${key} must be an array of non-empty strings ([] clears it)`);
+      }
+      const values = (list as string[]).map((v) => v.trim());
+      const { [key]: _previous, ...rest } = exp as unknown as Record<string, unknown>;
+      exp = (values.length > 0 ? { ...rest, [key]: values } : rest) as unknown as Feature;
+      break;
+    }
     default:
       return null;
   }

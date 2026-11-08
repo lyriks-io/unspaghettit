@@ -15,6 +15,10 @@ import {
   type BatchScenarios
 } from '../../src/features/mcp-tools/application/tools/batchScenarios';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
+import { unmovedGuardWarnings } from '../../src/features/behavior-model/domain/services/stateWrites';
+import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
+import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
+import { stateDeclarationIssues } from '../../src/features/projects/domain/services/stateRegistry';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
 import { criterionStandingWarnings } from '../../src/features/behavior-model/domain/services/CriterionStanding';
@@ -79,11 +83,13 @@ const hasScenarios = (feature: Feature): boolean =>
 const scenariosOfBatch = async (
   before: Feature,
   after: Feature,
-  loadSiblings: () => Promise<readonly Feature[] | undefined>
+  loadSiblings: () => Promise<readonly Feature[] | undefined>,
+  loadProjectInvariants: () => Promise<readonly Invariant[]>
 ): Promise<ScenarioReport> => {
   try {
-    const siblings = hasScenarios(after) ? await loadSiblings() : undefined;
-    return { scenarios: batchScenariosTool(before, after, siblings) };
+    if (!hasScenarios(after)) return { scenarios: batchScenariosTool(before, after) };
+    const [siblings, projectInvariants] = await Promise.all([loadSiblings(), loadProjectInvariants()]);
+    return { scenarios: batchScenariosTool(before, after, siblings, projectInvariants) };
   } catch (e) {
     return {
       scenariosError: `The scenario run could not complete: ${(e as Error).message}. The batch itself is judged by \`validation\` alone; run run_all_scenarios for details.`
@@ -112,6 +118,50 @@ const relatedElsewhereOfBatch = async (
     return related ? { relatedElsewhere: related } : {};
   } catch {
     return {};
+  }
+};
+
+/**
+ * A state this batch touches that another feature of the project declares with
+ * another kind of value, or other choices: said as a warning on the answer, so
+ * the author sees the disagreement the proofs will depend on. Advisory: a
+ * failure to compute it leaves the warning out, never the batch.
+ */
+const declarationWarningsOfBatch = async (
+  before: Feature,
+  after: Feature,
+  loadSiblings: () => Promise<readonly Feature[] | undefined>,
+  loadProjectInvariants: () => Promise<readonly Invariant[]>
+): Promise<string[]> => {
+  try {
+    const paths = new Set(statePathsOfChange(before, after));
+    if (paths.size === 0) return [];
+    const siblings = await loadSiblings();
+    if (!siblings || siblings.length === 0) return [];
+    return stateDeclarationIssues([after, ...siblings], await loadProjectInvariants())
+      .filter((issue) => paths.has(issue.path) && issue.featureIds?.includes(String(after.id)))
+      .map((issue) => issue.message);
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * An action this batch left guarded on a state nothing moves (criterion
+ * 3f9c8167): said as a warning at the write, so the author adds what moves the
+ * state instead of meeting a "never reached" at the final check. Advisory: a
+ * failure to compute it leaves the warning out, never the batch.
+ */
+const unmovedGuardWarningsOfBatch = async (
+  before: Feature,
+  after: Feature,
+  loadSiblings: () => Promise<readonly Feature[] | undefined>
+): Promise<string[]> => {
+  try {
+    const siblings = (await loadSiblings()) ?? [];
+    return unmovedGuardWarnings(before, after, siblings);
+  } catch {
+    return [];
   }
 };
 
@@ -144,10 +194,16 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         operations: z
           .array(z.record(z.string(), z.unknown()))
           .optional()
-          .describe(opSchemaDescription)
+          .describe(opSchemaDescription),
+        mintedIds: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'Ids to mint again, slot for slot, for the add ops of this batch: the `batch.mintedIds` of a simulate_steps answer over the same operations. Lets a model tried in memory (an Evolution draft) land with the ids its later operations and scenarios name. An id the feature already holds gets a fresh one.'
+          )
       }
     },
-    async ({ featureId, operations, dryRun, verbose, commit, expectedUpdatedAt }) => {
+    async ({ featureId, operations, dryRun, verbose, commit, expectedUpdatedAt, mintedIds }) => {
       try {
         // Resolve the ops + target feature. Two entry paths:
         //  - normal: caller passes { featureId, operations }.
@@ -207,9 +263,10 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         // A commit mints the dry run's ids again, slot for slot. The feature is
         // reloaded, so an id it has gained since then is skipped for a fresh one
         // instead of colliding; past the recording the live generator takes over.
-        const presentIds = committing ? collectFeatureEntityIds(current) : null;
+        const replayed = committing ? dryRunIds : (mintedIds ?? []);
+        const presentIds = replayed.length > 0 ? collectFeatureEntityIds(current) : null;
         const recorder = recordingIdGenerator(
-          presentIds ? replayingIdGenerator(dryRunIds, ids, (id) => presentIds.has(id)) : ids
+          presentIds ? replayingIdGenerator(replayed, ids, (id) => presentIds.has(id)) : ids
         );
         const applied = applyOps(current, ops, recorder.mint);
         const { refs, mintIdToOp, removedIdToOp } = applied;
@@ -284,13 +341,18 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         let siblings: Promise<readonly Feature[] | undefined> | null = null;
         const loadSiblings = () =>
           (siblings ??= loadProjectSiblings(repo, projectRepo, String(featureId)));
+        let invariants: Promise<readonly Invariant[]> | null = null;
+        const loadProjectInvariants = () =>
+          (invariants ??= findOwningProject(projectRepo, String(featureId)).then(
+            (project) => project?.projectInvariants ?? []
+          ));
         // The scenarios of what the batch touched, run on the feature the batch
         // produces. Computed before anything is saved, so the dry run, the
         // direct apply and the commit all answer it the same way. A failure is
         // information: it never blocks the batch, and neither does a run that
         // cannot complete (the answer then says why instead of a verdict).
         const scenarioReport = validation.valid
-          ? await scenariosOfBatch(current, next, loadSiblings)
+          ? await scenariosOfBatch(current, next, loadSiblings, loadProjectInvariants)
           : {};
         // What this change touches in the other features of the project. Never
         // blocks anything and never moves `ok`: a shared state path is ordinary
@@ -304,8 +366,13 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         // does not ride along on every unrelated answer. Advisory: never a
         // reason to refuse the batch, and statuses are never set for the author.
         const touchedCriteria = ops.some((op) => op.kind.endsWith('_acceptance_criterion'));
-        const standingWarnings =
-          validation.valid && touchedCriteria ? criterionStandingWarnings(next) : [];
+        const standingWarnings = [
+          ...(validation.valid && touchedCriteria ? criterionStandingWarnings(next) : []),
+          ...(validation.valid
+            ? await declarationWarningsOfBatch(current, next, loadSiblings, loadProjectInvariants)
+            : []),
+          ...(validation.valid ? await unmovedGuardWarningsOfBatch(current, next, loadSiblings) : [])
+        ];
         const warningReport = standingWarnings.length > 0 ? { warnings: standingWarnings } : {};
         // dryRun (never while committing): validate + score, don't save. On a
         // valid dry-run, cache the ops under a fresh single-use token so the

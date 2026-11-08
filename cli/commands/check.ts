@@ -19,6 +19,9 @@ import {
   mergeVerificationReports,
   type VerificationReport
 } from '../../src/features/verification/domain/VerificationReport';
+import { activeProver } from '../../src/features/prover/loadProver';
+import { loadFeaturesByIds } from '../../src/features/behavior-model/application/services/bulkRead';
+import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import { readRepoLink } from '../util/link';
 import { log } from '../util/log';
 
@@ -46,6 +49,12 @@ export type CheckOptions = {
   readonly allowInvariantViolations?: boolean;
   /** Evidence-first preset: 100% maturity/verified, model check, no warnings hidden as pass. */
   readonly strict?: boolean;
+  /** Ask the solver (default true). `false` turns it off for this run: nothing is then proven. */
+  readonly solver?: boolean;
+  /** Fail on a rule the solver proved dead, hidden or always refusing (default: warn only). */
+  readonly failOnProvenFlaws?: boolean;
+  /** Fail when the solver left something unproven (default: warn only). */
+  readonly failOnOpenProofs?: boolean;
 };
 
 const STATUS_GLYPH: Record<CheckStatus, string> = {
@@ -74,6 +83,14 @@ const printSummary = (report: VerificationReport): void => {
     s.featuresFailed > 0 ? pc.red(`${s.featuresFailed} failed`) : `${s.featuresFailed} failed`,
     `${s.scenariosRun} scenario${s.scenariosRun === 1 ? '' : 's'}${s.scenariosFailed > 0 ? ` (${s.scenariosFailed} failing)` : ''}`
   ];
+  if (s.proof) {
+    parts.push(
+      s.proof.notProven > 0
+        ? pc.yellow(`${s.proof.proven} proven, ${s.proof.notProven} not proven`)
+        : `${s.proof.proven} proven`
+    );
+    if (s.proof.explorationsSkipped > 0) parts.push(`${s.proof.explorationsSkipped} exploration(s) not needed`);
+  }
   if (report.drift.stale.length > 0) parts.push(pc.yellow(`${report.drift.stale.length} drifted`));
   log.dim(parts.join(pc.dim(' · ')));
   process.stdout.write(report.passed ? `${pc.green(pc.bold('PASS'))}\n` : `${pc.red(pc.bold('FAIL'))}\n`);
@@ -92,6 +109,8 @@ type Cohort = {
   readonly projectInvariants: readonly Invariant[];
   /** Set only for a one-feature cohort: who else may own keys of the index. */
   readonly driftOwnership?: DriftOwnership;
+  /** Set only for a one-feature cohort: its project, whose actions the solver's paths may play. */
+  readonly projectFeatureIds?: readonly FeatureId[];
 };
 
 const resolveCohorts = async (
@@ -107,8 +126,11 @@ const resolveCohorts = async (
     return [
       {
         featureIds: [asFeatureId(options.featureId)],
-        projectInvariants: [],
-        driftOwnership: owner ? owner.featureIds : 'all'
+        // One feature still belongs to its project: the project's invariants
+        // hold on it exactly as they do in the MCP verify of the same feature.
+        projectInvariants: owner?.projectInvariants ?? [],
+        driftOwnership: owner ? owner.featureIds : 'all',
+        ...(owner ? { projectFeatureIds: owner.featureIds } : {})
       }
     ];
   }
@@ -158,12 +180,16 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
   const projectRepo = new JsonFolderProjectRepository(directory);
   const cohorts = await resolveCohorts(options, cwd, featureRepo, projectRepo);
 
+  const features = withProjectLibrary(featureRepo, projectRepo);
+  // The proof module UNSPA_PROVER names, if any: every feature is proven before it is judged.
+  const prover = activeProver();
   const verify = verifyFeaturesUseCase({
     // Read through the project library so a feature that REFERENCES canonical
     // entities/resources/personas verifies with them resolved — CI and the
     // in-chat `verify` tool must gate on exactly the same model.
-    features: withProjectLibrary(featureRepo, projectRepo),
-    index: fileBehavioralIndexReader({ cwd })
+    features,
+    index: fileBehavioralIndexReader({ cwd }),
+    ...(prover ? { prove: (feature, context) => prover.verdictProof(feature, { ...context, depth: 'full' }) } : {})
   });
 
   const thresholds = {
@@ -177,7 +203,9 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
     requireScenarios: options.strict || options.requireScenarios === true,
     failOnUnmetGoals: options.strict || options.failOnUnmetGoals === true,
     failOnSkippedActions: options.strict || options.failOnSkippedActions === true,
-    failOnTruncatedExploration: options.strict || options.failOnTruncatedExploration === true
+    failOnTruncatedExploration: options.strict || options.failOnTruncatedExploration === true,
+    failOnProvenFlaws: options.strict || options.failOnProvenFlaws === true,
+    failOnOpenProofs: options.strict || options.failOnOpenProofs === true
   };
   const modelCheck = options.modelCheck || options.strict
     ? {
@@ -187,16 +215,28 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
     : false;
 
   const reports: VerificationReport[] = [];
-  for (const cohort of cohorts) {
-    reports.push(
-      await verify({
-        featureIds: cohort.featureIds,
-        projectInvariants: cohort.projectInvariants,
-        ...(cohort.driftOwnership ? { driftOwnership: cohort.driftOwnership } : {}),
-        thresholds,
-        modelCheck
-      })
-    );
+  try {
+    for (const cohort of cohorts) {
+      const projectFeatures = cohort.projectFeatureIds
+        ? (await loadFeaturesByIds(features, cohort.projectFeatureIds)).filter(
+            (feature): feature is Feature => feature !== null
+          )
+        : undefined;
+      reports.push(
+        await verify({
+          featureIds: cohort.featureIds,
+          projectInvariants: cohort.projectInvariants,
+          ...(cohort.driftOwnership ? { driftOwnership: cohort.driftOwnership } : {}),
+          ...(projectFeatures ? { projectFeatures } : {}),
+          thresholds,
+          modelCheck,
+          prove: options.solver !== false
+        })
+      );
+    }
+  } finally {
+    // The proof module's processes would keep the command alive after its answer.
+    prover?.shutdown();
   }
   const report = mergeVerificationReports(reports);
 

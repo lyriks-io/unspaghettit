@@ -1,6 +1,7 @@
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { MaturityIssue, MaturityReport } from './MaturityReport';
 import { scoreFeature, scoreFeatureBreakdown } from './MaturityScorer';
+import type { ReportLanguage } from '$shared/language';
 
 /**
  * One area's contribution to the score, at the level it was checked. This is
@@ -46,9 +47,12 @@ export type FeatureMaturity = {
  * Pure and synchronous: no clock, no I/O, no repository. Safe to call in a
  * loop, in a worker, or offline.
  */
-export const computeFeatureMaturity = (feature: Feature): FeatureMaturity => {
-  const report: MaturityReport = scoreFeature(feature);
-  const detail = scoreFeatureBreakdown(feature);
+export const computeFeatureMaturity = (
+  feature: Feature,
+  language: ReportLanguage = 'en'
+): FeatureMaturity => {
+  const report: MaturityReport = scoreFeature(feature, language);
+  const detail = scoreFeatureBreakdown(feature, language);
 
   const entry = (
     level: MaturityBreakdownEntry['level'],

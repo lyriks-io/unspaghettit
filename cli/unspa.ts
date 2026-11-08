@@ -166,11 +166,11 @@ program
 
 program
   .command('check [featureId]')
-  .description('Verify the spec headlessly and exit non-zero on failure (CI gate). Runs every scenario as an executable spec test, scores maturity, analyses surface reachability, optionally model-checks the reachable state space, and reports spec→code drift. Scopes to the repo\'s linked project by default; pass a featureId or --project to narrow.')
+  .description('Verify the spec headlessly and exit non-zero on failure (CI gate). Runs every scenario as an executable spec test, proves every feature where a proof module is loaded (UNSPA_PROVER: paths from the start, dead and hidden rules, impossible statements, for every input), scores maturity, analyses surface reachability, optionally model-checks the reachable state space, and reports spec→code drift. Scopes to the repo\'s linked project by default; pass a featureId or --project to narrow.')
   .option('-s, --snapshots <dir>', 'Verify a specific snapshots folder (defaults to walk-up, then the shared hub).')
   .option('--project <id>', 'Verify a specific project\'s features (overrides the .unspa.json link).')
   .option('--model-check', 'Also run bounded model checking (exhaustive state-space exploration). Off by default; it is the costly part.')
-  .option('--strict', 'Evidence-first gate: model check, 100% maturity and verified coverage, scenarios required, and drift/dead/unmet/skipped/truncated findings fail.')
+  .option('--strict', 'Evidence-first gate: model check, 100% maturity and verified coverage, scenarios required, and drift/dead/unmet/skipped/truncated findings, proven rule flaws and anything the solver left unproven fail.')
   .option('--max-depth <n>', 'Model-check action-depth bound (default 6).', (v) => Number.parseInt(v, 10))
   .option('--max-states <n>', 'Model-check state cap (default 2000).', (v) => Number.parseInt(v, 10))
   .option('--min-maturity <n>', 'Fail any feature scoring below this maturity percentage.', (v) => Number.parseInt(v, 10))
@@ -183,6 +183,9 @@ program
   .option('--fail-on-skipped-actions', 'Fail when model checking cannot exercise actions with unsupplied required parameters. Requires --model-check.')
   .option('--fail-on-truncated-exploration', 'Fail when model checking reaches its depth or state bound. Requires --model-check.')
   .option('--allow-invariant-violations', 'Downgrade reachable invariant violations from failure to warning.')
+  .option('--no-solver', 'Do not ask the proof module (UNSPA_PROVER) for this run; every verdict then says nothing was proven.')
+  .option('--fail-on-proven-flaws', 'Fail on a rule the solver proved dead, hidden by an earlier guard, or always refusing (default: warn only).')
+  .option('--fail-on-open-proofs', 'Fail when the solver did not start or left a question unsettled, where a proof module is asked for (default: warn only).')
   .option('--json', 'Emit the full verification report as JSON instead of the human view.')
   .action(async (featureId, opts) => {
     const code = await runCheckCommand({
@@ -203,7 +206,10 @@ program
       failOnUnmetGoals: opts.failOnUnmetGoals === true,
       failOnSkippedActions: opts.failOnSkippedActions === true,
       failOnTruncatedExploration: opts.failOnTruncatedExploration === true,
-      allowInvariantViolations: opts.allowInvariantViolations === true
+      allowInvariantViolations: opts.allowInvariantViolations === true,
+      solver: opts.solver !== false,
+      failOnProvenFlaws: opts.failOnProvenFlaws === true,
+      failOnOpenProofs: opts.failOnOpenProofs === true
     });
     process.exit(code);
   });

@@ -20,6 +20,7 @@ export type ReachabilityGoalId = Brand<string, 'ReachabilityGoalId'>;
 export type AcceptanceCriterionId = Brand<string, 'AcceptanceCriterionId'>;
 export type ConstantId = Brand<string, 'ConstantId'>;
 export type OutcomeId = Brand<string, 'OutcomeId'>;
+export type ExposureId = Brand<string, 'ExposureId'>;
 export type DependencyId = Brand<string, 'DependencyId'>;
 export type DependencyOperationId = Brand<string, 'DependencyOperationId'>;
 
@@ -44,6 +45,7 @@ export const asAcceptanceCriterionId = (v: string): AcceptanceCriterionId =>
   v as AcceptanceCriterionId;
 export const asConstantId = (v: string): ConstantId => v as ConstantId;
 export const asOutcomeId = (v: string): OutcomeId => v as OutcomeId;
+export const asExposureId = (v: string): ExposureId => v as ExposureId;
 export const asDependencyId = (v: string): DependencyId => v as DependencyId;
 export const asDependencyOperationId = (v: string): DependencyOperationId =>
   v as DependencyOperationId;

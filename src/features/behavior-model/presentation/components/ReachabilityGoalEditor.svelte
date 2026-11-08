@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EarsSentence from './EarsSentence.svelte';
   import {
     ALL_REACHABILITY_GOAL_KINDS,
     type ReachabilityGoal,
@@ -27,8 +28,10 @@
     availablePaths: readonly StatePath[];
     onChange: (next: ReachabilityGoal) => void;
     onRemove: () => void;
+    /** The element's EARS sentence, shown under its header. */
+    sentence?: string;
   };
-  let { goal, availablePaths, onChange, onRemove }: Props = $props();
+  let { goal, availablePaths, onChange, onRemove, sentence = '' }: Props = $props();
 
   const KIND_LABEL: Record<ReachabilityGoalKind, string> = {
     reachable: 'Reachable (the target can be reached at all)',
@@ -122,6 +125,7 @@
       Remove
     </button>
   </div>
+  <EarsSentence text={sentence} />
 
   <label class="flex items-center gap-2 text-[11px] text-slate-500">
     <span class="shrink-0">Kind</span>

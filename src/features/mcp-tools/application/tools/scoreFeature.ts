@@ -6,6 +6,7 @@ import type {
 } from '$features/maturity/domain/MaturityReport';
 import { computeConfidence, type ConfidenceMatrix } from '$features/maturity/domain/ConfidenceMatrix';
 import { scoreFeatureUseCase } from '$features/maturity/application/use-cases/ScoreFeature';
+import { frenchTypography, type ReportLanguage } from '$shared/language';
 
 /**
  * Compact summary. Every numeric you need to decide "is this good enough?"
@@ -67,7 +68,20 @@ export type ScoreFeatureOptions = {
   readonly area?: string;
   /** Restrict counts + issues to one severity. */
   readonly severity?: MaturitySeverity;
+  /**
+   * The language of the spec: every prose field (issue messages, confidence
+   * labels and details, the hint) is written in it. `area`, `severity`, ids
+   * and keys stay English (they are filter values). Default: 'en'.
+   */
+  readonly language?: ReportLanguage;
 };
+
+const HINT_EN =
+  'Compact summary. `percentage` is the structural score; `confidence` splits it into dimensions and reports the weakest one as `overall`. Add includeIssues:true for the issue array, or filter by surfaceId / area / severity.';
+
+const HINT_FR = frenchTypography(
+  'Résumé compact. `percentage` est le score structurel ; `confidence` le décompose en dimensions et donne la plus faible comme `overall`. Ajoutez includeIssues:true pour la liste des problèmes, ou filtrez par surfaceId / area / severity.'
+);
 
 const TOP_AREAS = 5;
 const TOP_SURFACES = 5;
@@ -92,6 +106,7 @@ const buildSummary = (
 ): ScoreFeatureSummary => {
   const allIssues = [...report.criticalIssues, ...report.recommendedIssues];
   const scoped = applyFilters(allIssues, opts);
+  const language = opts.language ?? 'en';
   const hasFilter =
     opts.surfaceId !== undefined || opts.area !== undefined || opts.severity !== undefined;
 
@@ -118,7 +133,9 @@ const buildSummary = (
   const worstSurfaces = [...surfaceCounts.entries()]
     .map(([surfaceId, issueCount]) => ({
       surfaceId,
-      surfaceName: surfaceNames.get(surfaceId) ?? '(unknown surface)',
+      surfaceName:
+        surfaceNames.get(surfaceId) ??
+        (language === 'fr' ? '(surface inconnue)' : '(unknown surface)'),
       issueCount
     }))
     .sort((a, b) => b.issueCount - a.issueCount)
@@ -134,11 +151,14 @@ const buildSummary = (
     criticalIssueCount: hasFilter ? critScoped : report.criticalIssues.length,
     recommendedIssueCount: hasFilter ? recScoped : report.recommendedIssues.length,
     passedCheckCount: report.passedChecks.length,
-    confidence: computeConfidence(feature, { passed: report.score, total: report.maxScore }),
+    confidence: computeConfidence(
+      feature,
+      { passed: report.score, total: report.maxScore },
+      language
+    ),
     issuesByArea,
     worstSurfaces,
-    hint:
-      'Compact summary. `percentage` is the structural score; `confidence` splits it into dimensions and reports the weakest one as `overall`. Add includeIssues:true for the issue array, or filter by surfaceId / area / severity.'
+    hint: language === 'fr' ? HINT_FR : HINT_EN
   };
 
   if (opts.includeIssues) {
@@ -150,14 +170,16 @@ const buildSummary = (
 export const scoreFeatureTool = (
   feature: Feature,
   opts: ScoreFeatureOptions = {}
-): ScoreFeatureOutput => buildSummary(feature, score(feature), opts);
+): ScoreFeatureOutput => buildSummary(feature, score(feature, opts.language ?? 'en'), opts);
 
 /**
  * Escape hatch for the demo route that wants every passing check + issue.
  * NOT exposed via the MCP. The per-check verbose dump routinely blows past
  * agent token budgets and offers no actionable value to a caller.
  */
-export const scoreFeatureFullReport = (feature: Feature): MaturityReport =>
-  score(feature);
+export const scoreFeatureFullReport = (
+  feature: Feature,
+  language: ReportLanguage = 'en'
+): MaturityReport => score(feature, language);
 
 export type { MaturityIssue };

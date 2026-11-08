@@ -231,7 +231,10 @@
           </header>
           <ul class="divide-y divide-neutral-200 rounded-md border border-neutral-200 bg-white">
             {#each group.transitions as edge (edge.toSurfaceId)}
-              <li class="px-3 py-2">
+              <li
+                data-focus-target={`transition:${group.fromSurfaceId}:${edge.toSurfaceId}`}
+                class="scroll-mt-24 px-3 py-2"
+              >
                 <header class="flex flex-wrap items-baseline gap-2 text-sm">
                   <span class="text-neutral-700">{edge.fromSurfaceName}</span>
                   <span class="text-neutral-400" aria-hidden="true">→</span>

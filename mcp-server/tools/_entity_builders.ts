@@ -20,7 +20,10 @@
  * so the builders see only ids.
  */
 
-import type { Action } from '../../src/features/behavior-model/domain/entities/Action';
+import type {
+  Action,
+  ActionExposure
+} from '../../src/features/behavior-model/domain/entities/Action';
 import type {
   AcceptanceCriterion,
   AcceptanceOutcome,
@@ -486,6 +489,52 @@ export const buildActionActorPatch = (input: Raw): Pick<Action, 'actor'> | Recor
     : typeof input.actor === 'string'
       ? { actor: input.actor as Action['actor'] }
       : {};
+
+// ─── Action exposure ───────────────────────────────────────────────────────
+//
+// The channel an action is reachable through (`ui | api | mcp | cli`), the
+// operation that channel knows it by, or `withheld: { reason }` when the action
+// is kept off that channel on purpose. Values are passed through as written:
+// the vocabulary and the pairing rules are enforced once, by the feature
+// validator, so a batch and a granular call are refused with the same sentence.
+
+/** A new exposure under `id`, with only the fields the caller named. */
+export const buildActionExposure = (input: Raw, id: string): ActionExposure =>
+  ({
+    id,
+    channel: input.channel,
+    ...(input.operation !== undefined && input.operation !== null
+      ? {
+          operation: typeof input.operation === 'string' ? input.operation.trim() : input.operation
+        }
+      : {}),
+    ...(input.withheld !== undefined && input.withheld !== null ? { withheld: input.withheld } : {})
+  }) as unknown as ActionExposure;
+
+/**
+ * `current` with the caller's changes. `operation:null` and `withheld:null`
+ * clear (the latter turns a withheld exposure back into an offered one); an
+ * absent field is kept. Returns null when nothing was named.
+ */
+export const patchActionExposure = (current: ActionExposure, input: Raw): ActionExposure | null => {
+  let touched = false;
+  const next: Record<string, unknown> = { ...current };
+  if (input.channel !== undefined) {
+    next.channel = input.channel;
+    touched = true;
+  }
+  for (const field of ['operation', 'withheld'] as const) {
+    if (input[field] === undefined) continue;
+    touched = true;
+    if (input[field] === null || input[field] === '') delete next[field];
+    else
+      next[field] =
+        field === 'operation' && typeof input[field] === 'string'
+          ? (input[field] as string).trim()
+          : input[field];
+  }
+  return touched ? (next as unknown as ActionExposure) : null;
+};
 
 // Re-export the effect-id helper so batch.ts builders can reuse it without
 // importing from a deep value-object path.

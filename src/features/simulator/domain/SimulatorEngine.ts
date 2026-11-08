@@ -1,4 +1,8 @@
-import type { Action } from '$features/behavior-model/domain/entities/Action';
+import {
+  CALLER_CHANNEL_PARAM,
+  withheldOn,
+  type Action
+} from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { Rule } from '$features/behavior-model/domain/entities/Rule';
@@ -246,11 +250,20 @@ const simulateInternal = (
   );
 
   const filledParams = fillDefaults(action.parameters, parameters);
-  const parameterErrors = validateParameters(
-    action.parameters,
-    filledParams,
-    feature?.valueSets
-  );
+  // A call that arrives through a channel the action is kept off is refused
+  // there, with the reason the author gave, before any rule runs.
+  const withheld = withheldOn(action, filledParams[CALLER_CHANNEL_PARAM]);
+  const parameterErrors = [
+    ...(withheld
+      ? [
+          {
+            parameterName: CALLER_CHANNEL_PARAM,
+            reason: `the action is kept off ${withheld.channel}: ${withheld.withheld?.reason ?? ''}`
+          }
+        ]
+      : []),
+    ...validateParameters(action.parameters, filledParams, feature?.valueSets)
+  ];
   if (parameterErrors.length > 0) {
     // Parameter validation failures are treated as blocks: the action could
     // not proceed because the inputs were rejected. There are only two

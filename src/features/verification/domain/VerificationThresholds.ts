@@ -40,6 +40,18 @@ export type VerificationThresholds = {
   readonly failOnSkippedActions: boolean;
   /** Fail when depth/state bounds cut model checking short. */
   readonly failOnTruncatedExploration: boolean;
+  /**
+   * Fail on a rule the solver proved dead, hidden by an earlier guard, or
+   * always refusing. Proven for every value, but a modeling flaw rather than a
+   * broken promise, so it warns unless opted in.
+   */
+  readonly failOnProvenFlaws: boolean;
+  /**
+   * Fail when the solver did not start, was turned off or interrupted, or left
+   * a question unsettled or an element it cannot read with no exploration to
+   * cover it: what it would have proven is then not proven.
+   */
+  readonly failOnOpenProofs: boolean;
 };
 
 export const defaultThresholds = (): VerificationThresholds => ({
@@ -52,6 +64,8 @@ export const defaultThresholds = (): VerificationThresholds => ({
   failOnUnmetGoals: false,
   failOnSkippedActions: false,
   failOnTruncatedExploration: false,
+  failOnProvenFlaws: false,
+  failOnOpenProofs: false,
   minVerified: 0
 });
 
@@ -70,7 +84,9 @@ export const strictThresholds = (): VerificationThresholds => ({
   minVerified: 100,
   failOnUnmetGoals: true,
   failOnSkippedActions: true,
-  failOnTruncatedExploration: true
+  failOnTruncatedExploration: true,
+  failOnProvenFlaws: true,
+  failOnOpenProofs: true
 });
 
 export const withThresholdDefaults = (

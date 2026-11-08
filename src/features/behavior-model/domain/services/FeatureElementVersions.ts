@@ -97,7 +97,14 @@ export const elementDigests = (feature: Feature): ReadonlyMap<ElementVersionKey,
     for (const inv of surface.invariants ?? []) put('invariant', inv.id, stable(inv));
     for (const transition of surface.transitions ?? []) put('transition', transition.id, stable(transition));
     for (const action of surface.actions ?? []) {
-      put('action', action.id, own(action, 'rules', 'invariants', 'transitions', 'scenarios'));
+      // An exposure is keyed on its own: offering the action on one more channel
+      // concerns what serves that channel, not the code already mapped to the action.
+      put(
+        'action',
+        action.id,
+        own(action, 'rules', 'invariants', 'transitions', 'scenarios', 'exposures')
+      );
+      for (const exposure of action.exposures ?? []) put('exposure', exposure.id, stable(exposure));
       for (const rule of action.rules ?? []) put('rule', rule.id, stable(rule));
       for (const inv of action.invariants ?? []) put('invariant', inv.id, stable(inv));
       for (const transition of action.transitions ?? []) put('transition', transition.id, stable(transition));

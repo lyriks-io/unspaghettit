@@ -4,7 +4,14 @@ import type { FeatureRepository } from '$features/behavior-model/application/por
 import type { FeatureId } from '$features/behavior-model/domain/value-objects/ids';
 import { scoreFeature } from '$features/maturity/domain/MaturityScorer';
 import { runScenariosUseCase } from '$features/simulator/application/use-cases/RunScenarios';
-import { exploreStateSpace, type ExplorerOptions } from '$features/simulator/domain/StateExplorer';
+import {
+  exploreStateSpace,
+  type ExplorationReport,
+  type ExplorerOptions
+} from '$features/simulator/domain/StateExplorer';
+import type { ProofContext, VerdictProof } from '$features/prover/ProverPort';
+import { statesReadBy } from '$features/behavior-model/domain/services/conditionReads';
+import type { FeatureVerdict } from '../../domain/VerificationVerdict';
 import { analyzeSurfaceReachability } from '$features/simulator/domain/SurfaceReachability';
 import { aggregateFeatureVerdict } from '../../domain/aggregateVerdict';
 import { analyzeEventCoherence } from '../../domain/analyzeEventCoherence';
@@ -21,9 +28,18 @@ import {
   loadFeaturesByIds
 } from '$features/behavior-model/application/services/bulkRead';
 
+/** How the use case asks the proof module: the adapter wires the loaded one. */
+export type ProveFeaturePort = (feature: Feature, context: ProofContext) => Promise<VerdictProof>;
+
 export type VerifyFeaturesDeps = {
   readonly features: FeatureRepository;
   readonly index: BehavioralIndexReader;
+  /**
+   * The proof module. Without it the verdict says nothing about proofs (an
+   * engine with no proof module); with it every feature is proven before it is
+   * judged.
+   */
+  readonly prove?: ProveFeaturePort;
 };
 
 /** How an adapter names the features that may own index keys outside the cohort. */
@@ -75,6 +91,17 @@ export type VerifyFeaturesInput = {
    * the bound.
    */
   readonly modelCheck?: boolean | ExplorerOptions;
+  /**
+   * Ask the solver (default true when the adapter wires one). `false` turns it
+   * off for this run, and each verdict then says nothing was proven.
+   */
+  readonly prove?: boolean;
+  /**
+   * The whole project the cohort belongs to, when the cohort is narrower (one
+   * feature): the solver's paths may play the other features' actions. Defaults
+   * to the cohort.
+   */
+  readonly projectFeatures?: readonly Feature[];
 };
 
 /**
@@ -115,24 +142,66 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
 
     const projectInvariants = input.projectInvariants ?? [];
 
-    const perFeature = loaded.map((feature) => {
+    const projectFeatures = input.projectFeatures ?? loaded;
+    const projectRuleReads = new Set(projectInvariants.flatMap((i) => statesReadBy(i.condition)));
+    const proving = deps.prove !== undefined && input.prove !== false;
+
+    // One feature at a time: the solver runs in its own process, one proof at a time.
+    const perFeature: {
+      scenarios: ReturnType<typeof runScenarios>;
+      exploration: ExplorationReport | undefined;
+      proof: VerdictProof | undefined;
+      verdict: FeatureVerdict;
+    }[] = [];
+    for (const feature of loaded) {
       const siblings = loaded.filter((f) => f.id !== feature.id);
-      const scenarios = runScenarios({ feature, projectFeatures: siblings });
+      // The exploration starts from the cohort's state plus the PROJECT state
+      // the project rules read: verified alone, a feature was explored without
+      // the other features' starting state, and every project rule on a state
+      // they own read as broken at the first step. Only the read states ride
+      // along: the whole project's state in every explored state ran out of
+      // memory on a large feature.
+      const seedStateDefs = [
+        ...siblings.flatMap((f) => f.surfaces.flatMap((s) => s.stateDefinitions)),
+        ...projectFeatures
+          .filter((f) => f.id !== feature.id && !siblings.some((g) => g.id === f.id))
+          .flatMap((f) => f.surfaces.flatMap((s) => s.stateDefinitions))
+          .filter((d) => projectRuleReads.has(String(d.path)))
+      ];
+      // The scenarios hold the project's invariants like every other engine,
+      // over the state of every other feature of the project.
+      const scenarios = runScenarios({
+        feature,
+        projectFeatures: projectFeatures.filter((f) => f.id !== feature.id),
+        ...(projectInvariants.length > 0 ? { projectInvariants } : {})
+      });
       const maturity = scoreFeature(feature);
       const reachability = analyzeSurfaceReachability(feature);
+      const proof = proving
+        ? await deps.prove!(feature, {
+            projectFeatures,
+            ...(projectInvariants.length > 0 ? { projectInvariants } : {}),
+            ...(explorerOptions?.maxDepth !== undefined ? { maxSteps: explorerOptions.maxDepth } : {})
+          })
+        : undefined;
+      // The exploration keeps only what the solver leaves open.
+      const plan = explorerOptions !== null && proof ? proof.explorationPlan : null;
+      // The exploration tries the inputs the solver chose first.
+      const witnessed = proof?.witnessedInputs ?? new Map();
       const exploration =
-        explorerOptions !== null
+        explorerOptions !== null && (plan === null || plan.run)
           ? exploreStateSpace(
               feature,
-              projectInvariants.length > 0
-                ? {
-                    ...explorerOptions,
-                    extraInvariants: projectInvariants,
-                    seedStateDefs: siblings.flatMap((f) =>
-                      f.surfaces.flatMap((s) => s.stateDefinitions)
-                    )
-                  }
-                : explorerOptions,
+              {
+                ...explorerOptions,
+                ...(witnessed.size > 0 ? { witnessedInputs: witnessed } : {}),
+                ...(projectInvariants.length > 0
+                  ? {
+                      extraInvariants: projectInvariants,
+                      seedStateDefs
+                    }
+                  : {})
+              },
               siblings
             )
           : undefined;
@@ -151,11 +220,13 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
         drift: featureDrift,
         deadHandlers: featureDeadHandlers,
         verifiedCoverage: verifiedCoverageForFeature(feature, indexEntries),
-        thresholds
+        thresholds,
+        ...(proving ? { proof } : deps.prove !== undefined ? { proof: null } : {}),
+        ...(plan && !plan.run ? { explorationSkipped: plan } : {})
       });
 
-      return { scenarios, exploration, verdict };
-    });
+      perFeature.push({ scenarios, exploration, proof, verdict });
+    }
 
     const verdicts = perFeature.map((p) => p.verdict);
 
@@ -171,9 +242,24 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
         scenariosRun: perFeature.reduce((acc, p) => acc + p.scenarios.total, 0),
         scenariosFailed: perFeature.reduce((acc, p) => acc + p.scenarios.failed, 0),
         invariantViolations: perFeature.reduce(
-          (acc, p) => acc + (p.exploration?.invariantViolations.length ?? 0),
+          (acc, p) =>
+            acc +
+            (p.verdict.checks.find((check) => check.id === 'invariants')?.traces?.length ?? 0),
           0
-        )
+        ),
+        ...(deps.prove !== undefined
+          ? {
+              proof: {
+                proven: perFeature.filter((p) => p.proof?.ran === true).length,
+                notProven: perFeature.filter((p) => p.proof?.ran !== true).length,
+                provenViolations: perFeature.reduce((acc, p) => acc + (p.proof?.provenViolations ?? 0), 0),
+                unsettled: perFeature.reduce((acc, p) => acc + (p.proof?.unsettled ?? 0), 0),
+                explorationsSkipped: perFeature.filter(
+                  (p) => p.proof !== undefined && p.exploration === undefined && explorerOptions !== null
+                ).length
+              }
+            }
+          : {})
       }
     };
   };

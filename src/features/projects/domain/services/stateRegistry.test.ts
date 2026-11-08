@@ -243,3 +243,31 @@ describe('project state registry', () => {
     ]);
   });
 });
+
+describe('project state registry: an invalid state path', () => {
+  it('is left out instead of stopping the reading of the whole project', () => {
+    const broken = feature({
+      surfaces: [
+        {
+          ...feature().surfaces[0]!,
+          stateDefinitions: [
+            {
+              id: asStateDefinitionId('bad'),
+              path: 'driver.0.name' as never,
+              type: 'string',
+              defaultValue: ''
+            },
+            {
+              id: asStateDefinitionId('good'),
+              path: asStatePath('race.laps'),
+              type: 'number',
+              defaultValue: 3
+            }
+          ]
+        }
+      ]
+    });
+    const states = projectStateVariables(project(), [broken]);
+    expect(states.map((state) => String(state.path))).toEqual(['race.laps']);
+  });
+});

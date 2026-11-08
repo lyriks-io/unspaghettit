@@ -1,3 +1,4 @@
+import type { ReportLanguage } from '$shared/language';
 import type { DigestSpec } from '../DigestSpec';
 
 /**
@@ -11,5 +12,6 @@ export type DigestExporter = {
   /** Stable id, e.g. 'markdown'. */
   readonly id: string;
   readonly label: string;
-  export(spec: DigestSpec): string;
+  /** `language` sets the exporter's own words and punctuation; defaults to English. */
+  export(spec: DigestSpec, language?: ReportLanguage): string;
 };

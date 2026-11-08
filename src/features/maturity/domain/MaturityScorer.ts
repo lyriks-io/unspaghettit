@@ -23,6 +23,56 @@ import type {
   SurfacePanelTab
 } from './MaturityReport';
 import { combineReports, emptyReport } from './MaturityReport';
+import { frenchTypography, NBSP, quoteName, type ReportLanguage } from '$shared/language';
+
+/**
+ * The text of a check in the report's language. English is returned as is (a
+ * caller that passes no language reads exactly what it always read); French
+ * gets its typography (no-break spaces before : ; ! ? and inside « »).
+ */
+const say = (lang: ReportLanguage, en: string, fr: string): string =>
+  lang === 'fr' ? frenchTypography(fr) : en;
+
+/**
+ * The same, for a French sentence that carries names from the model (state
+ * paths, event names). It is taken as written: its no-break spaces are
+ * authored explicitly around the names, because running the typography pass
+ * over the whole sentence could rewrite a space inside a name.
+ */
+const sayNamed = (lang: ReportLanguage, en: string, fr: string): string =>
+  lang === 'fr' ? fr : en;
+
+/** French plural: the singular up to 1 ("0 règle", "1 règle"), plural from 2. */
+const frCount = (n: number, one: string, many: string): string =>
+  `${n} ${n >= 2 ? many : one}`;
+
+/**
+ * A short list of model names (state paths, event names) for a French
+ * sentence: each one quoted, at most three, an ellipsis when more exist. The
+ * sentence ends on the ellipsis or on a period, never on both.
+ */
+const frNameList = (names: readonly string[], limit = names.length): string => {
+  const shown = names.slice(0, limit).map((name) => quoteName('fr', name)).join(', ');
+  return names.length > limit ? `${shown}…` : `${shown}.`;
+};
+
+/**
+ * "<subject> un chemin d'état qui n'est déclaré nulle part dans cette
+ * fonctionnalité : « a »." (or the plural from two paths), at most three
+ * names shown. The no-break spaces are written here, never by a later pass.
+ */
+const undeclaredPathsFr = (paths: readonly string[], subject: string): string =>
+  `${subject} ${
+    paths.length >= 2
+      ? "des chemins d'état qui ne sont déclarés nulle part"
+      : "un chemin d'état qui n'est déclaré nulle part"
+  } dans cette fonctionnalité${NBSP}: ${frNameList(paths, 3)}`;
+
+/** "<subject> un chemin d'état déclaré sur une autre surface : « a »." */
+const unsharedPathsFr = (paths: readonly string[], subject: string): string =>
+  `${subject} ${
+    paths.length >= 2 ? "des chemins d'état déclarés" : "un chemin d'état déclaré"
+  } sur une autre surface${NBSP}: ${frNameList(paths, 3)}`;
 
 type Check = {
   readonly area: string;
@@ -281,7 +331,8 @@ const hasScenarioExpectations = (feature: Feature): boolean =>
 const capabilityChecks = (
   action: Action,
   knownPaths?: ReadonlySet<string>,
-  allDeclaredPaths?: ReadonlySet<string>
+  allDeclaredPaths?: ReadonlySet<string>,
+  lang: ReportLanguage = 'en'
 ): readonly Check[] => {
   const sensitiveCategories = new Set(['security', 'permissions', 'compliance']);
   const hasPermissionRule = action.rules.some((r) => sensitiveCategories.has(r.category));
@@ -352,8 +403,12 @@ const capabilityChecks = (
       weight: 1,
       severity: 'critical',
       passes: action.intent.trim().length > 0,
-      message: 'Add a short description of what this action is for.',
-      passLabel: 'Has a description',
+      message: say(
+        lang,
+        'Add a short description of what this action is for.',
+        'Ajoutez une courte description de ce à quoi sert cette action.'
+      ),
+      passLabel: say(lang, 'Has a description', 'Possède une description'),
       tab: 'actions'
     },
     {
@@ -361,8 +416,16 @@ const capabilityChecks = (
       weight: 1,
       severity: 'recommended',
       passes: action.rules.length > 0,
-      message: 'Add rules to control when this action can or cannot run.',
-      passLabel: `Has ${action.rules.length} rule${action.rules.length === 1 ? '' : 's'}`,
+      message: say(
+        lang,
+        'Add rules to control when this action can or cannot run.',
+        "Ajoutez des règles qui décident quand cette action peut s'exécuter ou non."
+      ),
+      passLabel: say(
+        lang,
+        `Has ${action.rules.length} rule${action.rules.length === 1 ? '' : 's'}`,
+        `Possède ${frCount(action.rules.length, 'règle', 'règles')}`
+      ),
       tab: 'actions'
     },
     {
@@ -370,8 +433,12 @@ const capabilityChecks = (
       weight: 1,
       severity: 'critical',
       passes: action.effects.length > 0 || action.rules.length > 0,
-      message: 'Nothing happens when this runs. Add an effect or a rule.',
-      passLabel: 'Has effects or rules',
+      message: say(
+        lang,
+        'Nothing happens when this runs. Add an effect or a rule.',
+        "Rien ne se passe quand cette action s'exécute. Ajoutez un effet ou une règle."
+      ),
+      passLabel: say(lang, 'Has effects or rules', 'Possède des effets ou des règles'),
       tab: 'actions'
     },
     {
@@ -381,12 +448,15 @@ const capabilityChecks = (
       passes:
         action.emittedEvents.length > 0 ||
         emitsEventsFromEffects,
-      message:
+      message: say(
+        lang,
         'Other parts of your feature cannot react when this runs. Make it emit and declare an event.',
+        "Le reste de la fonctionnalité ne peut pas réagir quand cette action s'exécute. Faites-lui émettre un événement et déclarez-le."
+      ),
       passLabel:
         action.emittedEvents.length > 0 && emitsEventsFromEffects
-          ? 'Emits and declares events'
-          : 'Has event signaling',
+          ? say(lang, 'Emits and declares events', 'Émet et déclare des événements')
+          : say(lang, 'Has event signaling', 'Signale son exécution par des événements'),
       tab: 'actions'
     },
     {
@@ -394,14 +464,21 @@ const capabilityChecks = (
       weight: 1,
       severity: 'recommended',
       passes: hasRequiredStateCoverage,
-      message:
+      message: say(
+        lang,
         'Declare requiredStates so readers and implementation audits know which state this action depends on.',
+        "Déclarez requiredStates pour que les lecteurs et les audits d'implémentation sachent de quel état dépend cette action."
+      ),
       passLabel:
         action.requiredStates.length === 0
-          ? 'Required states not declared'
-          : `Documents ${action.requiredStates.length} required state${
-              action.requiredStates.length === 1 ? '' : 's'
-            }`,
+          ? say(lang, 'Required states not declared', 'États requis non déclarés')
+          : say(
+              lang,
+              `Documents ${action.requiredStates.length} required state${
+                action.requiredStates.length === 1 ? '' : 's'
+              }`,
+              `Documente ${frCount(action.requiredStates.length, 'état requis', 'états requis')}`
+            ),
       tab: 'actions'
     },
     {
@@ -409,9 +486,16 @@ const capabilityChecks = (
       weight: 1,
       severity: 'recommended',
       passes: undeclaredEmissions.length === 0,
-      message:
+      message: sayNamed(
+        lang,
         `This action emits event${undeclaredEmissions.length === 1 ? '' : 's'} not listed in emittedEvents: ${undeclaredEmissions.map(String).join(', ')}.`,
-      passLabel: emitsEventsFromEffects ? 'Declares emitted events' : 'No emitted event effects',
+        `Cette action émet ${
+          undeclaredEmissions.length >= 2 ? 'des événements absents' : 'un événement absent'
+        } de la liste emittedEvents${NBSP}: ${frNameList(undeclaredEmissions.map(String))}`
+      ),
+      passLabel: emitsEventsFromEffects
+        ? say(lang, 'Declares emitted events', 'Déclare les événements émis')
+        : say(lang, 'No emitted event effects', "Aucun effet n'émet d'événement"),
       tab: 'actions'
     },
     {
@@ -419,13 +503,24 @@ const capabilityChecks = (
       weight: 1,
       severity: securityRelevantMutation ? 'critical' : 'recommended',
       passes: !securityRelevantMutation || hasPermissionRule,
-      message:
+      message: say(
+        lang,
         'This action changes data. Add a rule that decides who is allowed to run it.',
+        "Cette action modifie des données. Ajoutez une règle qui décide qui a le droit de l'exécuter."
+      ),
       passLabel: securityRelevantMutation
-        ? 'Has a permission rule'
+        ? say(lang, 'Has a permission rule', 'Possède une règle de permission')
         : writesState
-          ? 'Changes transient state; no persistence/destructive role'
-          : 'Does not change data. No permission rule needed',
+          ? say(
+              lang,
+              'Changes transient state; no persistence/destructive role',
+              'Modifie un état transitoire, sans rôle « persistence » ni « destructive »'
+            )
+          : say(
+              lang,
+              'Does not change data. No permission rule needed',
+              'Ne modifie pas de données. Aucune règle de permission nécessaire'
+            ),
       tab: 'actions'
     },
     {
@@ -437,14 +532,21 @@ const capabilityChecks = (
         !hasValidatableParam ||
         hasValidationRule ||
         hasParameterValidations,
-      message:
+      message: say(
+        lang,
         'Inputs are not checked before this runs. Add a rule with category "validation" or attach validations to a parameter.',
+        "Les entrées ne sont pas vérifiées avant l'exécution. Ajoutez une règle de catégorie « validation » ou attachez des validations à un paramètre."
+      ),
       passLabel:
         action.parameters.length === 0
-          ? 'No inputs to validate'
+          ? say(lang, 'No inputs to validate', 'Aucune entrée à valider')
           : !hasValidatableParam
-            ? 'Inputs are booleans/enums. No validation needed'
-            : 'Validates its inputs',
+            ? say(
+                lang,
+                'Inputs are booleans/enums. No validation needed',
+                'Entrées booléennes ou énumérées. Aucune validation nécessaire'
+              )
+            : say(lang, 'Validates its inputs', 'Valide ses entrées'),
       tab: 'actions'
     },
     {
@@ -452,9 +554,18 @@ const capabilityChecks = (
       weight: 1,
       severity: 'recommended',
       passes: !hasInputs || (hasParameterDefaults && enumParametersConfigured),
-      message:
+      message: say(
+        lang,
         'Make parameter behavior explicit: optional parameters need defaults, and enum parameters need allowed values.',
-      passLabel: hasInputs ? 'Parameters have defaults/enum options' : 'No parameters',
+        'Rendez le comportement des paramètres explicite : un paramètre facultatif demande une valeur par défaut, un paramètre enum demande ses valeurs autorisées.'
+      ),
+      passLabel: hasInputs
+        ? say(
+            lang,
+            'Parameters have defaults/enum options',
+            "Paramètres pourvus de valeurs par défaut et d'options d'énumération"
+          )
+        : say(lang, 'No parameters', 'Aucun paramètre'),
       tab: 'actions'
     },
     {
@@ -466,14 +577,21 @@ const capabilityChecks = (
         action.rules.length === 0 ||
         hasBlockedFallback ||
         action.rules.some((rule) => rule.effect.type !== 'allow_action'),
-      message:
+      message: say(
+        lang,
         'Add on-block effects when a blocked run should show a message, emit an audit event, or navigate. If a blocked attempt shows nothing on purpose, say so with a no_feedback on-block effect; if no person fires this action, set its actor (system, schedule or event).',
+        "Ajoutez des effets en cas de blocage quand une exécution bloquée doit afficher un message, émettre un événement d'audit ou naviguer. Si une tentative bloquée n'affiche volontairement rien, dites-le avec un effet no_feedback en cas de blocage ; si aucune personne ne déclenche cette action, définissez son acteur (system, schedule ou event)."
+      ),
       passLabel:
         action.rules.length === 0
-          ? 'No block paths'
+          ? say(lang, 'No block paths', 'Aucun chemin de blocage')
           : !firedByAPerson && !hasBlockedFallback
-            ? `No person fires it (actor: ${actor}), nothing to show when blocked`
-            : 'Has block fallback effects',
+            ? say(
+                lang,
+                `No person fires it (actor: ${actor}), nothing to show when blocked`,
+                `Aucune personne ne la déclenche (acteur : ${actor}), rien à afficher en cas de blocage`
+              )
+            : say(lang, 'Has block fallback effects', 'Possède des effets en cas de blocage'),
       tab: 'actions'
     },
     {
@@ -481,11 +599,22 @@ const capabilityChecks = (
       weight: 1,
       severity: 'recommended',
       passes: hasScenarioCoverage,
-      message:
+      message: say(
+        lang,
         'Add at least one scenario for this non-trivial action so examples become regression checks.',
+        'Ajoutez au moins un scénario à cette action non triviale pour que ses exemples deviennent des tests de non-régression.'
+      ),
       passLabel: hasComplexBehavior
-        ? `Has ${scenarioCount} scenario${scenarioCount === 1 ? '' : 's'}`
-        : 'Scenarios optional until added',
+        ? say(
+            lang,
+            `Has ${scenarioCount} scenario${scenarioCount === 1 ? '' : 's'}`,
+            `Possède ${frCount(scenarioCount, 'scénario', 'scénarios')}`
+          )
+        : say(
+            lang,
+            'Scenarios optional until added',
+            "Scénarios facultatifs tant qu'aucun n'est ajouté"
+          ),
       tab: 'actions'
     },
     {
@@ -493,9 +622,14 @@ const capabilityChecks = (
       weight: 1,
       severity: 'recommended',
       passes: !hasExpressionUse || action.rules.length > 0 || action.effects.length > 0,
-      message:
+      message: say(
+        lang,
         'Expression values should live in explicit rules or effects so readers can inspect the calculation.',
-      passLabel: hasExpressionUse ? 'Uses expression values' : 'No expression values needed',
+        'Les valeurs calculées par une expression doivent vivre dans des règles ou des effets explicites, pour que le lecteur puisse examiner le calcul.'
+      ),
+      passLabel: hasExpressionUse
+        ? say(lang, 'Uses expression values', 'Utilise des valeurs calculées par expression')
+        : say(lang, 'No expression values needed', 'Aucune valeur calculée nécessaire'),
       tab: 'actions'
     },
     ...(knownPaths !== undefined
@@ -514,8 +648,16 @@ const capabilityChecks = (
               weight: 1,
               severity: 'critical' as const,
               passes: undeclared.length === 0,
-              message: `Uses state ${undeclared.length === 1 ? 'path' : 'paths'} not declared anywhere in this feature: ${undeclared.slice(0, 3).join(', ')}${undeclared.length > 3 ? '…' : ''}. Declare ${undeclared.length === 1 ? 'it' : 'them'} on a surface.`,
-              passLabel: 'All referenced state paths are declared',
+              message: sayNamed(
+                lang,
+                `Uses state ${undeclared.length === 1 ? 'path' : 'paths'} not declared anywhere in this feature: ${undeclared.slice(0, 3).join(', ')}${undeclared.length > 3 ? '…' : ''}. Declare ${undeclared.length === 1 ? 'it' : 'them'} on a surface.`,
+                `${undeclaredPathsFr(undeclared, 'Cette action utilise')} Déclarez-${undeclared.length >= 2 ? 'les' : 'le'} sur une surface.`
+              ),
+              passLabel: say(
+                lang,
+                'All referenced state paths are declared',
+                "Tous les chemins d'état référencés sont déclarés"
+              ),
               tab: 'actions' as SurfacePanelTab
             },
             // Paths declared on a SIBLING surface without sharedWith are not a
@@ -527,8 +669,16 @@ const capabilityChecks = (
               weight: 1,
               severity: 'recommended' as const,
               passes: unsharedOnly.length === 0,
-              message: `Reads state ${unsharedOnly.length === 1 ? 'path' : 'paths'} declared on another surface: ${unsharedOnly.slice(0, 3).join(', ')}${unsharedOnly.length > 3 ? '…' : ''}. Add this surface to that StateDefinition's sharedWith to make the dependency explicit.`,
-              passLabel: 'No unshared cross-surface reads',
+              message: sayNamed(
+                lang,
+                `Reads state ${unsharedOnly.length === 1 ? 'path' : 'paths'} declared on another surface: ${unsharedOnly.slice(0, 3).join(', ')}${unsharedOnly.length > 3 ? '…' : ''}. Add this surface to that StateDefinition's sharedWith to make the dependency explicit.`,
+                `${unsharedPathsFr(unsharedOnly, 'Cette action lit')} Ajoutez cette surface au sharedWith de la définition d'état concernée pour rendre la dépendance explicite.`
+              ),
+              passLabel: say(
+                lang,
+                'No unshared cross-surface reads',
+                "Aucune lecture d'un état non partagé d'une autre surface"
+              ),
               tab: 'actions' as SurfacePanelTab
             }
           ];
@@ -540,7 +690,8 @@ const capabilityChecks = (
 export const scoreCapability = (
   surface: Surface,
   action: Action,
-  allSurfaces?: readonly Surface[]
+  allSurfaces?: readonly Surface[],
+  language: ReportLanguage = 'en'
 ): MaturityReport => {
   const knownPaths =
     allSurfaces !== undefined ? buildKnownPaths(String(surface.id), allSurfaces) : undefined;
@@ -554,14 +705,15 @@ export const scoreCapability = (
       actionId: action.id as unknown as string,
       surfacePanelTab: 'actions'
     },
-    capabilityChecks(action, knownPaths, allDeclaredPaths)
+    capabilityChecks(action, knownPaths, allDeclaredPaths, language)
   );
 };
 
 const surfaceChecks = (
   surface: Surface,
   knownPaths?: ReadonlySet<string>,
-  allDeclaredPaths?: ReadonlySet<string>
+  allDeclaredPaths?: ReadonlySet<string>,
+  lang: ReportLanguage = 'en'
 ): readonly Check[] => {
   const transitionTargets = surfaceTransitionTargets(surface);
   const hasSharedState = surface.stateDefinitions.some(
@@ -583,10 +735,18 @@ const surfaceChecks = (
       weight: 1,
       severity: 'critical',
       passes: surface.actions.length > 0,
-      message: 'Add at least one thing the user can do here.',
-      passLabel: `Has ${surface.actions.length} capabilit${
-        surface.actions.length === 1 ? 'y' : 'ies'
-      }`,
+      message: say(
+        lang,
+        'Add at least one thing the user can do here.',
+        "Ajoutez au moins une chose que l'utilisateur peut faire ici."
+      ),
+      passLabel: say(
+        lang,
+        `Has ${surface.actions.length} capabilit${
+          surface.actions.length === 1 ? 'y' : 'ies'
+        }`,
+        `Possède ${frCount(surface.actions.length, 'action', 'actions')}`
+      ),
       tab: 'actions'
     },
     {
@@ -600,10 +760,18 @@ const surfaceChecks = (
       passes:
         surface.stateDefinitions.length > 0 ||
         (knownPaths !== undefined && knownPaths.size > 0),
-      message: 'Add some state - the data your rules read to decide what happens.',
-      passLabel: `Has ${surface.stateDefinitions.length} state value${
-        surface.stateDefinitions.length === 1 ? '' : 's'
-      }`,
+      message: say(
+        lang,
+        'Add some state - the data your rules read to decide what happens.',
+        'Ajoutez un état : les données que vos règles lisent pour décider de ce qui se passe.'
+      ),
+      passLabel: say(
+        lang,
+        `Has ${surface.stateDefinitions.length} state value${
+          surface.stateDefinitions.length === 1 ? '' : 's'
+        }`,
+        `Possède ${frCount(surface.stateDefinitions.length, "valeur d'état", "valeurs d'état")}`
+      ),
       tab: 'state'
     },
     {
@@ -613,12 +781,15 @@ const surfaceChecks = (
       passes:
         surface.stateDefinitions.length === 0 ||
         !hasEnumStateWithoutValues,
-      message:
+      message: say(
+        lang,
         'Document state definitions with descriptions, and give enum states their allowed values.',
+        "Documentez les définitions d'état par des descriptions, et donnez aux états enum leurs valeurs autorisées."
+      ),
       passLabel:
         surface.stateDefinitions.length === 0
-          ? 'No state to document'
-          : 'State definitions are documented',
+          ? say(lang, 'No state to document', 'Aucun état à documenter')
+          : say(lang, 'State definitions are documented', "Les définitions d'état sont documentées"),
       tab: 'state'
     },
     {
@@ -629,9 +800,14 @@ const surfaceChecks = (
         surface.stateDefinitions.length <= 1 ||
         hasSharedState ||
         surface.stateDefinitions.every((definition) => definition.sharedWith === undefined),
-      message:
+      message: say(
+        lang,
         'Shared state is declared but incomplete. Check sharedWith links on state definitions.',
-      passLabel: hasSharedState ? 'Declares shared state' : 'No obvious shared state',
+        "Un état partagé est déclaré mais incomplet. Vérifiez les liens sharedWith des définitions d'état."
+      ),
+      passLabel: hasSharedState
+        ? say(lang, 'Declares shared state', 'Déclare un état partagé')
+        : say(lang, 'No obvious shared state', 'Aucun état partagé évident'),
       tab: 'state'
     },
     {
@@ -639,10 +815,15 @@ const surfaceChecks = (
       weight: 1,
       severity: 'recommended',
       passes: hasSurfaceWideRules,
-      message:
+      message: say(
+        lang,
         'This surface has multiple actions and no visible gating. Add surface rules or action rules.',
+        "Cette surface a plusieurs actions et aucune garde visible. Ajoutez des règles de surface ou des règles d'action."
+      ),
       passLabel:
-        surface.actions.length <= 1 ? 'No cross-cutting gate needed' : 'Has surface rules',
+        surface.actions.length <= 1
+          ? say(lang, 'No cross-cutting gate needed', 'Aucune garde transversale nécessaire')
+          : say(lang, 'Has surface rules', 'Possède des règles de surface'),
       tab: 'rules'
     },
     {
@@ -652,9 +833,12 @@ const surfaceChecks = (
       passes:
         surface.invariants.length > 0 ||
         surface.actions.some((c) => c.invariants.length > 0),
-      message:
+      message: say(
+        lang,
         'Add an invariant - a fact that should always be true here, so broken states are caught early.',
-      passLabel: 'Has invariants',
+        'Ajoutez un invariant : un fait qui doit toujours être vrai ici, pour repérer tôt les états incohérents.'
+      ),
+      passLabel: say(lang, 'Has invariants', 'Possède des invariants'),
       tab: 'invariants'
     },
     {
@@ -662,10 +846,15 @@ const surfaceChecks = (
       weight: 1,
       severity: 'recommended',
       passes: transitionTargets.length === 0 || surface.transitions.length > 0,
-      message:
+      message: say(
+        lang,
         'This surface navigates through effects. Declare transitions so the graph is visible outside individual actions.',
+        'Cette surface navigue par des effets. Déclarez ses transitions pour que le graphe soit visible hors de chaque action.'
+      ),
       passLabel:
-        transitionTargets.length === 0 ? 'No navigation effects' : 'Declares surface transitions',
+        transitionTargets.length === 0
+          ? say(lang, 'No navigation effects', 'Aucun effet de navigation')
+          : say(lang, 'Declares surface transitions', 'Déclare les transitions de la surface'),
       tab: 'actions'
     },
     ...(knownPaths !== undefined
@@ -681,8 +870,16 @@ const surfaceChecks = (
               weight: 1,
               severity: 'critical' as const,
               passes: undeclared.length === 0,
-              message: `Surface rule uses state ${undeclared.length === 1 ? 'path' : 'paths'} not declared anywhere in this feature: ${undeclared.slice(0, 3).join(', ')}${undeclared.length > 3 ? '…' : ''}. Declare ${undeclared.length === 1 ? 'it' : 'them'} on a surface.`,
-              passLabel: 'All surface rule state paths are declared',
+              message: sayNamed(
+                lang,
+                `Surface rule uses state ${undeclared.length === 1 ? 'path' : 'paths'} not declared anywhere in this feature: ${undeclared.slice(0, 3).join(', ')}${undeclared.length > 3 ? '…' : ''}. Declare ${undeclared.length === 1 ? 'it' : 'them'} on a surface.`,
+                `${undeclaredPathsFr(undeclared, 'Une règle de surface utilise')} Déclarez-${undeclared.length >= 2 ? 'les' : 'le'} sur une surface.`
+              ),
+              passLabel: say(
+                lang,
+                'All surface rule state paths are declared',
+                "Tous les chemins d'état des règles de surface sont déclarés"
+              ),
               tab: 'rules' as SurfacePanelTab
             },
             {
@@ -690,8 +887,16 @@ const surfaceChecks = (
               weight: 1,
               severity: 'recommended' as const,
               passes: unsharedOnly.length === 0,
-              message: `Surface rule reads state ${unsharedOnly.length === 1 ? 'path' : 'paths'} declared on another surface: ${unsharedOnly.slice(0, 3).join(', ')}${unsharedOnly.length > 3 ? '…' : ''}. Add this surface to that StateDefinition's sharedWith.`,
-              passLabel: 'No unshared cross-surface reads in surface rules',
+              message: sayNamed(
+                lang,
+                `Surface rule reads state ${unsharedOnly.length === 1 ? 'path' : 'paths'} declared on another surface: ${unsharedOnly.slice(0, 3).join(', ')}${unsharedOnly.length > 3 ? '…' : ''}. Add this surface to that StateDefinition's sharedWith.`,
+                `${unsharedPathsFr(unsharedOnly, 'Une règle de surface lit')} Ajoutez cette surface au sharedWith de la définition d'état concernée.`
+              ),
+              passLabel: say(
+                lang,
+                'No unshared cross-surface reads in surface rules',
+                "Aucune lecture d'un état non partagé d'une autre surface dans les règles de surface"
+              ),
               tab: 'rules' as SurfacePanelTab
             }
           ];
@@ -700,7 +905,11 @@ const surfaceChecks = (
   ];
 };
 
-export const scoreSurface = (surface: Surface, allSurfaces?: readonly Surface[]): MaturityReport => {
+export const scoreSurface = (
+  surface: Surface,
+  allSurfaces?: readonly Surface[],
+  language: ReportLanguage = 'en'
+): MaturityReport => {
   const knownPaths = allSurfaces !== undefined
     ? buildKnownPaths(String(surface.id), allSurfaces)
     : undefined;
@@ -716,33 +925,41 @@ export const scoreSurface = (surface: Surface, allSurfaces?: readonly Surface[])
     'surface',
     surface.name,
     { surfaceId: surface.id as unknown as string },
-    surfaceChecks({ ...surface, actions: committed }, knownPaths, allDeclaredPaths)
+    surfaceChecks({ ...surface, actions: committed }, knownPaths, allDeclaredPaths, language)
   );
   const childrenReport = committed.reduce<MaturityReport>(
-    (acc, c) => combineReports(acc, scoreCapability(surface, c, allSurfaces)),
+    (acc, c) => combineReports(acc, scoreCapability(surface, c, allSurfaces, language)),
     emptyReport()
   );
   return combineReports(baseReport, childrenReport);
 };
 
-const featureChecks = (feature: Feature): readonly Check[] => {
+const featureChecks = (feature: Feature, lang: ReportLanguage = 'en'): readonly Check[] => {
   const nameCheck: Check = {
     area: 'name',
     weight: 1,
     severity: 'critical',
     passes: feature.name.trim().length > 0,
-    message: 'Give this feature a name.',
-    passLabel: 'Has a name'
+    message: say(lang, 'Give this feature a name.', 'Donnez un nom à cette fonctionnalité.'),
+    passLabel: say(lang, 'Has a name', 'Possède un nom')
   };
   const surfacesCheck: Check = {
     area: 'surfaces',
     weight: 1,
     severity: 'critical',
     passes: feature.surfaces.length > 0,
-    message: 'Add a surface - a place where users see and do things.',
-    passLabel: `Has ${feature.surfaces.length} surface${
-      feature.surfaces.length === 1 ? '' : 's'
-    }`
+    message: say(
+      lang,
+      'Add a surface - a place where users see and do things.',
+      'Ajoutez une surface : un endroit où les utilisateurs voient et font des choses.'
+    ),
+    passLabel: say(
+      lang,
+      `Has ${feature.surfaces.length} surface${
+        feature.surfaces.length === 1 ? '' : 's'
+      }`,
+      `Possède ${frCount(feature.surfaces.length, 'surface', 'surfaces')}`
+    )
   };
 
   // Without surfaces, the remaining feature-level checks would all pass
@@ -776,11 +993,15 @@ const featureChecks = (feature: Feature): readonly Check[] => {
       weight: 1,
       severity: 'recommended',
       passes: true,
-      message: 'Add an feature description so agents and humans know the product boundary.',
+      message: say(
+        lang,
+        'Add an feature description so agents and humans know the product boundary.',
+        'Ajoutez une description de la fonctionnalité pour que les agents et les humains connaissent le périmètre du produit.'
+      ),
       passLabel:
         (feature.description?.trim().length ?? 0) > 0
-          ? 'Has a description'
-          : 'Description optional'
+          ? say(lang, 'Has a description', 'Possède une description')
+          : say(lang, 'Description optional', 'Description facultative')
     },
     surfacesCheck,
     {
@@ -791,70 +1012,111 @@ const featureChecks = (feature: Feature): readonly Check[] => {
         emittedEvents.length === 0 ||
         (feature.events ?? []).length === 0 ||
         allEmittedEventsRegistered,
-      message:
+      message: say(
+        lang,
         'Register emitted events in the Events tab so payloads and producers are discoverable.',
+        "Enregistrez les événements émis dans l'onglet Events pour que leurs charges utiles et leurs émetteurs soient faciles à trouver."
+      ),
       passLabel:
         emittedEvents.length === 0
-          ? 'No emitted events to register'
+          ? say(lang, 'No emitted events to register', 'Aucun événement émis à enregistrer')
           : (feature.events ?? []).length === 0
-            ? 'Event registry optional until used'
-            : 'Emitted events are registered'
+            ? say(
+                lang,
+                'Event registry optional until used',
+                "Registre d'événements facultatif tant qu'il ne sert pas"
+              )
+            : say(lang, 'Emitted events are registered', 'Les événements émis sont enregistrés')
     },
     {
       area: 'event payloads',
       weight: 1,
       severity: 'recommended',
       passes: registeredEventsHavePayloads,
-      message: 'Event payload schema fields need names when payloads are declared.',
+      message: say(
+        lang,
+        'Event payload schema fields need names when payloads are declared.',
+        "Quand la charge utile d'un événement est déclarée, chaque champ de son schéma doit avoir un nom."
+      ),
       passLabel:
-        (feature.events ?? []).length === 0 ? 'No event payloads declared' : 'Payload schemas are valid'
+        (feature.events ?? []).length === 0
+          ? say(lang, 'No event payloads declared', "Aucune charge utile d'événement déclarée")
+          : say(lang, 'Payload schemas are valid', 'Les schémas de charge utile sont valides')
     },
     {
       area: 'resources',
       weight: 1,
       severity: 'recommended',
       passes: !resourceReferences || feature.resources.length > 0,
-      message: 'Parameters reference resources, but no Resources are declared at the feature level.',
-      passLabel: resourceReferences ? 'Declares referenced resources' : 'No resource references'
+      message: say(
+        lang,
+        'Parameters reference resources, but no Resources are declared at the feature level.',
+        "Des paramètres font référence à des ressources, mais aucune ressource n'est déclarée au niveau de la fonctionnalité."
+      ),
+      passLabel: resourceReferences
+        ? say(lang, 'Declares referenced resources', 'Déclare les ressources référencées')
+        : say(lang, 'No resource references', 'Aucune référence à une ressource')
     },
     {
       area: 'data',
       weight: 1,
       severity: 'recommended',
       passes: true,
-      message:
+      message: say(
+        lang,
         'Promote repeated or domain-shaped state into Entity definitions so the model has a clear schema.',
-      passLabel: feature.entities.length > 0 ? 'Has data definitions' : 'Entity definitions optional'
+        "Transformez l'état répété ou propre au métier en définitions d'entité pour donner au modèle un schéma clair."
+      ),
+      passLabel:
+        feature.entities.length > 0
+          ? say(lang, 'Has data definitions', 'Possède des définitions de données')
+          : say(lang, 'Entity definitions optional', "Définitions d'entité facultatives")
     },
     {
       area: 'personas',
       weight: 1,
       severity: 'recommended',
       passes: true,
-      message: 'Add personas to exercise important roles, regions, plans, or auth states.',
-      passLabel: feature.personas.length > 0 ? 'Has personas' : 'Personas optional'
+      message: say(
+        lang,
+        'Add personas to exercise important roles, regions, plans, or auth states.',
+        "Ajoutez des personas pour éprouver les rôles, régions, offres ou états d'authentification importants."
+      ),
+      passLabel:
+        feature.personas.length > 0
+          ? say(lang, 'Has personas', 'Possède des personas')
+          : say(lang, 'Personas optional', 'Personas en option')
     },
     {
       area: 'scenario assertions',
       weight: 1,
       severity: 'recommended',
       passes: scenarios.length === 0 || hasScenarioExpectations(feature) || scenarios.length > 0,
-      message: 'Scenarios are more useful when they declare expectedStatus or expectedAssertions.',
+      message: say(
+        lang,
+        'Scenarios are more useful when they declare expectedStatus or expectedAssertions.',
+        'Un scénario est plus utile quand il déclare expectedStatus ou expectedAssertions.'
+      ),
       passLabel:
         scenarios.length === 0
-          ? 'No scenarios yet'
+          ? say(lang, 'No scenarios yet', "Aucun scénario pour l'instant")
           : hasScenarioExpectations(feature)
-            ? 'Scenarios have expectations'
-            : 'Scenario expectations optional'
+            ? say(lang, 'Scenarios have expectations', 'Les scénarios déclarent leurs attentes')
+            : say(lang, 'Scenario expectations optional', 'Attentes des scénarios facultatives')
     },
     {
       area: 'implementation context',
       weight: 1,
       severity: 'recommended',
       passes: true,
-      message:
+      message: say(
+        lang,
         'Add devContext so MCP implementation audits can reflect the stack and coding conventions.',
-      passLabel: feature.devContext ? 'Has implementation context' : 'Implementation context optional'
+        "Ajoutez devContext pour que les audits d'implémentation MCP reflètent la pile technique et les conventions de code."
+      ),
+      passLabel: feature.devContext
+        ? say(lang, 'Has implementation context', "Possède un contexte d'implémentation")
+        : say(lang, 'Implementation context optional', "Contexte d'implémentation facultatif")
     },
     {
       area: 'liveness',
@@ -865,12 +1127,23 @@ const featureChecks = (feature: Feature): readonly Check[] => {
       // declaring goals the model checker can verify, the complement to the
       // invariant (safety) coverage the surface/action checks already reward.
       passes: true,
-      message:
+      message: say(
+        lang,
         'Add reachability goals so the model checker can prove key states stay reachable (liveness), not just that invariants hold (safety).',
+        "Ajoutez des objectifs d'atteignabilité pour que le vérificateur de modèle prouve que les états clés restent atteignables (vivacité), et pas seulement que les invariants tiennent (sûreté)."
+      ),
       passLabel:
         (feature.reachabilityGoals?.length ?? 0) > 0
-          ? `Declares ${feature.reachabilityGoals!.length} liveness goal${feature.reachabilityGoals!.length === 1 ? '' : 's'}`
-          : 'Liveness goals optional'
+          ? say(
+              lang,
+              `Declares ${feature.reachabilityGoals!.length} liveness goal${feature.reachabilityGoals!.length === 1 ? '' : 's'}`,
+              `Déclare ${frCount(
+                feature.reachabilityGoals!.length,
+                "objectif d'atteignabilité",
+                "objectifs d'atteignabilité"
+              )}`
+            )
+          : say(lang, 'Liveness goals optional', "Objectifs d'atteignabilité facultatifs")
     }
   ];
 };
@@ -890,12 +1163,12 @@ const emptyFeatureReport = (baseReport: MaturityReport): MaturityReport => ({
   passedChecks: []
 });
 
-export const scoreFeature = (feature: Feature): MaturityReport => {
+export const scoreFeature = (feature: Feature, language: ReportLanguage = 'en'): MaturityReport => {
   const baseReport = reportFromChecks(
     'feature',
     feature.name,
     {},
-    featureChecks(feature)
+    featureChecks(feature, language)
   );
   // Presentation surfaces are pure UI (see Surface.presentation): excluded from
   // the behavior-maturity rollup and from the empty-feature short-circuit, so a
@@ -906,7 +1179,7 @@ export const scoreFeature = (feature: Feature): MaturityReport => {
   const behavioralSurfaces = feature.surfaces.filter((s) => !s.presentation);
   if (behavioralSurfaces.length === 0) return emptyFeatureReport(baseReport);
   const childrenReport = behavioralSurfaces.reduce<MaturityReport>(
-    (acc, s) => combineReports(acc, scoreSurface(s, feature.surfaces)),
+    (acc, s) => combineReports(acc, scoreSurface(s, feature.surfaces, language)),
     emptyReport()
   );
   return combineReports(baseReport, childrenReport);
@@ -929,7 +1202,8 @@ export type SurfaceMaturityBreakdown = {
 
 export const scoreSurfaceBreakdown = (
   surface: Surface,
-  allSurfaces?: readonly Surface[]
+  allSurfaces?: readonly Surface[],
+  language: ReportLanguage = 'en'
 ): SurfaceMaturityBreakdown => {
   const knownPaths =
     allSurfaces !== undefined ? buildKnownPaths(String(surface.id), allSurfaces) : undefined;
@@ -940,13 +1214,13 @@ export const scoreSurfaceBreakdown = (
     'surface',
     surface.name,
     { surfaceId: surface.id as unknown as string },
-    surfaceChecks({ ...surface, actions: committed }, knownPaths, allDeclaredPaths)
+    surfaceChecks({ ...surface, actions: committed }, knownPaths, allDeclaredPaths, language)
   );
   // Skip evolution proposals: the maturity breakdown lists committed actions
   // only, so a dashed placeholder never appears as a "0/14" red row.
   const perAction = committed.map((action) => ({
     action,
-    report: scoreCapability(surface, action, allSurfaces)
+    report: scoreCapability(surface, action, allSurfaces, language)
   }));
   const aggregate = perAction.reduce<MaturityReport>(
     (acc, entry) => combineReports(acc, entry.report),
@@ -977,13 +1251,14 @@ export type FeatureMaturityBreakdown = {
 };
 
 export const scoreFeatureBreakdown = (
-  feature: Feature
+  feature: Feature,
+  language: ReportLanguage = 'en'
 ): FeatureMaturityBreakdown => {
   const featureLevel = reportFromChecks(
     'feature',
     feature.name,
     {},
-    featureChecks(feature)
+    featureChecks(feature, language)
   );
   // Same empty-feature short-circuit as scoreFeature — keep the global
   // bar at 0% and drop "passed" noise when no surfaces exist. The
@@ -1000,7 +1275,7 @@ export const scoreFeatureBreakdown = (
     };
   }
   const perSurface = behavioralSurfaces.map((surface) => {
-    const breakdown = scoreSurfaceBreakdown(surface, feature.surfaces);
+    const breakdown = scoreSurfaceBreakdown(surface, feature.surfaces, language);
     return {
       surface: breakdown.surface,
       report: breakdown.aggregate,

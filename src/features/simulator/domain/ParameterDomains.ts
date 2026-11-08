@@ -1,7 +1,13 @@
-import type { Action } from '$features/behavior-model/domain/entities/Action';
+import {
+  CALLER_CHANNEL_PARAM,
+  offeredChannels,
+  type Action
+} from '$features/behavior-model/domain/entities/Action';
+import type { Constant } from '$features/behavior-model/domain/entities/Constant';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { Parameter } from '$features/behavior-model/domain/entities/Parameter';
 import type { Rule } from '$features/behavior-model/domain/entities/Rule';
+import { asParameterId } from '$features/behavior-model/domain/value-objects/ids';
 import type { ValueSet } from '$features/behavior-model/domain/entities/ValueSet';
 import { effectiveEnumValues } from '$features/behavior-model/domain/services/EnumValues';
 import { fillDefaults, type ParameterValues } from '$features/behavior-model/domain/services/ParameterValidator';
@@ -54,6 +60,12 @@ export type ParameterCombinations = {
   /** True when the full product exceeded the cap and only a sample is returned. */
   readonly capped: boolean;
   /**
+   * Number inputs tried only at the edge of their sign (`positive` gives 1):
+   * one value out of an open domain, so an action that never fires is not
+   * proven dead. Absent when every input has a bounded or mined domain.
+   */
+  readonly edgeOnlyInputs?: readonly string[];
+  /**
    * How much of the grid `combos` stands for. Absent when not explorable.
    * `covering` tries every VALUE of every parameter, not every combination, so
    * a guard that needs two non-base values at once can still go untried.
@@ -85,6 +97,14 @@ export type ThresholdContext = {
   readonly surfaceInvariants?: readonly Invariant[];
   /** Feature-level invariants. */
   readonly featureInvariants?: readonly Invariant[];
+  /** The feature's named constants, so a rule comparing with one is mined like a literal. */
+  readonly constants?: readonly Constant[];
+  /**
+   * Inputs the solver chose for this action, one per branch it witnessed
+   * (replayed by the simulator). Tried first, beside the domains, and they
+   * give a value to an input the explorer cannot invent.
+   */
+  readonly witnessed?: readonly ParameterValues[];
 };
 
 // A condition leaf references THIS parameter when its left operand is either the
@@ -96,14 +116,22 @@ const leafReferencesParameter = (left: LeftOperand, parameter: Parameter): boole
     ? left.name === parameter.name
     : parameter.bindToStatePath !== undefined && left === parameter.bindToStatePath;
 
-// A numeric threshold from a leaf's `right`, which may be a raw number or a
-// `{ kind:'literal', value:<number> }` expression node. Anything else yields
-// undefined (no threshold to mine).
-const numericThreshold = (right: unknown): number | undefined => {
+// A numeric threshold from a leaf's `right`, which may be a raw number, a
+// `{ kind:'literal', value:<number> }` expression node or a `{ kind:'const' }`
+// naming a numeric constant of the feature. Anything else yields undefined (no
+// threshold to mine).
+const numericThreshold = (
+  right: unknown,
+  constants: ReadonlyMap<string, unknown>
+): number | undefined => {
   if (typeof right === 'number') return right;
   if (right !== null && typeof right === 'object') {
-    const node = right as { kind?: unknown; value?: unknown };
+    const node = right as { kind?: unknown; value?: unknown; name?: unknown };
     if (node.kind === 'literal' && typeof node.value === 'number') return node.value;
+    if (node.kind === 'const' && typeof node.name === 'string') {
+      const value = constants.get(node.name);
+      if (typeof value === 'number') return value;
+    }
   }
   return undefined;
 };
@@ -114,13 +142,14 @@ const numericThreshold = (right: unknown): number | undefined => {
 // `amount >= 500` yields 499 and 500, letting the explorer take either branch.
 const conditionThresholds = (
   parameter: Parameter,
-  conditions: readonly (RuleCondition | undefined)[]
+  conditions: readonly (RuleCondition | undefined)[],
+  constants: ReadonlyMap<string, unknown>
 ): readonly number[] => {
   const out: number[] = [];
   for (const condition of conditions) {
     for (const leaf of flattenLeafConditions(condition)) {
       if (!leafReferencesParameter(leaf.left, parameter)) continue;
-      const threshold = numericThreshold(leaf.right);
+      const threshold = numericThreshold(leaf.right, constants);
       if (threshold === undefined) continue;
       out.push(threshold - 1, threshold, threshold + 1);
     }
@@ -128,22 +157,60 @@ const conditionThresholds = (
   return out;
 };
 
-// Boundary values for a number parameter: its min/max validation bounds, its
-// default, and the thresholds any in-scope rule/invariant references (see
-// conditionThresholds). Empty when the parameter is unbounded, has no default,
-// and no condition references it — an arbitrary sample would give false
-// confidence, so such a required number stays honestly "not explored".
+// The edge of a sign validation, a bound like min or max: the first whole
+// number on the allowed side. `positive` allows 1, `non_negative` 0.
+const SIGN_EDGES: Readonly<Record<string, number>> = {
+  positive: 1,
+  non_negative: 0,
+  negative: -1,
+  non_positive: 0
+};
+
+// Boundary values for a number parameter: its min/max validation bounds, the
+// edge of its sign validation, its default, and the thresholds any in-scope
+// rule/invariant references (see conditionThresholds). Empty when the parameter
+// is unbounded, has no default, and no condition references it: an arbitrary
+// sample would give false confidence, so such a required number stays honestly
+// "not explored".
 const numberSamples = (
   parameter: Parameter,
-  conditions: readonly (RuleCondition | undefined)[]
+  conditions: readonly (RuleCondition | undefined)[],
+  constants: ReadonlyMap<string, unknown>
 ): readonly number[] => {
   const bounds: number[] = [];
   for (const validation of parameter.validations ?? []) {
     if (validation.type === 'min' || validation.type === 'max') bounds.push(validation.value);
+    const edge = SIGN_EDGES[validation.type];
+    if (edge !== undefined) bounds.push(edge);
   }
   if (typeof parameter.defaultValue === 'number') bounds.push(parameter.defaultValue);
-  bounds.push(...conditionThresholds(parameter, conditions));
+  bounds.push(...conditionThresholds(parameter, conditions, constants));
   return [...new Set(bounds)];
+};
+
+// A number whose only samples come from its sign validation: no min or max, no
+// default, no threshold to mine. Its single value stands for an open domain.
+const edgeOnly = (
+  parameter: Parameter,
+  conditions: readonly (RuleCondition | undefined)[],
+  constants: ReadonlyMap<string, unknown>
+): boolean => {
+  const validations = parameter.validations ?? [];
+  if (!validations.some((validation) => SIGN_EDGES[validation.type] !== undefined)) return false;
+  if (validations.some((validation) => validation.type === 'min' || validation.type === 'max'))
+    return false;
+  if (typeof parameter.defaultValue === 'number') return false;
+  return conditionThresholds(parameter, conditions, constants).length === 0;
+};
+
+const uniqueValues = (values: readonly StateValue[]): readonly StateValue[] => {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = JSON.stringify(value);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 /**
@@ -153,7 +220,8 @@ const numberSamples = (
 const parameterValues = (
   parameter: Parameter,
   valueSets: readonly ValueSet[] | undefined,
-  conditions: readonly (RuleCondition | undefined)[]
+  conditions: readonly (RuleCondition | undefined)[],
+  constants: ReadonlyMap<string, unknown>
 ): readonly StateValue[] | 'unbounded' => {
   if (parameter.type === 'boolean') return [true, false];
   if (parameter.type === 'enum') {
@@ -163,7 +231,7 @@ const parameterValues = (
     return parameter.required ? 'unbounded' : [undefined as unknown as StateValue];
   }
   if (parameter.type === 'number') {
-    const samples = numberSamples(parameter, conditions);
+    const samples = numberSamples(parameter, conditions, constants);
     if (samples.length > 0) return samples;
     return parameter.required ? 'unbounded' : [undefined as unknown as StateValue];
   }
@@ -260,6 +328,38 @@ const coveringSample = (
   return [base, ...variations];
 };
 
+/**
+ * The parameters the explorer varies: the declared ones, plus the caller channel
+ * when the action reads it and is offered somewhere. Its domain is the offered
+ * channels, so a branch kept for one channel (a confirmation only an agent is
+ * asked for) is tried like any enum value instead of never running. A withheld
+ * channel is left out: a call on it is refused before any rule runs.
+ */
+const exploredParameters = (action: Action): readonly Parameter[] => {
+  const channels = offeredChannels(action);
+  if (channels.length === 0) return action.parameters;
+  // Any node naming it counts: a rule, an invariant, an effect or an outcome
+  // may read `{ kind:"param", name:"$channel" }`, and the name is reserved.
+  const body = JSON.stringify([
+    action.rules,
+    action.invariants,
+    action.effects,
+    action.onBlockedEffects ?? [],
+    action.outcomes ?? []
+  ]);
+  if (!body.includes(JSON.stringify(CALLER_CHANNEL_PARAM))) return action.parameters;
+  return [
+    ...action.parameters,
+    {
+      id: asParameterId(CALLER_CHANNEL_PARAM),
+      name: CALLER_CHANNEL_PARAM,
+      type: 'enum',
+      required: true,
+      enumValues: channels
+    }
+  ];
+};
+
 export const parameterCombinations = (
   action: Action,
   valueSets: readonly ValueSet[] | undefined,
@@ -276,9 +376,22 @@ export const parameterCombinations = (
     ...(context?.featureInvariants ?? []).map((invariant) => invariant.condition)
   ];
 
+  const constants = new Map<string, unknown>(
+    (context?.constants ?? []).map((constant) => [constant.name, constant.value])
+  );
+  const parameters = exploredParameters(action);
+  const edgeOnlyInputs = parameters
+    .filter((parameter) => parameter.type === 'number' && edgeOnly(parameter, conditions, constants))
+    .map((parameter) => parameter.name);
+  const witnessed = context?.witnessed ?? [];
   const perParameter: (readonly StateValue[])[] = [];
-  for (const parameter of action.parameters) {
-    const values = parameterValues(parameter, valueSets, conditions);
+  for (const parameter of parameters) {
+    const drawn = parameterValues(parameter, valueSets, conditions, constants);
+    const chosen = witnessed
+      .map((inputs) => inputs[parameter.name])
+      .filter((value): value is StateValue => value !== undefined && value !== null);
+    // A required input nothing bounds takes the values the solver chose for it.
+    const values = drawn === 'unbounded' && chosen.length > 0 ? uniqueValues(chosen) : drawn;
     if (values === 'unbounded') {
       return {
         explorable: false,
@@ -305,12 +418,12 @@ export const parameterCombinations = (
       (rule) => rule.effect.type === 'block_action'
     );
     raw = coveringSample(
-      action.parameters,
-      perParameter.map((values, i) => baseFirst(action.parameters[i]!, values, blockRules))
+      parameters,
+      perParameter.map((values, i) => baseFirst(parameters[i]!, values, blockRules))
     );
   } else {
-    for (let i = 0; i < action.parameters.length; i++) {
-      const parameter = action.parameters[i]!;
+    for (let i = 0; i < parameters.length; i++) {
+      const parameter = parameters[i]!;
       const values = perParameter[i]!;
       const next: Record<string, StateValue>[] = [];
       for (const base of raw) {
@@ -323,17 +436,28 @@ export const parameterCombinations = (
 
   // Drop undefined entries (unset optional params) so fillDefaults keeps the
   // parameter absent rather than overriding a default with undefined.
-  const combos = raw.map((combo) =>
+  const drawnCombos = raw.map((combo) =>
     fillDefaults(
-      action.parameters,
+      parameters,
       Object.fromEntries(Object.entries(combo).filter(([, value]) => value !== undefined))
     )
+  );
+  // The solver's inputs first, whole: each takes a branch the grid may miss.
+  const seen = new Set<string>();
+  const combos = [...witnessed.map((inputs) => fillDefaults(parameters, { ...inputs })), ...drawnCombos].filter(
+    (combo) => {
+      const key = JSON.stringify(Object.entries(combo).sort(([a], [b]) => a.localeCompare(b)));
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }
   );
 
   return {
     explorable: true,
     combos,
     capped,
+    ...(edgeOnlyInputs.length > 0 ? { edgeOnlyInputs } : {}),
     coverage: {
       fullGridSize: total,
       sampled: combos.length,

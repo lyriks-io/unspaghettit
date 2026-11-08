@@ -55,7 +55,7 @@ export const registerStateVariableTools = (deps: ToolDeps): void => {
         const stateVariables = projectStateVariables(project, features);
         return text({
           stateVariables,
-          coherenceIssues: stateCoherenceIssues(stateVariables, features)
+          coherenceIssues: stateCoherenceIssues(stateVariables, features, 'en', project.projectInvariants ?? [])
         });
       } catch (error) {
         return errorText((error as Error).message);

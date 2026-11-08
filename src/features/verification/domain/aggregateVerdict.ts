@@ -15,6 +15,10 @@ import {
   type ScenarioVerdict,
   type VerdictCheck
 } from './VerificationVerdict';
+import type { VerdictProof } from '$features/prover/ProverPort';
+
+/** Whether the exploration ran beside a proof, and why: said in the verdict, never guessed. */
+export type ExplorationPlan = VerdictProof['explorationPlan'];
 
 /**
  * Everything verifying one feature produced, plus the gate. The exploration and
@@ -35,6 +39,14 @@ export type FeatureVerdictInput = {
   /** Share of this feature's actions proven against code (verifiedAt stamped). */
   readonly verifiedCoverage?: VerifiedCoverage;
   readonly thresholds: VerificationThresholds;
+  /**
+   * What the proof module proved about the feature. Absent when the engine has
+   * none (nothing is said about it); `null` when it was turned off for this run
+   * (the verdict says nothing was proven).
+   */
+  readonly proof?: VerdictProof | null;
+  /** Set when the exploration was asked for and the solver made it unnecessary. */
+  readonly explorationSkipped?: ExplorationPlan;
 };
 
 const scenariosCheck = (
@@ -60,30 +72,6 @@ const scenariosCheck = (
     label: 'Scenarios',
     status: 'pass',
     detail: `${scenarios.passed}/${scenarios.total} passing`
-  };
-};
-
-const invariantsCheck = (
-  exploration: ExplorationReport,
-  thresholds: VerificationThresholds
-): VerdictCheck => {
-  if (exploration.invariantViolations.length === 0) {
-    return { id: 'invariants', label: 'Invariants', status: 'pass', detail: 'no reachable violation within bounds' };
-  }
-  return {
-    id: 'invariants',
-    label: 'Invariants',
-    status: thresholds.allowInvariantViolations ? 'warn' : 'fail',
-    detail: `${exploration.invariantViolations.length} reachable violation(s)`,
-    items: exploration.invariantViolations.map(
-      (v) => `${v.invariantName} via [${v.path.join(' → ')}]`
-    ),
-    traces: exploration.invariantViolations.map((v) => ({
-      label: v.invariantName,
-      path: v.path,
-      surfaceId: v.surfaceId,
-      actionId: v.actionId
-    }))
   };
 };
 
@@ -207,13 +195,53 @@ const unreachedActionsCheck = (exploration: ExplorationReport): VerdictCheck => 
   items: exploration.unreachedActions.map((a) => `${a.actionName}: ${a.reason}`)
 });
 
+/** Broken invariants the exploration found, one row per counterexample. */
+const invariantsCheck = (
+  exploration: ExplorationReport,
+  thresholds: VerificationThresholds
+): VerdictCheck => {
+  const explored = exploration.invariantViolations;
+  if (explored.length === 0) {
+    return { id: 'invariants', label: 'Invariants', status: 'pass', detail: 'no reachable violation within bounds' };
+  }
+  return {
+    id: 'invariants',
+    label: 'Invariants',
+    status: thresholds.allowInvariantViolations ? 'warn' : 'fail',
+    detail: `${explored.length} reachable violation(s)`,
+    items: explored.map((v) => `${v.invariantName} via [${v.path.join(' → ')}]`),
+    traces: explored.map((v) => ({
+      label: v.invariantName,
+      path: v.path,
+      surfaceId: v.surfaceId,
+      actionId: v.actionId
+    }))
+  };
+};
+
+/** Said in the verdict when the exploration was asked for and the proof made it unnecessary. */
+const explorationSkippedCheck = (plan: ExplorationPlan): VerdictCheck => ({
+  id: 'exploration',
+  label: 'Exploration',
+  status: 'pass',
+  detail: `not run: ${plan.reasons.join('; ')}`
+});
+
 const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
-  const { scenarios, maturity, exploration, reachability, drift, deadHandlers, verifiedCoverage, thresholds } =
-    input;
+  const { scenarios, maturity, reachability, drift, deadHandlers, verifiedCoverage, thresholds } = input;
+  const proved = input.proof
+    ? input.proof.checks({ ...(input.exploration ? { exploration: input.exploration } : {}), thresholds })
+    : undefined;
+  const exploration = input.exploration ? (proved?.exploration ?? input.exploration) : undefined;
   const checks: VerdictCheck[] = [scenariosCheck(scenarios, thresholds)];
 
+  // The solver's searches from the start stand where the exploration did not
+  // run; a solver that did not start searched nothing, so they say nothing.
+  if (!exploration && proved) checks.push(...proved.searches);
+  if (input.explorationSkipped) checks.push(explorationSkippedCheck(input.explorationSkipped));
+
   if (exploration) {
-    checks.push(invariantsCheck(exploration, thresholds));
+    checks.push(proved?.invariants ?? invariantsCheck(exploration, thresholds));
     if (exploration.goalResults.length > 0) checks.push(livenessCheck(exploration, thresholds));
     checks.push(deadActionsCheck(exploration, thresholds));
     if (exploration.unreachedActions.length > 0) checks.push(unreachedActionsCheck(exploration));
@@ -275,6 +303,16 @@ const aggregateChecks = (input: FeatureVerdictInput): VerdictCheck[] => {
       status: 'warn',
       detail: `${deadHandlers.length} handler(s) triggered by an event nothing in the project emits`,
       items: deadHandlers.map((h) => `${h.actionName} ← "${h.event}"`)
+    });
+  }
+
+  if (proved) checks.push(...proved.closing);
+  if (input.proof === null) {
+    checks.push({
+      id: 'solver',
+      label: 'Solver',
+      status: thresholds.failOnOpenProofs ? 'fail' : 'warn',
+      detail: 'turned off for this run: nothing was proven'
     });
   }
 

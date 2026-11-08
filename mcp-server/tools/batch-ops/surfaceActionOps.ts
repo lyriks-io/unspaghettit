@@ -6,10 +6,16 @@ import type { Surface } from '../../../src/features/behavior-model/domain/entiti
 import {
   asActionId,
   asEffectId,
+  asExposureId,
   asOutcomeId,
   asSurfaceId
 } from '../../../src/features/behavior-model/domain/value-objects/ids';
-import { buildActionActor, buildActionActorPatch } from '../_entity_builders';
+import {
+  buildActionActor,
+  buildActionActorPatch,
+  buildActionExposure,
+  patchActionExposure
+} from '../_entity_builders';
 import { normalizeEvolutionLoose } from '../_evolution';
 import {
   directionDelta,
@@ -253,6 +259,44 @@ export const applySurfaceActionOps = (op: Op, ctx: OpContext): Feature | null =>
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
         asActionId(resolve(op, refs, 'actionRef', 'actionId')),
         asOutcomeId(op.outcomeId as string)
+      );
+      break;
+
+    // ── Action exposure ─────────────────────────────────────────────
+    case 'add_action_exposure': {
+      const id = mintId();
+      exp = T.addExposureToAction(
+        exp,
+        asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
+        asActionId(resolve(op, refs, 'actionRef', 'actionId')),
+        buildActionExposure(op, id)
+      );
+      remember(op.ref, id);
+      break;
+    }
+    case 'update_action_exposure': {
+      const o = withPatch(op);
+      exp = T.updateExposureOnAction(
+        exp,
+        asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
+        asActionId(resolve(op, refs, 'actionRef', 'actionId')),
+        asExposureId(resolve(op, refs, 'exposureRef', 'exposureId')),
+        (current) => {
+          const next = patchActionExposure(current, o);
+          if (next === null) {
+            requireSomeChange(op, {}, ['channel', 'operation', 'withheld']);
+          }
+          return next ?? current;
+        }
+      );
+      break;
+    }
+    case 'remove_action_exposure':
+      exp = T.removeExposureFromAction(
+        exp,
+        asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
+        asActionId(resolve(op, refs, 'actionRef', 'actionId')),
+        asExposureId(resolve(op, refs, 'exposureRef', 'exposureId'))
       );
       break;
 

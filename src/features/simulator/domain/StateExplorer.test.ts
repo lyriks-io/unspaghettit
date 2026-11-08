@@ -5,6 +5,7 @@ import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import {
   asActionId,
   asEffectId,
+  asExposureId,
   asFeatureId,
   asInvariantId,
   asParameterId,
@@ -442,5 +443,243 @@ describe('exploreStateSpace — reachability goals', () => {
     expect(report.goalResults[0]!.satisfied).toBe(false);
     // Shortest path to a trap is a single incr (count 0 → 1).
     expect(report.goalResults[0]!.counterexamplePath).toEqual(['incr']);
+  });
+
+  it('tries every offered channel when an action reads the caller channel, so a channel-only branch is not dead', () => {
+    // Only an agent in the page may run it: every other channel is refused.
+    const agentOnly: Action = {
+      id: asActionId('agent-only'),
+      name: 'agent-only',
+      intent: 'an action only the in-page agent may run',
+      parameters: [],
+      requiredStates: [],
+      rules: [
+        {
+          id: asRuleId('only-webmcp'),
+          category: 'permissions',
+          condition: { left: { kind: 'param', name: '$channel' }, operator: 'not_equals', right: 'webmcp' },
+          effect: { id: asEffectId('e-only'), type: 'block_action', reason: 'agents only' }
+        }
+      ],
+      invariants: [],
+      effects: [],
+      emittedEvents: [],
+      transitions: [],
+      exposures: [
+        { id: asExposureId('x-ui'), channel: 'ui' },
+        { id: asExposureId('x-web'), channel: 'webmcp', operation: 'run_agent_only' }
+      ]
+    };
+    const feature = featureWith(countSurface([incr, agentOnly], []));
+    const report = exploreStateSpace(feature, { maxDepth: 3 });
+    expect(report.deadActions.map((a) => a.actionName)).not.toContain('agent-only');
+
+    // Without the exposure the channel is never supplied, and the branch is dead.
+    const { exposures: _dropped, ...unexposed } = agentOnly;
+    const bare = exploreStateSpace(featureWith(countSurface([incr, unexposed], [])), { maxDepth: 3 });
+    expect(bare.deadActions.map((a) => a.actionName)).toContain('agent-only');
+  });
+});
+
+
+describe('exploreStateSpace: numbers bounded by a sign or a named constant', () => {
+  const amountAction = (
+    validations: NonNullable<Action['parameters'][number]['validations']>,
+    rules: Action['rules'] = []
+  ): Action => ({
+    id: asActionId('top-up'),
+    name: 'top-up',
+    intent: 'adds an amount to the counter',
+    parameters: [
+      { id: asParameterId('p-amount'), name: 'amount', type: 'number', required: true, validations }
+    ],
+    requiredStates: [],
+    rules,
+    invariants: [],
+    effects: [
+      {
+        id: asEffectId('e-top-up'),
+        type: 'set_state',
+        path: asStatePath('count'),
+        value: { kind: 'add', left: { kind: 'state', path: asStatePath('count') }, right: { kind: 'param', name: 'amount' } }
+      }
+    ],
+    emittedEvents: [],
+    transitions: []
+  });
+
+  it('tries the edge of a positive input instead of skipping the action', () => {
+    const feature = featureWith(countSurface([amountAction([{ type: 'positive' }])], []));
+    const report = exploreStateSpace(feature, { maxDepth: 2 });
+    expect(report.skippedActions).toEqual([]);
+    expect(report.statesExplored).toBeGreaterThan(1);
+  });
+
+  it('tries both sides of a threshold written as a constant', () => {
+    const capped = amountAction(
+      [],
+      [
+        {
+          id: asRuleId('r-cap'),
+          category: 'billing_quota',
+          condition: { left: { kind: 'param', name: 'amount' }, operator: 'greater_than', right: { kind: 'const', name: 'MAX_TOPUP' } },
+          effect: { id: asEffectId('e-cap'), type: 'block_action', reason: 'over the cap' }
+        }
+      ]
+    );
+    const feature: Feature = {
+      ...featureWith(
+        countSurface(
+          [capped],
+          [
+            {
+              id: asInvariantId('i-cap'),
+              name: 'count stays under two caps',
+              condition: { left: asStatePath('count'), operator: 'lower_or_equal', right: 100 },
+              message: 'too high'
+            }
+          ]
+        )
+      ),
+      constants: [{ id: 'c-cap' as never, name: 'MAX_TOPUP', description: 'top-up cap', value: 60 }]
+    };
+    const report = exploreStateSpace(feature, { maxDepth: 2 });
+    expect(report.skippedActions).toEqual([]);
+    // 60 then 60 again is allowed by the cap and breaks the invariant: only a
+    // value mined from the constant gets there.
+    expect(report.invariantViolations.map((v) => v.invariantName)).toContain('count stays under two caps');
+  });
+
+  it('calls no action dead once another action was skipped', () => {
+    const skipped = { ...amountAction([]), id: asActionId('free'), name: 'free' };
+    const gated: Action = {
+      ...incr,
+      id: asActionId('gated'),
+      name: 'gated',
+      rules: [
+        {
+          id: asRuleId('r-gated'),
+          category: 'business',
+          condition: { left: asStatePath('count'), operator: 'lower_than', right: 5 },
+          effect: { id: asEffectId('e-gated'), type: 'block_action', reason: 'needs five' }
+        }
+      ]
+    };
+    const report = exploreStateSpace(featureWith(countSurface([skipped, gated], [])), { maxDepth: 3 });
+    expect(report.skippedActions.map((a) => a.actionName)).toEqual(['free']);
+    expect(report.deadActions).toEqual([]);
+    expect(report.unreachedActions).toEqual([
+      expect.objectContaining({ actionName: 'gated', reason: expect.stringContaining('skipped "free"') })
+    ]);
+  });
+});
+
+describe('exploreStateSpace: an input tried at its sign edge alone', () => {
+  it('calls no action dead, since one value does not cover an open domain', () => {
+    const earn: Action = {
+      ...incr,
+      id: asActionId('earn'),
+      name: 'earn',
+      parameters: [
+        { id: asParameterId('p-points'), name: 'points', type: 'number', required: true, validations: [{ type: 'positive' }] }
+      ],
+      effects: [
+        {
+          id: asEffectId('e-earn'),
+          type: 'set_state',
+          path: asStatePath('count'),
+          value: { kind: 'add', left: { kind: 'state', path: asStatePath('count') }, right: { kind: 'param', name: 'points' } }
+        }
+      ]
+    };
+    const upgrade: Action = {
+      ...incr,
+      id: asActionId('upgrade'),
+      name: 'upgrade',
+      rules: [
+        {
+          id: asRuleId('r-upgrade'),
+          category: 'business',
+          condition: { left: asStatePath('count'), operator: 'lower_than', right: 1000 },
+          effect: { id: asEffectId('e-upgrade'), type: 'block_action', reason: 'needs 1000' }
+        }
+      ]
+    };
+    const report = exploreStateSpace(featureWith(countSurface([earn, upgrade], [])), { maxDepth: 3 });
+    expect(report.truncated).toBe(true);
+    expect(report.deadActions).toEqual([]);
+    expect(report.unreachedActions).toEqual([
+      expect.objectContaining({ actionName: 'upgrade', reason: expect.stringContaining('edge of its sign') })
+    ]);
+  });
+});
+
+// Criterion d8e6e142: the exploration tries the inputs the solver chose.
+describe('exploreStateSpace with the solver inputs', () => {
+  it('reaches a break behind a required text input the explorer could not invent', () => {
+    const redeem: Action = {
+      id: asActionId('redeem'),
+      name: 'Redeem',
+      intent: 'redeem a code',
+      parameters: [{ id: asParameterId('code'), name: 'code', type: 'string', required: true }],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [
+        {
+          id: asEffectId('credit'),
+          type: 'set_state',
+          path: asStatePath('credit'),
+          value: {
+            kind: 'add',
+            left: { kind: 'state', path: asStatePath('credit') },
+            right: { kind: 'literal', value: 50 }
+          }
+        }
+      ],
+      emittedEvents: [],
+      transitions: []
+    };
+    const feature = {
+      id: asFeatureId('codes'),
+      name: 'Codes',
+      surfaces: [
+        {
+          id: asSurfaceId('s'),
+          name: 'Codes',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d'), path: asStatePath('credit'), type: 'number', defaultValue: 0 }
+          ],
+          actions: [redeem],
+          rules: [],
+          invariants: [
+            {
+              id: asInvariantId('cap'),
+              name: 'Credit stays under 100',
+              condition: { left: asStatePath('credit'), operator: 'lower_than', right: 100 },
+              message: 'over the cap'
+            }
+          ],
+          transitions: []
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-09-29T00:00:00.000Z',
+      updatedAt: '2026-09-29T00:00:00.000Z'
+    } as unknown as Feature;
+
+    const blind = exploreStateSpace(feature, { maxDepth: 3 });
+    expect(blind.skippedActions.map((a) => a.actionName)).toEqual(['Redeem']);
+    expect(blind.invariantViolations).toEqual([]);
+
+    const guided = exploreStateSpace(feature, {
+      maxDepth: 3,
+      witnessedInputs: new Map([['redeem', [{ code: 'WELCOME' }]]])
+    });
+    expect(guided.skippedActions).toEqual([]);
+    expect(guided.invariantViolations[0]?.path).toEqual(['Redeem', 'Redeem']);
   });
 });

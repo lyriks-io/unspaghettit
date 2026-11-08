@@ -168,7 +168,7 @@ export const getProjectAggregateUseCase = (deps: {
       events,
       transitions,
       stateVariables,
-      stateCoherenceIssues: stateCoherenceIssues(stateVariables, loaded),
+      stateCoherenceIssues: stateCoherenceIssues(stateVariables, loaded, 'en', project.projectInvariants ?? []),
       actionStats: actionRollup.stats,
       actions: actionRollup.actions,
       actionConcepts: actionRollup.concepts,

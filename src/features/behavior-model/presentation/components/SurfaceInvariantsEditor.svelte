@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { earsReading } from '$features/behavior-model/presentation/view-models/earsReading.svelte';
   import type { Surface } from '$features/behavior-model/domain/entities/Surface';
   import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
@@ -68,6 +69,7 @@
           <InvariantEditor
             {invariant}
             {availablePaths}
+            sentence={earsReading.invariant(invariant)}
             onChange={(next) => update(next)}
             onRemove={() => remove(invariant)}
           />

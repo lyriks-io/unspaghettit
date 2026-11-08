@@ -4,6 +4,7 @@ import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import {
   asActionId,
+  asExposureId,
   asEffectId,
   asFeatureId,
   asInvariantId,
@@ -352,5 +353,43 @@ describe('buildDigest', () => {
     expect(navigation?.lines).toHaveLength(1);
     expect(navigation?.lines[0]?.text).toBe('Manage tasks to Tasks');
     expect(navigation?.lines.every((l) => !l.text.includes('another surface'))).toBe(true);
+  });
+
+  it('says which channels an action is reachable over and which it is kept off, and nothing when undeclared', () => {
+    const exposed: Feature = {
+      ...feature,
+      surfaces: [
+        {
+          ...panel,
+          actions: panel.actions.map((a) =>
+            a.id === generate.id
+              ? {
+                  ...a,
+                  exposures: [
+                    { id: asExposureId('x1'), channel: 'api', operation: 'POST /digests' },
+                    {
+                      id: asExposureId('x2'),
+                      channel: 'mcp',
+                      withheld: { reason: 'Too costly for an agent loop.' }
+                    }
+                  ]
+                }
+              : a
+          )
+        },
+        exportPanel
+      ]
+    };
+    const spec = buildDigest({
+      features: [exposed],
+      scope: { kind: 'feature', featureId: 'f-digest' },
+      detailLevel: 'full'
+    });
+    const lines = spec.sections.find((s) => s.kind === 'capabilities')?.lines ?? [];
+    const details = lines.find((l) => l.label === 'Generate Digest')?.details ?? [];
+    expect(details).toContain('Reachable over api (POST /digests)');
+    expect(details).toContain('Kept off mcp: Too costly for an agent loop.');
+    const other = lines.find((l) => l.label === 'Open Export')?.details ?? [];
+    expect(other.some((d) => d.startsWith('Reachable') || d.startsWith('Kept off'))).toBe(false);
   });
 });

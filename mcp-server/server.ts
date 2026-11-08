@@ -41,6 +41,8 @@ import { registerReachabilityGoalTools } from './tools/reachabilityGoal';
 import { registerAcceptanceCriterionTools } from './tools/acceptanceCriterion';
 import { registerQueueTools } from './tools/queue';
 import { registerReadTools } from './tools/read';
+import { registerSimulateStepsTool } from './tools/simulateSteps';
+import { registerProjectBatchTool } from './tools/projectBatch';
 import { registerReorderTools } from './tools/reorder';
 import { registerRepoContextTool } from './tools/repoContext';
 import { registerRepoOutlineTool } from './tools/repoOutline';
@@ -48,6 +50,8 @@ import { registerResourceTools } from './tools/resource';
 import { registerRuleTools } from './tools/rule';
 import { registerScenarioTools } from './tools/scenario';
 import { registerSpecGapsTool } from './tools/specGaps';
+import { registerProverTools } from './tools/prover';
+import { proverLoad, type ProverLoad } from '../src/features/prover/loadProver';
 import { registerStateDefinitionTools } from './tools/state';
 import { registerStateVariableTools } from './tools/stateVariable';
 import { registerSurfaceTools } from './tools/surface';
@@ -100,6 +104,8 @@ export type BuildServerDeps = {
   readonly sourceRepo?: ProjectSourceRepository;
   readonly projectRepo?: ProjectRepository;
   readonly repoContext?: RepoContext;
+  /** The proof module: the one UNSPA_PROVER names unless given (tests). */
+  readonly prover?: ProverLoad;
 };
 
 // Cold-start primer for any LLM that connects to this server with no other
@@ -188,7 +194,8 @@ export const buildServer = (
     provenanceRepo,
     sourceRepo,
     repoContext: deps.repoContext,
-    version: PACKAGE_VERSION
+    version: PACKAGE_VERSION,
+    prover: deps.prover ?? proverLoad()
   };
 
   registerGuideResource(server);
@@ -197,6 +204,8 @@ export const buildServer = (
   registerRepoOutlineTool(toolDeps);
   registerBehavioralIndexTools(toolDeps);
   registerReadTools(toolDeps);
+  registerSimulateStepsTool(toolDeps);
+  registerProjectBatchTool(toolDeps);
   registerFeatureTools(toolDeps);
   registerSurfaceTools(toolDeps);
   registerActionTools(toolDeps);
@@ -225,6 +234,7 @@ export const buildServer = (
   registerStateVariableTools(toolDeps);
   registerQueueTools(toolDeps);
   registerSpecGapsTool(toolDeps);
+  registerProverTools(toolDeps, toolDeps.prover ?? { state: 'not-asked' });
   registerVerificationTools(toolDeps);
 
   server.registerResource(

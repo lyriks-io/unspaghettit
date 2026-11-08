@@ -1,5 +1,8 @@
 <script lang="ts">
-  import type { Action } from '$features/behavior-model/domain/entities/Action';
+  import {
+    callableParameterNames,
+    type Action
+  } from '$features/behavior-model/domain/entities/Action';
   import type {
     Scenario,
     ScenarioAssertion
@@ -47,7 +50,8 @@
 
   const scenarios = $derived(action.scenarios ?? []);
   const availablePaths = $derived(surface.stateDefinitions.map((d) => d.path));
-  const parameterNames = $derived(action.parameters.map((p) => p.name));
+  // Declared parameters, plus $channel once the action declares a channel.
+  const parameterNames = $derived([...callableParameterNames(action)]);
   let expandedId = $state<ScenarioId | null>(null);
 
   function parseValue(raw: string): StateValue {
@@ -190,7 +194,8 @@
       {#each scenarios as scenario, index (scenario.id)}
         {@const isExpanded = expandedId === scenario.id}
         <li
-          class="rounded-md border bg-white {isExpanded
+          data-focus-target={`scenario:${scenario.id}`}
+          class="scroll-mt-24 rounded-md border bg-white {isExpanded
             ? 'border-brand-300 ring-1 ring-brand-200'
             : 'border-neutral-200'}"
         >

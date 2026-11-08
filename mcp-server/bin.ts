@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { resolveUpdateStatus } from '../src/features/update-check/infrastructure/updateCheck';
 import { JsonFolderFeatureRepository } from '../src/features/behavior-model/infrastructure/persistence/JsonFolderFeatureRepository';
@@ -13,6 +14,7 @@ import {
   fileNamingFromEnv,
   migrateFlatLayoutAndLog
 } from '../src/shared/infrastructure/persistence/snapshotLayout';
+import { loadedProver } from '../src/features/prover/loadProver';
 import { discoverRepoLink } from './repo-link';
 import { buildServer } from './server';
 import {
@@ -55,6 +57,14 @@ const main = async (): Promise<void> => {
   const args = parseArgs(process.argv.slice(2));
   const override = args.override ?? process.env.UNSPA_SNAPSHOTS;
   const { directory, source } = discoverSnapshotDirectory({ override });
+  const version = (createRequire(import.meta.url)('../package.json') as { version: string })
+    .version;
+  // Proofs outlive this process beside the models, so an unchanged feature
+  // reads the same findings after a restart. UNSPA_PROOF_CACHE=off keeps them
+  // in memory only.
+  loadedProver()?.storeProofsIn(
+    process.env.UNSPA_PROOF_CACHE === 'off' ? null : join(directory, '.cache', 'proofs')
+  );
   const linkOverride = args.link ?? process.env.UNSPA_LINK;
 
   // Snapshot the link state once for the startup banner; the live repoContext
@@ -130,8 +140,6 @@ const main = async (): Promise<void> => {
   // a newer release without any network I/O on its own hot path. Fire-and-
   // forget and fail-silent; the env opt-out (UNSPA_NO_UPDATE_CHECK / CI) turns
   // it into a no-op. Never blocks serving.
-  const version = (createRequire(import.meta.url)('../package.json') as { version: string })
-    .version;
   void resolveUpdateStatus({ current: version }).catch(() => {});
 };
 

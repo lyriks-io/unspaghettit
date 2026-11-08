@@ -41,3 +41,33 @@ export type { LibraryKind } from '$features/projects/domain/services/projectLibr
 
 export type { Feature } from '$features/behavior-model/domain/entities/Feature';
 export type { Project } from '$features/projects/domain/entities/Project';
+
+// The requirement sentences of a model (EARS for rules, statements and goals,
+// Given/When/Then for scenarios), built by a fixed template: one template for
+// the editor, the Lyriks rule inventory and the AI clients.
+export {
+  actionContextOf,
+  actionPhrase,
+  conditionText,
+  earsOfEffect,
+  earsOfGoal,
+  earsOfInvariant,
+  earsOfRule,
+  eventClause,
+  expressionText,
+  featureConstants,
+  featureLanguage,
+  featureProperNames,
+  featureStatements,
+  gwtOfScenario,
+  properNamesIn,
+  refusalCase,
+  refusalLead,
+  statesRead,
+  words
+} from '$features/behavior-model/domain/services/requirementSentences';
+export type {
+  ActionContext,
+  Constants
+} from '$features/behavior-model/domain/services/requirementSentences';
+export type { ReportLanguage } from '$shared/language';

@@ -6,6 +6,98 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.27.0] - Unreleased
+
+An action says which channels it is reachable through.
+A proof module, where one is loaded, proves for every value at once what the examples cannot reach.
+
+### Added
+
+- An action carries optional `exposures`: each names a channel (`ui`, `api`,
+  `mcp`, `webmcp`, `cli`; `webmcp` is the tools a page exposes to an agent in
+  the person's own browser session, apart from a remote `mcp` server) and, when it helps, the operation that channel knows it by
+  (`PUT /issues/:id`, `update_issue`). Free text, no protocol contract: the
+  contract is the action itself. An exposure may instead say the action is
+  `withheld` from a channel on purpose, and then carries its reason.
+- Batch ops `add_action_exposure`, `update_action_exposure` and
+  `remove_action_exposure`; an exposure can be added in the same batch as its
+  action through `actionRef`. Removing an action removes its exposures.
+- The validator refuses an unknown channel, a withheld exposure without a
+  reason or with an operation, an action offered and withheld on one channel,
+  and two actions of one feature claiming the same operation on the same
+  channel.
+- `exposure:<id>` is an index key: it is never an orphan while the exposure
+  exists, and it goes stale in `get_drift` when the exposure changes. An
+  exposure is stamped on its own, so changing it never marks the action's code
+  stale. The batch `created` rows name the key.
+- The channel a call arrives through is a parameter of that call, `$channel`
+  (reserved), in scope on an action offered somewhere. A rule or invariant can
+  read it and compare it with the channels the action offers (an agent must
+  have the person confirm a deletion, say). A scenario or a simulation sets it
+  like any parameter; a call on a withheld channel is blocked with the
+  withholding reason. The verification tries every offered channel when an
+  action reads it, so a channel-only branch is never reported dead.
+- `list_actions`, `get_surface` and the `get_feature` index show the channels
+  an action offers and withholds; the digest says them in a line each.
+
+- `simulate_steps`: walk a feature step by step without saving anything. Each
+  step says whether it ran, why it was refused (the rule's reason, a rejected
+  input, a broken invariant), which state paths it changed (before and after),
+  its messages and events, the surface it moved to and the handlers it woke up.
+  `operations` (the apply_batch vocabulary) are applied in memory first and
+  validated like a batch, and `blank:true` starts from an empty feature, so a
+  feature can be tried before it exists. `runScenarios` runs every scenario and
+  `modelCheck` explores the state space of the simulated feature in the same
+  call, `includeFeature` returns it, and steps are then optional.
+- A model kept outside the store keeps its ids: `simulate_steps` answers the
+  `mintedIds` it minted and replays those it is given, `newOperationsFrom`
+  reports `created` and the touched scenarios of the new operations alone, and
+  `apply_batch` takes `mintedIds` too, so a model tried in memory (an Evolution
+  draft) lands with the ids its later operations and scenarios name.
+
+- `apply_project_batch`: the project-level counterpart of apply_batch, one
+  atomic load, validate and save for cross-feature invariants, canonical state
+  variables (with their data-field links) and core features. An invariant that
+  reads a state no feature of the project declares, or a parameter, is refused;
+  drift between a state variable and the field it mirrors is a warning.
+- `simulate_steps` enforces the project's invariants on every step, seeding the
+  other features' state from their defaults as verify does, and its model
+  check explores under them too. `projectId` names the project when the store
+  cannot tell (an empty feature, a draft).
+- `generate_types` without `outputPath` returns the module source instead of
+  writing a file, for a client that is not on the engine's machine.
+- Batch ops `set_non_goals` and `set_expected_actions`: the feature's scope
+  fence, authored in the same batch as the rest of the model.
+
+A channel nothing declares is undeclared, not a defect: no check asks for an
+exposure. Backward compatible: a feature without exposures loads, validates,
+scores and stamps exactly as before.
+
+- Proof is a module of its own. The engine holds no solver (`z3-solver` is no
+  longer a dependency); it loads the proof module `UNSPA_PROVER` names (a
+  package name or a path) and asks it through a port
+  (`src/features/prover/ProverPort.ts`): `verify` and `unspa check` fold its
+  checks into the verdict, `get_spec_gaps` lists its gaps and its `proof`
+  block, `model_check` and `simulate_steps` try the inputs it witnessed first
+  and show its proof beside the exploration, and its own tools (what-if,
+  project rules) are registered while it is loaded. The module receives a
+  narrow kernel (`src/features/prover/kernel.ts`: how a condition is read, what
+  a step does, where a run starts) and never imports the engine, so every proof
+  is replayed with the engine's own simulator.
+- A module built for another engine contract (`KERNEL_API`) is refused: like a
+  module that cannot be loaded, it proves nothing, `solver_status` says why, and
+  `get_spec_gaps` and `verify` say the solver did not start. Without
+  `UNSPA_PROVER`, no proof, what-if or solver tool is offered and nothing is
+  said about proofs.
+- A state declared at a path that is not a state path (`driver.0.name`) is a
+  critical gap on its surface and is left out of the project's canonical
+  states, instead of making the gaps of every feature of the project fail.
+- `model_check` tries a number input declared `positive` (1) or
+  `non_negative` (0) instead of skipping its action, and mines thresholds
+  written as named constants like literal ones. An input tried only at the edge
+  of its sign, or an action skipped for want of a value, makes the exploration
+  bounded: the actions it never saw running are reported unreached with that
+  reason, never dead.
 ## [0.25.2] - 2026-09-25
 
 A partial surface is read, and a batch says what it minted.

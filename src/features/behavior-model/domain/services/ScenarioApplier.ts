@@ -1,4 +1,4 @@
-import type { Action } from '../entities/Action';
+import { callableParameterNames, type Action } from '../entities/Action';
 import type { Scenario } from '../entities/Scenario';
 import type { ParameterValues } from './ParameterValidator';
 import { writePath, type StateSnapshot } from '../value-objects/StatePath';
@@ -30,7 +30,7 @@ export const applyScenarioToParameters = (
   current: ParameterValues
 ): ParameterValues => {
   const fromScenario: { [k: string]: ParameterValues[string] } = {};
-  const paramNames = new Set(action.parameters.map((p) => p.name));
+  const paramNames = callableParameterNames(action);
   for (const override of scenario.parameterOverrides) {
     if (paramNames.has(override.parameterName)) {
       fromScenario[override.parameterName] = override.value;

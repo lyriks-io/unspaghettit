@@ -119,7 +119,10 @@
             </thead>
             <tbody>
               {#each group.rows as row (`${row.feature.id}:${row.surface.id}:${row.definition.id}`)}
-                <tr class="border-t border-slate-100 align-top">
+                <tr
+                  data-focus-target={`state:${row.definition.path}`}
+                  class="border-t border-slate-100 align-top"
+                >
                   <td class="px-3 py-2 text-xs text-slate-600">
                     <a
                       href={featureHref(String(row.feature.id), {

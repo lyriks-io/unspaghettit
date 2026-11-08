@@ -298,7 +298,8 @@ const ID_KEYED_TYPES = new Set([
   'surface_rule',
   'surface_invariant',
   'entity',
-  'criterion'
+  'criterion',
+  'exposure'
 ]);
 const HEX_ID_RE = /^[a-f0-9]{8}$|^[a-f0-9-]{36}$/i;
 
@@ -341,6 +342,8 @@ export const buildKeyOwners = (features: readonly Feature[]): Map<string, string
         for (const r of action.rules) own(`rule:${String(r.id)}`);
         for (const inv of action.invariants) own(`invariant:${String(inv.id)}`);
         for (const t of action.transitions) own(`transition:${String(t.id)}`);
+        // What serves an exposure (a route handler, an MCP tool) is mapped like code.
+        for (const e of action.exposures ?? []) own(`exposure:${String(e.id)}`);
       }
     }
   }
@@ -842,7 +845,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'sync_from_index',
     {
       description:
-        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and disk snippets are then skipped, since both need the real files; each entry\'s `signature` becomes its code evidence, and an entry with no signature lands as `unverified` in the dashboard, so seed entries via seed_index_from_analysis or copy the real code line into `signature` yourself). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.), and the `verifiedAt` of an action entry (stamped by `unspa coverage ingest` when every scenario of the action passed against the real code) travels with it: the action report keeps it as `auditMeta.verifiedAt`, and an entry synced later WITHOUT it clears it. The `verified` block of the answer counts both: { actions (action reports of this sync that carry verifiedAt), cleared (actions that held one before this sync and no longer do) }. Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `shared` block lists keys that SEVERAL features declare (a state path is not unique across features): the index holds one entry per key, so its file and line describe whichever feature was seeded last, and coverage and drift for the others resolve to that same location. Reported, never fatal, and it does not affect `ok`. The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. A `criterion:<id>` key maps what VERIFIES an acceptance criterion (a test, a script, a manual check) and may carry `verification: { kind: unit|integration|e2e|visual|measurement|manual, command?, files?, artifacts?, lastResult?: { passed, at, summary?, revision? } }`. Criterion entries produce NO action or surface report and change neither `synced` nor `skipped`; they feed the `criteria` block: { total, indexed, verified (lastResult.passed true), failing (lastResult.passed false), unverified (indexed, no lastResult), entries: [{ key, criterionId, title, standing, indexed, file?, verification? }], malformed[] }, where `standing` is the computed one-liner (active | superseded by <ids> | draft | ...). A malformed verification block is listed in `criteria.malformed` and never rejects the sync. The block is recomputed from the index on every call. What it says is also KEPT with the status record of each feature, one record per criterion the index names: { criterionId, key, status, file?, line?, signature?, verification?, specVersion?, syncedAt }. A criterion the index does not name keeps the record it had (the partial-index rule action reports follow), an entry with status `missing` removes it, and get_implementation_status reads the records back against the current spec. If a record could not be written, `criteriaNotKept` lists it and `ok` is false. None of this ever affects maturity or any verification score. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
+        'Read the behavioral index and push a full implementation-status report for every action and surface in one call. The index comes from .unspa.json by default; pass `index` + `projectId` to sync an index the caller holds instead (for hosts that run this server without access to the checkout — line-healing and disk snippets are then skipped, since both need the real files; each entry\'s `signature` becomes its code evidence, and an entry with no signature lands as `unverified` in the dashboard, so seed entries via seed_index_from_analysis or copy the real code line into `signature` yourself). No UUIDs or get_feature(verbose:true) needed. Every entity must have its own index entry: an action/surface entry only contributes the top-level row, and each child (event:<name>, rule:<id>, invariant:<id>, transition:<id>, state:<path>, surface_rule:<id>, surface_invariant:<id>) must be indexed separately at the exact line where it lives in code. Children without their own entry are reported missing. There is no fallback to the parent\'s location, because the parent snippet does not describe the child. Ids are the 8-char hex values the spec mints (read them via `get_feature(verbose:true)` or `get_behavioral_index`) - slug-like keys (e.g. `action:add-to-cart`) are not accepted. auditMeta is attached automatically from the index entry fields (auditedAt, gitCommit, kind, etc.), and the `verifiedAt` of an action entry (stamped by `unspa coverage ingest` when every scenario of the action passed against the real code) travels with it: the action report keeps it as `auditMeta.verifiedAt`, and an entry synced later WITHOUT it clears it. The `verified` block of the answer counts both: { actions (action reports of this sync that carry verifiedAt), cleared (actions that held one before this sync and no longer do) }. Each location gets a 3-line code slice (line ±1) read from disk as its snippet. Before sync runs, every entry is auto-healed: if the audited signature still exists in the file but at a different line, the index is rewritten in place and persisted back to disk. The response includes a `healed` block listing every entry that moved. The `stale` block lists entries whose signature could not be located at all (need a manual re-audit). The `shared` block lists keys that SEVERAL features declare (a state path is not unique across features): the index holds one entry per key, so its file and line describe whichever feature was seeded last, and coverage and drift for the others resolve to that same location. Reported, never fatal, and it does not affect `ok`. The `incomplete` block lists each action or surface entry of the index (any status but missing) that came without some of the children the spec declares under it: { key, featureId, missing: [child keys] }. Those children are reported missing, so the coverage of that action or surface drops; send them with their parent. Never fatal, and it does not affect `ok`. The `orphans` block lists any keys in .unspa.json that do not correspond to a spec entity (typo, removed entity, or wrong key format) - each orphan carries a `hint` pointing at the likely fix. A `criterion:<id>` key maps what VERIFIES an acceptance criterion (a test, a script, a manual check) and may carry `verification: { kind: unit|integration|e2e|visual|measurement|manual, command?, files?, artifacts?, lastResult?: { passed, at, summary?, revision? } }`. Criterion entries produce NO action or surface report and change neither `synced` nor `skipped`; they feed the `criteria` block: { total, indexed, verified (lastResult.passed true), failing (lastResult.passed false), unverified (indexed, no lastResult), entries: [{ key, criterionId, title, standing, indexed, file?, verification? }], malformed[] }, where `standing` is the computed one-liner (active | superseded by <ids> | draft | ...). A malformed verification block is listed in `criteria.malformed` and never rejects the sync. The block is recomputed from the index on every call. What it says is also KEPT with the status record of each feature, one record per criterion the index names: { criterionId, key, status, file?, line?, signature?, verification?, specVersion?, syncedAt }. A criterion the index does not name keeps the record it had (the partial-index rule action reports follow), an entry with status `missing` removes it, and get_implementation_status reads the records back against the current spec. If a record could not be written, `criteriaNotKept` lists it and `ok` is false. None of this ever affects maturity or any verification score. `ok` is true only when sync succeeded AND no orphans were found. Call this after writing or updating .unspa.json to sync the dashboard.',
       inputSchema: { ...inlineIndexSchema }
     },
     async ({ index: inlineIndex, projectId: inlineProjectId }) => {
@@ -926,6 +929,17 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       // keys the user wrote that don't correspond to any spec entity.
       const expectedKeys = buildExpectedIndexKeys(features);
 
+      // An action or surface sent without some of the children the spec declares
+      // under it: those children are reported missing, so its coverage drops,
+      // and the answer says which keys it came without (criterion 1f758e2d).
+      const incomplete: { key: string; featureId: string; missing: string[] }[] = [];
+      const locate = (childKey: string, absent: string[]): TagLocation | null => {
+        const loc = resolveChildLocation(childKey, index, repoRoot, fileCache);
+        if (loc) recordStale(loc, childKey);
+        else absent.push(childKey);
+        return loc;
+      };
+
       for (const exp of features) {
         const featureId = exp.id;
         const before = await getImplementationStatus(featureId);
@@ -955,6 +969,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
           if (!capEntry) continue;
 
           const foundEntities: ReportEntityInput[] = [];
+          const absent: string[] = [];
 
           if (capEntry.status !== 'missing') {
             const capLoc = entryToLocation(capEntry, repoRoot, fileCache);
@@ -967,37 +982,35 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
 
             for (const event of action.emittedEvents) {
               const childKey = `event:${String(event)}`;
-              const loc = resolveChildLocation(childKey, index, repoRoot, fileCache);
+              const loc = locate(childKey, absent);
               if (loc) {
-                recordStale(loc, childKey);
                 foundEntities.push({ entityType: 'event', entityId: String(event), locations: [loc] });
               }
             }
             for (const rule of action.rules) {
               const childKey = `rule:${String(rule.id)}`;
-              const loc = resolveChildLocation(childKey, index, repoRoot, fileCache);
+              const loc = locate(childKey, absent);
               if (loc) {
-                recordStale(loc, childKey);
                 foundEntities.push({ entityType: 'rule', entityId: String(rule.id), locations: [loc] });
               }
             }
             for (const inv of action.invariants) {
               const childKey = `invariant:${String(inv.id)}`;
-              const loc = resolveChildLocation(childKey, index, repoRoot, fileCache);
+              const loc = locate(childKey, absent);
               if (loc) {
-                recordStale(loc, childKey);
                 foundEntities.push({ entityType: 'invariant', entityId: String(inv.id), locations: [loc] });
               }
             }
             for (const t of action.transitions) {
               const childKey = `transition:${String(t.id)}`;
-              const loc = resolveChildLocation(childKey, index, repoRoot, fileCache);
+              const loc = locate(childKey, absent);
               if (loc) {
-                recordStale(loc, childKey);
                 foundEntities.push({ entityType: 'transition', entityId: String(t.id), locations: [loc] });
               }
             }
           }
+
+          if (absent.length > 0) incomplete.push({ key: capKey, featureId: String(featureId), missing: absent });
 
           const auditMeta = extractAuditMeta(capEntry);
           try {
@@ -1028,6 +1041,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
         if (!surfEntry) continue;
 
         const surfFoundEntities: ReportEntityInput[] = [];
+        const absent: string[] = [];
 
         // Same gate as actions: any status but `missing` resolves the children.
         // A `partial` surface still has its indexed states and invariants in the
@@ -1036,29 +1050,28 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
         if (surfEntry.status !== 'missing') {
           for (const sd of surface.stateDefinitions) {
             const childKey = `state:${String(sd.path)}`;
-            const loc = resolveChildLocation(childKey, index, repoRoot, fileCache);
+            const loc = locate(childKey, absent);
             if (loc) {
-              recordStale(loc, childKey);
               surfFoundEntities.push({ entityType: 'state', entityId: String(sd.id), locations: [loc] });
             }
           }
           for (const r of surface.rules) {
             const childKey = `surface_rule:${String(r.id)}`;
-            const loc = resolveChildLocation(childKey, index, repoRoot, fileCache);
+            const loc = locate(childKey, absent);
             if (loc) {
-              recordStale(loc, childKey);
               surfFoundEntities.push({ entityType: 'surface_rule', entityId: String(r.id), locations: [loc] });
             }
           }
           for (const inv of surface.invariants) {
             const childKey = `surface_invariant:${String(inv.id)}`;
-            const loc = resolveChildLocation(childKey, index, repoRoot, fileCache);
+            const loc = locate(childKey, absent);
             if (loc) {
-              recordStale(loc, childKey);
               surfFoundEntities.push({ entityType: 'surface_invariant', entityId: String(inv.id), locations: [loc] });
             }
           }
         }
+
+        if (absent.length > 0) incomplete.push({ key: surfKey, featureId: String(featureId), missing: absent });
 
         const surfAuditMeta = extractAuditMeta(surfEntry);
         try {
@@ -1145,6 +1158,10 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
           shared: {
             total: shared.length,
             entries: shared
+          },
+          incomplete: {
+            total: incomplete.length,
+            entries: incomplete
           },
           criteria,
           ...(criteriaNotKept.length > 0 ? { criteriaNotKept } : {}),

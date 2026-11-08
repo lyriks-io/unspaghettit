@@ -34,6 +34,8 @@ type IdentifierSets = {
   readonly eventNames: ReadonlySet<string>;
   /** Acceptance criteria, keyed `criterion:<id>`: what verifies one is mapped like code. */
   readonly criterionIds: ReadonlySet<string>;
+  /** Action exposures, keyed `exposure:<id>`: what serves one is mapped like code. */
+  readonly exposureIds: ReadonlySet<string>;
   /** Personas, resources, entities, value sets — keyed by id for the generic fallback. */
   readonly otherIds: ReadonlySet<string>;
 };
@@ -47,6 +49,7 @@ const buildIdentifierSets = (feature: Feature): IdentifierSets => {
   const transitionIds = new Set<string>();
   const eventNames = new Set<string>();
   const criterionIds = new Set<string>();
+  const exposureIds = new Set<string>();
   const otherIds = new Set<string>();
 
   for (const inv of feature.featureInvariants ?? []) invariantIds.add(String(inv.id));
@@ -68,6 +71,7 @@ const buildIdentifierSets = (feature: Feature): IdentifierSets => {
       for (const rule of action.rules) ruleIds.add(String(rule.id));
       for (const inv of action.invariants) invariantIds.add(String(inv.id));
       for (const transition of action.transitions) transitionIds.add(String(transition.id));
+      for (const exposure of action.exposures ?? []) exposureIds.add(String(exposure.id));
     }
   }
 
@@ -80,6 +84,7 @@ const buildIdentifierSets = (feature: Feature): IdentifierSets => {
     transitionIds,
     eventNames,
     criterionIds,
+    exposureIds,
     otherIds
   };
 };
@@ -105,6 +110,8 @@ const owns = (sets: IdentifierSets, type: string, suffix: string): boolean => {
       return sets.transitionIds.has(suffix);
     case 'criterion':
       return sets.criterionIds.has(suffix);
+    case 'exposure':
+      return sets.exposureIds.has(suffix);
     default:
       return (
         sets.surfaceIds.has(suffix) ||
@@ -115,6 +122,7 @@ const owns = (sets: IdentifierSets, type: string, suffix: string): boolean => {
         sets.invariantIds.has(suffix) ||
         sets.transitionIds.has(suffix) ||
         sets.criterionIds.has(suffix) ||
+        sets.exposureIds.has(suffix) ||
         sets.otherIds.has(suffix)
       );
   }

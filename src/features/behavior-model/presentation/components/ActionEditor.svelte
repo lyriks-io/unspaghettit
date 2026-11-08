@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { earsReading } from '$features/behavior-model/presentation/view-models/earsReading.svelte';
   import type { Resource } from '$features/behavior-model/domain/entities/Resource';
   import type { EventDefinition } from '$features/behavior-model/domain/entities/EventDefinition';
   import type { Surface } from '$features/behavior-model/domain/entities/Surface';
@@ -30,6 +31,7 @@
   } from '$features/behavior-model/presentation/view-models/factories';
   import { cryptoIdGenerator } from '$shared/domain/IdGenerator';
   import RuleEditor from './RuleEditor.svelte';
+  import EarsSentence from './EarsSentence.svelte';
   import EffectEditor from './EffectEditor.svelte';
   import InvariantEditor from './InvariantEditor.svelte';
   import ParametersEditor from './ParametersEditor.svelte';
@@ -551,6 +553,7 @@
               <RuleEditor
                 {rule}
                 {availablePaths}
+                sentence={earsReading.rule(rule, action)}
                 availableParameters={action.parameters}
                 onChange={(next) => updateRule(next)}
                 onRemove={() => removeRule(rule.id)}
@@ -589,6 +592,7 @@
                     {availableSurfaces}
                     onChange={(next) => updateEffect(next)}
                   />
+                  <div class="mt-2"><EarsSentence text={earsReading.effect(effect, action)} /></div>
                 </div>
                 <button
                   type="button"
@@ -671,6 +675,7 @@
               <InvariantEditor
                 {invariant}
                 {availablePaths}
+                sentence={earsReading.invariant(invariant)}
                 onChange={(next) => updateInvariant(next)}
                 onRemove={() => removeInvariant(invariant.id)}
               />

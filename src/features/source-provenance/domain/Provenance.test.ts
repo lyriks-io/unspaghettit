@@ -6,6 +6,7 @@ import {
   emptyProvenance,
   finalizeProvenance,
   linkSource,
+  type TraceTarget,
   recordSpan,
   type Provenance
 } from './Provenance';
@@ -153,10 +154,56 @@ describe('recordSpan', () => {
   });
 });
 
+const target = (id: string, label = id): TraceTarget => ({ id, type: 'action', label });
+
 describe('finalizeProvenance', () => {
   it('blocks finalize while elements are untraced', () => {
-    const r = finalizeProvenance(stored(), 3, 't9');
+    const r = finalizeProvenance(stored(), [target('el-1'), target('el-2'), target('el-3')], 't9');
     expect(r.ok).toBe(false);
+  });
+
+  it('names every element still without a span (criterion 339c1758)', () => {
+    const span = recordSpan(stored(), {
+      id: 'span-1',
+      elementId: 'el-1',
+      elementType: 'action',
+      startOffset: 0,
+      endOffset: 8,
+      recordedAt: 't1'
+    });
+    if (!span.ok) throw new Error(span.reason);
+    const r = finalizeProvenance(span.provenance, [target('el-1'), target('el-2', 'Slide the tiles'), { id: 'ent-9', type: 'entity', label: 'board' }], 't9');
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.reason).toBe(
+      'Finalize blocked: 2 extracted element(s) have no source span: action el-2 (Slide the tiles); entity ent-9 (board).'
+    );
+  });
+
+  it('never lets a span on a removed element stand in for one that has none', () => {
+    const span = recordSpan(stored(), {
+      id: 'span-1',
+      elementId: 'el-gone',
+      elementType: 'action',
+      startOffset: 0,
+      endOffset: 8,
+      recordedAt: 't1'
+    });
+    if (!span.ok) throw new Error(span.reason);
+    // One span, one expected element: the counts match, the identities do not.
+    const r = finalizeProvenance(span.provenance, [target('el-new')], 't9');
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.reason).toContain('action el-new (el-new)');
+  });
+
+  it('names the first twenty and says how many in all', () => {
+    const expected = Array.from({ length: 23 }, (_, i) => target(`el-${i}`));
+    const r = finalizeProvenance(stored(), expected, 't9');
+    if (r.ok) throw new Error('expected a refusal');
+    expect(r.reason).toMatch(/^Finalize blocked: 23 extracted element\(s\)/);
+    expect(r.reason).toContain('action el-19 (el-19); and 3 more.');
+    expect(r.reason).not.toContain('el-20 ');
   });
 
   it('finalizes once every element has a span', () => {
@@ -170,7 +217,7 @@ describe('finalizeProvenance', () => {
     });
     expect(span.ok).toBe(true);
     if (!span.ok) return;
-    const r = finalizeProvenance(span.provenance, 1, 't9');
+    const r = finalizeProvenance(span.provenance, [target('el-1')], 't9');
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.provenance.finalized).toBe(true);
@@ -236,7 +283,7 @@ describe('project-source analyses', () => {
       source: DOC
     });
     if (!span.ok) throw new Error(span.reason);
-    const r = finalizeProvenance(span.provenance, 1, 't9');
+    const r = finalizeProvenance(span.provenance, [target('el-1')], 't9');
     expect(r.ok).toBe(true);
   });
 });

@@ -1,7 +1,9 @@
 import {
   effectiveActor,
+  withExposures,
   type ActionActor,
-  type Evolution
+  type Evolution,
+  type ExposureSummary
 } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type {
@@ -23,6 +25,11 @@ export type ActionListing = {
    * "not said".
    */
   readonly actor: ActionActor;
+  /**
+   * The channels the action declares, offered or withheld. Present only when it
+   * declares at least one; get_action carries the operations and reasons.
+   */
+  readonly exposures?: ExposureSummary;
   /**
    * Present only when this action is a proposed Evolution (dashed placeholder).
    * Lets the LLM tell suggestions apart from committed behavior in the cheap
@@ -52,6 +59,7 @@ export const listActionsTool = (
         parameterCount: cap.parameters.length,
         ruleCount: cap.rules.length,
         actor: effectiveActor(cap),
+        ...withExposures(cap),
         ...(cap.evolution ? { evolution: cap.evolution } : {})
       });
     }

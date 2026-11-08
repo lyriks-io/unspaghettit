@@ -7,6 +7,7 @@ import {
   asSurfaceId
 } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
+import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 import { runScenariosUseCase } from '../../src/features/simulator/application/use-cases/RunScenarios';
 import { exploreStateSpace } from '../../src/features/simulator/domain/StateExplorer';
 import { analyzeSurfaceReachability } from '../../src/features/simulator/domain/SurfaceReachability';
@@ -31,14 +32,16 @@ import type { DigestScopeRef } from '../../src/features/behavior-digest/domain/p
 import { trackTokens } from '../metrics';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 import type { FeatureRepository } from '../../src/features/behavior-model/application/ports/FeatureRepository';
-import { errorText, loadProjectSiblings, text, type ToolDeps } from './_shared';
+import { errorText, loadProjectContext, loadProjectSiblings, text, type ToolDeps } from './_shared';
 import { runGenerateTypes } from './_codegen';
+import { generateTypesTool } from '../../src/features/mcp-tools/application/tools/generateTypes';
 import {
   expandFeatureId,
   expandIdInFeature,
   expandProjectId
 } from './short-ids';
 import { loadFeaturesByIds as readFeaturesByIds } from '../../src/features/behavior-model/application/services/bulkRead';
+import { activeProver } from '../../src/features/prover/loadProver';
 
 /**
  * Load every feature named by `featureIds`, dropping any that no longer resolve.
@@ -58,8 +61,12 @@ export const registerReadTools = ({
   server,
   repo,
   projectRepo,
-  repoContext
+  repoContext,
+  prover: proverState
 }: ToolDeps): void => {
+  // The proof module, where one was asked for: model_check tries its inputs first.
+  const prover = activeProver(proverState ?? { state: 'not-asked' });
+  const modelCheckNote = prover?.toolNotes?.model_check;
   server.registerTool(
     'list_features',
     {
@@ -270,7 +277,8 @@ export const registerReadTools = ({
       // Project siblings let the cascade reach handlers declared outside the
       // focal feature. Loading them is best-effort: a feature that doesn't
       // belong to any project simulates as before (single-feature scope).
-      const projectFeatures = await loadProjectSiblings(repo, projectRepo, featureId);
+      // The project's invariants hold here as in every other engine.
+      const { projectFeatures, projectInvariants } = await loadProjectContext(repo, projectRepo, featureId);
       try {
         const result = dryRunSimulateTool({
           feature: exp,
@@ -278,7 +286,8 @@ export const registerReadTools = ({
           actionId: asActionId(actionId),
           snapshot: (snapshot ?? {}) as StateSnapshot,
           parameters: (parameters ?? {}) as ParameterValues,
-          ...(projectFeatures ? { projectFeatures } : {})
+          ...(projectFeatures ? { projectFeatures } : {}),
+          ...(projectInvariants.length > 0 ? { projectInvariants } : {})
         });
         return text(trackTokens('dry_run_simulate', result));
       } catch (e) {
@@ -502,7 +511,13 @@ export const registerReadTools = ({
         'Codegen a TypeScript module that mirrors the feature\'s enum state types, state-path → value-type map, action parameter shapes, and event names. Writes to disk at `outputPath` (relative to the repo root containing .unspa.json; absolute paths also accepted). The chosen path is persisted to `.unspa.json` so apply_batch can auto-regenerate after every subsequent spec mutation, implementation code stays in lockstep with the spec without the LLM having to call this tool manually. Implementation code imports from the generated file so adding an enum value or renaming an event triggers TS exhaustiveness errors.',
       inputSchema: {
         featureId: z.string(),
-        outputPath: z.string().min(1)
+        outputPath: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            'Where to write the module. Omit it to get the source back instead of a file: a client that is not on this machine saves it in its own repository.'
+          )
       }
     },
     async ({ featureId, outputPath }) => {
@@ -514,6 +529,13 @@ export const registerReadTools = ({
       const exp = await repo.get(asFeatureId(featureId));
       if (!exp) return errorText(`Feature ${featureId} not found`);
       try {
+        if (!outputPath) {
+          const { source, stats } = generateTypesTool({
+            feature: exp,
+            header: `Generated from feature "${exp.name}" (${exp.id}) at ${exp.updatedAt}.`
+          });
+          return text(trackTokens('generate_types', { ok: true, source, stats }));
+        }
         const { outputPath: targetPath, stats } = runGenerateTypes(exp, repoContext, outputPath);
         return text(
           trackTokens('generate_types', { ok: true, outputPath: targetPath, stats })
@@ -550,13 +572,14 @@ export const registerReadTools = ({
       } catch (e) {
         return errorText((e as Error).message);
       }
-      const projectFeatures = await loadProjectSiblings(repo, projectRepo, featureId);
+      const { projectFeatures, projectInvariants } = await loadProjectContext(repo, projectRepo, featureId);
       try {
         const output = runScenarios({
           feature: exp,
           ...(surfaceId ? { surfaceId: asSurfaceId(surfaceId) } : {}),
           ...(actionId ? { actionId: asActionId(actionId) } : {}),
-          ...(projectFeatures ? { projectFeatures } : {})
+          ...(projectFeatures ? { projectFeatures } : {}),
+          ...(projectInvariants.length > 0 ? { projectInvariants } : {})
         });
         return text(trackTokens('run_all_scenarios', output));
       } catch (e) {
@@ -569,7 +592,7 @@ export const registerReadTools = ({
     'model_check',
     {
       description:
-        'Bounded exhaustive verification: explore the reachable state space (apply every action from every reachable state via the real simulator, BFS from the default snapshot) to find what hand-authored scenarios cannot. Returns: invariantViolations (each with the SHORTEST action-name path that reaches a state where an invariant breaks — the counterexample), deadActions (committed actions that never fired in a search that was NOT truncated — a sign of an unreachable branch or contradictory rules), unreachedActions (the same rows when the search WAS truncated, each with a `reason` naming the bound that hit, e.g. "exploration stopped at 2000 states (depth 4 of 6)": not reached within bounds, NOT proven dead, and deadActions is then empty), sampledActions (actions whose parameter grid was too wide to enumerate, run on a covering sample that tries every value of every parameter at least once: `sampled` of `fullGridSize` combinations), deadlockStates (count of reachable states from which no action can fire), skippedActions (required parameter with no default — the explorer cannot invent a value, so it is skipped, NOT proven dead), and reachability (a STATIC analysis of the navigation graph: unreachableSurfaces a user can never navigate to, and terminalSurfaces with no way out). This is BOUNDED ("no violation within N steps", not a proof): tune maxDepth (default 6) and maxStates (default 2000). truncated is true when maxStates stopped the search or a parameter grid was sampled: deadlock counts are then "not observed within bounds" and no action is called dead. Running out of DEPTH alone does not set truncated, so a dead action means dead within maxDepth steps: raise maxDepth before trusting it for a deep flow. Actions run across their parameter domains (every enum value, both booleans, number bounds and rule thresholds), not just defaults. Use after editing rules/invariants to catch a reachable violation no scenario covers.',
+        'Bounded exhaustive verification: explore the reachable state space (apply every action from every reachable state via the real simulator, BFS from the default snapshot) to find what hand-authored scenarios cannot. Returns: invariantViolations (each with the SHORTEST action-name path that reaches a state where an invariant breaks — the counterexample), deadActions (committed actions that never fired in a search that was NOT truncated — a sign of an unreachable branch or contradictory rules), unreachedActions (the same rows when the search WAS truncated, each with a `reason` naming the bound that hit, e.g. "exploration stopped at 2000 states (depth 4 of 6)": not reached within bounds, NOT proven dead, and deadActions is then empty), sampledActions (actions whose parameter grid was too wide to enumerate, run on a covering sample that tries every value of every parameter at least once: `sampled` of `fullGridSize` combinations), deadlockStates (count of reachable states from which no action can fire), skippedActions (required parameter with no default — the explorer cannot invent a value, so it is skipped, NOT proven dead), and reachability (a STATIC analysis of the navigation graph: unreachableSurfaces a user can never navigate to, and terminalSurfaces with no way out). This is BOUNDED ("no violation within N steps", not a proof): tune maxDepth (default 6) and maxStates (default 2000). truncated is true when maxStates stopped the search or a parameter grid was sampled: deadlock counts are then "not observed within bounds" and no action is called dead. Running out of DEPTH alone does not set truncated, so a dead action means dead within maxDepth steps: raise maxDepth before trusting it for a deep flow. Actions run across their parameter domains (every enum value, both booleans, number bounds and rule thresholds), not just defaults. ' + (modelCheckNote ? `${modelCheckNote} ` : '') + 'Use after editing rules/invariants to catch a reachable violation no scenario covers.',
       inputSchema: {
         featureId: z.string(),
         maxDepth: z.number().int().positive().optional(),
@@ -585,12 +608,35 @@ export const registerReadTools = ({
       const exp = await repo.get(asFeatureId(featureId));
       if (!exp) return errorText(`Feature ${featureId} not found`);
       const projectFeatures = await loadProjectSiblings(repo, projectRepo, featureId);
+      // The project's cross-feature invariants hold here too, over the other
+      // features' state seeded from their defaults, exactly as verify checks
+      // them: a feature check that ignored them would pass a model a walk refuses.
+      const owner = await findOwningProject(projectRepo, featureId).catch(() => null);
+      const projectInvariants = owner?.projectInvariants ?? [];
       try {
+        // The proof module's inputs are tried first: one per branch it witnessed.
+        const aid = prover
+          ? await prover.explorationAid(exp, {
+              projectFeatures: [exp, ...(projectFeatures ?? []).filter((f) => f.id !== exp.id)],
+              ...(projectInvariants.length > 0 ? { projectInvariants } : {}),
+              ...(maxDepth !== undefined ? { maxSteps: maxDepth } : {})
+            })
+          : undefined;
+        const witnessed = aid?.witnessedInputs ?? new Map();
         const report = exploreStateSpace(
           exp,
           {
             ...(maxDepth !== undefined ? { maxDepth } : {}),
-            ...(maxStates !== undefined ? { maxStates } : {})
+            ...(maxStates !== undefined ? { maxStates } : {}),
+            ...(witnessed.size > 0 ? { witnessedInputs: witnessed } : {}),
+            ...(projectInvariants.length > 0
+              ? {
+                  extraInvariants: projectInvariants,
+                  seedStateDefs: (projectFeatures ?? []).flatMap((f) =>
+                    f.surfaces.flatMap((s) => s.stateDefinitions)
+                  )
+                }
+              : {})
           },
           projectFeatures
         );
@@ -599,7 +645,13 @@ export const registerReadTools = ({
         // answer "can the user even get here / ever leave" — the structural
         // question the data-space exploration doesn't.
         const reachability = analyzeSurfaceReachability(exp);
-        return text(trackTokens('model_check', { ...report, reachability }));
+        return text(
+          trackTokens('model_check', {
+            ...report,
+            reachability,
+            ...(aid ? { proof: aid.readout, solverInputs: aid.solverInputs } : {})
+          })
+        );
       } catch (e) {
         return errorText(`model_check failed: ${(e as Error).message}`);
       }

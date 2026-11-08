@@ -8,6 +8,7 @@ import { InMemoryProjectRepository } from '../src/features/projects/infrastructu
 import type { Project } from '../src/features/projects/domain/entities/Project';
 import type { ProjectId } from '../src/features/projects/domain/value-objects/ids';
 import { buildServer } from './server';
+import type { ProverLoad } from '../src/features/prover/loadProver';
 
 let nextId = 0;
 const fixedIds = () => `test-id-${nextId++}`;
@@ -151,6 +152,7 @@ describe('MCP server', () => {
       'add_transition',
       'add_value_set',
       'apply_batch',
+      'apply_project_batch',
       'attach_source_file',
       'attach_source_path',
       'classify_source',
@@ -249,6 +251,7 @@ describe('MCP server', () => {
       'set_feature_core',
       'set_non_goals',
       'set_queue_target',
+      'simulate_steps',
       'stage_candidate',
       'stage_candidates',
       'sync_from_index',
@@ -279,9 +282,48 @@ describe('MCP server', () => {
       'update_surface_rule',
       'update_transition',
       'update_value_set',
-      'verify'
+      'verify',
     ]);
     await server.close();
+  });
+
+  // Criteria 922ee1bd, f0c19aec: proof is a module of its own, and a module that does not match never proves.
+  describe('without a loaded proof module', () => {
+    const connect = async (prover: ProverLoad) => {
+      const repo = new InMemoryFeatureRepository();
+      await repo.save(storefrontFeature);
+      const server = buildServer(repo, { ids: fixedIds, clock: fixedClock('2026-05-09T00:00:00.000Z'), prover });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: 'test-client', version: '0.0.0' });
+      await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+      return { client, server };
+    };
+    const proofTools = ['prove_feature_rules', 'prove_project_invariants', 'solver_status', 'what_if', 'what_if_project'];
+
+    it('offers no proof, what-if or solver tool where none was asked for', async () => {
+      const { client, server } = await connect({ state: 'not-asked' });
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      expect(names.filter((name) => proofTools.includes(name))).toEqual([]);
+      await server.close();
+    });
+
+    it('says why the solver did not start where the module asked for did not load, and offers nothing else', async () => {
+      const reason = 'the proof module @lyriks/unspa-prover 0.27.0 was built for engine contract 2, and this engine (unspaghettit 0.26.0) offers contract 1';
+      const { client, server } = await connect({ state: 'failed', module: '@lyriks/unspa-prover', reason });
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      expect(names.filter((name) => proofTools.includes(name))).toEqual(['solver_status']);
+      expect(parseTextContent(await client.callTool({ name: 'solver_status', arguments: {} }))).toEqual({
+        kind: 'none',
+        reason,
+        prover: { name: '@lyriks/unspa-prover' }
+      });
+      const gaps = parseTextContent(
+        await client.callTool({ name: 'get_spec_gaps', arguments: { featureId: String(storefrontFeature.id) } })
+      ) as { gaps: { code: string; reason: string }[]; proof: { solver: string } };
+      expect(gaps.gaps.filter((g) => g.code === 'solver-unavailable')).toHaveLength(1);
+      expect(gaps.proof.solver).toBe('unavailable');
+      await server.close();
+    });
   });
 
   it('get_repo_context returns linkedProjectId + features[] when a repo link is bound', async () => {
@@ -1983,6 +2025,20 @@ describe('MCP server', () => {
         }
       });
 
+      // A scenario that runs the action successfully, so no branch of it is
+      // left without one.
+      await client.callTool({
+        name: 'add_scenario',
+        arguments: {
+          featureId: created.id,
+          surfaceId: surface.id,
+          actionId: action.id,
+          name: 'Acknowledges the prompt',
+          description: 'Covers the successful acknowledgement.',
+          expectedStatus: 'success'
+        }
+      });
+
       // Record an implementation status entry so the "no ImplementationStatus
       // entry" recommendation clears.
       await client.callTool({
@@ -3365,6 +3421,62 @@ describe('MCP server', () => {
     });
   });
 
+  describe('one state declared differently by two features', () => {
+    it('warns the batch that declares it, and each feature reports it in its gaps', async () => {
+      const { client, server } = await setup();
+      const project = parseTextContent(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Shop',
+            description: 'A small shop.',
+            features: [
+              { name: 'Orders', description: 'Taking orders.' },
+              { name: 'Invoices', description: 'Billing them.' }
+            ]
+          }
+        })
+      ) as { features: readonly { id: string }[] };
+      const [ordersId, invoicesId] = project.features.map((f) => f.id) as [string, string];
+      const declare = (featureId: string, type: string, defaultValue: unknown) =>
+        client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId,
+            operations: [
+              { kind: 'add_surface', ref: 's', name: 'Screen', type: 'custom', description: 'Where it happens.' },
+              {
+                kind: 'add_state_definition',
+                surfaceRef: 's',
+                path: 'order.total',
+                type,
+                defaultValue,
+                description: 'The amount of the order.'
+              }
+            ]
+          }
+        });
+      const first = parseTextContent(await declare(ordersId, 'number', 0)) as { warnings?: string[] };
+      expect(first.warnings ?? []).toEqual([]);
+      const second = parseTextContent(await declare(invoicesId, 'string', '')) as {
+        ok: boolean;
+        warnings?: string[];
+      };
+      expect(second.ok).toBe(true);
+      expect(second.warnings?.join(' ')).toContain('State "order.total" is declared with different kinds of value');
+
+      for (const featureId of [ordersId, invoicesId]) {
+        const gaps = parseTextContent(
+          await client.callTool({ name: 'get_spec_gaps', arguments: { featureId } })
+        ) as { gaps: readonly { code: string; severity: string }[] };
+        expect(gaps.gaps).toContainEqual(
+          expect.objectContaining({ code: 'state:declaration-type-mismatch', severity: 'critical' })
+        );
+      }
+      await server.close();
+    });
+  });
+
   describe('apply_batch relatedElsewhere: what the batch touches in other features', () => {
     type Row = { kind: string; id: string; name: string };
     type Answer = {
@@ -4727,6 +4839,34 @@ describe('MCP server', () => {
       expect(missing.surface).toMatchObject({ ok: true, found: 0, missing: 3 });
       await server.close();
     });
+
+    it('names the children a sent surface came without, and stays ok (criterion 1f758e2d)', async () => {
+      const { client, server } = await setup();
+      const { projectId, refs } = await island(client);
+
+      const answer = parseTextContent(
+        await client.callTool({
+          name: 'sync_from_index',
+          arguments: {
+            projectId,
+            index: {
+              [`surface:${refs.shore}`]: { status: 'implemented', file: 'shore.ts', line: 1, signature: 'export const shore' },
+              'state:tide.level': { status: 'implemented', file: 'level', line: 1, signature: 'export const level' }
+            }
+          }
+        })
+      ) as SyncAnswer & { incomplete: { total: number; entries: { key: string; missing: string[] }[] } };
+
+      expect(answer.ok).toBe(true);
+      expect(answer.incomplete.total).toBe(1);
+      expect(answer.incomplete.entries[0]).toMatchObject({
+        key: `surface:${refs.shore}`,
+        missing: ['state:tide.rising', `surface_invariant:${refs.floor}`]
+      });
+      const complete = await run(client, projectId, refs, 'implemented');
+      expect((complete.answer as unknown as { incomplete: { total: number } }).incomplete.total).toBe(0);
+      await server.close();
+    });
   });
 
   describe('apply_batch: every minted id and every state rename in the answer', () => {
@@ -4912,6 +5052,828 @@ describe('MCP server', () => {
       expect(undone.ok).toBe(true);
       expect(undone.renamed).toBeUndefined();
 
+      await server.close();
+    });
+  });
+
+  describe('action exposures', () => {
+    type Batch = {
+      ok: boolean;
+      refs?: Record<string, string>;
+      created?: readonly { kind: string; id: string; key?: string }[];
+      validation?: { errors: readonly string[] };
+    };
+    type StoredExposure = {
+      id: string;
+      channel: string;
+      operation?: string;
+      withheld?: { reason: string };
+    };
+
+    const batch = async (client: Client, featureId: string, operations: unknown[]) =>
+      parseTextContent(
+        await client.callTool({ name: 'apply_batch', arguments: { featureId, operations } })
+      ) as Batch;
+
+    // Update issue is offered on every channel; Delete issue is kept off MCP on
+    // purpose. The example the change was asked with.
+    const issueFeature = async (client: Client) => {
+      const created = parseTextContent(
+        await client.callTool({
+          name: 'create_feature',
+          arguments: { name: 'Issues', description: 'Track issues.' }
+        })
+      ) as { id: string };
+      const built = await batch(client, created.id, [
+        {
+          kind: 'add_surface',
+          ref: 'board',
+          name: 'Board',
+          type: 'screen',
+          description: 'Issues.'
+        },
+        {
+          kind: 'add_action',
+          ref: 'update',
+          surfaceRef: 'board',
+          name: 'Update issue',
+          intent: 'Edit an issue.'
+        },
+        {
+          kind: 'add_action',
+          ref: 'delete',
+          surfaceRef: 'board',
+          name: 'Delete issue',
+          intent: 'Drop an issue.'
+        },
+        {
+          kind: 'add_action_exposure',
+          ref: 'upUi',
+          surfaceRef: 'board',
+          actionRef: 'update',
+          channel: 'ui'
+        },
+        {
+          kind: 'add_action_exposure',
+          ref: 'upApi',
+          surfaceRef: 'board',
+          actionRef: 'update',
+          channel: 'api',
+          operation: 'PUT /issues/:id'
+        },
+        {
+          kind: 'add_action_exposure',
+          ref: 'upMcp',
+          surfaceRef: 'board',
+          actionRef: 'update',
+          channel: 'mcp',
+          operation: 'update_issue'
+        },
+        {
+          kind: 'add_action_exposure',
+          ref: 'delApi',
+          surfaceRef: 'board',
+          actionRef: 'delete',
+          channel: 'api',
+          operation: 'DELETE /issues/:id'
+        },
+        {
+          kind: 'add_action_exposure',
+          ref: 'delMcp',
+          surfaceRef: 'board',
+          actionRef: 'delete',
+          channel: 'mcp',
+          withheld: { reason: 'Deleting is never left to an agent.' }
+        }
+      ]);
+      expect(built.validation?.errors ?? []).toEqual([]);
+      expect(built.ok).toBe(true);
+      return { featureId: created.id, refs: built.refs!, created: built.created ?? [] };
+    };
+
+    const exposuresOf = async (
+      repo: InMemoryFeatureRepository,
+      featureId: string,
+      actionId: string
+    ): Promise<readonly StoredExposure[] | undefined> => {
+      const feature = await repo.get(featureId as never);
+      const action = feature?.surfaces.flatMap((s) => s.actions).find((a) => a.id === actionId);
+      return (action as { exposures?: readonly StoredExposure[] } | undefined)?.exposures;
+    };
+
+    it('authors exposures in the same batch as their action and names their index keys', async () => {
+      const { client, server, repo } = await setup();
+      const { featureId, refs, created } = await issueFeature(client);
+
+      const update = await exposuresOf(repo, featureId, refs.update!);
+      expect(update?.map((e) => [e.channel, e.operation])).toEqual([
+        ['ui', undefined],
+        ['api', 'PUT /issues/:id'],
+        ['mcp', 'update_issue']
+      ]);
+      const del = await exposuresOf(repo, featureId, refs.delete!);
+      expect(del?.find((e) => e.channel === 'mcp')).toEqual({
+        id: refs.delMcp,
+        channel: 'mcp',
+        withheld: { reason: 'Deleting is never left to an agent.' }
+      });
+
+      const minted = created.filter((c) => c.kind === 'action_exposure');
+      expect(minted).toHaveLength(5);
+      expect(minted.find((c) => c.id === refs.upApi)?.key).toBe(`exposure:${refs.upApi}`);
+      await server.close();
+    });
+
+    it('shows the declared channels on the cheap reads and says nothing for an action without any', async () => {
+      const { client, server } = await setup();
+      const { featureId, refs } = await issueFeature(client);
+      await batch(client, featureId, [
+        {
+          kind: 'add_action',
+          ref: 'bare',
+          surfaceId: refs.board,
+          name: 'Archive issue',
+          intent: 'Hide it.'
+        }
+      ]);
+
+      const listed = parseTextContent(
+        await client.callTool({ name: 'list_actions', arguments: { featureId } })
+      ) as readonly { actionName: string; exposures?: { offered: string[]; withheld: string[] } }[];
+      const by = Object.fromEntries(listed.map((a) => [a.actionName, a.exposures]));
+      expect(by['Update issue']).toEqual({ offered: ['ui', 'api', 'mcp'], withheld: [] });
+      expect(by['Delete issue']).toEqual({ offered: ['api'], withheld: ['mcp'] });
+      // Undeclared is not a statement: no empty block, no "missing" marker.
+      expect(by['Archive issue']).toBeUndefined();
+
+      const index = parseTextContent(
+        await client.callTool({ name: 'get_feature', arguments: { featureId } })
+      ) as { surfaces: readonly { actions: readonly { name: string; exposures?: unknown }[] }[] };
+      const indexed = index.surfaces.flatMap((s) => s.actions);
+      expect(indexed.find((a) => a.name === 'Delete issue')?.exposures).toEqual({
+        offered: ['api'],
+        withheld: ['mcp']
+      });
+      await server.close();
+    });
+
+    it('refuses what an exposure cannot say, with the sentence that explains it', async () => {
+      const { client, server } = await setup();
+      const { featureId, refs } = await issueFeature(client);
+      const refused = async (op: Record<string, unknown>, needle: string) => {
+        const r = await batch(client, featureId, [
+          { surfaceId: refs.board, actionId: refs.delete, ...op }
+        ]);
+        expect(r.ok).toBe(false);
+        expect(r.validation?.errors.join('\n')).toContain(needle);
+      };
+      await refused(
+        { kind: 'add_action_exposure', channel: 'webhook' },
+        'unknown channel "webhook"'
+      );
+      await refused(
+        { kind: 'add_action_exposure', channel: 'cli', withheld: {} },
+        'a withheld exposure needs withheld.reason'
+      );
+      await refused(
+        {
+          kind: 'add_action_exposure',
+          channel: 'cli',
+          operation: 'issue rm',
+          withheld: { reason: 'No.' }
+        },
+        'a withheld exposure takes no operation'
+      );
+      await refused(
+        { kind: 'add_action_exposure', channel: 'mcp', operation: 'delete_issue' },
+        'exposed on mcp and withheld from mcp at once'
+      );
+      // One address runs one behavior, spacing aside.
+      await refused(
+        { kind: 'add_action_exposure', channel: 'api', operation: 'PUT  /issues/:id' },
+        `is already exposed by action ${refs.update}`
+      );
+      await server.close();
+    });
+
+    it('updates, clears and removes an exposure, and drops them with their action', async () => {
+      const { client, server, repo } = await setup();
+      const { featureId, refs } = await issueFeature(client);
+
+      const offered = await batch(client, featureId, [
+        {
+          kind: 'update_action_exposure',
+          surfaceId: refs.board,
+          actionId: refs.delete,
+          exposureId: refs.delMcp,
+          withheld: null,
+          operation: 'delete_issue'
+        }
+      ]);
+      expect(offered.ok).toBe(true);
+      expect(
+        (await exposuresOf(repo, featureId, refs.delete!))?.find((e) => e.id === refs.delMcp)
+      ).toEqual({
+        id: refs.delMcp,
+        channel: 'mcp',
+        operation: 'delete_issue'
+      });
+
+      // An update that names nothing is refused, never acked as a silent no-op.
+      const empty = (await client.callTool({
+        name: 'apply_batch',
+        arguments: {
+          featureId,
+          operations: [
+            {
+              kind: 'update_action_exposure',
+              surfaceId: refs.board,
+              actionId: refs.delete,
+              exposureId: refs.delMcp
+            }
+          ]
+        }
+      })) as { isError?: boolean; content: { text: string }[] };
+      expect(empty.isError).toBe(true);
+      expect(empty.content[0]!.text).toContain('nothing to update');
+
+      await batch(client, featureId, [
+        {
+          kind: 'remove_action_exposure',
+          surfaceId: refs.board,
+          actionId: refs.delete,
+          exposureId: refs.delMcp
+        },
+        {
+          kind: 'remove_action_exposure',
+          surfaceId: refs.board,
+          actionId: refs.delete,
+          exposureId: refs.delApi
+        }
+      ]);
+      // The last one removed drops the field: the action reads as before any.
+      expect(await exposuresOf(repo, featureId, refs.delete!)).toBeUndefined();
+
+      await batch(client, featureId, [
+        { kind: 'remove_action', surfaceId: refs.board, actionId: refs.update }
+      ]);
+      const feature = await repo.get(featureId as never);
+      expect(JSON.stringify(feature)).not.toContain('update_issue');
+      await server.close();
+    });
+
+    it('lets a rule read the channel a call arrives through, and refuses a call on a withheld channel', async () => {
+      const { client, server } = await setup();
+      const { featureId, refs } = await issueFeature(client);
+      const guarded = await batch(client, featureId, [
+        { kind: 'add_action_exposure', surfaceId: refs.board, actionId: refs.delete, channel: 'webmcp', operation: 'delete_issue' },
+        {
+          kind: 'add_parameter',
+          surfaceId: refs.board,
+          actionId: refs.delete,
+          name: 'confirmed',
+          type: 'boolean',
+          required: false,
+          defaultValue: false,
+          description: 'The person confirmed the deletion.'
+        },
+        {
+          kind: 'add_action_rule',
+          surfaceId: refs.board,
+          actionId: refs.delete,
+          rule: {
+            category: 'permissions',
+            description: 'An agent in the page asks the person first.',
+            condition: {
+              kind: 'all',
+              conditions: [
+                { left: { kind: 'param', name: '$channel' }, operator: 'equals', right: 'webmcp' },
+                { left: { kind: 'param', name: 'confirmed' }, operator: 'is_false' }
+              ]
+            },
+            effect: { type: 'block_action', reason: 'Ask the person to confirm.', description: 'Refused.' }
+          }
+        },
+        ...[
+          ['webmcp, unconfirmed', 'webmcp', false, 'blocked'],
+          ['webmcp, confirmed', 'webmcp', true, 'success'],
+          ['api', 'api', false, 'success'],
+          ['mcp is withheld', 'mcp', true, 'blocked']
+        ].map(([name, channel, confirmed, expectedStatus]) => ({
+          kind: 'add_scenario',
+          surfaceId: refs.board,
+          actionId: refs.delete,
+          name,
+          description: `Delete through ${channel}.`,
+          parameterOverrides: [
+            { parameterName: '$channel', value: channel },
+            { parameterName: 'confirmed', value: confirmed }
+          ],
+          expectedStatus
+        }))
+      ]);
+      expect(guarded.validation?.errors ?? []).toEqual([]);
+      expect(guarded.ok).toBe(true);
+      const run = guarded as unknown as { scenarios?: { run: number; failed: readonly unknown[] } };
+      expect(run.scenarios?.run).toBe(4);
+      expect(run.scenarios?.failed).toEqual([]);
+      await server.close();
+    });
+
+    it('refuses a channel read that can never hold', async () => {
+      const { client, server } = await setup();
+      const { featureId, refs } = await issueFeature(client);
+      const rule = (right: string) => ({
+        category: 'permissions',
+        description: 'Channel guard.',
+        condition: { left: { kind: 'param', name: '$channel' }, operator: 'equals', right },
+        effect: { type: 'block_action', reason: 'No.', description: 'Refused.' }
+      });
+      // cli is not offered: a call can never arrive through it.
+      const unoffered = await batch(client, featureId, [
+        { kind: 'add_action_rule', surfaceId: refs.board, actionId: refs.update, rule: rule('cli') }
+      ]);
+      expect(unoffered.ok).toBe(false);
+      expect(unoffered.validation?.errors.join('\n')).toContain('a channel the action is not offered on');
+
+      // An action with no exposure has no caller channel at all.
+      const bare = await batch(client, featureId, [
+        { kind: 'add_action', ref: 'bare', surfaceId: refs.board, name: 'Archive issue', intent: 'Hide it.' },
+        { kind: 'add_action_rule', surfaceId: refs.board, actionRef: 'bare', rule: rule('ui') }
+      ]);
+      expect(bare.ok).toBe(false);
+      expect(bare.validation?.errors.join('\n')).toContain('add_action_exposure');
+
+      // The name is reserved.
+      const reserved = await batch(client, featureId, [
+        {
+          kind: 'add_parameter',
+          surfaceId: refs.board,
+          actionId: refs.update,
+          name: '$channel',
+          type: 'string',
+          required: false,
+          description: 'Clash.'
+        }
+      ]);
+      expect(reserved.ok).toBe(false);
+      expect(reserved.validation?.errors.join('\n')).toContain('is reserved');
+      await server.close();
+    });
+  });
+
+  describe('simulate_steps', () => {
+    type Walk = {
+      ok: boolean;
+      persisted?: boolean;
+      errors?: readonly string[];
+      batch?: { refs: Record<string, string> };
+      notRun?: number;
+      steps?: readonly {
+        actionName: string;
+        status: string;
+        refusedBecause: readonly string[];
+        changes: readonly { path: string; before: unknown; after: unknown }[];
+        movedTo: { surfaceName: string } | null;
+      }[];
+      finalState?: Record<string, unknown>;
+    };
+    const walk = async (client: Client, args: Record<string, unknown>) =>
+      parseTextContent(await client.callTool({ name: 'simulate_steps', arguments: args })) as Walk;
+
+    // A cart built entirely by the call: it exists nowhere, and stays nowhere.
+    const cartOps = [
+      { kind: 'add_surface', ref: 'cart', name: 'Cart', type: 'screen', description: 'The cart.' },
+      { kind: 'add_surface', ref: 'done', name: 'Thanks', type: 'screen', description: 'Order placed.' },
+      {
+        kind: 'add_state_definition',
+        surfaceRef: 'cart',
+        path: 'cart.items',
+        type: 'number',
+        defaultValue: 0,
+        description: 'Items in the cart.',
+        sharedWith: ['done']
+      },
+      { kind: 'add_action', ref: 'add', surfaceRef: 'cart', name: 'Add item', intent: 'Put one item in.' },
+      {
+        kind: 'add_effect',
+        surfaceRef: 'cart',
+        actionRef: 'add',
+        effect: {
+          type: 'set_state',
+          path: 'cart.items',
+          value: { kind: 'add', left: { kind: 'state', path: 'cart.items' }, right: { kind: 'literal', value: 1 } },
+          description: 'One more item.'
+        }
+      },
+      { kind: 'add_action', ref: 'checkout', surfaceRef: 'cart', name: 'Check out', intent: 'Place the order.' },
+      {
+        kind: 'add_action_rule',
+        surfaceRef: 'cart',
+        actionRef: 'checkout',
+        rule: {
+          category: 'validation',
+          description: 'Nothing to order.',
+          condition: { left: 'cart.items', operator: 'equals', right: 0 },
+          effect: { type: 'block_action', reason: 'Your cart is empty.', description: 'Refused.' }
+        }
+      },
+      {
+        kind: 'add_effect',
+        surfaceRef: 'cart',
+        actionRef: 'checkout',
+        effect: { type: 'transition_surface', targetRef: 'done', description: 'Show the thanks page.' }
+      }
+    ];
+
+    it('walks a feature that exists only in the call, and saves nothing', async () => {
+      const { client, server, repo } = await setup();
+      const before = (await repo.list()).length;
+      const result = await walk(client, {
+        featureId: 'draft-cart',
+        blank: true,
+        operations: cartOps,
+        steps: [{ actionRef: 'checkout' }, { actionRef: 'add' }, { actionRef: 'checkout' }]
+      });
+      expect(result.errors ?? []).toEqual([]);
+      expect(result.ok).toBe(true);
+      expect(result.persisted).toBe(false);
+      const [refused, added, placed] = result.steps!;
+      expect(refused).toMatchObject({ actionName: 'Check out', status: 'blocked', refusedBecause: ['Your cart is empty.'] });
+      expect(refused!.changes).toEqual([]);
+      expect(added!.changes).toEqual([{ path: 'cart.items', before: 0, after: 1 }]);
+      expect(placed).toMatchObject({ status: 'success', movedTo: { surfaceName: 'Thanks' } });
+      expect((result.finalState as { cart: { items: number } }).cart.items).toBe(1);
+      expect((await repo.list()).length).toBe(before);
+      await server.close();
+    });
+
+    it('stops at the first refusal when asked, and refuses a batch that does not validate', async () => {
+      const { client, server } = await setup();
+      const stopped = await walk(client, {
+        blank: true,
+        operations: cartOps,
+        steps: [{ actionRef: 'checkout' }, { actionRef: 'add' }],
+        stopOnBlocked: true
+      });
+      expect(stopped.steps).toHaveLength(1);
+      expect(stopped.notRun).toBe(1);
+
+      const invalid = await walk(client, {
+        blank: true,
+        operations: [
+          ...cartOps,
+          {
+            kind: 'add_action_rule',
+            surfaceRef: 'cart',
+            actionRef: 'add',
+            rule: {
+              category: 'validation',
+              description: 'Bad path.',
+              condition: { left: 'cart.nothing', operator: 'equals', right: 0 },
+              effect: { type: 'block_action', reason: 'x', description: 'x' }
+            }
+          }
+        ],
+        steps: [{ actionRef: 'add' }]
+      });
+      expect(invalid.ok).toBe(false);
+      expect(invalid.errors?.join('\n')).toContain('cart.nothing');
+      expect(invalid.steps).toBeUndefined();
+      await server.close();
+    });
+
+    it('keeps a model across calls: ids replay, a later batch addresses an earlier one, scenarios and model check run in memory', async () => {
+      const { client, server, repo } = await setup();
+      const before = (await repo.list()).length;
+      type Batch = { ok: boolean; batch: { refs: Record<string, string>; mintedIds: string[]; created: { op: number; kind: string; id: string }[]; scenarios?: { run: number; failed: unknown[] } } };
+      const first = (await walk(client, { blank: true, operations: cartOps })) as unknown as Batch;
+      expect(first.ok).toBe(true);
+      const checkoutId = first.batch.refs.checkout!;
+
+      // A second batch, stored model first, then the new operation that names an
+      // action of the first batch by its id: the ids replay, so it resolves.
+      const scenarioOp = {
+        kind: 'add_scenario',
+        surfaceId: first.batch.refs.cart,
+        actionId: checkoutId,
+        name: 'Empty cart is refused',
+        description: 'Nothing to order.',
+        expectedStatus: 'blocked'
+      };
+      const second = (await walk(client, {
+        blank: true,
+        operations: [...cartOps, scenarioOp],
+        mintedIds: first.batch.mintedIds,
+        newOperationsFrom: cartOps.length
+      })) as unknown as Batch;
+      expect(second.ok).toBe(true);
+      expect(second.batch.refs.checkout).toBe(checkoutId);
+      expect(second.batch.created.map((c) => [c.op, c.kind])).toEqual([[0, 'scenario']]);
+      expect(second.batch.scenarios).toMatchObject({ run: 1, failed: [] });
+      expect(second.batch.mintedIds.slice(0, first.batch.mintedIds.length)).toEqual(first.batch.mintedIds);
+
+      const full = (await walk(client, {
+        blank: true,
+        operations: [...cartOps, scenarioOp],
+        mintedIds: second.batch.mintedIds,
+        runScenarios: true,
+        modelCheck: { maxDepth: 3 },
+        includeFeature: true
+      })) as unknown as {
+        scenarios: { run: number; passed: number };
+        modelCheck: { statesExplored: number; deadActions: unknown[] };
+        feature: { surfaces: { actions: { id: string }[] }[] };
+      };
+      expect(full.scenarios).toMatchObject({ run: 1, passed: 1 });
+      expect(full.modelCheck.statesExplored).toBeGreaterThan(0);
+      expect(full.modelCheck.deadActions).toEqual([]);
+      expect(full.feature.surfaces.flatMap((s) => s.actions).map((a) => a.id)).toContain(checkoutId);
+      expect((await repo.list()).length).toBe(before);
+
+      // Landing the model for real keeps every id it was tried with.
+      const created = parseTextContent(
+        await client.callTool({ name: 'create_feature', arguments: { name: 'Cart', description: 'A cart.' } })
+      ) as { id: string };
+      const landed = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId: created.id,
+            operations: [...cartOps, scenarioOp],
+            mintedIds: second.batch.mintedIds
+          }
+        })
+      ) as { ok: boolean; refs: Record<string, string>; scenarios: { run: number; failed: unknown[] } };
+      expect(landed.ok).toBe(true);
+      expect(landed.refs).toEqual(second.batch.refs);
+      expect(landed.scenarios).toMatchObject({ failed: [] });
+      await server.close();
+    });
+
+    it('walks a stored feature with a pending change, and the stored feature stays as it was', async () => {
+      const { client, server, repo } = await setup();
+      const created = parseTextContent(
+        await client.callTool({ name: 'create_feature', arguments: { name: 'Cart', description: 'A cart.' } })
+      ) as { id: string };
+      const built = parseTextContent(
+        await client.callTool({ name: 'apply_batch', arguments: { featureId: created.id, operations: cartOps } })
+      ) as { refs: Record<string, string> };
+      const stored = JSON.stringify(await repo.get(created.id as never));
+
+      // The pending change lifts the rule: the walk shows the feature as it would be.
+      const feature = await repo.get(created.id as never);
+      const rule = feature!.surfaces.flatMap((s) => s.actions).find((a) => a.name === 'Check out')!.rules[0]!;
+      const result = await walk(client, {
+        featureId: created.id,
+        operations: [
+          { kind: 'remove_action_rule', surfaceId: built.refs.cart, actionId: built.refs.checkout, ruleId: rule.id }
+        ],
+        steps: [{ actionId: built.refs.checkout }]
+      });
+      expect(result.steps![0]!.status).toBe('success');
+      expect(JSON.stringify(await repo.get(created.id as never))).toBe(stored);
+
+      const unknown = (await client.callTool({
+        name: 'simulate_steps',
+        arguments: { featureId: created.id, steps: [{ actionId: 'nope' }] }
+      })) as { isError?: boolean; content: { text: string }[] };
+      expect(unknown.isError).toBe(true);
+      expect(unknown.content[0]!.text).toContain('Check out');
+      await server.close();
+    });
+  });
+
+  describe('batch cross-references', () => {
+    it('resolves valueSetRef and dependencyRef to what an earlier op of the batch created', async () => {
+      const { client, server, repo } = await setup();
+      const created = parseTextContent(
+        await client.callTool({ name: 'create_feature', arguments: { name: 'Refs', description: 'x' } })
+      ) as { id: string };
+      const r = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId: created.id,
+            operations: [
+              { kind: 'add_surface', ref: 's', name: 'S', type: 'screen', description: 'x' },
+              { kind: 'add_value_set', ref: 'prio', name: 'Priority', description: 'x', values: ['low', 'high'] },
+              { kind: 'add_state_definition', surfaceRef: 's', path: 'task.priority', type: 'enum', valueSetRef: 'prio', defaultValue: 'low', description: 'x' },
+              { kind: 'add_state_definition', surfaceRef: 's', path: 'task.sent', type: 'boolean', defaultValue: false, description: 'x' },
+              { kind: 'add_dependency', ref: 'mail', name: 'Mailer', dependencyKind: 'service', description: 'x', operations: [{ name: 'send', description: 'x', failureModes: ['timeout'], timeout: 5 }] },
+              { kind: 'add_action', ref: 'a', surfaceRef: 's', name: 'Send', intent: 'x' },
+              { kind: 'add_action_rule', surfaceRef: 's', actionRef: 'a', rule: { category: 'business', description: 'x', effect: { type: 'allow_action', description: 'x' } } },
+              { kind: 'add_effect', surfaceRef: 's', actionRef: 'a', effect: { type: 'invoke_operation', dependencyRef: 'mail', operation: 'send', resultPath: 'task.sent', resultValue: true, description: 'x' } }
+            ]
+          }
+        })
+      ) as { ok: boolean; refs: Record<string, string>; validation?: { errors: string[] } };
+      expect(r.validation?.errors ?? []).toEqual([]);
+      expect(r.ok).toBe(true);
+      const feature = await repo.get(created.id as never);
+      const state = feature!.surfaces[0]!.stateDefinitions.find((d) => String(d.path) === 'task.priority') as unknown as Record<string, unknown>;
+      expect(state.valueSetId).toBe(r.refs.prio);
+      expect('valueSetRef' in state).toBe(false);
+      const effect = feature!.surfaces[0]!.actions[0]!.effects[0] as unknown as Record<string, unknown>;
+      expect(effect.dependencyId).toBe(r.refs.mail);
+
+      const unknown = (await client.callTool({
+        name: 'apply_batch',
+        arguments: { featureId: created.id, operations: [{ kind: 'add_state_definition', surfaceId: r.refs.s, path: 'task.x', type: 'enum', valueSetRef: 'nope', defaultValue: 'a', description: 'x' }] }
+      })) as { isError?: boolean; content: { text: string }[] };
+      expect(unknown.isError).toBe(true);
+      expect(unknown.content[0]!.text).toContain('unknown valueSetRef "nope"');
+      await server.close();
+    });
+  });
+
+  describe('project-wide behavior', () => {
+    type Batch = { ok: boolean; refs: Record<string, string>; errors?: string[]; validation?: { errors: string[] } };
+    // A shop: the cart counts items, the stock counts what is left; nothing may
+    // be in carts that the stock does not hold. Neither feature can say that alone.
+    const shop = async (client: Client) => {
+      const created = parseTextContent(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Shop',
+            description: 'x',
+            features: [
+              { name: 'Cart', description: 'x' },
+              { name: 'Stock', description: 'x' }
+            ]
+          }
+        })
+      ) as { id: string; features: readonly { id: string }[] };
+      const [cartId, stockId] = created.features.map((f) => f.id);
+      const cart = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId: cartId,
+            operations: [
+              { kind: 'add_surface', ref: 's', name: 'Cart', type: 'screen', description: 'x' },
+              { kind: 'add_state_definition', surfaceRef: 's', path: 'cart.items', type: 'number', defaultValue: 0, description: 'x' },
+              { kind: 'add_action', ref: 'add', surfaceRef: 's', name: 'Add item', intent: 'x' },
+              { kind: 'add_action_rule', surfaceRef: 's', actionRef: 'add', rule: { category: 'business', description: 'x', effect: { type: 'allow_action', description: 'x' } } },
+              { kind: 'add_effect', surfaceRef: 's', actionRef: 'add', effect: { type: 'set_state', path: 'cart.items', value: { kind: 'add', left: { kind: 'state', path: 'cart.items' }, right: { kind: 'literal', value: 1 } }, description: 'x' } }
+            ]
+          }
+        })
+      ) as Batch;
+      const stock = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId: stockId,
+            operations: [
+              { kind: 'add_surface', ref: 's', name: 'Stock', type: 'screen', description: 'x' },
+              { kind: 'add_state_definition', surfaceRef: 's', path: 'stock.left', type: 'number', defaultValue: 2, description: 'x' }
+            ]
+          }
+        })
+      ) as Batch;
+      return { projectId: created.id, cartId: cartId!, stockId: stockId!, cart: cart.refs, stock: stock.refs };
+    };
+    const projectBatch = async (client: Client, projectId: string, operations: unknown[], dryRun = false) =>
+      parseTextContent(
+        await client.callTool({ name: 'apply_project_batch', arguments: { projectId, operations, dryRun } })
+      ) as { ok: boolean; refs: Record<string, string>; errors?: string[]; warnings?: string[] };
+    const invariantsOf = async (client: Client, projectId: string) =>
+      (
+        parseTextContent(await client.callTool({ name: 'get_project', arguments: { projectId } })) as {
+          projectInvariants?: { id: string }[];
+        }
+      ).projectInvariants;
+    const fits = {
+      name: 'Carts fit the stock',
+      description: 'x',
+      message: 'More items in the cart than in stock.',
+      condition: { left: 'cart.items', operator: 'lower_or_equal', right: { kind: 'state', path: 'stock.left' } }
+    };
+
+    it('declares a cross-feature invariant, and a walk refuses the step that breaks it', async () => {
+      const { client, server } = await setup();
+      const { projectId, cartId, cart } = await shop(client);
+      const dry = await projectBatch(client, projectId, [{ kind: 'add_project_invariant', ref: 'fit', invariant: fits }], true);
+      expect(dry.ok).toBe(true);
+      expect((await invariantsOf(client, projectId)) ?? []).toHaveLength(0);
+
+      const saved = await projectBatch(client, projectId, [{ kind: 'add_project_invariant', ref: 'fit', invariant: fits }]);
+      expect(saved.ok).toBe(true);
+      expect((await invariantsOf(client, projectId))?.map((i) => String(i.id))).toEqual([saved.refs.fit]);
+
+      const walk = parseTextContent(
+        await client.callTool({
+          name: 'simulate_steps',
+          arguments: { featureId: cartId, steps: [{ actionId: cart.add }, { actionId: cart.add }, { actionId: cart.add }] }
+        })
+      ) as {
+        steps: { status: string; refusedBecause: string[]; changes: unknown[]; rejectedChanges?: unknown[] }[];
+        projectInvariantsChecked: number;
+        finalState: { cart: { items: number } };
+      };
+      expect(walk.projectInvariantsChecked).toBe(1);
+      expect(walk.steps.map((s) => s.status)).toEqual(['success', 'success', 'blocked']);
+      expect(walk.steps[2]!.refusedBecause.join()).toContain('More items in the cart than in stock.');
+      // The refused step changed nothing; what it tried is shown apart.
+      expect(walk.steps[2]!.changes).toEqual([]);
+      expect(walk.steps[2]!.rejectedChanges).toEqual([{ path: 'cart.items', before: 2, after: 3 }]);
+      expect(walk.finalState.cart.items).toBe(2);
+
+      // A model check of the feature alone finds the same counterexample.
+      const checked = parseTextContent(
+        await client.callTool({ name: 'model_check', arguments: { featureId: cartId, maxDepth: 4 } })
+      ) as {
+        invariantViolations: { invariantName: string; path: string[] }[];
+      };
+      expect(checked.invariantViolations.map((v) => v.invariantName)).toEqual(['Carts fit the stock']);
+      expect(checked.invariantViolations[0]!.path).toHaveLength(3);
+      // Without a proof module, nothing is said about proofs: the exploration stands alone.
+      expect((checked as { proof?: unknown }).proof).toBeUndefined();
+      const gaps = parseTextContent(
+        await client.callTool({ name: 'get_spec_gaps', arguments: { featureId: cartId } })
+      ) as { proof?: unknown; gaps: { code: string }[] };
+      expect(gaps.proof).toBeUndefined();
+      expect(gaps.gaps.some((g) => g.code.startsWith('proof:') || g.code === 'solver-unavailable')).toBe(false);
+      await server.close();
+    });
+
+    it('refuses an invariant that reads what no feature declares, or a parameter, and changes nothing', async () => {
+      const { client, server } = await setup();
+      const { projectId } = await shop(client);
+      const unknown = await projectBatch(client, projectId, [
+        { kind: 'add_project_invariant', invariant: { ...fits, condition: { left: 'cart.ghost', operator: 'exists' } } }
+      ]);
+      expect(unknown.ok).toBe(false);
+      expect(unknown.errors!.join()).toContain('reads state "cart.ghost", which no feature of the project declares');
+      const param = await projectBatch(client, projectId, [
+        { kind: 'add_project_invariant', invariant: { ...fits, condition: { left: { kind: 'param', name: 'qty' }, operator: 'exists' } } }
+      ]);
+      expect(param.errors!.join()).toContain('has no parameter in scope');
+      expect((await invariantsOf(client, projectId)) ?? []).toHaveLength(0);
+      await server.close();
+    });
+
+    it('declares a canonical state variable once, owned by a real surface', async () => {
+      const { client, server } = await setup();
+      const { projectId, cartId, cart } = await shop(client);
+      const owner = { featureId: cartId, surfaceId: cart.s };
+      const ok = await projectBatch(client, projectId, [
+        { kind: 'add_state_variable', ref: 'v', path: 'cart.items', type: 'number', defaultValue: 0, description: 'x', owner }
+      ]);
+      expect(ok.ok).toBe(true);
+      const twice = await projectBatch(client, projectId, [
+        { kind: 'add_state_variable', path: 'cart.items', type: 'number', defaultValue: 0, description: 'x', owner }
+      ]);
+      expect(twice.errors!.join()).toContain('declared twice');
+      const ghost = await projectBatch(client, projectId, [
+        { kind: 'add_state_variable', path: 'cart.total', type: 'number', defaultValue: 0, description: 'x', owner: { featureId: cartId, surfaceId: 'nope' } }
+      ]);
+      expect(ghost.errors!.join()).toContain('is not a surface of a project feature');
+      await server.close();
+    });
+
+    it('returns the generated types as source when no path is given, writing nothing', async () => {
+      const { client, server } = await setup();
+      const { cartId } = await shop(client);
+      const out = parseTextContent(
+        await client.callTool({ name: 'generate_types', arguments: { featureId: cartId } })
+      ) as { ok: boolean; source: string; stats: { statePaths: number } };
+      expect(out.ok).toBe(true);
+      expect(out.source).toContain("'cart.items'");
+      expect(out.stats.statePaths).toBe(1);
+      await server.close();
+    });
+
+    it('sets and clears the scope fence of a feature through apply_batch', async () => {
+      const { client, server, repo } = await setup();
+      const { cartId } = await shop(client);
+      const set = parseTextContent(
+        await client.callTool({
+          name: 'apply_batch',
+          arguments: {
+            featureId: cartId,
+            operations: [
+              { kind: 'set_non_goals', nonGoals: ['No wish list'] },
+              { kind: 'set_expected_actions', expectedActions: ['Add item', 'Remove item'] }
+            ]
+          }
+        })
+      ) as Batch;
+      expect(set.ok).toBe(true);
+      const feature = (await repo.get(cartId as never)) as unknown as { nonGoals?: string[]; expectedActions?: string[] };
+      expect(feature.nonGoals).toEqual(['No wish list']);
+      expect(feature.expectedActions).toEqual(['Add item', 'Remove item']);
+      const gaps = parseTextContent(
+        await client.callTool({ name: 'get_spec_gaps', arguments: { featureId: cartId } })
+      ) as { gaps: { reason: string }[] };
+      expect(JSON.stringify(gaps)).toContain('Remove item');
+      await client.callTool({
+        name: 'apply_batch',
+        arguments: { featureId: cartId, operations: [{ kind: 'set_non_goals', nonGoals: [] }] }
+      });
+      expect(((await repo.get(cartId as never)) as unknown as { nonGoals?: string[] }).nonGoals).toBeUndefined();
       await server.close();
     });
   });

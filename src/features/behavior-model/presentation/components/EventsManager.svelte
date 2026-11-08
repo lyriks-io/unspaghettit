@@ -309,7 +309,7 @@
           </header>
           <ul class="divide-y divide-neutral-200 rounded-md border border-neutral-200 bg-white">
             {#each group.events as event (event.name)}
-              <li class="px-3 py-2">
+              <li data-focus-target={`event:${event.name}`} class="scroll-mt-24 px-3 py-2">
                 <header class="flex flex-wrap items-baseline gap-2">
                   <code class="mono text-sm font-medium text-neutral-900">{event.name}</code>
                   <span class="text-[11px] text-neutral-500">

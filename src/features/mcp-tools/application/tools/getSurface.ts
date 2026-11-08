@@ -1,7 +1,9 @@
 import {
   effectiveActor,
+  withExposures,
   type Action,
-  type ActionActor
+  type ActionActor,
+  type ExposureSummary
 } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
@@ -32,6 +34,8 @@ export type FocusedSurfaceIndex = {
       readonly name: string;
       /** Who fires it, defaults applied (see `effectiveActor`). */
       readonly actor: ActionActor;
+      /** The channels it declares, offered or withheld; absent when it declares none. */
+      readonly exposures?: ExposureSummary;
     }[];
   };
 };
@@ -61,7 +65,8 @@ const indexEntry = (
     actions: surface.actions.map((c: Action) => ({
       id: String(c.id),
       name: c.name,
-      actor: effectiveActor(c)
+      actor: effectiveActor(c),
+      ...withExposures(c)
     }))
   }
 });

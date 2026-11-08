@@ -41,7 +41,8 @@ const ID_KEY_PREFIX: Readonly<Record<string, string>> = {
   add_surface_invariant: 'surface_invariant',
   add_transition: 'transition',
   add_entity: 'entity',
-  add_acceptance_criterion: 'criterion'
+  add_acceptance_criterion: 'criterion',
+  add_action_exposure: 'exposure'
 };
 
 const findStateDefinition = (
@@ -111,7 +112,55 @@ const REMOVE_TARGET_KEYS: Readonly<Record<string, string>> = {
   remove_parameter: 'parameterId',
   remove_entity: 'entityId',
   remove_entity_field: 'fieldId',
-  remove_action_outcome: 'outcomeId'
+  remove_action_outcome: 'outcomeId',
+  remove_action_exposure: 'exposureId'
+};
+
+/** The id an earlier op of the batch minted under `ref`, or a refusal naming it. */
+const refId = (refs: Refs, ref: unknown, key: string): string => {
+  const id = typeof ref === 'string' ? refs[ref] : undefined;
+  if (!id) throw new Error(`unknown ${key} "${String(ref)}": no earlier op of this batch set that ref`);
+  return id;
+};
+
+/** An effect whose `dependencyRef` names a dependency minted earlier in the batch. */
+const effectWithRefs = (effect: unknown, refs: Refs): unknown => {
+  if (!effect || typeof effect !== 'object') return effect;
+  const e = effect as Record<string, unknown>;
+  if (e.dependencyRef === undefined) return effect;
+  const { dependencyRef, ...rest } = e;
+  return { ...rest, dependencyId: refId(refs, dependencyRef, 'dependencyRef') };
+};
+
+/**
+ * Cross-references to what an earlier op of the same batch created, resolved
+ * once for every op family: `valueSetRef` (a state definition or a parameter
+ * bound to a value set) and `dependencyRef` (an invoke_operation effect, alone,
+ * inside a rule, or among an outcome's effects). Without this they were kept
+ * as unknown keys and silently ignored, so an enum state bound to a value set
+ * created in the same batch had no values, and a dependency could not be
+ * declared and called in one batch.
+ */
+const withCrossRefs = (op: Op, refs: Refs): Op => {
+  let next: Op = op;
+  const set = (patch: Record<string, unknown>) => {
+    next = { ...next, ...patch };
+  };
+  for (const holder of ['', 'patch'] as const) {
+    const target = holder ? (next[holder] as Record<string, unknown> | undefined) : next;
+    if (!target || typeof target !== 'object' || target.valueSetRef === undefined) continue;
+    const { valueSetRef, ...rest } = target;
+    const resolved = { ...rest, valueSetId: refId(refs, valueSetRef, 'valueSetRef') };
+    if (holder) set({ [holder]: resolved });
+    else next = { ...(resolved as Op), kind: op.kind };
+  }
+  if (next.effect !== undefined) set({ effect: effectWithRefs(next.effect, refs) });
+  const rule = next.rule as Record<string, unknown> | undefined;
+  if (rule && typeof rule === 'object' && rule.effect !== undefined) {
+    set({ rule: { ...rule, effect: effectWithRefs(rule.effect, refs) } });
+  }
+  if (Array.isArray(next.effects)) set({ effects: next.effects.map((e) => effectWithRefs(e, refs)) });
+  return next;
 };
 
 /**
@@ -186,9 +235,10 @@ export const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => st
     createdByOp.id = null;
     try {
       const ctx: OpContext = { feature: exp, refs, mintId, remember };
+      const resolvedOp = withCrossRefs(op, refs);
       let handled: Feature | null = null;
       for (const handler of familyHandlers) {
-        handled = handler(op, ctx);
+        handled = handler(resolvedOp, ctx);
         if (handled !== null) break;
       }
       if (handled === null) throw new Error(`unknown op kind "${op.kind}"`);

@@ -1,11 +1,16 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
-import { committedActions, effectiveActor } from '$features/behavior-model/domain/entities/Action';
+import {
+  committedActions,
+  effectiveActor,
+  isOffered
+} from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import type { Project } from '$features/projects/domain/entities/Project';
 import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
 import { humanizeStatePath } from '$features/behavior-model/domain/value-objects/humanize';
+import { NBSP, numberText, quoteName, truthText, type ReportLanguage } from '$shared/language';
 import type {
   DigestDetailLevel,
   DigestLine,
@@ -29,14 +34,43 @@ import type { DigestProjector, DigestScopeRef, DigestSource } from '../ports/Dig
  *
  * Pure and total: reads the model, returns a spec, mutates nothing, and yields
  * an empty digest (rather than throwing) when the scope cannot be resolved.
+ *
+ * Every sentence the digest writes itself (headings, connectives, effect verbs,
+ * guard labels) follows the spec's language; what comes from the model (an
+ * intent, a reason, a message, a label, a name) is carried exactly as authored.
+ * English is the default and reads byte for byte as it always did.
  */
 
-const SECTION_HEADINGS: Record<DigestSection['kind'], string> = {
-  features: 'Features',
-  capabilities: 'What you can do here',
-  guardrails: 'What always holds',
-  navigation: 'Where you can go'
+const SECTION_HEADINGS: Record<ReportLanguage, Record<DigestSection['kind'], string>> = {
+  en: {
+    features: 'Features',
+    capabilities: 'What you can do here',
+    guardrails: 'What always holds',
+    navigation: 'Where you can go'
+  },
+  fr: {
+    features: 'Fonctionnalités',
+    capabilities: 'Ce que vous pouvez faire ici',
+    guardrails: 'Ce qui reste toujours vrai',
+    navigation: 'Où vous pouvez aller'
+  }
 };
+
+/** A French list: "a", "a et b", "a, b et c". */
+const frenchJoin = (items: readonly string[]): string =>
+  items.length <= 1
+    ? (items[0] ?? '')
+    : `${items.slice(0, -1).join(', ')} et ${items[items.length - 1] as string}`;
+
+/** A model name quoted the French way: « name ». */
+const q = (name: string): string => quoteName('fr', name);
+
+/** "l'état « X »" for one path, "les états « X » et « Y »" from two. */
+const frenchStates = (paths: readonly string[]): string =>
+  paths.length === 1 ? `l'état ${q(paths[0] as string)}` : `les états ${frenchJoin(paths.map(q))}`;
+
+/** "l'état « X »" for a state path of the model, humanized as in English. */
+const frenchState = (path: unknown): string => `l'état ${q(humanizeStatePath(String(path)))}`;
 
 const capitalizeFirst = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
@@ -48,17 +82,77 @@ const firstSentence = (text: string): string => {
 };
 
 const isExpression = (value: unknown): boolean =>
-  typeof value === 'object' && value !== null && typeof (value as { kind?: unknown }).kind === 'string';
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { kind?: unknown }).kind === 'string';
 
-const formatValue = (value: unknown): string => {
+const formatValue = (value: unknown, lang: ReportLanguage = 'en'): string => {
+  if (lang === 'fr') {
+    if (value === null || value === undefined) return 'rien';
+    if (typeof value === 'boolean') return truthText('fr', value);
+    if (typeof value === 'number') return numberText('fr', value);
+    if (typeof value === 'string') return quoteName('fr', value);
+    return 'une nouvelle valeur';
+  }
   if (value === null || value === undefined) return 'nothing';
   if (typeof value === 'boolean' || typeof value === 'number') return String(value);
   if (typeof value === 'string') return `"${value}"`;
   return 'a new value';
 };
 
+const FRENCH_TONES: Record<
+  NonNullable<Extract<Effect, { type: 'show_message' }>['tone']>,
+  string
+> = {
+  info: "un message d'information",
+  success: 'un message de réussite',
+  warning: "un message d'avertissement",
+  error: "un message d'erreur"
+};
+
+/** The French verb phrase for what an effect does (same meaning as the English one). */
+const describeEffectFr = (
+  effect: Effect,
+  surfaceNameById: ReadonlyMap<string, string>
+): string | null => {
+  switch (effect.type) {
+    case 'set_state': {
+      const state = frenchState(effect.path);
+      if (isExpression(effect.value)) return `met à jour ${state}`;
+      if (effect.value === null || effect.value === undefined) return `vide ${state}`;
+      return `passe ${state} à ${formatValue(effect.value, 'fr')}`;
+    }
+    case 'show_message':
+      return `affiche ${effect.tone ? FRENCH_TONES[effect.tone] : 'un message'}`;
+    case 'transition_surface': {
+      const target = surfaceNameById.get(String(effect.target));
+      return target !== undefined ? `ouvre la surface ${q(target)}` : 'ouvre une autre surface';
+    }
+    case 'append_to_list':
+      return `ajoute un élément à ${frenchState(effect.path)}`;
+    case 'remove_from_list':
+      return `retire un élément de ${frenchState(effect.path)}`;
+    case 'update_list_item':
+      return `met à jour un élément de ${frenchState(effect.path)}`;
+    case 'advance_time':
+      return 'fait avancer le temps';
+    case 'invoke_operation':
+      return `appelle l'opération ${q(String(effect.operation))}`;
+    case 'emit_event':
+    case 'block_action':
+    case 'allow_action':
+    case 'no_feedback':
+      return null;
+  }
+};
+
 /** A verb phrase for what an effect does, or null for effects with no reader-facing verb. */
-const describeEffect = (effect: Effect, surfaceNameById: ReadonlyMap<string, string>): string | null => {
+const describeEffect = (
+  effect: Effect,
+  surfaceNameById: ReadonlyMap<string, string>,
+  lang: ReportLanguage = 'en'
+): string | null => {
+  if (lang === 'fr') return describeEffectFr(effect, surfaceNameById);
   switch (effect.type) {
     case 'set_state':
       return isExpression(effect.value)
@@ -87,12 +181,55 @@ const describeEffect = (effect: Effect, surfaceNameById: ReadonlyMap<string, str
 };
 
 /**
+ * The channels the action declares, in one clause each for what is offered and
+ * what is kept off on purpose. Nothing when it declares none: an undeclared
+ * channel is not a statement, so the digest does not invent one.
+ */
+const exposurePhrases = (action: Action, lang: ReportLanguage = 'en'): readonly string[] => {
+  const exposures = action.exposures ?? [];
+  const offered = exposures
+    .filter(isOffered)
+    .map((e) => (e.operation ? `${e.channel} (${e.operation})` : e.channel));
+  const phrases: string[] = [];
+  if (lang === 'fr') {
+    if (offered.length === 1) phrases.push(`Accessible par le canal ${offered[0] as string}`);
+    if (offered.length > 1) phrases.push(`Accessible par les canaux ${frenchJoin(offered)}`);
+    for (const e of exposures) {
+      if (e.withheld) {
+        // "absente" agrees with "action", the element every capability line is about.
+        phrases.push(`Volontairement absente du canal ${e.channel}${NBSP}: ${e.withheld.reason}`);
+      }
+    }
+    return phrases;
+  }
+  if (offered.length > 0) phrases.push(`Reachable over ${offered.join(', ')}`);
+  for (const e of exposures) {
+    if (e.withheld) phrases.push(`Kept off ${e.channel}: ${e.withheld.reason}`);
+  }
+  return phrases;
+};
+
+/**
  * Who fires the action, said only when it is not a person: "a person does this"
  * is what a reader assumes of every capability, so repeating it on each line
  * would be noise, while "nobody taps this, a timer does" changes how the rest of
  * the line reads.
  */
-const firedByPhrase = (action: Action): string | null => {
+const firedByPhrase = (action: Action, lang: ReportLanguage = 'en'): string | null => {
+  if (lang === 'fr') {
+    switch (effectiveActor(action)) {
+      case 'user':
+        return null;
+      case 'system':
+        return 'Déclenchée par le système, pas par une personne';
+      case 'schedule':
+        return 'Déclenchée selon une planification, pas par une personne';
+      case 'event':
+        return action.triggeredByEvent !== undefined
+          ? `Déclenchée par l'événement ${q(String(action.triggeredByEvent))}, pas par une personne`
+          : 'Déclenchée par un événement, pas par une personne';
+    }
+  }
   switch (effectiveActor(action)) {
     case 'user':
       return null;
@@ -108,12 +245,13 @@ const firedByPhrase = (action: Action): string | null => {
 };
 
 /** The human guard phrases for an action: block-rule reasons plus required states. */
-const guardsOf = (action: Action): string[] => {
+const guardsOf = (action: Action, lang: ReportLanguage = 'en'): string[] => {
   const guards = action.rules
     .filter((rule) => rule.effect.type === 'block_action')
     .map((rule) => (rule.effect as { reason: string }).reason);
   if (action.requiredStates.length > 0) {
-    guards.push(`needs ${action.requiredStates.map((path) => humanizeStatePath(String(path))).join(', ')}`);
+    const paths = action.requiredStates.map((path) => humanizeStatePath(String(path)));
+    guards.push(lang === 'fr' ? `nécessite ${frenchStates(paths)}` : `needs ${paths.join(', ')}`);
   }
   return guards;
 };
@@ -131,21 +269,31 @@ type GuardrailItem = { readonly invariant: Invariant; readonly surfaceId?: strin
 const capabilityDetails = (
   action: Action,
   level: DigestDetailLevel,
-  surfaceNameById: ReadonlyMap<string, string>
+  surfaceNameById: ReadonlyMap<string, string>,
+  lang: ReportLanguage
 ): string[] => {
   const details: string[] = [];
-  const firedBy = firedByPhrase(action);
+  const firedBy = firedByPhrase(action, lang);
   if (firedBy) details.push(firedBy);
+  details.push(...exposurePhrases(action, lang));
   if (level === 'full') {
     for (const effect of action.effects) {
-      const phrase = describeEffect(effect, surfaceNameById);
+      const phrase = describeEffect(effect, surfaceNameById, lang);
       if (phrase) details.push(capitalizeFirst(phrase));
     }
     if (action.emittedEvents.length > 0) {
-      details.push(`Emits ${action.emittedEvents.map(String).join(', ')}`);
+      const events = action.emittedEvents.map(String);
+      details.push(
+        lang === 'fr'
+          ? events.length === 1
+            ? `Émet l'événement ${q(events[0] as string)}`
+            : `Émet les événements ${frenchJoin(events.map(q))}`
+          : `Emits ${events.join(', ')}`
+      );
     }
   }
-  for (const guard of guardsOf(action)) details.push(`Guard: ${guard}`);
+  const guardLabel = lang === 'fr' ? `Garde${NBSP}: ` : 'Guard: ';
+  for (const guard of guardsOf(action, lang)) details.push(`${guardLabel}${guard}`);
   return details;
 };
 
@@ -154,9 +302,10 @@ const capabilityLine = (
   level: DigestDetailLevel,
   surfaceNameById: ReadonlyMap<string, string>,
   featureId: string,
-  surfaceId: string
+  surfaceId: string,
+  lang: ReportLanguage
 ): DigestLine => {
-  const details = level === 'glance' ? [] : capabilityDetails(action, level, surfaceNameById);
+  const details = level === 'glance' ? [] : capabilityDetails(action, level, surfaceNameById, lang);
   return {
     label: action.name,
     // The lead is just the action's intent; effects, events, and guards live in
@@ -174,20 +323,22 @@ const capabilitiesSection = (
   items: readonly ActionOnSurface[],
   level: DigestDetailLevel,
   surfaceNameById: ReadonlyMap<string, string>,
-  featureId: string
+  featureId: string,
+  lang: ReportLanguage
 ): DigestSection | null => {
   if (items.length === 0) return null;
   // One list item per action; the level controls how much each item says (glance
   // names them; standard adds intent + guards; full adds effects + events too).
   const lines: DigestLine[] = items.map(({ action, surfaceId }) =>
-    capabilityLine(action, level, surfaceNameById, featureId, surfaceId)
+    capabilityLine(action, level, surfaceNameById, featureId, surfaceId, lang)
   );
-  return { kind: 'capabilities', heading: SECTION_HEADINGS.capabilities, lines };
+  return { kind: 'capabilities', heading: SECTION_HEADINGS[lang].capabilities, lines };
 };
 
 const guardrailsSection = (
   items: readonly GuardrailItem[],
-  featureId: string
+  featureId: string,
+  lang: ReportLanguage
 ): DigestSection | null => {
   if (items.length === 0) return null;
   const lines: DigestLine[] = items.map(({ invariant, surfaceId }) => ({
@@ -198,13 +349,14 @@ const guardrailsSection = (
     sourceFeatureId: featureId,
     sourceSurfaceId: surfaceId
   }));
-  return { kind: 'guardrails', heading: SECTION_HEADINGS.guardrails, lines };
+  return { kind: 'guardrails', heading: SECTION_HEADINGS[lang].guardrails, lines };
 };
 
 const navigationSection = (
   surfaces: readonly Surface[],
   surfaceNameById: ReadonlyMap<string, string>,
-  featureId: string
+  featureId: string,
+  lang: ReportLanguage
 ): DigestSection | null => {
   const lines: DigestLine[] = [];
 
@@ -232,7 +384,10 @@ const navigationSection = (
       if (targetName === undefined || seenTargets.has(target)) return;
       seenTargets.add(target);
       lines.push({
-        text: `${from} to ${targetName}${label ? ` (${label})` : ''}`,
+        text:
+          lang === 'fr'
+            ? `${q(from)} vers ${q(targetName)}${label ? ` (${label})` : ''}`
+            : `${from} to ${targetName}${label ? ` (${label})` : ''}`,
         sourceElementId,
         sourceElementType,
         sourceFeatureId: featureId,
@@ -253,7 +408,7 @@ const navigationSection = (
   }
 
   if (lines.length === 0) return null;
-  return { kind: 'navigation', heading: SECTION_HEADINGS.navigation, lines };
+  return { kind: 'navigation', heading: SECTION_HEADINGS[lang].navigation, lines };
 };
 
 type ResolvedScope = {
@@ -329,7 +484,8 @@ const resolveScope = (feature: Feature, ref: DigestScopeRef): ResolvedScope => {
 const buildProjectDigest = (
   features: readonly Feature[],
   project: Project | undefined,
-  level: DigestDetailLevel
+  level: DigestDetailLevel,
+  lang: ReportLanguage
 ): DigestSpec => {
   const lines: DigestLine[] = features.map((feature) => ({
     label: feature.name,
@@ -339,11 +495,11 @@ const buildProjectDigest = (
     sourceFeatureId: String(feature.id)
   }));
   const sections: DigestSection[] =
-    lines.length > 0 ? [{ kind: 'features', heading: SECTION_HEADINGS.features, lines }] : [];
+    lines.length > 0 ? [{ kind: 'features', heading: SECTION_HEADINGS[lang].features, lines }] : [];
   return {
     scope: 'project',
     detailLevel: level,
-    title: project?.name ?? 'Project',
+    title: project?.name ?? (lang === 'fr' ? 'Projet' : 'Project'),
     purposeLine: project?.description ?? '',
     sections
   };
@@ -351,9 +507,12 @@ const buildProjectDigest = (
 
 export const buildDigest = (source: DigestSource): DigestSpec => {
   const level: DigestDetailLevel = source.detailLevel ?? 'standard';
+  const lang: ReportLanguage = source.language ?? 'en';
   const { scope } = source;
 
-  if (scope.kind === 'project') return buildProjectDigest(source.features, source.project, level);
+  if (scope.kind === 'project') {
+    return buildProjectDigest(source.features, source.project, level, lang);
+  }
 
   const feature = source.features.find((f) => String(f.id) === scope.featureId);
   if (!feature) {
@@ -367,15 +526,21 @@ export const buildDigest = (source: DigestSource): DigestSpec => {
   const resolved = resolveScope(feature, scope);
 
   const sections: DigestSection[] = [];
-  const capabilities = capabilitiesSection(resolved.actionItems, level, surfaceNameById, featureId);
+  const capabilities = capabilitiesSection(
+    resolved.actionItems,
+    level,
+    surfaceNameById,
+    featureId,
+    lang
+  );
   if (capabilities) sections.push(capabilities);
 
   if (level !== 'glance') {
-    const guardrails = guardrailsSection(resolved.guardrails, featureId);
+    const guardrails = guardrailsSection(resolved.guardrails, featureId, lang);
     if (guardrails) sections.push(guardrails);
   }
   if (level === 'full') {
-    const navigation = navigationSection(resolved.navSurfaces, surfaceNameById, featureId);
+    const navigation = navigationSection(resolved.navSurfaces, surfaceNameById, featureId, lang);
     if (navigation) sections.push(navigation);
   }
 

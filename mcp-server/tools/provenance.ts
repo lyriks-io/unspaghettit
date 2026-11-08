@@ -15,6 +15,7 @@ import {
   ELEMENT_TYPES,
   emptyProvenance,
   finalizeProvenance,
+  untracedElements,
   linkSource,
   recordSpan
 } from '../../src/features/source-provenance/domain/Provenance';
@@ -371,7 +372,7 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
           label: match.el.label,
           ...(source ? { sourceId: source.id } : {}),
           spanCount,
-          remaining: elements.length - spanCount
+          remaining: untracedElements(result.provenance, elements).length
         });
       } catch (e) {
         return errorText(`record_element_span failed: ${(e as Error).message}`);
@@ -383,7 +384,7 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
     'finalize_analysis',
     {
       description:
-        'Lock the provenance analysis once every extracted element has a recorded span. Blocked if no source is stored, the analysis is already finalized, or any element is still untraced (call get_provenance to see which).',
+        'Lock the provenance analysis once every extracted element has a recorded span. Blocked if no source is stored, the analysis is already finalized, or any element is still untraced: the refusal names each element without a span (type, id, name; the first twenty and how many in all). Elements are matched by id, so a span left on an element removed since never counts for one that has none.',
       inputSchema: { featureId: z.string() }
     },
     async ({ featureId }) => {
@@ -392,9 +393,10 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
         const feature = await repo.get(fid);
         if (!feature) return errorText(`Feature ${String(fid)} not found`);
 
-        const elementCount = enumerateFeatureElements(feature).length;
+        const elements = enumerateFeatureElements(feature);
+        const elementCount = elements.length;
         const current = (await provenanceRepo.get(fid)) ?? emptyProvenance(fid, clock());
-        const result = finalizeProvenance(current, elementCount, clock());
+        const result = finalizeProvenance(current, elements, clock());
         if (!result.ok) return errorText(result.reason);
         await provenanceRepo.save(result.provenance);
 
@@ -540,7 +542,7 @@ export const registerProvenanceTools = (deps: ToolDeps): void => {
           failed,
           results,
           spanCount: current.spans.length,
-          remaining: elements.length - current.spans.length
+          remaining: untracedElements(current, elements).length
         });
       } catch (e) {
         return errorText(`record_element_spans failed: ${(e as Error).message}`);

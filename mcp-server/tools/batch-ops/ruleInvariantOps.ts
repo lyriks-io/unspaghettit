@@ -92,6 +92,56 @@ const resolveCriterionRelationRefs = (
  * reachability goal op families. Returns the next Feature when it handled
  * op.kind and null when the op belongs to another family.
  */
+
+/**
+ * update_effect and remove_effect address the effects of the action itself
+ * (or its blocked-attempt effects with onBlocked). An id that is the effect of
+ * one of its rules, of a rule of its surface or of one of its outcomes lives
+ * there: refuse by naming where, and the operation that changes it there,
+ * instead of "not found" or a removal that leaves it in place (criterion
+ * d9212a83 of feat-mcp-authoring). An id found nowhere is left to the usual
+ * path: not found for an update, idempotent for a removal.
+ */
+const refuseEffectLivingElsewhere = (
+  exp: Feature,
+  op: Op,
+  refs: Refs,
+  kind: 'update_effect' | 'remove_effect'
+): void => {
+  const effectId = String(op.effectId ?? '');
+  if (!effectId) return;
+  const sid = String(resolve(op, refs, 'surfaceRef', 'surfaceId'));
+  const cid = String(resolve(op, refs, 'actionRef', 'actionId'));
+  const surface = exp.surfaces.find((s) => String(s.id) === sid);
+  const action = surface?.actions.find((a) => String(a.id) === cid);
+  if (!surface || !action) return;
+  const own = op.onBlocked ? (action.onBlockedEffects ?? []) : action.effects;
+  if (own.some((effect) => String(effect.id) === effectId)) return;
+  const label = (rule: { id: unknown; description?: string; category?: string }): string =>
+    `rule ${String(rule.id)}${rule.description ? ` ("${rule.description}")` : rule.category ? ` (${rule.category})` : ''}`;
+  const verb = kind === 'update_effect' ? 'change it' : 'remove it';
+  const onRule = action.rules.find((rule) => rule.effect && String(rule.effect.id) === effectId);
+  if (onRule) {
+    throw new Error(
+      `${kind}: effect ${effectId} is the effect of ${label(onRule)} of action ${cid}, not one of the action's own effects. To ${verb}, use update_action_rule { surfaceId: "${sid}", actionId: "${cid}", ruleId: "${String(onRule.id)}", patch: { effect: {...} } }${kind === 'remove_effect' ? ' with another effect, or remove_action_rule to drop the rule' : ''}.`
+    );
+  }
+  const onSurfaceRule = surface.rules.find((rule) => rule.effect && String(rule.effect.id) === effectId);
+  if (onSurfaceRule) {
+    throw new Error(
+      `${kind}: effect ${effectId} is the effect of surface ${label(onSurfaceRule)} of surface ${sid}. To ${verb}, use update_surface_rule { surfaceId: "${sid}", ruleId: "${String(onSurfaceRule.id)}", patch: { effect: {...} } }${kind === 'remove_effect' ? ' with another effect, or remove_surface_rule to drop the rule' : ''}.`
+    );
+  }
+  const onOutcome = (action.outcomes ?? []).find((outcome) =>
+    (outcome.effects ?? []).some((effect) => String(effect.id) === effectId)
+  );
+  if (onOutcome) {
+    throw new Error(
+      `${kind}: effect ${effectId} is an effect of outcome ${String(onOutcome.id)} ("${onOutcome.name}") of action ${cid}. An outcome's effects change with the outcome: remove_action_outcome { outcomeId: "${String(onOutcome.id)}" } then add_action_outcome with the effects it should carry.`
+    );
+  }
+};
+
 export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null => {
   const { refs, mintId, remember } = ctx;
   let exp = ctx.feature;
@@ -216,6 +266,7 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       requireSomeChange(op, patch as Record<string, unknown>, [
         'the effect fields to change (type, path, value, event, target, message, ...)'
       ]);
+      refuseEffectLivingElsewhere(exp, op, refs, 'update_effect');
       exp = (op.onBlocked ? T.updateOnBlockedEffectOnCapability : T.updateEffectOnCapability)(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),
@@ -226,6 +277,7 @@ export const applyRuleInvariantOps = (op: Op, ctx: OpContext): Feature | null =>
       break;
     }
     case 'remove_effect':
+      refuseEffectLivingElsewhere(exp, op, refs, 'remove_effect');
       exp = (op.onBlocked ? T.removeOnBlockedEffectFromCapability : T.removeEffectFromCapability)(
         exp,
         asSurfaceId(resolve(op, refs, 'surfaceRef', 'surfaceId')),

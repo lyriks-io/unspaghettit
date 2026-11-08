@@ -9,6 +9,7 @@ import type { DigestScopeRef } from '$features/behavior-digest/domain/ports/Dige
 import { buildDigest } from '$features/behavior-digest/domain/services/buildDigest';
 import { markdownDigestExporter } from '$features/behavior-digest/infrastructure/exporters/MarkdownDigestExporter';
 import { computeFeatureMaturity } from '$features/maturity/domain/computeFeatureMaturity';
+import type { ReportLanguage } from '$shared/language';
 
 /** How the digest comes back: the structured spec (default) or serialized Markdown. */
 export type DigestFormat = 'spec' | 'markdown';
@@ -21,6 +22,11 @@ export type GetDigestInput = {
   readonly scope: DigestScopeRef;
   readonly detailLevel?: DigestDetailLevel;
   readonly format?: DigestFormat;
+  /**
+   * The spec's language: the digest's own sentences, headings and connectives
+   * follow it; names and text from the model stay as authored. Defaults to 'en'.
+   */
+  readonly language?: ReportLanguage;
 };
 
 /**
@@ -71,7 +77,8 @@ export const getDigestTool = (input: GetDigestInput): GetDigestOutput => {
     features: input.features,
     ...(input.project ? { project: input.project } : {}),
     scope: input.scope,
-    ...(input.detailLevel ? { detailLevel: input.detailLevel } : {})
+    ...(input.detailLevel ? { detailLevel: input.detailLevel } : {}),
+    ...(input.language ? { language: input.language } : {})
   });
   const hasContent = digestHasContent(spec);
   const maturity = input.features.map((feature) => {
@@ -87,6 +94,11 @@ export const getDigestTool = (input: GetDigestInput): GetDigestOutput => {
     };
   });
   return input.format === 'markdown'
-    ? { format: 'markdown', hasContent, markdown: markdownDigestExporter.export(spec), maturity }
+    ? {
+        format: 'markdown',
+        hasContent,
+        markdown: markdownDigestExporter.export(spec, input.language),
+        maturity
+      }
     : { format: 'spec', hasContent, digest: spec, maturity };
 };

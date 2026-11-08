@@ -6,6 +6,7 @@
   import type { Feature } from '$features/behavior-model/domain/entities/Feature';
   import { asActionId, asSurfaceId } from '$features/behavior-model/domain/value-objects/ids';
   import { locateRule } from '$features/behavior-model/domain/services/RuleLocation';
+  import { locateActionPart } from '$features/behavior-model/domain/services/ActionPartLocation';
   import { featureStore } from '$features/behavior-model/presentation/stores/featureStore.svelte';
   import { editorStore } from '$features/behavior-model/presentation/stores/editorStore.svelte';
   import { getEffectiveEntities } from '$features/behavior-model/domain/services/EffectiveEntities';
@@ -222,6 +223,23 @@
             } else {
               editorStore.setSurfacePanelTab('rules');
             }
+          }
+        }
+        // A scenario or a parameter is edited inside its action's card: select
+        // its surface and expand that action so the row is on screen.
+        const partMatch = /^(scenario|parameter):(.+)$/.exec(focusParam);
+        if (partMatch?.[2]) {
+          const location = locateActionPart(
+            feature,
+            partMatch[1] as 'scenario' | 'parameter',
+            partMatch[2]
+          );
+          if (location) {
+            if (editorStore.selectedSurfaceId !== location.surfaceId) {
+              editorStore.selectSurface(location.surfaceId);
+            }
+            editorStore.setSurfacePanelTab('actions');
+            editorStore.selectCapability(location.actionId);
           }
         }
         // Bump the token so re-navigating to the same target still re-fires the

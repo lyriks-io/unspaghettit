@@ -336,3 +336,49 @@ describe('detectDrift on a renamed state path', () => {
     ]);
   });
 });
+
+describe('detectDrift on action exposures', () => {
+  const audited = '2026-06-05T00:00:00.000Z';
+  const withExposure = (versions: Record<string, string>): Feature => {
+    const base = stamped('2026-06-10T00:00:00.000Z', versions);
+    const [surface] = base.surfaces;
+    const [action] = surface!.actions;
+    return {
+      ...base,
+      surfaces: [
+        {
+          ...surface!,
+          actions: [
+            { ...action!, exposures: [{ id: 'x1', channel: 'mcp', operation: 'update_issue' }] }
+          ]
+        }
+      ]
+    } as unknown as Feature;
+  };
+
+  it('owns an exposure key and reports it stale when only the exposure changed', () => {
+    const actionKey = `action:${String(stamped('2026-06-10T00:00:00.000Z', {}).surfaces[0]!.actions[0]!.id)}`;
+    const report = detectDrift(
+      [
+        withExposure({
+          [actionKey]: '2026-06-01T00:00:00.000Z',
+          'exposure:x1': '2026-06-10T00:00:00.000Z'
+        })
+      ],
+      [
+        { key: actionKey, status: 'implemented', auditedSpecVersion: audited },
+        { key: 'exposure:x1', status: 'implemented', auditedSpecVersion: audited }
+      ]
+    );
+    expect(report.orphans).toEqual([]);
+    expect(report.stale.map((s) => s.key)).toEqual(['exposure:x1']);
+  });
+
+  it('reads the key of an exposure that no longer exists as an orphan', () => {
+    const report = detectDrift(
+      [withExposure({})],
+      [{ key: 'exposure:gone', status: 'implemented', auditedSpecVersion: audited }]
+    );
+    expect(report.orphans.map((o) => o.key)).toEqual(['exposure:gone']);
+  });
+});

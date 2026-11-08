@@ -355,3 +355,27 @@ describe('parameterCombinations over a grid that fits under the cap', () => {
     expect(result.capped).toBe(false);
   });
 });
+
+// Criterion d8e6e142: the exploration tries the inputs the solver chose.
+describe('parameterCombinations with the solver inputs', () => {
+  it('explores an action whose required text has no domain with the inputs the solver chose', () => {
+    const code = param({ name: 'code', type: 'string', required: true });
+    expect(parameterCombinations(action([code]), undefined).explorable).toBe(false);
+    const withInputs = parameterCombinations(action([code]), undefined, DEFAULT_MAX_COMBOS, {
+      witnessed: [{ code: 'WELCOME' }, { code: 'EXPIRED' }]
+    });
+    expect(withInputs.explorable).toBe(true);
+    expect(withInputs.combos).toEqual([{ code: 'WELCOME' }, { code: 'EXPIRED' }]);
+  });
+
+  it('tries the solver inputs first, whole, beside the drawn values and without repeating one', () => {
+    const flag = param({ name: 'express', type: 'boolean', required: true });
+    const amount = param({ name: 'amount', type: 'number', required: true, validations: [{ type: 'positive' }] });
+    const combos = parameterCombinations(action([flag, amount]), undefined, DEFAULT_MAX_COMBOS, {
+      witnessed: [{ express: true, amount: 37.5 }, { express: true, amount: 1 }]
+    }).combos;
+    expect(combos[0]).toEqual({ express: true, amount: 37.5 });
+    expect(combos.filter((c) => c.express === true && c.amount === 1)).toHaveLength(1);
+    expect(combos.some((c) => c.express === false)).toBe(true);
+  });
+});

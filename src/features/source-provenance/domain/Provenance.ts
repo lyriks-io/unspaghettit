@@ -269,25 +269,49 @@ export const recordSpan = (p: Provenance, input: RecordSpanInput): ProvenanceRes
   };
 };
 
+/** An element the finalize gate expects a span for: what FeatureElements enumerates. */
+export type TraceTarget = { readonly id: string; readonly type: ElementType; readonly label: string };
+
+/**
+ * The expected elements that carry no span yet, matched by identity. A span
+ * left on an element removed since matches nothing here, so it can never
+ * stand in for an element that has none (criterion 339c1758).
+ */
+export const untracedElements = (
+  p: Provenance,
+  expected: readonly TraceTarget[]
+): readonly TraceTarget[] => {
+  const traced = new Set(p.spans.map((s) => s.elementId));
+  return expected.filter((el) => !traced.has(el.id));
+};
+
+/** How many untraced elements a refusal names; the total is always given. */
+const NAMED_UNTRACED = 20;
+
 /**
  * Lock the analysis. Mirrors "Finalize Analysis": blocked unless a file is
- * stored and every one of the feature's `expectedElementCount` elements is
- * traced to a span.
+ * stored and every expected element of the feature is traced to a span. The
+ * refusal names the elements still without one (criterion 339c1758).
  */
 export const finalizeProvenance = (
   p: Provenance,
-  expectedElementCount: number,
+  expected: readonly TraceTarget[],
   finalizedAt: string
 ): ProvenanceResult => {
   if (!p.file && p.sourceIds.length === 0) {
     return { ok: false, reason: 'Store and analyze a source document before finalizing.' };
   }
   if (p.finalized) return { ok: false, reason: 'Analysis is already finalized.' };
-  if (p.spans.length !== expectedElementCount) {
-    const untraced = expectedElementCount - p.spans.length;
+  const untraced = untracedElements(p, expected);
+  if (untraced.length > 0) {
+    const named = untraced
+      .slice(0, NAMED_UNTRACED)
+      .map((el) => `${el.type} ${el.id} (${el.label})`)
+      .join('; ');
+    const more = untraced.length > NAMED_UNTRACED ? `; and ${untraced.length - NAMED_UNTRACED} more` : '';
     return {
       ok: false,
-      reason: `Finalize blocked: ${untraced} extracted element(s) have no source span.`
+      reason: `Finalize blocked: ${untraced.length} extracted element(s) have no source span: ${named}${more}.`
     };
   }
   return { ok: true, provenance: { ...p, finalized: true, updatedAt: finalizedAt } };
