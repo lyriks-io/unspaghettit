@@ -15,11 +15,45 @@ import prettier from 'eslint-config-prettier';
  * eslint-config-prettier is applied last so formatting is left entirely to
  * Prettier — ESLint never fights the formatter.
  */
+// The layers of a feature, enforced: a dependency points inward. What breaks the
+// rule today is listed here, and these lists only shrink.
+const DOMAIN_LAYER_DEBT = [
+  'src/features/lyriks-community/domain/upgradeOffer.ts',
+  'src/features/verification/domain/aggregateVerdict.ts',
+  'src/features/verification/domain/proofChecks.ts'
+];
+const APPLICATION_LAYER_DEBT = [
+  'src/features/behavior-digest/application/digestComposition.ts',
+  'src/features/diagram-projection/application/projectionComposition.ts',
+  'src/features/mcp-tools/application/tools/getDigest.ts',
+  'src/features/solver/application/ProveFeature.ts'
+];
+const PRESENTATION_LAYER_DEBT = [
+  'src/features/app-shell/presentation/resetLocalData.ts',
+  'src/features/app-shell/presentation/stores/hubDirectoryStore.svelte.ts',
+  'src/features/behavior-model/presentation/stores/featuresStore.svelte.ts',
+  'src/features/builder-mode/presentation/stores/builderModeStore.svelte.ts',
+  'src/features/diagram-projection/presentation/components/MermaidDiagram.svelte',
+  'src/features/diagram-projection/presentation/components/ProjectionViewer.svelte',
+  'src/features/global-search/presentation/stores/globalSearchStore.svelte.ts',
+  'src/features/library/presentation/components/LibraryDialog.svelte',
+  'src/features/projects/presentation/components/ProjectsIndex.svelte',
+  'src/features/projects/presentation/services/projectBundleClient.ts',
+  'src/features/tutorial/presentation/components/GettingStartedBanner.svelte',
+  'src/features/tutorial/presentation/stores/tourStore.svelte.ts'
+];
+const inward = (files, debt, group, message) => ({
+  files,
+  ignores: ['**/*.test.ts', ...debt],
+  rules: { 'no-restricted-imports': ['error', { patterns: [{ group, message }] }] }
+});
+
 export default ts.config(
   {
     // Generated, vendored, and build output — never our code to lint.
     ignores: [
       'build/',
+      'dist/',
       '.svelte-kit/',
       'node_modules/',
       'coverage/',
@@ -51,6 +85,9 @@ export default ts.config(
       // Dynamic code construction is a real smell; the only legitimate uses are
       // two codegen tests that already carry a local disable directive.
       'no-new-func': 'error',
+      // A regular expression may have to match a French message, whose typography
+      // holds no-break spaces.
+      'no-irregular-whitespace': ['error', { skipRegExps: true }],
       // Allow intentionally-unused names when prefixed with `_` (e.g. `_evt`,
       // destructured rest used only to drop a key).
       '@typescript-eslint/no-unused-vars': [
@@ -83,5 +120,23 @@ export default ts.config(
       // compiler warnings) still needs. Leave necessity enforcement to check.
       'svelte/no-unused-svelte-ignore': 'off'
     }
-  }
+  },
+  inward(
+    ['src/features/*/domain/**/*.ts'],
+    DOMAIN_LAYER_DEBT,
+    ['**/application/**', '**/infrastructure/**', '**/presentation/**'],
+    'A domain depends on no outer layer.'
+  ),
+  inward(
+    ['src/features/*/application/**/*.ts'],
+    APPLICATION_LAYER_DEBT,
+    ['**/infrastructure/**', '**/presentation/**'],
+    'An application layer reaches infrastructure through a port.'
+  ),
+  inward(
+    ['src/features/*/presentation/**/*.ts', 'src/features/*/presentation/**/*.svelte'],
+    PRESENTATION_LAYER_DEBT,
+    ['**/infrastructure/**', '!$shared/infrastructure/container', '!$shared/infrastructure/browserContainer'],
+    'Presentation reaches infrastructure through the container.'
+  )
 );

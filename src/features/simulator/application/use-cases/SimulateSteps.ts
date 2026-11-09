@@ -9,7 +9,7 @@ import {
 } from '$features/behavior-model/domain/services/PersonaApplier';
 import type { ParameterValues } from '$features/behavior-model/domain/services/ParameterValidator';
 import { advanceClock } from '$features/behavior-model/domain/value-objects/SimulationClock';
-import { type StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
+import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
 import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
 import { seedOtherFeatureDefaults } from '$features/behavior-model/domain/services/StateSnapshot';
 import { simulate } from '$features/simulator/domain/SimulatorEngine';
