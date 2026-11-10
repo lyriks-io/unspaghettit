@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-## [0.27.0] - Unreleased
+## [0.27.0] - 2026-11-10
 
 An action says which channels it is reachable through.
 A proof module, where one is loaded, proves for every value at once what the examples cannot reach.
