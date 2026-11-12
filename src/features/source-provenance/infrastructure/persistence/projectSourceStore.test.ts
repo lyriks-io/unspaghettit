@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -103,6 +103,22 @@ describe('JsonFolderProjectSourceRepository', () => {
     await repo.save({ ...source, authority: 'supporting' });
     expect((await repo.find('s1'))?.authority).toBe('supporting');
     expect((await repo.find('s1'))?.content).toBe(source.content);
+  });
+
+  it('preserves the original captured text when a relocation cannot be written', async () => {
+    const root = makeTempRoot();
+    seedProject(root, 'shop', 'p1', []);
+    const repo = new JsonFolderProjectSourceRepository(root);
+    const source = makeSource('s1', 'p1', 'irreplaceable evidence');
+    await repo.save(source);
+    const original = join(root, 'shop', 'sources', 's1.source.json');
+    const before = readFileSync(original, 'utf8');
+    unlinkSync(join(root, 'shop', 'shop.project.json'));
+    seedProject(root, 'renamed', 'p1', []);
+    // A directory at the destination makes the atomic replacement fail.
+    mkdirSync(join(root, 'renamed', 'sources', 's1.source.json'), { recursive: true });
+    await expect(repo.save(source)).rejects.toThrow();
+    expect(readFileSync(original, 'utf8')).toBe(before);
   });
 });
 

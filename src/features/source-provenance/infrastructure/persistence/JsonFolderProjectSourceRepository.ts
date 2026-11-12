@@ -55,19 +55,20 @@ export class JsonFolderProjectSourceRepository implements ProjectSourceRepositor
     ensureSourcesDir(this.directory, slug);
     const destination = sourceFilePath(this.directory, slug, source.id);
 
-    // Sweep up an old copy if the owning project moved/renamed since the last
-    // save, so the same sourceId never ends up duplicated across folders.
-    for (const { file, path } of walkSources(this.directory)) {
-      if (file === `${source.id}${SOURCE_SUFFIX}` && path !== destination) unlinkSync(path);
-    }
-
     const content = exportSourceToJson(source);
+    let unchanged = false;
     try {
-      if (readFileSync(destination, 'utf8') === content) return;
+      unchanged = readFileSync(destination, 'utf8') === content;
     } catch {
       // Missing or unreadable: let the atomic write report any real failure.
     }
-    await writeFileAtomic(destination, content, 'utf8');
+    if (!unchanged) await writeFileAtomic(destination, content, 'utf8');
+
+    // Keep the previous copy until its replacement is durably written. A failed
+    // relocation must not erase the only captured source and all its evidence.
+    for (const { file, path } of walkSources(this.directory)) {
+      if (file === `${source.id}${SOURCE_SUFFIX}` && path !== destination) unlinkSync(path);
+    }
   }
 
   async delete(sourceId: string): Promise<void> {
