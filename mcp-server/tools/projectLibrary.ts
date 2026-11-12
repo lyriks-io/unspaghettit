@@ -20,7 +20,7 @@ import {
 } from '../../src/features/projects/domain/services/projectLibrary';
 import { errorText, text, type ToolDeps } from './_shared';
 import { expandFeatureId, expandProjectId } from './short-ids';
-import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
+import { findOwningProject, listAllProjects } from '../../src/features/projects/application/services/bulkRead';
 
 const kindSchema = z.enum(ALL_LIBRARY_KINDS as unknown as [LibraryKind, ...LibraryKind[]]);
 
@@ -147,6 +147,7 @@ export const registerProjectLibraryTools = (deps: ToolDeps): void => {
         "MIGRATION: inline copy → canonical reference. Moves one entity / resource / persona out of a feature into the owning project's library, replaces it with a reference in that feature, and (unless dedupe:false) collapses IDENTICALLY-NAMED copies in the project's OTHER features into references to the same definition, deleting the duplicates. This is the fix for the copy-per-feature pattern: after it, the definition is stored once and every consumer still resolves it as if it were local. Reports which features were rewritten and which copies it deliberately left alone because they differ from the canonical one.",
       inputSchema: {
         featureId: z.string().describe('Feature currently holding the definition to promote.'),
+        expectedProjectId: z.string().optional().describe('The project authorized by the host. Refuses source and deduplication writes outside it.'),
         kind: kindSchema,
         id: z.string().describe('Id of the entity / resource / persona to promote.'),
         dedupe: z
@@ -157,13 +158,21 @@ export const registerProjectLibraryTools = (deps: ToolDeps): void => {
           )
       }
     },
-    async ({ featureId, kind, id, dedupe }) => {
+    async ({ featureId, expectedProjectId, kind, id, dedupe }) => {
       try {
         const expandedFeatureId = await expandFeatureId(repo, featureId);
         const feature = await repo.get(asFeatureId(expandedFeatureId));
         if (!feature) return errorText(`Feature ${featureId} not found.`);
 
-        const project: Project | null = await findOwningProject(projectRepo, String(feature.id));
+        // Membership must be unique for every record this globally addressed
+        // operation will save, including deduplication siblings.
+        const projects = await listAllProjects(projectRepo);
+        const ownersOf = (id: string) => projects.filter((project) => project.featureIds.some((member) => String(member) === id));
+        const sourceOwners = ownersOf(String(feature.id));
+        const project: Project | null = sourceOwners.length === 1 ? sourceOwners[0]! : null;
+        if (sourceOwners.length > 1 || (expectedProjectId !== undefined && String(project?.id) !== expectedProjectId)) {
+          return errorText('Project library promotion cannot write a feature outside the authorized project.');
+        }
         if (!project) {
           return errorText(
             `Feature ${feature.id} is not a member of any project, so there is no library to promote into. Add it with add_feature_to_project first.`
@@ -217,6 +226,13 @@ export const registerProjectLibraryTools = (deps: ToolDeps): void => {
             );
             rewritten.push(String(sibling.id));
           }
+        }
+
+        if (siblingSaves.some((sibling) => {
+          const owners = ownersOf(String(sibling.id));
+          return owners.length !== 1 || String(owners[0]!.id) !== String(project.id);
+        })) {
+          return errorText('Project library promotion cannot write a feature outside the authorized project.');
         }
 
         // Library first: a half-applied promotion that leaves features
