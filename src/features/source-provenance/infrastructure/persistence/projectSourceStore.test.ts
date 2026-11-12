@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -87,6 +87,22 @@ describe('JsonFolderProjectSourceRepository', () => {
     expect(await repo.find('s1')).toEqual(source);
     expect(await repo.find('missing')).toBeNull();
     expect(await repo.find('../s1')).toBeNull();
+  });
+
+  it('does not rewrite an identical source, but persists changed classification', async () => {
+    const root = makeTempRoot();
+    seedProject(root, 'shop', 'p1', []);
+    const repo = new JsonFolderProjectSourceRepository(root);
+    const source = makeSource('s1', 'p1', 'immutable text');
+    await repo.save(source);
+    const path = join(root, 'shop', 'sources', 's1.source.json');
+    utimesSync(path, 1, 1);
+    const before = statSync(path).mtimeMs;
+    await repo.save(source);
+    expect(statSync(path).mtimeMs).toBe(before);
+    await repo.save({ ...source, authority: 'supporting' });
+    expect((await repo.find('s1'))?.authority).toBe('supporting');
+    expect((await repo.find('s1'))?.content).toBe(source.content);
   });
 });
 

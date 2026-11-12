@@ -61,7 +61,13 @@ export class JsonFolderProjectSourceRepository implements ProjectSourceRepositor
       if (file === `${source.id}${SOURCE_SUFFIX}` && path !== destination) unlinkSync(path);
     }
 
-    await writeFileAtomic(destination, exportSourceToJson(source), 'utf8');
+    const content = exportSourceToJson(source);
+    try {
+      if (readFileSync(destination, 'utf8') === content) return;
+    } catch {
+      // Missing or unreadable: let the atomic write report any real failure.
+    }
+    await writeFileAtomic(destination, content, 'utf8');
   }
 
   async delete(sourceId: string): Promise<void> {
