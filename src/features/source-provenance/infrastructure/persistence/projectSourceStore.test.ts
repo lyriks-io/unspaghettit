@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -74,6 +74,19 @@ describe('JsonFolderProjectSourceRepository', () => {
     await repo.delete('s1');
     expect(existsSync(join(root, '__unassigned', 'sources', 's1.source.json'))).toBe(false);
     expect(await repo.find('s1')).toBeNull();
+  });
+
+  it('finds a source after its project folder moves, without a stale path cache', async () => {
+    const root = makeTempRoot();
+    seedProject(root, 'shop', 'p1', []);
+    const repo = new JsonFolderProjectSourceRepository(root);
+    const source = makeSource('s1', 'p1', 'immutable text');
+    await repo.save(source);
+    expect(await repo.find('s1')).toEqual(source);
+    renameSync(join(root, 'shop'), join(root, 'renamed'));
+    expect(await repo.find('s1')).toEqual(source);
+    expect(await repo.find('missing')).toBeNull();
+    expect(await repo.find('../s1')).toBeNull();
   });
 });
 

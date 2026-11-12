@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import writeFileAtomic from 'write-file-atomic';
+import { join } from 'node:path';
 import type { ProjectSource } from '$features/source-provenance/domain/ProjectSource';
 import type { ProjectSourceRepository } from '$features/source-provenance/application/ports/ProjectSourceRepository';
 import {
@@ -8,8 +9,11 @@ import {
 } from '$features/source-provenance/infrastructure/io/SourceJson';
 import {
   SOURCE_SUFFIX,
+  SOURCES_SUBFOLDER,
   ensureSourcesDir,
   findProjectSlugById,
+  isSafeSegment,
+  listAllSnapshotFolders,
   sourceFilePath,
   walkSources
 } from '$shared/infrastructure/persistence/snapshotLayout';
@@ -35,8 +39,12 @@ export class JsonFolderProjectSourceRepository implements ProjectSourceRepositor
   }
 
   async find(sourceId: string): Promise<ProjectSource | null> {
-    for (const { file, path } of walkSources(this.directory)) {
-      if (file === `${sourceId}${SOURCE_SUFFIX}`) return this.read(path);
+    if (!isSafeSegment(sourceId)) return null;
+    // The stable id already names the file. Do not enumerate every source in
+    // every project merely to find one filename; keep lookups fresh after moves.
+    for (const folder of listAllSnapshotFolders(this.directory)) {
+      const path = join(this.directory, folder, SOURCES_SUBFOLDER, `${sourceId}${SOURCE_SUFFIX}`);
+      if (existsSync(path)) return this.read(path);
     }
     return null;
   }
