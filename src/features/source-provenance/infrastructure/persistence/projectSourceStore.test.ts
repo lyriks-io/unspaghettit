@@ -120,6 +120,31 @@ describe('JsonFolderProjectSourceRepository', () => {
     await expect(repo.save(source)).rejects.toThrow();
     expect(readFileSync(original, 'utf8')).toBe(before);
   });
+
+  it('serializes writes of one source across folders and repository instances', async () => {
+    const root = makeTempRoot();
+    seedProject(root, 'shop', 'p1', []);
+    seedProject(root, 'blog', 'p2', []);
+    const first = new JsonFolderProjectSourceRepository(root);
+    const second = new JsonFolderProjectSourceRepository(root);
+    const source = makeSource('s1', 'p1', 'captured evidence');
+    await first.save(source);
+    await Promise.all([
+      first.save({ ...source, projectId: 'p2' }),
+      second.save(source)
+    ]);
+    expect(await first.find('s1')).toEqual(source);
+    expect(existsSync(join(root, 'shop', 'sources', 's1.source.json'))).toBe(true);
+    expect(existsSync(join(root, 'blog', 'sources', 's1.source.json'))).toBe(false);
+  });
+
+  it('does not resurrect a source deleted while its save is in flight', async () => {
+    const root = makeTempRoot();
+    seedProject(root, 'shop', 'p1', []);
+    const repo = new JsonFolderProjectSourceRepository(root);
+    await Promise.all([repo.save(makeSource('s1', 'p1', 'evidence')), repo.delete('s1')]);
+    expect(await repo.find('s1')).toBeNull();
+  });
 });
 
 describe('migrateEmbeddedSourceDocs', () => {

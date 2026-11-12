@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import writeFileAtomic from 'write-file-atomic';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { ProjectSource } from '$features/source-provenance/domain/ProjectSource';
 import type { ProjectSourceRepository } from '$features/source-provenance/application/ports/ProjectSourceRepository';
 import {
@@ -17,6 +17,9 @@ import {
   sourceFilePath,
   walkSources
 } from '$shared/infrastructure/persistence/snapshotLayout';
+
+/** A source may move folders; serialize by identity rather than destination. */
+const sourceWrites = new Map<string, Promise<void>>();
 
 /**
  * Source document persistence. `sources/<sourceId>.source.json` lives inside
@@ -49,7 +52,23 @@ export class JsonFolderProjectSourceRepository implements ProjectSourceRepositor
     return null;
   }
 
-  async save(source: ProjectSource): Promise<void> {
+  save(source: ProjectSource): Promise<void> {
+    return this.inSourceTurn(source.id, () => this.saveNow(source));
+  }
+
+  private inSourceTurn(sourceId: string, write: () => Promise<void>): Promise<void> {
+    const key = `${resolve(this.directory)}\0${sourceId}`;
+    const previous = sourceWrites.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(write);
+    sourceWrites.set(key, next);
+    const clear = () => {
+      if (sourceWrites.get(key) === next) sourceWrites.delete(key);
+    };
+    void next.then(clear, clear);
+    return next;
+  }
+
+  private async saveNow(source: ProjectSource): Promise<void> {
     const slug =
       source.projectId === null ? null : findProjectSlugById(this.directory, source.projectId);
     ensureSourcesDir(this.directory, slug);
@@ -71,10 +90,12 @@ export class JsonFolderProjectSourceRepository implements ProjectSourceRepositor
     }
   }
 
-  async delete(sourceId: string): Promise<void> {
-    for (const { file, path } of walkSources(this.directory)) {
-      if (file === `${sourceId}${SOURCE_SUFFIX}` && existsSync(path)) unlinkSync(path);
-    }
+  delete(sourceId: string): Promise<void> {
+    return this.inSourceTurn(sourceId, async () => {
+      for (const { file, path } of walkSources(this.directory)) {
+        if (file === `${sourceId}${SOURCE_SUFFIX}` && existsSync(path)) unlinkSync(path);
+      }
+    });
   }
 
   private read(path: string): ProjectSource | null {
