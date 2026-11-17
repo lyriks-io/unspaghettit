@@ -18,7 +18,16 @@
    * user explicitly retires it; closing it is just "not now".
    */
 
-  const KEY_URL = 'https://get.lyriks.io/';
+  const KEY_URL = 'https://lyriks.io/get-started';
+
+  /**
+   * The thank-you offer to the people who tested Unspaghettit. The migration
+   * article says how to move the projects across and holds the form that asks
+   * for the Enterprise key; the anchor lands on that form, and the utm pair lets
+   * the site count who came from this panel.
+   */
+  const OFFER_URL =
+    'https://lyriks.io/blog/from-unspaghettit-to-lyriks-community-edition?utm_source=unspaghettit&utm_medium=splash#beta-offer';
 
   const visible = $derived(
     showUpgradeOffer({
@@ -72,7 +81,7 @@
   const rows = [
     { kind: 'kept', text: 'The same Unspaghettit engine and models' },
     { kind: 'new', text: 'Product brief, users and roles' },
-    { kind: 'new', text: 'Features, requirements and releases' },
+    { kind: 'new', text: 'Features and requirements' },
     { kind: 'new', text: 'Journeys, screens and a simulator' },
     { kind: 'new', text: 'Rules, data and architecture' },
     { kind: 'new', text: 'Audits and generated specs' }
@@ -155,6 +164,22 @@
           class="mt-5 max-h-[38vh] w-auto max-w-full self-center rounded-xl border border-hairline"
         />
 
+        <p
+          class="mt-5 rounded-xl border border-hairline bg-slate-50 px-4 py-3 text-sm leading-5 text-slate-700"
+        >
+          <span aria-hidden="true">🎁</span>
+          <strong class="font-semibold text-slate-950"
+            >Tested Unspaghettit? Get 2 months of Lyriks Enterprise, on us.</strong
+          >
+          <a
+            href={OFFER_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onclick={dismiss}
+            class="font-semibold whitespace-nowrap text-brand-700 underline underline-offset-2 hover:text-brand-800"
+            >Move your projects and claim the offer</a
+          >
+        </p>
         <p class="mt-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">
           What comes with it
         </p>

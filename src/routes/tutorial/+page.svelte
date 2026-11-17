@@ -1344,7 +1344,7 @@ unspa dashboard --host 0.0.0.0`}
               data and the architecture are, and whether the product is actually
               finished: those live one layer up.
               <a
-                href="https://get.lyriks.io/"
+                href="https://lyriks.io/get-started"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-brand-700 underline">Lyriks Community</a
