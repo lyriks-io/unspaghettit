@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-11-17
+
+The splash of a standalone install thanks the people who tested Unspaghettit.
+
+### Changed
+
+- The Lyriks Community splash offers 2 months of Lyriks Enterprise to the
+  people who tested Unspaghettit, linking to the migration article on
+  lyriks.io, which says how to move the projects and holds the form that asks
+  for the key.
+- Get your free key, and the tutorial's link to Lyriks Community, open
+  lyriks.io/get-started directly.
+- The splash no longer lists releases among what Lyriks Community adds.
+
 ## [0.27.0] - 2026-11-10
 
 An action says which channels it is reachable through.
