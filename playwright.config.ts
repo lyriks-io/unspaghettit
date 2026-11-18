@@ -15,13 +15,16 @@ import { defineConfig, devices } from '@playwright/test';
  * Each server points UNSPA_SNAPSHOTS at its own throwaway hub under
  * e2e/.tmp/, reset by prepare-hub.cjs on startup. E2E runs therefore start
  * from a known-empty state and can never read or mutate the developer's
- * real shared hub.
+ * real shared hub. The address each server publishes for live sync goes to
+ * e2e/.tmp too: by default it lands in ~/.unspa-hub/.dashboard.json, where it
+ * would point the developer's own MCP notifier at a test server.
  */
 export const BUILDER_URL = 'http://localhost:4173';
 export const EXPERT_URL = 'http://localhost:4174';
 
 const BUILDER_HUB = resolve(process.cwd(), 'e2e/.tmp/hub-builder');
 const EXPERT_HUB = resolve(process.cwd(), 'e2e/.tmp/hub-expert');
+const endpointFile = (name: string) => resolve(process.cwd(), `e2e/.tmp/${name}.dashboard.json`);
 
 export default defineConfig({
   testDir: 'e2e',
@@ -39,14 +42,22 @@ export default defineConfig({
       port: 4173,
       reuseExistingServer: false,
       timeout: 120_000,
-      env: { PUBLIC_UNSPA_VIEWS: 'builder', UNSPA_SNAPSHOTS: BUILDER_HUB }
+      env: {
+        PUBLIC_UNSPA_VIEWS: 'builder',
+        UNSPA_SNAPSHOTS: BUILDER_HUB,
+        UNSPA_DASHBOARD_ENDPOINT_FILE: endpointFile('builder')
+      }
     },
     {
       command: 'node e2e/prepare-hub.cjs e2e/.tmp/hub-expert && npm run dev -- --port 4174 --strictPort',
       port: 4174,
       reuseExistingServer: false,
       timeout: 120_000,
-      env: { PUBLIC_UNSPA_VIEWS: '', UNSPA_SNAPSHOTS: EXPERT_HUB }
+      env: {
+        PUBLIC_UNSPA_VIEWS: '',
+        UNSPA_SNAPSHOTS: EXPERT_HUB,
+        UNSPA_DASHBOARD_ENDPOINT_FILE: endpointFile('expert')
+      }
     }
   ]
 });
