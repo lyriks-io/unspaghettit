@@ -154,15 +154,26 @@ describe('read tools', () => {
     await server.close();
   });
 
-  it('find_state_references counts a real path and rejects an invalid one', async () => {
+  it('find_state_references counts a real path, answers zero for a path nothing names, and rejects an invalid one', async () => {
     const { client, server } = await setup();
-    const refs = parse<Record<string, unknown>>(
-      await client.callTool({
-        name: 'find_state_references',
-        arguments: { featureId: storefrontFeature.id, statePath: 'cart.itemCount' }
-      })
-    );
-    expect(refs).toBeTruthy();
+    type Refs = { path: string; total: number; stateDefinitions: number } & Record<string, unknown>;
+    const refsOf = async (statePath: string) =>
+      parse<Refs>(
+        await client.callTool({
+          name: 'find_state_references',
+          arguments: { featureId: storefrontFeature.id, statePath }
+        })
+      );
+    // What each kind counts is the domain's test (StatePathReferences.test.ts);
+    // the tool reads the stored feature and adds the total.
+    const refs = await refsOf('cart.itemCount');
+    expect(refs.path).toBe('cart.itemCount');
+    expect(refs.stateDefinitions).toBeGreaterThan(0);
+    const kinds = Object.entries(refs).filter(([key]) => key !== 'path' && key !== 'total');
+    expect(refs.total).toBe(kinds.reduce((sum, [, n]) => sum + (n as number), 0));
+    expect(refs.total).toBeGreaterThan(refs.stateDefinitions);
+
+    expect((await refsOf('cart.nowhere')).total).toBe(0);
 
     const bad = await client.callTool({
       name: 'find_state_references',
@@ -200,15 +211,24 @@ describe('read tools', () => {
     await server.close();
   });
 
-  it('get_neighborhood walks from an action root and errors on a bad root', async () => {
+  it('get_neighborhood walks from an action root, clamps the depth to 3, and errors on a bad root', async () => {
     const { client, server } = await setup();
-    const hood = parse<Record<string, unknown>>(
-      await client.callTool({
-        name: 'get_neighborhood',
-        arguments: { featureId: storefrontFeature.id, rootKey: `action:${ACTION_ADD}`, depth: 1 }
-      })
-    );
-    expect(hood).toBeTruthy();
+    type Hood = { root: { key: string }; depth: number; distances: Record<string, number> };
+    const walk = async (depth: number) =>
+      parse<Hood>(
+        await client.callTool({
+          name: 'get_neighborhood',
+          arguments: { featureId: storefrontFeature.id, rootKey: `action:${ACTION_ADD}`, depth }
+        })
+      );
+    const owner = storefrontFeature.surfaces.find((s) => s.actions.some((a) => a.id === ACTION_ADD))!;
+    const near = await walk(1);
+    expect(near.root.key).toBe(`action:${ACTION_ADD}`);
+    expect(near.distances[`surface:${owner.id}`]).toBe(1);
+    expect(Math.max(...Object.values(near.distances))).toBe(1);
+    // The graph walk itself is getNeighborhood.test.ts; the tool bounds what a caller asks for.
+    expect((await walk(9)).depth).toBe(3);
+    expect((await walk(0)).depth).toBe(1);
 
     const bad = await client.callTool({
       name: 'get_neighborhood',
