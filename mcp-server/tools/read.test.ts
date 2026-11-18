@@ -211,6 +211,40 @@ describe('read tools', () => {
     await server.close();
   });
 
+  it('get_digest resolves the scope from the ids it is given, and loads a project\'s members', async () => {
+    const { client, server } = await setup();
+    type Out = { format: string; hasContent: boolean; digest: { scope: string; title: string }; markdown?: string };
+    const digest = async (args: Record<string, unknown>) =>
+      client.callTool({ name: 'get_digest', arguments: args });
+    const catalog = storefrontFeature.surfaces.find((s) => String(s.id) === SURFACE_CATALOG)!;
+    const search = catalog.actions.find((a) => String(a.id) === ACTION_SEARCH)!;
+
+    const feature = parse<Out>(await digest({ featureId: storefrontFeature.id }));
+    expect(feature.digest).toMatchObject({ scope: 'feature', title: storefrontFeature.name });
+    const surface = parse<Out>(await digest({ featureId: storefrontFeature.id, surfaceId: SURFACE_CATALOG }));
+    expect(surface.digest).toMatchObject({ scope: 'surface', title: catalog.name });
+    const action = parse<Out>(
+      await digest({ featureId: storefrontFeature.id, surfaceId: SURFACE_CATALOG, actionId: ACTION_SEARCH })
+    );
+    expect(action.digest).toMatchObject({ scope: 'action', title: search.name });
+    const project = parse<Out>(await digest({ projectId: String(PROJECT_ID), format: 'markdown' }));
+    expect(project.format).toBe('markdown');
+    expect(project.markdown).toContain(storefrontFeature.name);
+
+    // What the tool refuses before any digest is built.
+    for (const bad of [
+      { featureId: storefrontFeature.id, projectId: String(PROJECT_ID) },
+      {},
+      { projectId: String(PROJECT_ID), surfaceId: SURFACE_CATALOG },
+      { featureId: storefrontFeature.id, actionId: ACTION_SEARCH },
+      { featureId: 'no-such-feature' },
+      { projectId: 'no-such-project' }
+    ]) {
+      expect(errored(await digest(bad)), JSON.stringify(bad)).toBe(true);
+    }
+    await server.close();
+  });
+
   it('get_neighborhood walks from an action root, clamps the depth to 3, and errors on a bad root', async () => {
     const { client, server } = await setup();
     type Hood = { root: { key: string }; depth: number; distances: Record<string, number> };
