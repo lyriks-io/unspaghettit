@@ -121,7 +121,9 @@ describe('MCP server', () => {
     await server.close();
   });
 
-  it('exposes the read tools and the phase-1 + phase-2 write tools', async () => {
+  // The one place the tool names are pinned: they are the contract AI clients
+  // call, so a rename or a removal must be a deliberate edit of this list.
+  it('exposes exactly the tool names AI clients call (the MCP contract)', async () => {
     const { client, server } = await setup();
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
