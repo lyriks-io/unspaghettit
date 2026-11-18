@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://lyriks.io"><img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/lyriks_logo.svg" alt="Lyriks" width="16" height="16" /></a>&nbsp;
   <strong>Unspaghettit is now part of <a href="https://lyriks.io">Lyriks</a>.</strong><br />
-  <a href="https://get.lyriks.io/"><strong>Download Lyriks Community Edition (Open Source)</strong></a>
+  <a href="https://lyriks.io/get-started"><strong>Download Lyriks Community Edition (Open Source)</strong></a>
   &middot; <a href="#unspaghettit-with-a-whole-product-around-it-lyriks-community">How the two fit together</a>
 </p>
 
@@ -158,14 +158,13 @@ Unspaghettit models how software **behaves**. That is one layer of a specificati
 | Journeys, screen design, experience simulator over your behavior models | no | yes |
 | Rules, data, architecture, glossary, one merged knowledge graph | no | yes |
 | Traceability, completion audits, baselines, approvals, generated spec artifacts | no | yes |
-| Roadmap, and delivery sync between the spec and your tracker | no | yes |
 | Storage | plain JSON on your disk | the same JSON, plus PostgreSQL for the workspace |
-| Seats | unlimited, no accounts at all | one operator (Enterprise adds members, invitations, RBAC) |
+| Seats | unlimited, no accounts at all | one user (the paid plans add members) |
 | Price | free, AGPL-3.0 | free, with a licence key |
 
 Both are self-hosted and neither phones home. Nothing is taken away by installing the appliance: Unspaghettit stays exactly what it is here, and the models stay plain JSON you can copy in and out.
 
-Get a free key at **[get.lyriks.io](https://get.lyriks.io/)** (it arrives by email), then:
+Get a free key at **[lyriks.io/get-started](https://lyriks.io/get-started)** (it arrives by email), then:
 
 ```bash
 # Linux / macOS
@@ -177,7 +176,7 @@ curl -fsSL https://get.lyriks.io | sh
 irm https://get.lyriks.io/windows | iex
 ```
 
-The appliance lands in `~/lyriks` and serves `http://localhost:3000`, where you claim it with the email and the key. Full walkthrough: [docs/lyriks-community.md](docs/lyriks-community.md) and the [install guide](https://get.lyriks.io/docs).
+The appliance lands in `~/lyriks` and serves `http://localhost:3000`, where you claim it with the email and the key. Full walkthrough: [docs/lyriks-community.md](docs/lyriks-community.md) and the [install guide](https://lyriks.io/docs).
 
 ## Documentation
 
@@ -198,7 +197,7 @@ Early but functional. Used internally at [Lyriks.io](https://lyriks.io) to model
 
 ## License
 
-AGPL-3.0. Free to use, study, modify, and self-host. Improvements and derivative networked versions stay open under the same license. For SSO, RBAC, audit trails, and encryption at rest, see the enterprise build (`hello@lyriks.io`).
+AGPL-3.0. Free to use, study, modify, and self-host. Improvements and derivative networked versions stay open under the same license. For the paid Lyriks plans (change simulation, team collaboration, formal proofs), see [lyriks.io/pricing](https://lyriks.io/pricing).
 
 ---
 
