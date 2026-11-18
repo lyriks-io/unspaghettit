@@ -2692,18 +2692,6 @@ describe('MCP server', () => {
     await server.close();
   });
 
-  it('list_features returns an error when the projectId does not exist', async () => {
-    const { client, server } = await setup();
-    const result = await client.callTool({
-      name: 'list_features',
-      arguments: { projectId: 'nope' }
-    });
-    const r = result as { isError: boolean; content: { text: string }[] };
-    expect(r.isError).toBe(true);
-    expect(r.content[0]?.text).toMatch(/not found/i);
-    await server.close();
-  });
-
   it('apply_batch returns a structured failure (not a thrown error) when validation fails', async () => {
     // Validation failure should land as `{ok:false, validation, refs}` so
     // the agent can introspect what would have been minted and iterate.

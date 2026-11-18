@@ -13,9 +13,10 @@ import { buildServer } from '../server';
  * Integration coverage for the read/query tool wrappers (read.ts). The pure
  * projection functions live in src/features/mcp-tools and are unit-tested
  * there; what's verified here is the wrapper layer those tests can't reach:
- * not-found errors, the projectId filter on list_features, the
- * actionId/actionIds branching on get_action, state-path validation on
- * find_state_references, and the index-vs-verbose switch on get_surface.
+ * not-found errors, the actionId/actionIds branching on get_action,
+ * state-path validation on find_state_references, the scope resolution of
+ * get_digest, and the index-vs-verbose switch on get_surface. The projectId
+ * filter on list_features is proven in server.test.ts, with two projects.
  */
 
 const PROJECT_ID = 'proj-shop' as ProjectId;
@@ -70,20 +71,6 @@ describe('read tools', () => {
     await server.close();
   });
 
-  it('list_features filters to a project\'s members when projectId is given', async () => {
-    const { client, server } = await setup();
-    const all = parse<readonly { id: string }[]>(
-      await client.callTool({ name: 'list_features', arguments: {} })
-    );
-    expect(all.map((f) => f.id)).toContain(String(storefrontFeature.id));
-
-    const scoped = parse<readonly { id: string }[]>(
-      await client.callTool({ name: 'list_features', arguments: { projectId: String(PROJECT_ID) } })
-    );
-    expect(scoped.map((f) => f.id)).toEqual([String(storefrontFeature.id)]);
-    await server.close();
-  });
-
   it('list_features errors on an unknown projectId', async () => {
     const { client, server } = await setup();
     const res = await client.callTool({
@@ -91,6 +78,7 @@ describe('read tools', () => {
       arguments: { projectId: 'no-such-project' }
     });
     expect(errored(res)).toBe(true);
+    expect(rawText(res)).toMatch(/not found/i);
     await server.close();
   });
 
