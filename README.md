@@ -1,8 +1,29 @@
 <p align="center">
-  <a href="https://lyriks.io"><img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/lyriks_logo.svg" alt="Lyriks" width="16" height="16" /></a>&nbsp;
-  <strong>Unspaghettit is now part of <a href="https://lyriks.io">Lyriks</a>.</strong><br />
-  <a href="https://lyriks.io/get-started"><strong>Download Lyriks Community Edition (Open Source)</strong></a>
-  &middot; <a href="#unspaghettit-with-a-whole-product-around-it-lyriks-community">How the two fit together</a>
+  <img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/unspaghettit-evolution.gif" alt="Unspaghettit is evolving. Congratulations! Unspaghettit evolved into Lyriks Community Edition!" width="480" />
+</p>
+
+<h2 align="center">Unspaghettit evolved into Lyriks Community Edition.<br />Same engine. Better everything else.</h2>
+
+<p align="center">
+  ✓ The same Unspaghettit engine and models<br />
+  ＋ Reverse specification: the spec read from your existing code<br />
+  ＋ A knowledge base around the behavior: product, users, rules, data, architecture<br />
+  ＋ A memory any LLM can read over MCP
+</p>
+
+<p align="center"><sub>Free · Open source · Your projects are plain JSON, moved in 4 steps.</sub></p>
+
+<p align="center">🎁 <strong>Tested Unspaghettit? Thank you. Get 2 months of Lyriks Enterprise, on us.</strong><br />
+Impact reports before you build, post-implementation reports after you build, and one portfolio for all your projects.</p>
+
+<p align="center">
+  <a href="https://lyriks.io/blog/from-unspaghettit-to-lyriks-community-edition#beta-offer"><img src="https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/static/claim-my-2-months.svg" alt="Claim my 2 months" width="236" height="58" /></a>
+</p>
+
+<p align="center">
+  <a href="https://lyriks.io/get-started"><strong>Get started for free</strong></a> &nbsp;·&nbsp;
+  <a href="https://lyriks.io/blog/from-unspaghettit-to-lyriks-community-edition#moving-a-project-in-four-steps"><strong>Move your projects in 4 steps</strong></a> &nbsp;·&nbsp;
+  <a href="https://discord.gg/s2v5yNR5aD"><strong>Questions? Join us on Discord</strong></a>
 </p>
 
 <p align="center">
