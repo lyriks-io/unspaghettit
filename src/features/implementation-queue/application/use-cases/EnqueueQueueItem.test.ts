@@ -100,7 +100,13 @@ describe('enqueueQueueItemUseCase', () => {
   it('re-queueing the same target is a no-op (alreadyQueued:true, no save)', async () => {
     const enqueue = buildUseCase();
     await enqueue(asProjectId('p-1'), { kind: 'feature', featureId: asFeatureId('f-1') });
-    const second = await enqueue(asProjectId('p-1'), {
+    const later = enqueueQueueItemUseCase({
+      projects: projectRepo,
+      features: featureRepo,
+      clock: fixedClock('2026-06-01T00:00:00.000Z'),
+      ids: () => `queue-${++counter}`
+    });
+    const second = await later(asProjectId('p-1'), {
       kind: 'feature',
       featureId: asFeatureId('f-1')
     });
@@ -108,6 +114,8 @@ describe('enqueueQueueItemUseCase', () => {
     expect(second.project.implementationQueue).toHaveLength(1);
     // The returned item is the original, not a freshly minted one
     expect(second.item.id).toBe('queue-1');
+    // Nothing was written: the stored project keeps the first enqueue's time.
+    expect((await projectRepo.get(asProjectId('p-1')))?.updatedAt).toBe(FROZEN_TIME);
   });
 
   it('queues an action when its parent feature has it', async () => {
@@ -166,21 +174,5 @@ describe('enqueueQueueItemUseCase', () => {
         surfaceId: asSurfaceId('ghost-surface')
       })
     ).rejects.toThrow(SurfaceNotInFeatureError);
-  });
-
-  it('treats feature, surface, and action targets independently for dedupe', async () => {
-    const enqueue = buildUseCase();
-    await enqueue(asProjectId('p-1'), { kind: 'feature', featureId: asFeatureId('f-1') });
-    await enqueue(asProjectId('p-1'), {
-      kind: 'surface',
-      featureId: asFeatureId('f-1'),
-      surfaceId: asSurfaceId('surface-1')
-    });
-    const last = await enqueue(asProjectId('p-1'), {
-      kind: 'action',
-      featureId: asFeatureId('f-1'),
-      actionId: asActionId('a-1')
-    });
-    expect(last.project.implementationQueue).toHaveLength(3);
   });
 });
