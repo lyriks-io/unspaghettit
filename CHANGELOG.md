@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-11-18
+
+A captured source survives a move that fails, and a library promotion stays inside its project.
+
+### Fixed
+
+- A source that moves to another project folder keeps its previous copy until
+  the new one is written: a move that fails no longer erases the only captured
+  source and its evidence.
+- Two changes to the same source, even toward different project folders, are
+  applied one after the other instead of overwriting each other.
+- Promoting a definition to a project library refuses to write a feature that
+  belongs to another project, or to several, including the copies it would
+  deduplicate; the host can name the authorized project (`expectedProjectId`).
+
+### Changed
+
+- Finding a source by its id reads its file directly instead of walking every
+  source of every project.
+- Saving a source that did not change no longer rewrites its file.
+
 ## [0.27.1] - 2026-11-17
 
 The splash of a standalone install thanks the people who tested Unspaghettit.
