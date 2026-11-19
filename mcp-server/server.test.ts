@@ -121,7 +121,9 @@ describe('MCP server', () => {
     await server.close();
   });
 
-  it('exposes the read tools and the phase-1 + phase-2 write tools', async () => {
+  // The one place the tool names are pinned: they are the contract AI clients
+  // call, so a rename or a removal must be a deliberate edit of this list.
+  it('exposes exactly the tool names AI clients call (the MCP contract)', async () => {
     const { client, server } = await setup();
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
@@ -2079,49 +2081,6 @@ describe('MCP server', () => {
     await server.close();
   });
 
-  it('get_digest returns a plain-language spec for a feature scope', async () => {
-    const { client, server } = await setup();
-    const result = await client.callTool({
-      name: 'get_digest',
-      arguments: { featureId: storefrontFeature.id }
-    });
-    const payload = parseTextContent(result) as {
-      format: string;
-      hasContent: boolean;
-      digest: { scope: string; title: string; sections: readonly unknown[] };
-    };
-    expect(payload.format).toBe('spec');
-    expect(payload.hasContent).toBe(true);
-    expect(payload.digest.scope).toBe('feature');
-    expect(payload.digest.title).toBe(storefrontFeature.name);
-    expect(payload.digest.sections.length).toBeGreaterThan(0);
-    await server.close();
-  });
-
-  it('get_digest serializes to Markdown when format=markdown', async () => {
-    const { client, server } = await setup();
-    const result = await client.callTool({
-      name: 'get_digest',
-      arguments: { featureId: storefrontFeature.id, format: 'markdown' }
-    });
-    const payload = parseTextContent(result) as { format: string; markdown: string };
-    expect(payload.format).toBe('markdown');
-    expect(payload.markdown.startsWith(`# ${storefrontFeature.name}`)).toBe(true);
-    await server.close();
-  });
-
-  it('get_digest rejects passing both featureId and projectId', async () => {
-    const { client, server } = await setup();
-    const result = await client.callTool({
-      name: 'get_digest',
-      arguments: { featureId: storefrontFeature.id, projectId: 'anything' }
-    });
-    const r = result as { isError: boolean; content: { text: string }[] };
-    expect(r.isError).toBe(true);
-    expect(r.content[0]?.text).toMatch(/exactly one/i);
-    await server.close();
-  });
-
   it('add_constant + update_constant + remove_constant round-trip through the repository', async () => {
     const { client, server, repo } = await setup();
 
@@ -2730,18 +2689,6 @@ describe('MCP server', () => {
       await client.callTool({ name: 'list_features', arguments: {} })
     ) as readonly { id: string }[];
     expect(all.length).toBeGreaterThanOrEqual(3);
-    await server.close();
-  });
-
-  it('list_features returns an error when the projectId does not exist', async () => {
-    const { client, server } = await setup();
-    const result = await client.callTool({
-      name: 'list_features',
-      arguments: { projectId: 'nope' }
-    });
-    const r = result as { isError: boolean; content: { text: string }[] };
-    expect(r.isError).toBe(true);
-    expect(r.content[0]?.text).toMatch(/not found/i);
     await server.close();
   });
 
@@ -5640,6 +5587,40 @@ describe('MCP server', () => {
       })) as { isError?: boolean; content: { text: string }[] };
       expect(unknown.isError).toBe(true);
       expect(unknown.content[0]!.text).toContain('Check out');
+      await server.close();
+    });
+
+    it('reads the rest of the project only when something runs', async () => {
+      const { client, server, repo } = await setup();
+      const created = parseTextContent(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Shop',
+            description: 'Two features',
+            features: [
+              { name: 'Cart', description: 'The cart' },
+              { name: 'Stock', description: 'The stock' }
+            ]
+          }
+        })
+      ) as { features: readonly { id: string }[] };
+      const [cart, stock] = created.features.map((f) => f.id);
+      const built = await walk(client, { featureId: cart, operations: cartOps, includeFeature: true });
+      expect(built.ok).toBe(true);
+      const read: string[] = [];
+      const get = repo.get.bind(repo);
+      repo.get = async (id) => {
+        read.push(String(id));
+        return get(id);
+      };
+
+      const computed = await walk(client, { featureId: cart, operations: cartOps, includeFeature: true });
+      expect(computed.ok).toBe(true);
+      expect(read).not.toContain(stock);
+
+      await walk(client, { featureId: cart, operations: cartOps, steps: [{ actionRef: 'add' }] });
+      expect(read).toContain(stock);
       await server.close();
     });
   });

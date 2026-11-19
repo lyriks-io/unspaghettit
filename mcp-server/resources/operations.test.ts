@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { OPERATIONS_REFERENCE } from './operations';
+import { storefrontFeature } from '../../src/features/behavior-model/infrastructure/seed/seedStorefront';
+import { applyOps } from '../tools/batch-ops/applyOps';
+import { knownOpKinds, OPERATIONS_REFERENCE } from './operations';
 
 /** The excerpt a client gets for one op: its signature line and the `. ` notes under it. */
 const excerptOf = (op: string): string => {
@@ -23,5 +25,23 @@ describe('operations reference (criterion 15c748b2)', () => {
 
   it('keeps the description in the add_action_rule signature', () => {
     expect(excerptOf('add_action_rule')).toContain('effect:{type,..., description}, description');
+  });
+});
+
+describe('operations reference against apply_batch', () => {
+  it('documents only op kinds that apply_batch knows', () => {
+    let n = 0;
+    const unknown = knownOpKinds().filter((kind) => {
+      try {
+        // Without its arguments every op is refused, but by its own handler:
+        // only a kind no handler claims is refused as unknown.
+        applyOps(storefrontFeature, [{ kind }], () => `op-${n++}`);
+        return false;
+      } catch (e) {
+        return (e as Error).message.includes('unknown op kind');
+      }
+    });
+    expect(knownOpKinds().length).toBeGreaterThan(40);
+    expect(unknown).toEqual([]);
   });
 });

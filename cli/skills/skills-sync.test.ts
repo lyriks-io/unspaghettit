@@ -26,9 +26,9 @@ const SHARED = [
   'unspa-worldplay'
 ] as const;
 
-describe('skills sync (cli/skills ↔ .claude/skills)', () => {
+describe('skills sync guard (cli/skills ↔ .claude/skills)', () => {
   for (const name of SHARED) {
-    it(`${name}/SKILL.md is byte-identical in both locations`, () => {
+    it(`sync guard: ${name}/SKILL.md shipped by unspa init is the repo's own copy, byte for byte`, () => {
       const cliCopy = readFileSync(join(ROOT, 'cli', 'skills', name, 'SKILL.md'), 'utf8');
       const claudeCopy = readFileSync(
         join(ROOT, '.claude', 'skills', name, 'SKILL.md'),

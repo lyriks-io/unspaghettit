@@ -38,3 +38,29 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  e2e:
+    # The browser-level specs in e2e/: route gating, the view switcher, the
+    # load-samples journey and the lazily loaded graph, against two dev
+    # servers on throwaway hubs (see playwright.config.ts).
+    name: e2e (Playwright, Chromium)
+    # ubuntu-latest moved to 26.04, which the locked Playwright cannot
+    # install Chromium on; pinned until Playwright is raised.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e

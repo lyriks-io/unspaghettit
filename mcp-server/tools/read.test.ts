@@ -13,9 +13,10 @@ import { buildServer } from '../server';
  * Integration coverage for the read/query tool wrappers (read.ts). The pure
  * projection functions live in src/features/mcp-tools and are unit-tested
  * there; what's verified here is the wrapper layer those tests can't reach:
- * not-found errors, the projectId filter on list_features, the
- * actionId/actionIds branching on get_action, state-path validation on
- * find_state_references, and the index-vs-verbose switch on get_surface.
+ * not-found errors, the actionId/actionIds branching on get_action,
+ * state-path validation on find_state_references, the scope resolution of
+ * get_digest, and the index-vs-verbose switch on get_surface. The projectId
+ * filter on list_features is proven in server.test.ts, with two projects.
  */
 
 const PROJECT_ID = 'proj-shop' as ProjectId;
@@ -70,20 +71,6 @@ describe('read tools', () => {
     await server.close();
   });
 
-  it('list_features filters to a project\'s members when projectId is given', async () => {
-    const { client, server } = await setup();
-    const all = parse<readonly { id: string }[]>(
-      await client.callTool({ name: 'list_features', arguments: {} })
-    );
-    expect(all.map((f) => f.id)).toContain(String(storefrontFeature.id));
-
-    const scoped = parse<readonly { id: string }[]>(
-      await client.callTool({ name: 'list_features', arguments: { projectId: String(PROJECT_ID) } })
-    );
-    expect(scoped.map((f) => f.id)).toEqual([String(storefrontFeature.id)]);
-    await server.close();
-  });
-
   it('list_features errors on an unknown projectId', async () => {
     const { client, server } = await setup();
     const res = await client.callTool({
@@ -91,6 +78,7 @@ describe('read tools', () => {
       arguments: { projectId: 'no-such-project' }
     });
     expect(errored(res)).toBe(true);
+    expect(rawText(res)).toMatch(/not found/i);
     await server.close();
   });
 
@@ -154,15 +142,26 @@ describe('read tools', () => {
     await server.close();
   });
 
-  it('find_state_references counts a real path and rejects an invalid one', async () => {
+  it('find_state_references counts a real path, answers zero for a path nothing names, and rejects an invalid one', async () => {
     const { client, server } = await setup();
-    const refs = parse<Record<string, unknown>>(
-      await client.callTool({
-        name: 'find_state_references',
-        arguments: { featureId: storefrontFeature.id, statePath: 'cart.itemCount' }
-      })
-    );
-    expect(refs).toBeTruthy();
+    type Refs = { path: string; total: number; stateDefinitions: number } & Record<string, unknown>;
+    const refsOf = async (statePath: string) =>
+      parse<Refs>(
+        await client.callTool({
+          name: 'find_state_references',
+          arguments: { featureId: storefrontFeature.id, statePath }
+        })
+      );
+    // What each kind counts is the domain's test (StatePathReferences.test.ts);
+    // the tool reads the stored feature and adds the total.
+    const refs = await refsOf('cart.itemCount');
+    expect(refs.path).toBe('cart.itemCount');
+    expect(refs.stateDefinitions).toBeGreaterThan(0);
+    const kinds = Object.entries(refs).filter(([key]) => key !== 'path' && key !== 'total');
+    expect(refs.total).toBe(kinds.reduce((sum, [, n]) => sum + (n as number), 0));
+    expect(refs.total).toBeGreaterThan(refs.stateDefinitions);
+
+    expect((await refsOf('cart.nowhere')).total).toBe(0);
 
     const bad = await client.callTool({
       name: 'find_state_references',
@@ -200,15 +199,58 @@ describe('read tools', () => {
     await server.close();
   });
 
-  it('get_neighborhood walks from an action root and errors on a bad root', async () => {
+  it('get_digest resolves the scope from the ids it is given, and loads a project\'s members', async () => {
     const { client, server } = await setup();
-    const hood = parse<Record<string, unknown>>(
-      await client.callTool({
-        name: 'get_neighborhood',
-        arguments: { featureId: storefrontFeature.id, rootKey: `action:${ACTION_ADD}`, depth: 1 }
-      })
+    type Out = { format: string; hasContent: boolean; digest: { scope: string; title: string }; markdown?: string };
+    const digest = async (args: Record<string, unknown>) =>
+      client.callTool({ name: 'get_digest', arguments: args });
+    const catalog = storefrontFeature.surfaces.find((s) => String(s.id) === SURFACE_CATALOG)!;
+    const search = catalog.actions.find((a) => String(a.id) === ACTION_SEARCH)!;
+
+    const feature = parse<Out>(await digest({ featureId: storefrontFeature.id }));
+    expect(feature.digest).toMatchObject({ scope: 'feature', title: storefrontFeature.name });
+    const surface = parse<Out>(await digest({ featureId: storefrontFeature.id, surfaceId: SURFACE_CATALOG }));
+    expect(surface.digest).toMatchObject({ scope: 'surface', title: catalog.name });
+    const action = parse<Out>(
+      await digest({ featureId: storefrontFeature.id, surfaceId: SURFACE_CATALOG, actionId: ACTION_SEARCH })
     );
-    expect(hood).toBeTruthy();
+    expect(action.digest).toMatchObject({ scope: 'action', title: search.name });
+    const project = parse<Out>(await digest({ projectId: String(PROJECT_ID), format: 'markdown' }));
+    expect(project.format).toBe('markdown');
+    expect(project.markdown).toContain(storefrontFeature.name);
+
+    // What the tool refuses before any digest is built.
+    for (const bad of [
+      { featureId: storefrontFeature.id, projectId: String(PROJECT_ID) },
+      {},
+      { projectId: String(PROJECT_ID), surfaceId: SURFACE_CATALOG },
+      { featureId: storefrontFeature.id, actionId: ACTION_SEARCH },
+      { featureId: 'no-such-feature' },
+      { projectId: 'no-such-project' }
+    ]) {
+      expect(errored(await digest(bad)), JSON.stringify(bad)).toBe(true);
+    }
+    await server.close();
+  });
+
+  it('get_neighborhood walks from an action root, clamps the depth to 3, and errors on a bad root', async () => {
+    const { client, server } = await setup();
+    type Hood = { root: { key: string }; depth: number; distances: Record<string, number> };
+    const walk = async (depth: number) =>
+      parse<Hood>(
+        await client.callTool({
+          name: 'get_neighborhood',
+          arguments: { featureId: storefrontFeature.id, rootKey: `action:${ACTION_ADD}`, depth }
+        })
+      );
+    const owner = storefrontFeature.surfaces.find((s) => s.actions.some((a) => a.id === ACTION_ADD))!;
+    const near = await walk(1);
+    expect(near.root.key).toBe(`action:${ACTION_ADD}`);
+    expect(near.distances[`surface:${owner.id}`]).toBe(1);
+    expect(Math.max(...Object.values(near.distances))).toBe(1);
+    // The graph walk itself is getNeighborhood.test.ts; the tool bounds what a caller asks for.
+    expect((await walk(9)).depth).toBe(3);
+    expect((await walk(0)).depth).toBe(1);
 
     const bad = await client.callTool({
       name: 'get_neighborhood',

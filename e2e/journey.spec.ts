@@ -26,6 +26,13 @@ test('load samples, open the eShop project, edit a feature, render its graph', a
   await nameDialog.getByRole('button', { name: 'Save' }).click();
   await expect(nameDialog).toBeHidden();
 
+  // A standalone install then offers the Lyriks Community Edition, once per
+  // browser, over the page: keep using Unspaghettit on its own.
+  const offer = page.getByRole('dialog', { name: /became the Lyriks Community Edition/ });
+  await expect(offer).toBeVisible();
+  await offer.getByRole('button', { name: 'Keep using Unspaghettit on its own' }).click();
+  await expect(offer).toBeHidden();
+
   await page.getByRole('button', { name: 'Explore the sample project' }).click();
 
   // The in-app dialog confirms what was added and offers to open the project.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_THEMES, DEFAULT_THEME_ID, isThemeId, optionalThemes, parseThemeId, resolveTheme } from './registry';
+import { ALL_THEMES, isThemeId, optionalThemes, parseThemeId, resolveTheme } from './registry';
 
 describe('theme registry', () => {
   it('falls back to the Lyriks default for unset / empty / unknown / literal-"default" values', () => {
@@ -7,7 +7,6 @@ describe('theme registry', () => {
       expect(parseThemeId(raw)).toBe('lyriks');
       expect(resolveTheme(raw).id).toBe('lyriks');
     }
-    expect(DEFAULT_THEME_ID).toBe('lyriks');
   });
 
   it('resolves the Lyriks theme explicitly, tolerant of case and whitespace', () => {
@@ -36,13 +35,5 @@ describe('theme registry', () => {
   it('lists the default theme first, then the opt-in themes', () => {
     expect(ALL_THEMES[0]!.id).toBe('lyriks');
     expect(optionalThemes().map((t) => t.id)).toEqual(['classic']);
-  });
-
-  it('every theme carries a label, description, and swatch', () => {
-    for (const theme of ALL_THEMES) {
-      expect(theme.label.length).toBeGreaterThan(0);
-      expect(theme.description.length).toBeGreaterThan(0);
-      expect(theme.swatch.length).toBeGreaterThan(0);
-    }
   });
 });

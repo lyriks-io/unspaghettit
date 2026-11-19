@@ -227,13 +227,19 @@ export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prov
 
       // The project gives the walk its neighbours (event handlers elsewhere),
       // its cross-feature invariants, and the other features' state those
-      // invariants read, seeded from their defaults as verify seeds them.
-      const project = await (input.projectId
-        ? projectRepo.get(asProjectId(input.projectId))
-        : featureId
-          ? findOwningProject(projectRepo, featureId)
-          : Promise.resolve(null)
-      ).catch(() => null);
+      // invariants read, seeded from their defaults as verify seeds them. It is
+      // read only when something runs: a call that validates operations or
+      // returns the computed feature reads none of it, and reading every
+      // feature of a large project is most of what such a call costs.
+      const runs = walkSteps.length > 0 || input.runScenarios === true || Boolean(input.modelCheck);
+      const project = !runs
+        ? null
+        : await (input.projectId
+            ? projectRepo.get(asProjectId(input.projectId))
+            : featureId
+              ? findOwningProject(projectRepo, featureId)
+              : Promise.resolve(null)
+          ).catch(() => null);
       const projectFeatures = project
         ? (
             await Promise.all(

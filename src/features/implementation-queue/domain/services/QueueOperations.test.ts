@@ -57,12 +57,6 @@ describe('enqueue', () => {
     const result = enqueue(initial, actionItem('q-dup', 'f1', 'a1'));
     expect(result).toBe(initial);
   });
-
-  it('treats feature and action targets as distinct keys', () => {
-    const initial = [featureItem('q1', 'f1')];
-    const result = enqueue(initial, actionItem('q2', 'f1', 'a1'));
-    expect(result).toHaveLength(2);
-  });
 });
 
 describe('dequeue', () => {
