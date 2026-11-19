@@ -110,6 +110,13 @@ export const disableableElement = (feature: Feature, id: string): Marked | null 
   return found;
 };
 
+/** The element named `id`, or the refusal that names the id when the feature holds none. */
+const elementOrRefuse = (feature: Feature, id: string): Marked => {
+  const element = disableableElement(feature, id);
+  if (!element) throw new Error(DISABLE_REFUSALS.unknown(id));
+  return element;
+};
+
 /**
  * Disable one element. Refused, changing nothing, when the reason is empty,
  * when the feature holds no such element, or when it is disabled already: a
@@ -117,16 +124,14 @@ export const disableableElement = (feature: Feature, id: string): Marked | null 
  */
 export const disableElement = (feature: Feature, id: string, marker: Disabled): Feature => {
   if (marker.reason.trim() === '') throw new Error(DISABLE_REFUSALS.noReason);
-  const element = disableableElement(feature, id);
-  if (!element) throw new Error(DISABLE_REFUSALS.unknown(id));
+  const element = elementOrRefuse(feature, id);
   if (isDisabled(element)) throw new Error(DISABLE_REFUSALS.disabledAlready);
   return mapElement(feature, id, (e) => withMarker(e, { ...marker, reason: marker.reason.trim() }))!;
 };
 
 /** Enable one element again, as it was, under its id. Refused, changing nothing, when it is in force. */
 export const enableElement = (feature: Feature, id: string): Feature => {
-  const element = disableableElement(feature, id);
-  if (!element) throw new Error(DISABLE_REFUSALS.unknown(id));
+  const element = elementOrRefuse(feature, id);
   if (!isDisabled(element)) throw new Error(DISABLE_REFUSALS.enabledAlready);
   return mapElement(feature, id, (e) => withMarker(e, null))!;
 };
@@ -139,8 +144,7 @@ export const enableElement = (feature: Feature, id: string): Feature => {
 export const disableInMemory = (feature: Feature, ids: readonly string[], marker: Disabled): Feature => {
   let next = feature;
   for (const id of ids) {
-    const element = disableableElement(next, id);
-    if (!element) throw new Error(DISABLE_REFUSALS.unknown(id));
+    const element = elementOrRefuse(next, id);
     if (!isDisabled(element)) next = mapElement(next, id, (e) => withMarker(e, marker))!;
   }
   return next;
