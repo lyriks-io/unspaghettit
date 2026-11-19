@@ -5589,6 +5589,40 @@ describe('MCP server', () => {
       expect(unknown.content[0]!.text).toContain('Check out');
       await server.close();
     });
+
+    it('reads the rest of the project only when something runs', async () => {
+      const { client, server, repo } = await setup();
+      const created = parseTextContent(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Shop',
+            description: 'Two features',
+            features: [
+              { name: 'Cart', description: 'The cart' },
+              { name: 'Stock', description: 'The stock' }
+            ]
+          }
+        })
+      ) as { features: readonly { id: string }[] };
+      const [cart, stock] = created.features.map((f) => f.id);
+      const built = await walk(client, { featureId: cart, operations: cartOps, includeFeature: true });
+      expect(built.ok).toBe(true);
+      const read: string[] = [];
+      const get = repo.get.bind(repo);
+      repo.get = async (id) => {
+        read.push(String(id));
+        return get(id);
+      };
+
+      const computed = await walk(client, { featureId: cart, operations: cartOps, includeFeature: true });
+      expect(computed.ok).toBe(true);
+      expect(read).not.toContain(stock);
+
+      await walk(client, { featureId: cart, operations: cartOps, steps: [{ actionRef: 'add' }] });
+      expect(read).toContain(stock);
+      await server.close();
+    });
   });
 
   describe('batch cross-references', () => {
