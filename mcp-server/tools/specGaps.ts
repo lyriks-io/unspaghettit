@@ -580,7 +580,7 @@ export const stateCoherenceGaps = (
 };
 
 export const registerSpecGapsTool = (deps: ToolDeps): void => {
-  const { server, repo, projectRepo, getImplementationStatus } = deps;
+  const { server, repo, readings, projectRepo, getImplementationStatus } = deps;
   // The proof module, where one was asked for: its gaps join the structural ones.
   const prover = activeProver(deps.prover ?? { state: 'not-asked' });
   const proofNote = prover?.toolNotes?.get_spec_gaps;
@@ -622,7 +622,8 @@ export const registerSpecGapsTool = (deps: ToolDeps): void => {
       } catch (e) {
         return errorText((e as Error).message);
       }
-      const exp = await repo.get(asFeatureId(featureId));
+      // The gaps and the proofs read the operative model: a disabled element is no gap.
+      const exp = await readings.get(asFeatureId(featureId));
       if (!exp) return errorText(`Feature ${featureId} not found`);
       const status = await getImplementationStatus(asFeatureId(featureId));
       const implementedIds = new Set<string>(
@@ -632,7 +633,7 @@ export const registerSpecGapsTool = (deps: ToolDeps): void => {
       // re-read the whole store each time, so this tool cost N reads of N files.
       const owner = await findOwningProject(projectRepo, String(exp.id));
       const projectFeatures = owner
-        ? (await loadFeaturesByIds(repo, owner.featureIds)).filter(
+        ? (await loadFeaturesByIds(readings, owner.featureIds)).filter(
             (feature): feature is Feature => feature !== null
           )
         : [];

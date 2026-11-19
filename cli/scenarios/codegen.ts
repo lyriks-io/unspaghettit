@@ -18,6 +18,12 @@ import { mergeSnapshotWithDefaults } from '../../src/features/behavior-model/dom
 import { isExpression } from '../../src/features/behavior-model/domain/value-objects/Expression';
 import { simulate } from '../../src/features/simulator/domain/SimulatorEngine';
 import { scenarioTitleToken } from './results';
+import type { Disabled } from '../../src/features/behavior-model/domain/entities/Disabled';
+import {
+  operativeFeature,
+  scenariosLeftOut
+} from '../../src/features/behavior-model/domain/services/DisabledElements';
+
 
 export type CodegenOptions = {
   /**
@@ -56,6 +62,8 @@ export type CodegenScenarioReport = {
   readonly drift: boolean;
   readonly assertionsEmitted: number;
   readonly assertionsSkipped: number;
+  /** Set when the scenario is left out by a disabled element: the test is written skipped. */
+  readonly disabled?: Disabled;
 };
 
 const DEFAULT_OPTIONS = {
@@ -152,6 +160,44 @@ const expectAssertion = (assertion: ScenarioAssertion): string | null => {
       return `  expect(${pathExpr}).toBeUndefined();`;
   }
 };
+
+/** One line of a `//` comment, whatever the text holds. */
+const escapeLineComment = (text: string): string => text.replace(/[\r\n]+/g, ' ');
+
+/**
+ * A scenario no reading runs (its element is disabled): written skipped, so
+ * the test suite keeps its place and says why, and nothing is run against it.
+ */
+const renderDisabledBlock = (
+  resolved: ResolvedScenario,
+  marker: Disabled
+): { readonly code: string; readonly report: CodegenScenarioReport } => {
+  const { surface, action, scenario } = resolved;
+  const authoredStatus = scenario.expectedStatus ?? 'success';
+  const titleToken = scenarioTitleToken(String(surface.id), String(action.id), String(scenario.id));
+  const code = [
+    `  // Disabled by ${escapeLineComment(marker.by)} on ${escapeLineComment(marker.at)}: ${escapeLineComment(marker.reason)}`,
+    `  it.skip(${tsString(`${titleToken} ${scenario.name}`)}, () => {});`
+  ].join('\n');
+  return {
+    code,
+    report: {
+      surfaceId: String(surface.id),
+      surfaceName: surface.name,
+      actionId: String(action.id),
+      actionName: action.name,
+      scenarioId: String(scenario.id),
+      scenarioName: scenario.name,
+      authoredStatus,
+      simulatorStatus: authoredStatus,
+      drift: false,
+      assertionsEmitted: 0,
+      assertionsSkipped: (scenario.expectedAssertions ?? []).length,
+      disabled: marker
+    }
+  };
+};
+
 
 const renderScenarioBlock = (
   feature: Feature,
@@ -299,6 +345,10 @@ export const generateScenarioSpec = (
   const reports: CodegenScenarioReport[] = [];
   const surfaceBlocks: string[] = [];
 
+  // Every scenario is written, the ones of disabled elements skipped; the
+  // others are predicted on the operative model, as every reading runs them.
+  const operative = operativeFeature(feature);
+  const leftOut = new Map(scenariosLeftOut(feature).map((row) => [row.scenarioId, row.disabled]));
   for (const surface of feature.surfaces) {
     const actionBlocks: string[] = [];
     for (const action of surface.actions) {
@@ -307,13 +357,22 @@ export const generateScenarioSpec = (
       const scenarioBlocks: string[] = [];
       for (const scenario of scenarios) {
         const resolved = resolveScenario(feature, surface, action, scenario);
+        const marker = leftOut.get(String(scenario.id));
+        if (marker) {
+          const { code, report } = renderDisabledBlock(resolved, marker);
+          scenarioBlocks.push(code);
+          reports.push(report);
+          continue;
+        }
+        const liveSurface = operative.surfaces.find((s) => s.id === surface.id) ?? surface;
+        const liveAction = liveSurface.actions.find((a) => a.id === action.id) ?? action;
         const simResult = simulate({
-          surface,
-          action,
+          surface: liveSurface,
+          action: liveAction,
           snapshot: resolved.initialState,
           parameters: resolved.parameters,
-          featureInvariants: feature.featureInvariants,
-          feature
+          featureInvariants: operative.featureInvariants,
+          feature: operative
         });
         const simulatorStatus: 'success' | 'blocked' =
           simResult.status === 'blocked' ? 'blocked' : 'success';

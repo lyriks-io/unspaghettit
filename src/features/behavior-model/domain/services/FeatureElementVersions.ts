@@ -51,7 +51,12 @@ export const stable = (value: unknown): string => {
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stable(v)}`).join(',')}}`;
 };
 
-/** An element without the collections that carry keys of their own. */
+/**
+ * An element without the collections that carry keys of their own. The
+ * `disabled` marker is left out too: putting an element aside and bringing it
+ * back changes no word of what the code implements, so it must not read as a
+ * change of the element (its code would read drifting once enabled again).
+ */
 const own = (element: unknown, ...childKeys: string[]): string => {
   const { ...rest } = (element ?? {}) as Record<string, unknown>;
   for (const key of childKeys) delete rest[key];
@@ -73,7 +78,7 @@ export const elementDigests = (feature: Feature): ReadonlyMap<ElementVersionKey,
     if (suffix.length > 0) digests.set(`${type}:${suffix}`, digest);
   };
 
-  for (const inv of feature.featureInvariants ?? []) put('invariant', inv.id, stable(inv));
+  for (const inv of feature.featureInvariants ?? []) put('invariant', inv.id, own(inv, 'disabled'));
   for (const event of feature.events ?? []) put('event', event.name, stable(event));
   for (const vs of feature.valueSets ?? []) put('valueSet', vs.id, stable(vs));
   for (const persona of feature.personas ?? []) put('persona', persona.id, stable(persona));
@@ -93,8 +98,8 @@ export const elementDigests = (feature: Feature): ReadonlyMap<ElementVersionKey,
       own(surface, 'actions', 'rules', 'invariants', 'transitions', 'stateDefinitions')
     );
     for (const def of surface.stateDefinitions ?? []) put('state', def.path, stable(def));
-    for (const rule of surface.rules ?? []) put('rule', rule.id, stable(rule));
-    for (const inv of surface.invariants ?? []) put('invariant', inv.id, stable(inv));
+    for (const rule of surface.rules ?? []) put('rule', rule.id, own(rule, 'disabled'));
+    for (const inv of surface.invariants ?? []) put('invariant', inv.id, own(inv, 'disabled'));
     for (const transition of surface.transitions ?? []) put('transition', transition.id, stable(transition));
     for (const action of surface.actions ?? []) {
       // An exposure is keyed on its own: offering the action on one more channel
@@ -102,13 +107,13 @@ export const elementDigests = (feature: Feature): ReadonlyMap<ElementVersionKey,
       put(
         'action',
         action.id,
-        own(action, 'rules', 'invariants', 'transitions', 'scenarios', 'exposures')
+        own(action, 'rules', 'invariants', 'transitions', 'scenarios', 'exposures', 'disabled')
       );
       for (const exposure of action.exposures ?? []) put('exposure', exposure.id, stable(exposure));
-      for (const rule of action.rules ?? []) put('rule', rule.id, stable(rule));
-      for (const inv of action.invariants ?? []) put('invariant', inv.id, stable(inv));
+      for (const rule of action.rules ?? []) put('rule', rule.id, own(rule, 'disabled'));
+      for (const inv of action.invariants ?? []) put('invariant', inv.id, own(inv, 'disabled'));
       for (const transition of action.transitions ?? []) put('transition', transition.id, stable(transition));
-      for (const scenario of action.scenarios ?? []) put('scenario', scenario.id, stable(scenario));
+      for (const scenario of action.scenarios ?? []) put('scenario', scenario.id, own(scenario, 'disabled'));
     }
   }
 

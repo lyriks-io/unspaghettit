@@ -41,6 +41,7 @@ import {
   verifiedActionsOf
 } from '../../src/features/implementation-status/domain/CriteriaEvidence';
 import { trackTokens } from '../metrics';
+import { readStatusDisabled } from '../../src/features/implementation-status/domain/DisabledStatus';
 import { expandFeatureId, expandIdInFeature } from './short-ids';
 
 /** Read audit metadata for a given index key from .unspa.json, if available. */
@@ -780,7 +781,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'get_implementation_status',
     {
       description:
-        'Read the implementation-status sidecar for a feature. Optionally filter to one action or surface. Returns null when nothing has been reported yet. Useful before editing/extending an implementation: "what entities are already tagged, where in the repo do they live, and what real code was captured there?". An action report carries `auditMeta.verifiedAt` when its index entry was proven against the code (every scenario of the action passed in a real run, stamped by `unspa coverage ingest`); absent means claimed, not proven. The WHOLE-FEATURE read (no actionId, no surfaceId) also answers the evidence sync_from_index kept, judged against the spec as it is now: `criteria: [{ criterionId, title, standing, key, indexed, state, stale, file?, line?, verification?, specVersion?, syncedAt? }]` lists EVERY acceptance criterion of the feature, where `state` is verified (last recorded run passed) | failing (it failed) | unverified (a record, no run to read) | none (no record, `indexed` false), and `stale` is true when the criterion (wording, status or relations) changed after the `specVersion` its check was written against, the same comparison get_drift makes; `orphanedCriteria` counts kept records whose criterion no longer exists, which are left out of `criteria`; `verified: { actions, total }` counts action reports carrying verifiedAt over actions that have a report. With nothing reported yet the whole-feature answer is still { status: null } plus those three blocks. Evidence only: none of it feeds maturity or a verdict.',
+        'Read the implementation-status sidecar for a feature. Optionally filter to one action or surface. Returns null when nothing has been reported yet. Useful before editing/extending an implementation: "what entities are already tagged, where in the repo do they live, and what real code was captured there?". An action report carries `auditMeta.verifiedAt` when its index entry was proven against the code (every scenario of the action passed in a real run, stamped by `unspa coverage ingest`); absent means claimed, not proven. The WHOLE-FEATURE read (no actionId, no surfaceId) also answers the evidence sync_from_index kept, judged against the spec as it is now: `criteria: [{ criterionId, title, standing, key, indexed, state, stale, file?, line?, verification?, specVersion?, syncedAt? }]` lists EVERY acceptance criterion of the feature, where `state` is verified (last recorded run passed) | failing (it failed) | unverified (a record, no run to read) | none (no record, `indexed` false), and `stale` is true when the criterion (wording, status or relations) changed after the `specVersion` its check was written against, the same comparison get_drift makes; `orphanedCriteria` counts kept records whose criterion no longer exists, which are left out of `criteria`; `verified: { actions, total }` counts action reports carrying verifiedAt over actions that have a report. With nothing reported yet the whole-feature answer is still { status: null } plus those three blocks. Evidence only: none of it feeds maturity or a verdict. A DISABLED element keeps its entries and reads disabled, never missing: the row of a disabled action (every row of a disabled feature) carries `disabled: { by, at, reason }`, and a disabled child the code does not hold moves from `missingEntities` to `disabledEntities`.',
       inputSchema: {
         featureId: z.string(),
         actionId: z.string().optional(),
@@ -797,7 +798,10 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       } catch (e) {
         return errorText((e as Error).message);
       }
-      const status = await getImplementationStatus(asFeatureId(featureId));
+      const stored = await getImplementationStatus(asFeatureId(featureId));
+      // A disabled element reads disabled, never missing: its stored report is
+      // read against the feature as it is now, and left as the sync wrote it.
+      const status = stored && exp ? readStatusDisabled(exp, stored) : stored;
       // The evidence blocks belong to the whole-feature read only. They are laid
       // against the feature as it is NOW, so a record whose criterion is gone is
       // counted and left out, and a criterion no sync ever named still has a row.

@@ -25,12 +25,16 @@ const projectView = (project: Project): ProverProject => ({
 });
 
 /** The engine's services a proof module's tools read the model and try changes through. */
-export const proverHost = ({ repo, projectRepo, ids }: ToolDeps): ProverHost => ({
+export const proverHost = ({ repo, readings, projectRepo, ids }: ToolDeps): ProverHost => ({
+  // Proofs read the operative model: a disabled element is proven against
+  // nothing and named in no counterexample, and since a proof is kept by the
+  // content it was made of, one made before an element was disabled is not
+  // read back: the feature reads otherwise now.
   features: {
     resolveId: (featureId) => expandFeatureId(repo, featureId),
-    get: (featureId) => repo.get(asFeatureId(featureId)),
+    get: (featureId) => readings.get(asFeatureId(featureId)),
     loadMany: async (featureIds) =>
-      (await loadFeaturesByIds(repo, featureIds.map(asFeatureId))).filter(
+      (await loadFeaturesByIds(readings, featureIds.map(asFeatureId))).filter(
         (feature): feature is Feature => feature !== null
       ),
     blank: blankFeature,
@@ -62,7 +66,7 @@ export const proverHost = ({ repo, projectRepo, ids }: ToolDeps): ProverHost => 
     tryChange: async (projectId, operations) => {
       const project = await projectRepo.get(asProjectId(projectId));
       if (!project) return { ok: false, errors: [`Project ${projectId} not found`] };
-      const features = (await loadFeaturesByIds(repo, project.featureIds)).filter(
+      const features = (await loadFeaturesByIds(readings, project.featureIds)).filter(
         (feature): feature is Feature => feature !== null
       );
       const result = applyProjectOps(project, features, operations as unknown as readonly Op[], ids);

@@ -1,5 +1,6 @@
 import type { ReachabilityGoalId } from '../value-objects/ids';
 import type { RuleCondition } from '../value-objects/RuleCondition';
+import type { Disabled } from './Disabled';
 
 /**
  * A LIVENESS property — the "something good is (still) achievable" half of
@@ -36,4 +37,6 @@ export type ReachabilityGoal = {
   readonly description?: string;
   /** Shown when the goal fails, to explain what should have been reachable. */
   readonly message?: string;
+  /** Set while the element is put aside: kept and readable, left out of every reading. */
+  readonly disabled?: Disabled;
 };

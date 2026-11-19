@@ -16,6 +16,7 @@ import { analyzeSurfaceReachability } from '$features/simulator/domain/SurfaceRe
 import { aggregateFeatureVerdict } from '../../domain/aggregateVerdict';
 import { analyzeEventCoherence } from '../../domain/analyzeEventCoherence';
 import { detectDrift } from '../../domain/detectDrift';
+import { operativeFeature } from '$features/behavior-model/domain/services/DisabledElements';
 import { verifiedCoverageForFeature } from '../../domain/verifiedCoverage';
 import type { VerificationReport } from '../../domain/VerificationReport';
 import {
@@ -121,16 +122,20 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
     const thresholds = withThresholdDefaults(input.thresholds);
 
     // One store pass either way: a `get` per id re-read a folder store whole.
-    const loaded = (
+    const whole = (
       input.featureIds && input.featureIds.length > 0
         ? await loadFeaturesByIds(deps.features, input.featureIds)
         : await listAllFeatures(deps.features)
     ).filter((feature): feature is Feature => feature !== null);
+    // Drift reads the model as written, where a disabled element still owns its
+    // index entries (and reads disabled there); every other check reads the
+    // operative model, without what is disabled.
+    const loaded = whole.map(operativeFeature);
 
     const ownershipUniverse = await loadDriftOwnership(deps.features, input.driftOwnership);
 
     const indexEntries = await deps.index.read();
-    const drift = detectDrift(loaded, indexEntries, ownershipUniverse);
+    const drift = detectDrift(whole, indexEntries, ownershipUniverse);
     const eventCoherence = analyzeEventCoherence(loaded);
 
     const explorerOptions: ExplorerOptions | null =
@@ -142,7 +147,7 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
 
     const projectInvariants = input.projectInvariants ?? [];
 
-    const projectFeatures = input.projectFeatures ?? loaded;
+    const projectFeatures = input.projectFeatures?.map(operativeFeature) ?? loaded;
     const projectRuleReads = new Set(projectInvariants.flatMap((i) => statesReadBy(i.condition)));
     const proving = deps.prove !== undefined && input.prove !== false;
 

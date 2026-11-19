@@ -12,6 +12,7 @@ import type { Resource } from './Resource';
 import type { Surface } from './Surface';
 import type { ValueSet } from './ValueSet';
 import type { Tag } from '$shared/domain/Tags';
+import type { Disabled } from './Disabled';
 
 export type Feature = {
   readonly id: FeatureId;
@@ -138,4 +139,10 @@ export type Feature = {
    * signal this refines.
    */
   readonly elementVersions?: Readonly<Record<string, string>>;
+  /**
+   * Set while the whole feature is put aside: kept and readable, every action,
+   * rule, always-true statement, scenario and goal it holds left out of every
+   * reading.
+   */
+  readonly disabled?: Disabled;
 };

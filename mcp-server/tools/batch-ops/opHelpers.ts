@@ -26,6 +26,8 @@ export type OpContext = {
   readonly refs: Refs;
   readonly mintId: () => string;
   readonly remember: (ref: unknown, id: string) => void;
+  /** The batch's clock, for what an op stamps (when an element was disabled). */
+  readonly now?: () => string;
 };
 
 const get = <K extends string>(op: Op, key: K): unknown => op[key];

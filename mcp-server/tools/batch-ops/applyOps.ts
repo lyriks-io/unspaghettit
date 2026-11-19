@@ -1,4 +1,5 @@
 import type { Feature } from '../../../src/features/behavior-model/domain/entities/Feature';
+import { applyDisableOps } from './disableOps';
 import { applyFeatureLevelOps } from './featureLevelOps';
 import { applyRuleInvariantOps } from './ruleInvariantOps';
 import { applyScenarioEventOps } from './scenarioEventOps';
@@ -82,7 +83,8 @@ const familyHandlers: readonly ((op: Op, ctx: OpContext) => Feature | null)[] = 
   applyStateParamOps,
   applyRuleInvariantOps,
   applyFeatureLevelOps,
-  applyScenarioEventOps
+  applyScenarioEventOps,
+  applyDisableOps
 ];
 
 // The primary target id key per remove op, so validation errors that mention a
@@ -183,7 +185,12 @@ const withCrossRefs = (op: Op, refs: Refs): Op => {
  * whose path changed, as index keys, because an index still holding the old
  * `state:<path>` key otherwise learns it only as an unexplained orphan.
  */
-export const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => string): {
+export const applyOps = (
+  start: Feature,
+  ops: readonly Op[],
+  rawMintId: () => string,
+  now?: () => string
+): {
   next: Feature;
   refs: Refs;
   created: readonly CreatedElement[];
@@ -234,7 +241,7 @@ export const applyOps = (start: Feature, ops: readonly Op[], rawMintId: () => st
     const before = renamedId !== null ? findStateDefinition(exp, renamedId) : null;
     createdByOp.id = null;
     try {
-      const ctx: OpContext = { feature: exp, refs, mintId, remember };
+      const ctx: OpContext = { feature: exp, refs, mintId, remember, ...(now ? { now } : {}) };
       const resolvedOp = withCrossRefs(op, refs);
       let handled: Feature | null = null;
       for (const handler of familyHandlers) {

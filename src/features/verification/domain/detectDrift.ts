@@ -3,6 +3,7 @@ import { elementVersionOf } from '$features/behavior-model/domain/services/Featu
 import { stateRenameTargets } from '$features/behavior-model/domain/services/StateRenames';
 import { summarizeStale, type DriftEntry, type DriftReport, type OrphanEntry } from './DriftReport';
 import type { IndexedImplementation } from './IndexedImplementation';
+import { disabledIndexKeys } from '$features/behavior-model/domain/services/DisabledElements';
 
 /**
  * Spec→code drift detection. Given the features of a project and the audited
@@ -152,6 +153,13 @@ export const detectDrift = (
   const orphans: OrphanEntry[] = [];
   let checked = 0;
   let outOfScope = 0;
+  const disabled: string[] = [];
+  const disabledByFeature = new Map<Feature, ReadonlySet<string>>();
+  const disabledKeysOf = (feature: Feature): ReadonlySet<string> => {
+    let keys = disabledByFeature.get(feature);
+    if (!keys) disabledByFeature.set(feature, (keys = disabledIndexKeys(feature)));
+    return keys;
+  };
   // Built lazily: most sweeps have no orphan at all.
   let renames: ReadonlyMap<string, readonly string[]> | null = null;
 
@@ -190,6 +198,13 @@ export const detectDrift = (
       continue;
     }
 
+    // A disabled element keeps its entry and reads disabled: no reading judges
+    // it, so neither can drift.
+    if (disabledKeysOf(owner.feature).has(entry.key)) {
+      disabled.push(entry.key);
+      continue;
+    }
+
     checked += 1;
     if (!entry.auditedSpecVersion) {
       unversioned.push(entry.key);
@@ -222,5 +237,13 @@ export const detectDrift = (
     }
   }
 
-  return { stale, unversioned, orphans, checked, outOfScope, summary: summarizeStale(stale) };
+  return {
+    stale,
+    unversioned,
+    orphans,
+    checked,
+    outOfScope,
+    ...(disabled.length > 0 ? { disabled } : {}),
+    summary: summarizeStale(stale)
+  };
 };

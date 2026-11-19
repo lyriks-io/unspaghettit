@@ -2,6 +2,7 @@ import type { Effect } from '../value-objects/Effect';
 import type { RuleId } from '../value-objects/ids';
 import type { RuleCategory } from '../value-objects/RuleCategory';
 import type { RuleCondition } from '../value-objects/RuleCondition';
+import type { Disabled } from './Disabled';
 
 export type Rule = {
   readonly id: RuleId;
@@ -15,4 +16,6 @@ export type Rule = {
   readonly condition?: RuleCondition;
   readonly effect: Effect;
   readonly description?: string;
+  /** Set while the element is put aside: kept and readable, left out of every reading. */
+  readonly disabled?: Disabled;
 };
