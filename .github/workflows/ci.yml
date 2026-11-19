@@ -44,7 +44,9 @@ jobs:
     # load-samples journey and the lazily loaded graph, against two dev
     # servers on throwaway hubs (see playwright.config.ts).
     name: e2e (Playwright, Chromium)
-    runs-on: ubuntu-latest
+    # ubuntu-latest moved to 26.04, which the locked Playwright cannot
+    # install Chromium on; pinned until Playwright is raised.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
