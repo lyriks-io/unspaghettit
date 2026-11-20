@@ -1812,3 +1812,53 @@ describe('comparisons and starts the types alone decide', () => {
     expect(errorsOf({ scenarioStart: { path: 'cart.status', value: 'paid' }, assertion: { path: 'cart.count', operator: 'equals', value: 1 } })).toEqual([]);
   });
 });
+
+describe('a state declared under another one', () => {
+  const withStates = (states: readonly { path: string; type: string; defaultValue: unknown }[]): Feature =>
+    ({
+      id: asFeatureId('f-nest'),
+      name: 'Nest',
+      surfaces: [
+        {
+          id: asSurfaceId('s-nest'),
+          name: 'Nest',
+          type: 'screen',
+          stateDefinitions: states.map((st, i) => ({ id: asStateDefinitionId(`d-${i}`), ...st, path: asStatePath(st.path) })),
+          actions: [],
+          rules: [],
+          invariants: [],
+          transitions: []
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+
+  it('refuses a path under a parent that holds a value', () => {
+    const result = validateReferenceIntegrity(
+      withStates([
+        { path: 'cart', type: 'number', defaultValue: 5 },
+        { path: 'cart.total', type: 'number', defaultValue: 0 }
+      ])
+    );
+    expect(result.valid ? [] : result.errors).toEqual([
+      'State "cart.total" sits under "cart", which is declared as number: a number cannot hold other states, so the two overwrite each other. Rename one of them, or declare "cart" as object.'
+    ]);
+  });
+
+  it('accepts a path under an object, and siblings that only share a prefix of characters', () => {
+    expect(
+      validateReferenceIntegrity(
+        withStates([
+          { path: 'user', type: 'object', defaultValue: {} },
+          { path: 'user.name', type: 'string', defaultValue: '' },
+          { path: 'cart', type: 'number', defaultValue: 0 },
+          { path: 'cartTotal', type: 'number', defaultValue: 0 }
+        ])
+      ).valid
+    ).toBe(true);
+  });
+});

@@ -40,6 +40,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `appliedEffects` carries `notWritten` with the reason, the dashboard shows
   it, and each step of `simulate_steps` lists it under `notWritten`. The run
   used to report "set Average to ..." for a write that never happened.
+- A state declared under another one that holds a value (`cart` a number and
+  `cart.total`) is refused. The two are the same slot of the state tree:
+  filling the defaults turned `cart` into an object, and every rule and
+  computation on it read an object instead of its number. A state under one
+  declared as an object is still accepted.
 
 ## [0.28.0] - 2026-11-20
 

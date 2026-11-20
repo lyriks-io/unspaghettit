@@ -259,6 +259,24 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     );
   }
 
+  // A path under another declared path. The snapshot is a tree, so "cart"
+  // and "cart.total" are the same slot seen twice: filling the defaults turns
+  // the number "cart" into an object holding "total", and every rule and
+  // arithmetic on "cart" then reads an object. Only a parent declared as an
+  // object can hold other states.
+  for (const [path] of typeByPath) {
+    const segments = path.split('.');
+    for (let i = 1; i < segments.length; i += 1) {
+      const parent = segments.slice(0, i).join('.');
+      const parentType = typeByPath.get(parent);
+      if (parentType === undefined || parentType === 'object') continue;
+      errors.push(
+        `State "${path}" sits under "${parent}", which is declared as ${parentType}: a ${parentType} cannot hold other states, so the two overwrite each other. Rename one of them, or declare "${parent}" as object.`
+      );
+      break;
+    }
+  }
+
   const domainLabel = (path: string): string => {
     const domain = enumDomainByPath.get(path);
     return domain ? ` (${domain.map((v) => `"${v}"`).join(', ')})` : '';
