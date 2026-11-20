@@ -2168,3 +2168,51 @@ describe('a scenario that lets time go backwards', () => {
     expect(errorsOf(withAdvance(60, 30))).toEqual([]);
   });
 });
+
+describe('a quantifier over a state that is not a list', () => {
+  const guarded = (overPath: string): Feature =>
+    ({
+      id: asFeatureId('f-q'),
+      name: 'Orders',
+      surfaces: [
+        {
+          id: asSurfaceId('s-q'),
+          name: 'Orders',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-total'), path: asStatePath('orders.total'), type: 'number', defaultValue: 0 },
+            { id: asStateDefinitionId('d-list'), path: asStatePath('orders.list'), type: 'array', defaultValue: [] }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: []
+        }
+      ],
+      featureInvariants: [
+        {
+          id: asInvariantId('i-paid'),
+          name: 'Every order is paid',
+          condition: { kind: 'all_match', overPath, as: 'order', where: { left: 'order.paid', operator: 'is_true' } },
+          message: 'm',
+          description: 'd'
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+
+  it('refuses it: "every element" of a number always holds', () => {
+    const result = validateReferenceIntegrity(guarded('orders.total'));
+    expect(result.valid ? [] : result.errors).toEqual([
+      'Feature invariant i-paid: all_match ranges over "orders.total", which is declared as number, not array, so it is decided without reading any element. Range over a list.'
+    ]);
+  });
+
+  it('accepts a list', () => {
+    expect(validateReferenceIntegrity(guarded('orders.list')).valid).toBe(true);
+  });
+});

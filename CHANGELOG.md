@@ -71,6 +71,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   the action's own changes stand, as the simulator and the scenarios have it.
   The walk used to drop them, so it went on from another state than a
   scenario replaying the same steps.
+- An `all_match` or `any_match` over a state that is not a list is refused.
+  It was decided without reading any element: "every element" always held, so
+  an invariant written that way could never break, and "any element" never
+  did, so a rule written that way never fired.
 - An index entry whose signature the file repeats (two handlers ending in the
   same `return json({ ok: true })`) is no longer read stale and moved onto the
   first occurrence in the file: the line it names keeps it while that line

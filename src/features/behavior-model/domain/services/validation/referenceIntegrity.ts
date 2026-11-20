@@ -562,6 +562,15 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         if (inBody && !isBoundRef(String(node.overPath), bound) && !paths.has(String(node.overPath))) {
           errors.push(`${label}: quantifier body overPath "${node.overPath}" is not a declared state path.`);
         }
+        // Over a state that is not a list, "any element" is never true and
+        // "every element" always is: an invariant written that way holds
+        // whatever the state, a rule never fires.
+        const overType = isBoundRef(String(node.overPath), bound) ? undefined : typeByPath.get(String(node.overPath));
+        if (overType !== undefined && overType !== 'array') {
+          errors.push(
+            `${label}: ${node.kind} ranges over "${node.overPath}", which is declared as ${overType}, not array, so it is decided without reading any element. Range over a list.`
+          );
+        }
         const nextBound = new Set(bound);
         nextBound.add(node.as);
         walk(node.where, nextBound, true);
