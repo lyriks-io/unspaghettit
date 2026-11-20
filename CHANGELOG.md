@@ -90,6 +90,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   vacuously. apply_batch (dry run included), the granular writes, save_feature
   and the dashboard all refuse it; the project batch already refused such an
   invariant.
+- apply_batch keeps the `derived` expression of `add_state_definition` and
+  `update_state_definition` (`derived:null` clears it), as the granular tools
+  do. It used to drop it without a word, so a computed state declared through
+  a batch (or a simulate_steps draft) was an ordinary state nothing ever
+  recomputed.
 
 ## [0.28.0] - 2026-11-20
 
