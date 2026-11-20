@@ -1671,3 +1671,144 @@ describe('parameter types agree with the state they write', () => {
     expect(errorsOf(same).some((e) => e.startsWith('State "dashboard.period" is declared as'))).toBe(false);
   });
 });
+
+describe('comparisons and starts the types alone decide', () => {
+  type Leaf = { left: string; operator: string; right?: unknown };
+  type Parts = {
+    rule?: Leaf;
+    goal?: Leaf;
+    invariant?: Leaf;
+    assertion?: { path: string; operator: string; value?: unknown };
+    scenarioStart?: { path: string; value: unknown };
+    personaStart?: { path: string; value: unknown };
+    append?: string;
+  };
+  // A cart with a number, a string holding dates, an enum and a list.
+  const cart = (parts: Parts): Feature =>
+    ({
+      id: asFeatureId('f-cart'),
+      name: 'Cart',
+      surfaces: [
+        {
+          id: asSurfaceId('s-cart'),
+          name: 'Cart',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-count'), path: asStatePath('cart.count'), type: 'number', defaultValue: 0 },
+            { id: asStateDefinitionId('d-since'), path: asStatePath('cart.since'), type: 'string', defaultValue: '2026-01-01' },
+            { id: asStateDefinitionId('d-status'), path: asStatePath('cart.status'), type: 'enum', enumValues: ['open', 'paid'], defaultValue: 'open' },
+            { id: asStateDefinitionId('d-items'), path: asStatePath('cart.items'), type: 'array', defaultValue: [] }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-add'),
+              name: 'Add item',
+              intent: 'add an item',
+              parameters: [],
+              requiredStates: [],
+              invariants: [],
+              emittedEvents: [],
+              transitions: [],
+              rules: parts.rule
+                ? [
+                    {
+                      id: asRuleId('r-gate'),
+                      category: 'business',
+                      description: 'Gate.',
+                      condition: parts.rule,
+                      effect: { id: asEffectId('e-block'), type: 'block_action', reason: 'No.', description: 'Block.' }
+                    }
+                  ]
+                : [],
+              effects: parts.append
+                ? [{ id: asEffectId('e-append'), type: 'append_to_list', path: asStatePath(parts.append), item: 1, description: 'Add.' }]
+                : [],
+              scenarios:
+                parts.assertion || parts.scenarioStart
+                  ? [
+                      {
+                        id: asScenarioId('sc-add'),
+                        name: 'Adds',
+                        description: 'Adds one.',
+                        stateOverrides: parts.scenarioStart ? [parts.scenarioStart] : [],
+                        parameterOverrides: [],
+                        expectedAssertions: parts.assertion ? [{ ...parts.assertion, description: 'Checked.' }] : []
+                      }
+                    ]
+                  : []
+            }
+          ]
+        }
+      ],
+      featureInvariants: parts.invariant
+        ? [{ id: asInvariantId('i-cart'), name: 'Cart', condition: parts.invariant, message: 'm', description: 'd' }]
+        : [],
+      reachabilityGoals: parts.goal
+        ? [{ id: asReachabilityGoalId('g-paid'), name: 'Paid', kind: 'reachable', condition: parts.goal, description: 'd' }]
+        : [],
+      personas: parts.personaStart
+        ? [{ id: asPersonaId('p-buyer'), name: 'Buyer', description: 'd', stateOverrides: [parts.personaStart], parameterOverrides: [] }]
+        : [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (parts: Parts): readonly string[] => {
+    const result = validateReferenceIntegrity(cart(parts));
+    return result.valid ? [] : result.errors;
+  };
+
+  it('refuses a rule that compares a number with a string', () => {
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'greater_than', right: '3' } })).toEqual([
+      'Action a-add rule r-gate: condition: compares "cart.count", declared as number, greater_than "3" (a string): the result is decided by the types alone, whatever the state holds. Compare with a number value.'
+    ]);
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'equals', right: '3' } })).toHaveLength(1);
+  });
+
+  it('refuses a string ordered against something that is not a date', () => {
+    expect(errorsOf({ rule: { left: 'cart.since', operator: 'lower_than', right: 'yesterday' } })[0]).toMatch(
+      /Compare with an ISO 8601 date/
+    );
+    expect(errorsOf({ rule: { left: 'cart.since', operator: 'lower_than', right: '2026-11-20' } })).toEqual([]);
+  });
+
+  it('refuses the same dead comparison in an invariant and a goal, enum values included', () => {
+    expect(errorsOf({ invariant: { left: 'cart.count', operator: 'greater_or_equal', right: '0' } })).toHaveLength(1);
+    expect(errorsOf({ goal: { left: 'cart.count', operator: 'greater_than', right: true } })).toHaveLength(1);
+    expect(errorsOf({ goal: { left: 'cart.status', operator: 'equals', right: 'payed' } })).toEqual([
+      'Reachability goal g-paid: condition compares against "payed" is not one of the values "cart.status" can hold ("open", "paid").'
+    ]);
+  });
+
+  it('refuses a scenario assertion or a start the model can never hold', () => {
+    expect(errorsOf({ assertion: { path: 'cart.count', operator: 'equals', value: '1' } })).toHaveLength(1);
+    expect(errorsOf({ assertion: { path: 'cart.status', operator: 'not_equals', value: 'payed' } })).toHaveLength(1);
+    expect(errorsOf({ scenarioStart: { path: 'cart.count', value: 'two' } })).toEqual([
+      'Action a-add scenario sc-add: stateOverride sets "two" (a string) into "cart.count", which is declared as number. Give it a number value.'
+    ]);
+    expect(errorsOf({ scenarioStart: { path: 'cart.status', value: 'payed' } })).toHaveLength(1);
+    expect(errorsOf({ personaStart: { path: 'cart.items', value: 3 } })).toHaveLength(1);
+  });
+
+  it('refuses a list effect on a path that is not a list', () => {
+    expect(errorsOf({ append: 'cart.count' })).toEqual([
+      'Action a-add effect e-append: append_to_list targets "cart.count", which is declared as number, not array. Point it at a list, or use set_state.'
+    ]);
+    expect(errorsOf({ append: 'cart.items' })).toEqual([]);
+  });
+
+  it('accepts comparisons the state decides, null, expressions and the operators that read no value', () => {
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'greater_than', right: 3 } })).toEqual([]);
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'equals', right: null } })).toEqual([]);
+    expect(
+      errorsOf({ rule: { left: 'cart.count', operator: 'lower_than', right: { kind: 'count', operand: { kind: 'state', path: 'cart.items' } } } })
+    ).toEqual([]);
+    expect(errorsOf({ rule: { left: 'cart.items', operator: 'contains', right: 'sku-1' } })).toEqual([]);
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'exists' } })).toEqual([]);
+    expect(errorsOf({ scenarioStart: { path: 'cart.status', value: 'paid' }, assertion: { path: 'cart.count', operator: 'equals', value: 1 } })).toEqual([]);
+  });
+});

@@ -23,6 +23,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - A scenario assertion compared with a named constant (`{ kind: "const" }`)
   reads its declared value. It read nothing, so the assertion never held and
   the scenario failed whatever the model did.
+- A write is refused when it compares a state with a literal of a type the
+  state can never hold: `count greater_than "3"` on a number, `equals "3"`, a
+  string ordered against something that is not a date, `contains` on a
+  number. The engine compares without coercion, so such a rule never fired,
+  an invariant never held and a goal was never met, with no error anywhere.
+  Reachability goals and scenario assertions are now checked against an
+  enum's values like rules and invariants, a scenario or persona can no
+  longer start a state with a value of another type or outside its enum, and
+  `append_to_list`, `remove_from_list` and `update_list_item` are refused on a
+  state that is not a list. As with every reference check, a model that
+  already holds one is not blocked by an unrelated edit.
 
 ## [0.28.0] - 2026-11-20
 

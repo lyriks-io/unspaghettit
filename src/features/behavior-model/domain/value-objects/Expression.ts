@@ -128,6 +128,12 @@ const ISO_DATE_RE_LOCAL =
 const isIsoDateStringLocal = (v: unknown): v is string =>
   typeof v === 'string' && ISO_DATE_RE_LOCAL.test(v);
 
+/**
+ * A string the ordering operators can compare: an ISO 8601 date, datetime or
+ * time-of-day. Any other string never orders, so `greater_than` on it is false.
+ */
+export const isOrderableDateString = isIsoDateStringLocal;
+
 const compareLocal = (
   left: StateValue | undefined,
   operator: Operator,
