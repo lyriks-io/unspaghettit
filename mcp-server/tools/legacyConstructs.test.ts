@@ -85,7 +85,7 @@ const scenario = (actionRef: string, body: Record<string, unknown>): Op => ({
  * (on action a), the op that introduces it again (on action b, or a second
  * element), and a fragment of the refusal.
  */
-type Case = { readonly name: string; readonly legacy: Op; readonly introduce: Op; readonly refusal: RegExp };
+type Case = { readonly name: string; readonly legacy: Op | readonly Op[]; readonly introduce: Op; readonly refusal: RegExp };
 const CASES: readonly Case[] = [
   {
     name: 'a comparison the types alone decide (7758a58)',
@@ -178,6 +178,16 @@ const CASES: readonly Case[] = [
     refusal: /all_match ranges over "status"/
   },
   {
+    name: 'an enum parameter compared with a value it never takes',
+    legacy: [
+      { kind: 'add_parameter', surfaceRef: 's', actionRef: 'a', name: 'market', type: 'enum', enumValues: ['eu', 'us'], required: false, description: 'd' },
+      { kind: 'add_parameter', surfaceRef: 's', actionRef: 'b', name: 'market', type: 'enum', enumValues: ['eu', 'us'], required: false, description: 'd' },
+      rule('a', { left: { kind: 'param', name: 'market' }, operator: 'equals', right: 'moon' })
+    ],
+    introduce: rule('b', { left: { kind: 'param', name: 'market' }, operator: 'equals', right: 'mars' }),
+    refusal: /compares parameter "market" with "mars", which is not one of the values it takes/
+  },
+  {
     name: 'an outcome reading an undeclared state (d9808f9)',
     legacy: { kind: 'add_action_outcome', surfaceRef: 's', actionRef: 'a', name: 'Odd', outcomeKind: 'partial', description: 'd', condition: { left: 'nope', operator: 'exists' } },
     introduce: { kind: 'add_action_outcome', surfaceRef: 's', actionRef: 'b', name: 'Odder', outcomeKind: 'partial', description: 'd', condition: { left: 'neither', operator: 'exists' } },
@@ -257,7 +267,7 @@ const withIds = (op: Op, refs: Record<string, string>): Op => {
 
 describe('a refusal the validator gained never blocks a write that does not introduce it', () => {
   it.each(CASES)('$name', async ({ legacy, introduce, refusal }) => {
-    const { feature, surfaceId, refs } = oldFeature([legacy]);
+    const { feature, surfaceId, refs } = oldFeature(Array.isArray(legacy) ? (legacy as readonly Op[]) : [legacy as Op]);
     const { repo, server, batch, save, draft, granular } = await setup(feature);
 
     // An unrelated granular write lands.

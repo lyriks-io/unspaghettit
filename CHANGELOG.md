@@ -75,6 +75,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   It was decided without reading any element: "every element" always held, so
   an invariant written that way could never break, and "any element" never
   did, so a rule written that way never fired.
+- An action rule, an action invariant or an outcome that compares an input
+  with a value it can never take is refused: an enum parameter (its own
+  values or its value set) compared with a value outside them, a parameter
+  compared with a literal of a type it cannot hold, or an enum parameter
+  compared with an enum state or parameter sharing no value with it. The
+  result never depended on the input, silently, exactly as the same
+  comparison on a state, which was already refused.
 - An index entry whose signature the file repeats (two handlers ending in the
   same `return json({ ok: true })`) is no longer read stale and moved onto the
   first occurrence in the file: the line it names keeps it while that line

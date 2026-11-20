@@ -2216,3 +2216,102 @@ describe('a quantifier over a state that is not a list', () => {
     expect(validateReferenceIntegrity(guarded('orders.list')).valid).toBe(true);
   });
 });
+
+describe('a comparison an input decides by its declared values', () => {
+  // Pick a market: `market` is an enum parameter (inline values, or a value
+  // set), `region` an enum state, `quantity` a number parameter.
+  const pick = (condition: unknown, where: 'rule' | 'invariant' = 'rule', viaValueSet = false): Feature =>
+    ({
+      id: asFeatureId('f-market'),
+      name: 'Market',
+      valueSets: [{ id: asValueSetId('vs-markets'), name: 'Markets', description: 'd', values: ['eu', 'us'] }],
+      surfaces: [
+        {
+          id: asSurfaceId('s-market'),
+          name: 'Market',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-region'), path: asStatePath('region'), type: 'enum', enumValues: ['eu', 'us'], defaultValue: 'eu' },
+            { id: asStateDefinitionId('d-zone'), path: asStatePath('zone'), type: 'enum', enumValues: ['north', 'south'], defaultValue: 'north' }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-pick'),
+              name: 'Pick a market',
+              intent: 'pick',
+              parameters: [
+                viaValueSet
+                  ? { id: asParameterId('p-market'), name: 'market', type: 'enum', valueSetId: asValueSetId('vs-markets'), required: true }
+                  : { id: asParameterId('p-market'), name: 'market', type: 'enum', enumValues: ['eu', 'us'], required: true },
+                { id: asParameterId('p-qty'), name: 'quantity', type: 'number', required: false }
+              ],
+              requiredStates: [],
+              emittedEvents: [],
+              transitions: [],
+              effects: [],
+              rules:
+                where === 'rule'
+                  ? [
+                      {
+                        id: asRuleId('r-market'),
+                        category: 'business',
+                        description: 'Gate.',
+                        condition,
+                        effect: { id: asEffectId('e-block'), type: 'block_action', reason: 'No.', description: 'Refuse.' }
+                      }
+                    ]
+                  : [],
+              invariants:
+                where === 'invariant'
+                  ? [{ id: asInvariantId('i-market'), name: 'Market', condition, message: 'm', description: 'd' }]
+                  : []
+            }
+          ]
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (...args: Parameters<typeof pick>): readonly string[] => {
+    const result = validateReferenceIntegrity(pick(...args));
+    return result.valid ? [] : result.errors;
+  };
+  const market = { kind: 'param', name: 'market' };
+
+  it('refuses an enum parameter compared with a value it never takes, inline values or a value set', () => {
+    expect(errorsOf({ left: market, operator: 'equals', right: 'moon' })).toEqual([
+      'Action a-pick rule r-market: condition compares parameter "market" with "moon", which is not one of the values it takes ("eu", "us"), so the result never depends on the input.'
+    ]);
+    expect(errorsOf({ left: market, operator: 'not_equals', right: 'moon' }, 'rule', true)).toHaveLength(1);
+    expect(errorsOf({ left: market, operator: 'equals', right: { kind: 'literal', value: 'moon' } })).toHaveLength(1);
+    expect(errorsOf({ left: market, operator: 'equals', right: 'moon' }, 'invariant')[0]).toMatch(
+      /^Action a-pick invariant i-market: condition compares parameter "market" with "moon"/
+    );
+  });
+
+  it('refuses an enum parameter compared with an enum state or parameter that shares no value with it', () => {
+    expect(errorsOf({ left: 'zone', operator: 'equals', right: market })).toEqual([
+      'Action a-pick rule r-market: condition compares "zone" ("north", "south") with parameter "market" ("eu", "us"): they share no value, so the result never depends on the input.'
+    ]);
+    expect(errorsOf({ left: 'region', operator: 'equals', right: market })).toEqual([]);
+  });
+
+  it('refuses a parameter compared with a literal its type cannot hold', () => {
+    expect(errorsOf({ left: { kind: 'param', name: 'quantity' }, operator: 'greater_than', right: '10' })[0]).toMatch(
+      /parameter "quantity", declared as number, greater_than "10" \(a string\): the result is decided by the types alone/
+    );
+  });
+
+  it('accepts an input compared with a value it can take', () => {
+    expect(errorsOf({ left: market, operator: 'equals', right: 'us' })).toEqual([]);
+    expect(errorsOf({ left: market, operator: 'equals', right: 'us' }, 'rule', true)).toEqual([]);
+    expect(errorsOf({ left: { kind: 'param', name: 'quantity' }, operator: 'greater_than', right: 10 })).toEqual([]);
+    expect(errorsOf({ left: market, operator: 'exists' })).toEqual([]);
+  });
+});

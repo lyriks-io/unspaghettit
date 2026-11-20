@@ -756,6 +756,71 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     }
   };
 
+  /**
+   * A comparison an input decides by its declared values alone. A parameter
+   * compared with a value outside its enum (`market equals "moon"` while the
+   * parameter offers "eu" and "us") never holds, or always does with
+   * not_equals; one whose type cannot hold the value (`amount greater_than
+   * "10"`) is decided by the types. An enum parameter compared with an enum
+   * state, or with another enum parameter, that share no value is decided too.
+   * The same checks the states get, for the inputs of an action.
+   */
+  const UNARY_OPERATORS = new Set(['is_true', 'is_false', 'exists', 'does_not_exist']);
+  const literalOf = (value: unknown): { readonly value: unknown } | null => {
+    if (isExpression(value)) return value.kind === 'literal' ? { value: value.value } : null;
+    return { value };
+  };
+  const checkParameterComparison = (
+    leaf: { readonly left: unknown; readonly operator: unknown; readonly right?: unknown },
+    params: readonly Parameter[] | undefined,
+    label: string
+  ): void => {
+    if (!params || typeof leaf.operator !== 'string' || UNARY_OPERATORS.has(leaf.operator)) return;
+    const paramOf = (side: unknown): Parameter | undefined =>
+      isParamLeft(side) || (isExpression(side) && side.kind === 'param')
+        ? params.find((p) => p.name === (side as { name: string }).name)
+        : undefined;
+    const domainOf = (param: Parameter): readonly string[] | undefined =>
+      param.type === 'enum' ? effectiveEnumValues(param, feature.valueSets) : undefined;
+    const quote = (values: readonly string[]): string => values.map((v) => `"${v}"`).join(', ');
+    const left = paramOf(leaf.left);
+    const right = paramOf(leaf.right);
+    if (left) {
+      const literal = literalOf(leaf.right);
+      if (literal && literal.value !== undefined && literal.value !== null) {
+        const domain = domainOf(left);
+        if (domain && domain.length > 0 && typeof literal.value === 'string' && !domain.includes(literal.value)) {
+          errors.push(
+            `${label}: condition compares parameter "${left.name}" with "${literal.value}", which is not one of the values it takes (${quote(domain)}), so the result never depends on the input.`
+          );
+        } else if (isParameterType(left.type)) {
+          const type = parameterTypeToStateType(left.type);
+          if (comparisonDecidedByTypes(type, leaf.operator, literal.value as StateValue)) {
+            errors.push(
+              `${label}: condition compares parameter "${left.name}", declared as ${left.type}, ${leaf.operator} ${describeLiteral(literal.value)}: the result is decided by the types alone, whatever the input. Compare with a ${type} value.`
+            );
+          }
+        }
+      }
+    }
+    if (right) {
+      const rightDomain = domainOf(right);
+      const leftDomain = left
+        ? domainOf(left)
+        : typeof leaf.left === 'string'
+          ? enumDomainByPath.get(leaf.left)
+          : undefined;
+      const leftName = left ? `parameter "${left.name}"` : `"${String(leaf.left)}"`;
+      if (rightDomain && leftDomain && rightDomain.length > 0 && leftDomain.length > 0) {
+        if (!rightDomain.some((v) => leftDomain.includes(v))) {
+          errors.push(
+            `${label}: condition compares ${leftName} (${quote(leftDomain)}) with parameter "${right.name}" (${quote(rightDomain)}): they share no value, so the result never depends on the input.`
+          );
+        }
+      }
+    }
+  };
+
   const checkCondition = (
     condition: RuleCondition | undefined,
     paths: Set<string>,
@@ -767,7 +832,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
      * have no parameter scope and therefore can't put a `{kind:"param"}`
      * on the left. When undefined, param-left is rejected.
      */
-    paramNames?: ReadonlySet<string>
+    paramNames?: ReadonlySet<string>,
+    /** The same parameters with their types and values (action scopes only). */
+    params?: readonly Parameter[]
   ): void => {
     if (!condition) return;
     // Composite (`all`/`any`/`not`) and unconditional rules fan out into
@@ -805,6 +872,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       // author added to the product but not to the enum.
       checkEnumMember(leaf.left, leaf.right, label, 'condition compares against');
       checkComparisonType(leaf.left, leaf.operator, leaf.right, `${label}: condition`);
+      checkParameterComparison(leaf, params, label);
       for (const problem of expressionShapeProblems(leaf.right)) {
         errors.push(`${label}: condition.right: ${problem}`);
       }
@@ -938,7 +1006,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       }
       for (const rule of cap.rules) {
         const label = `Action ${cap.id} rule ${rule.id}`;
-        checkCondition(rule.condition, paths, surface.id, label, capParamNames);
+        checkCondition(rule.condition, paths, surface.id, label, capParamNames, cap.parameters);
         checkEffect(
           rule.effect as { id: string; type: string } & Record<string, unknown>,
           surface.id,
@@ -954,7 +1022,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           paths,
           surface.id,
           `Action ${cap.id} invariant ${inv.id}`,
-          capParamNames
+          capParamNames,
+          cap.parameters
         );
       }
       for (const e of cap.effects) {
@@ -982,7 +1051,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       // away left an outcome that never matched, or a write nothing read.
       for (const outcome of cap.outcomes ?? []) {
         const label = `Action ${cap.id} outcome ${outcome.id}`;
-        checkCondition(outcome.condition, paths, surface.id, label, capParamNames);
+        checkCondition(outcome.condition, paths, surface.id, label, capParamNames, cap.parameters);
         for (const e of outcome.effects ?? []) {
           checkEffect(
             e as { id: string; type: string } & Record<string, unknown>,
