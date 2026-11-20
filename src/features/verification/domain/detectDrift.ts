@@ -69,6 +69,9 @@ const buildIdentifierSets = (feature: Feature): IdentifierSets => {
     for (const def of surface.stateDefinitions) statePaths.add(String(def.path));
     for (const action of surface.actions) {
       actionIds.add(String(action.id));
+      // An event is keyed by its name whether or not the catalogue declares it,
+      // as sync_from_index owns it: the code that emits it is mapped all the same.
+      for (const event of action.emittedEvents) eventNames.add(String(event));
       for (const rule of action.rules) ruleIds.add(String(rule.id));
       for (const inv of action.invariants) invariantIds.add(String(inv.id));
       for (const transition of action.transitions) transitionIds.add(String(transition.id));

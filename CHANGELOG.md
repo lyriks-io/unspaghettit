@@ -56,6 +56,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   nearest its line. `sync_from_index` used to rewrite such entries to the wrong
   line in `.unspa.json`. A short signature (under six characters) is read fresh
   at its own line instead of stale on every sync.
+- `get_drift` no longer reads the entry of an event an action emits as an
+  orphan ("renamed or removed?") when the feature's event catalogue does not
+  declare it. `sync_from_index` and the index keys of a feature own such an
+  event; drift only knew the catalogue, so the entry was never checked and
+  invited its own deletion.
 
 ## [0.28.0] - 2026-11-20
 
