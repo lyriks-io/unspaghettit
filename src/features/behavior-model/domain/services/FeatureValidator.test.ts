@@ -2043,3 +2043,75 @@ describe('a malformed expression in a value slot', () => {
     ).toEqual([]);
   });
 });
+
+describe('a state write among the effects of a blocked attempt', () => {
+  const login = (onBlocked: readonly unknown[]): Feature =>
+    ({
+      id: asFeatureId('f-login'),
+      name: 'Login',
+      surfaces: [
+        {
+          id: asSurfaceId('s-login'),
+          name: 'Login',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-fails'), path: asStatePath('login.failures'), type: 'number', defaultValue: 0, description: 'Failed attempts.' }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-login'),
+              name: 'Log in',
+              intent: 'log in',
+              description: 'Logs in.',
+              parameters: [],
+              requiredStates: [],
+              invariants: [],
+              emittedEvents: [],
+              transitions: [],
+              rules: [],
+              effects: [],
+              onBlockedEffects: onBlocked
+            }
+          ]
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (onBlocked: readonly unknown[]) => {
+    const result = validateFeature(login(onBlocked));
+    return result.valid ? [] : result.errors.filter((e) => e.includes('onBlockedEffect'));
+  };
+
+  it('refuses it: a blocked attempt writes no state, so it would never land', () => {
+    expect(
+      errorsOf([
+        {
+          id: 'e-count',
+          type: 'set_state',
+          path: 'login.failures',
+          value: { kind: 'add', left: { kind: 'state', path: 'login.failures' }, right: { kind: 'literal', value: 1 } },
+          description: 'Count the failure.'
+        }
+      ])
+    ).toEqual([
+      'onBlockedEffect e-count in action a-login: effect type "set_state" writes state, and a blocked attempt writes none, so it never lands. To keep a trace of a refused attempt (a failed-login counter), let the action go through and resolve to an outcome of kind "rejected" whose effects write it.'
+    ]);
+    expect(errorsOf([{ id: 'e-list', type: 'append_to_list', path: 'login.failures', item: 1, description: 'Log it.' }])).toHaveLength(1);
+  });
+
+  it('accepts what a blocked attempt does show: a message, an event, a move', () => {
+    expect(
+      errorsOf([
+        { id: 'e-msg', type: 'show_message', message: 'Wrong password.', tone: 'error', description: 'Say why.' },
+        { id: 'e-ev', type: 'emit_event', event: 'login.refused', description: 'Tell.' }
+      ])
+    ).toEqual([]);
+  });
+});

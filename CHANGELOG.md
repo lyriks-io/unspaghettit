@@ -58,6 +58,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   value missing on every run, with no error. A composite condition without
   its `conditions` list is named instead of failing the write with a
   TypeError.
+- A state write among an action's blocked-attempt effects (`onBlocked`:
+  `set_state`, the list effects, `advance_time`) is refused. A blocked attempt
+  writes no state, so such an effect never landed, without a word: a
+  "count the failed logins" written there counted nothing. The refusal says
+  how to record a refused attempt (an outcome of kind `rejected`).
 - An index entry whose signature the file repeats (two handlers ending in the
   same `return json({ ok: true })`) is no longer read stale and moved onto the
   first occurrence in the file: the line it names keeps it while that line

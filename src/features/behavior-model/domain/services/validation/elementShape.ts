@@ -333,6 +333,19 @@ const REQUIRED_EFFECT_FIELDS: Readonly<Record<string, readonly string[]>> = {
  */
 type EffectSlot = 'onBlocked' | 'elsewhere';
 
+/**
+ * The effects that only write state. A blocked action commits no state (the
+ * simulator suppresses every write on the blocked path), so among its
+ * onBlocked effects they are effects that never happen.
+ */
+const BLOCKED_PATH_WRITES = new Set<string>([
+  'set_state',
+  'append_to_list',
+  'remove_from_list',
+  'update_list_item',
+  'advance_time'
+]);
+
 const checkEffect = (
   errors: string[],
   label: string,
@@ -363,6 +376,12 @@ const checkEffect = (
   if (isOnBlockedOnlyEffectType(type) && slot !== 'onBlocked') {
     errors.push(
       `${label}: effect type "${type}" is only valid among an action's onBlocked effects (add_effect with onBlocked:true). It states that a blocked attempt shows nothing, on purpose; anywhere else it would be an effect that does nothing.`
+    );
+    return;
+  }
+  if (slot === 'onBlocked' && BLOCKED_PATH_WRITES.has(type)) {
+    errors.push(
+      `${label}: effect type "${type}" writes state, and a blocked attempt writes none, so it never lands. To keep a trace of a refused attempt (a failed-login counter), let the action go through and resolve to an outcome of kind "rejected" whose effects write it.`
     );
     return;
   }
