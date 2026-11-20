@@ -20,6 +20,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   the balance negative for the next step, so a scenario expecting that refusal
   failed on a step that was right. The next step starts from the state before
   the refused one, as in a step-by-step simulation.
+- A scenario assertion compared with a named constant (`{ kind: "const" }`)
+  reads its declared value. It read nothing, so the assertion never held and
+  the scenario failed whatever the model did.
 
 ## [0.28.0] - 2026-11-20
 

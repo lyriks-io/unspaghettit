@@ -6,6 +6,7 @@ import type { Persona } from '$features/behavior-model/domain/entities/Persona';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import {
   asActionId,
+  asConstantId,
   asEffectId,
   asFeatureId,
   asInvariantId,
@@ -944,6 +945,54 @@ describe('runScenariosUseCase: a step an invariant refuses', () => {
     expect(result.steps[0]?.actualStatus).toBe('blocked');
     expect(result.steps[0]?.pass).toBe(true);
     expect(result.summary).toBe('pass. 1 step ok, success, 1 assertion held');
+    expect(result.pass).toBe(true);
+  });
+});
+
+describe('runScenariosUseCase: an assertion compared with a constant', () => {
+  it('reads the declared value of the constant', () => {
+    const fill: Action = {
+      id: asActionId('fill'),
+      name: 'Fill up',
+      intent: 'fill the cart to the limit',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [
+        { id: asEffectId('to-max'), type: 'set_state', path: asStatePath('count'), value: { kind: 'const', name: 'maxItems' } }
+      ],
+      emittedEvents: [],
+      transitions: [],
+      scenarios: [
+        {
+          id: asScenarioId('sc-full'),
+          name: 'The cart fills to the limit',
+          stateOverrides: [],
+          parameterOverrides: [],
+          expectedStatus: 'success',
+          expectedAssertions: [
+            { path: asStatePath('count'), operator: 'equals', value: { kind: 'const', name: 'maxItems' } }
+          ],
+          steps: [
+            {
+              actionId: asActionId('fill'),
+              parameterOverrides: [],
+              expectedAssertions: [
+                { path: asStatePath('count'), operator: 'greater_or_equal', value: { kind: 'const', name: 'maxItems' } }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+    const feature: Feature = {
+      ...makeFeature(fill),
+      constants: [{ id: asConstantId('k-max'), name: 'maxItems', description: 'The most items a cart holds.', value: 3 }]
+    };
+    const result = runScenariosUseCase()({ feature }).results[0]!;
+    expect(result.steps[0]?.assertions[0]?.held).toBe(true);
+    expect(result.assertions[0]?.held).toBe(true);
     expect(result.pass).toBe(true);
   });
 });
