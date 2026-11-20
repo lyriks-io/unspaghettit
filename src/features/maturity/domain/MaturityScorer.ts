@@ -1,6 +1,7 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
 import { committedActions, effectiveActor } from '$features/behavior-model/domain/entities/Action';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
+import { operativeFeature } from '$features/behavior-model/domain/services/DisabledElements';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import { isExpression, type Expression } from '$features/behavior-model/domain/value-objects/Expression';
 import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
@@ -1163,7 +1164,16 @@ const emptyFeatureReport = (baseReport: MaturityReport): MaturityReport => ({
   passedChecks: []
 });
 
-export const scoreFeature = (feature: Feature, language: ReportLanguage = 'en'): MaturityReport => {
+/**
+ * The maturity of a feature is read on its operative model: a disabled element
+ * (and what a disabled action or feature holds) is neither credited nor
+ * flagged. Taken here, at the entry of the scorer, so every reading of the
+ * maturity agrees (score_feature, the batch answers, the digest, verify and
+ * the dashboard) whatever model its caller loaded. A feature with nothing
+ * disabled comes back unchanged.
+ */
+export const scoreFeature = (whole: Feature, language: ReportLanguage = 'en'): MaturityReport => {
+  const feature = operativeFeature(whole);
   const baseReport = reportFromChecks(
     'feature',
     feature.name,
@@ -1251,9 +1261,11 @@ export type FeatureMaturityBreakdown = {
 };
 
 export const scoreFeatureBreakdown = (
-  feature: Feature,
+  whole: Feature,
   language: ReportLanguage = 'en'
 ): FeatureMaturityBreakdown => {
+  // On the operative model, as scoreFeature: the global percentage matches.
+  const feature = operativeFeature(whole);
   const featureLevel = reportFromChecks(
     'feature',
     feature.name,

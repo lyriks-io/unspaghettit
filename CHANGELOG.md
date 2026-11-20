@@ -110,6 +110,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   generate_types chose its path) is generated without the disabled elements,
   as generate_types generates it. A disabled action kept its parameter type
   there, and the file changed with whichever tool wrote it last.
+- The maturity leaves the disabled elements out wherever it is read: the
+  dashboard's feature cards, feature panel and project panel, the builder
+  dashboard and `get_digest` read the saved model and still counted them, so
+  their percentage disagreed with `score_feature` once an element was put
+  aside.
 
 ## [0.28.0] - 2026-11-20
 
