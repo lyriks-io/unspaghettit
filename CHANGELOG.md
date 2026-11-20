@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-20
+
 An element of the spec can be disabled: inoperative in every reading, still present and readable.
 
 ### Added
@@ -35,6 +37,11 @@ An element of the spec can be disabled: inoperative in every reading, still pres
 - The implementation gaps, status and drift read a disabled element disabled,
   neither missing nor drifting; its index entries are kept, and disabling or
   enabling it moves no element version.
+- `simulate_steps` reads the project, its features and its invariants only
+  when steps, scenarios or a model check use them: a call that only computes
+  a feature (`includeFeature`, as Lyriks computes the draft of a change
+  request) no longer reads the whole project, 700 ms down to about 50 ms on a
+  project of 110 features.
 
 ### Fixed
 
