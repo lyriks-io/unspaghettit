@@ -952,6 +952,23 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           cap.parameters
         );
       }
+      // An outcome reads state to be selected and writes it once it is: the
+      // same scope as the action's rules. Unchecked, a typo or a path renamed
+      // away left an outcome that never matched, or a write nothing read.
+      for (const outcome of cap.outcomes ?? []) {
+        const label = `Action ${cap.id} outcome ${outcome.id}`;
+        checkCondition(outcome.condition, paths, surface.id, label, capParamNames);
+        for (const e of outcome.effects ?? []) {
+          checkEffect(
+            e as { id: string; type: string } & Record<string, unknown>,
+            surface.id,
+            paths,
+            label,
+            capParamNames,
+            cap.parameters
+          );
+        }
+      }
     }
   }
 
@@ -1102,6 +1119,11 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       for (const e of cap.effects) noteConstEffect(e as Record<string, unknown>, `Action ${cap.id}`);
       for (const e of cap.onBlockedEffects ?? []) {
         noteConstEffect(e as Record<string, unknown>, `Action ${cap.id} onBlocked`);
+      }
+      for (const outcome of cap.outcomes ?? []) {
+        const label = `Action ${cap.id} outcome ${outcome.id}`;
+        noteConstCondition(outcome.condition, label);
+        for (const e of outcome.effects ?? []) noteConstEffect(e as Record<string, unknown>, label);
       }
     }
   }

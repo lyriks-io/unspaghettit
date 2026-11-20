@@ -95,6 +95,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   do. It used to drop it without a word, so a computed state declared through
   a batch (or a simulate_steps draft) was an ordinary state nothing ever
   recomputed.
+- The condition and the effects of an action's outcome are checked against
+  the declared state like its rules: a path no surface declares, a constant
+  the feature does not declare, or a rename that leaves an outcome reading the
+  old path is refused. Before, the outcome was saved as written and silently
+  never matched, or wrote a state nothing read.
 
 ## [0.28.0] - 2026-11-20
 
