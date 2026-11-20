@@ -144,6 +144,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   invariant violation that cannot happen (and `verify` failed on it). A handler
   of an event nothing in the project emits is still explored, as the host may
   fire it.
+- `verify` and `get_drift` scoped to a feature that does not exist answer that
+  it was not found: they fell back to every feature of the store, so a mistyped
+  or removed feature got a passing verdict that was about the others. `unspa
+  check` given a feature or a project (`--project`, or the one `.unspa.json`
+  links) that the snapshots do not hold now exits 2 instead of passing with
+  nothing verified.
 
 ## [0.28.0] - 2026-11-20
 

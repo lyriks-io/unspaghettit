@@ -113,6 +113,17 @@ type Cohort = {
   readonly projectFeatureIds?: readonly FeatureId[];
 };
 
+/** A feature or a project the command was told to verify and the snapshots do not hold. */
+class ScopeNotFoundError extends Error {
+  constructor(readonly scope: { readonly featureId: string } | { readonly projectId: string }) {
+    super(
+      'featureId' in scope
+        ? `Feature ${scope.featureId} not found.`
+        : `Project ${scope.projectId} not found.`
+    );
+  }
+}
+
 const resolveCohorts = async (
   options: CheckOptions,
   cwd: string,
@@ -120,6 +131,11 @@ const resolveCohorts = async (
   projectRepo: JsonFolderProjectRepository
 ): Promise<readonly Cohort[]> => {
   if (options.featureId) {
+    // A gate that verified nothing passed: a mistyped or removed feature read
+    // green in CI. Named and absent is an error, like a missing folder.
+    if (!(await featureRepo.get(asFeatureId(options.featureId)))) {
+      throw new ScopeNotFoundError({ featureId: options.featureId });
+    }
     // `.unspa.json` maps the whole project: without the siblings as possible
     // owners, every key of theirs would read as an orphan of this one feature.
     const owner = await findOwningProject(projectRepo, options.featureId);
@@ -138,7 +154,8 @@ const resolveCohorts = async (
   const explicitProjectId = options.project ?? readRepoLink(cwd)?.projectId;
   if (explicitProjectId) {
     const project = await projectRepo.get(asProjectId(explicitProjectId));
-    return project && project.featureIds.length > 0
+    if (!project) throw new ScopeNotFoundError({ projectId: explicitProjectId });
+    return project.featureIds.length > 0
       ? [{ featureIds: [...project.featureIds], projectInvariants: project.projectInvariants ?? [] }]
       : [];
   }
@@ -178,7 +195,18 @@ export const runCheckCommand = async (options: CheckOptions = {}): Promise<numbe
 
   const featureRepo = new JsonFolderFeatureRepository(directory);
   const projectRepo = new JsonFolderProjectRepository(directory);
-  const cohorts = await resolveCohorts(options, cwd, featureRepo, projectRepo);
+  let cohorts: readonly Cohort[];
+  try {
+    cohorts = await resolveCohorts(options, cwd, featureRepo, projectRepo);
+  } catch (e) {
+    if (!(e instanceof ScopeNotFoundError)) throw e;
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ error: 'not-found', ...e.scope, directory }, null, 2)}\n`);
+    } else {
+      log.err(`${e.message} Nothing was verified in ${directory}.`);
+    }
+    return 2;
+  }
 
   const features = withProjectLibrary(featureRepo, projectRepo);
   // The proof module UNSPA_PROVER names, if any: every feature is proven before it is judged.
