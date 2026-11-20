@@ -470,7 +470,9 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         const now = clock();
         const saved: Feature = stampElementVersions(current, { ...next, updatedAt: now }, now);
         await repo.save(saved);
-        const codegen = maybeAutoGenerateTypes(saved, repoContext);
+        // Generated from the operative model, as generate_types generates it:
+        // a disabled element has no type, whichever tool wrote the file last.
+        const codegen = maybeAutoGenerateTypes(operativeFeature(saved), repoContext);
         return text({
           ok: true,
           featureId: saved.id,

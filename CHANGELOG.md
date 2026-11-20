@@ -106,6 +106,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   overrides and assertions (steps included) and the outer paths a quantifier
   body reads. It used to answer 0 for those, so a path read only there looked
   free to rename.
+- The types module apply_batch writes again after each batch (once
+  generate_types chose its path) is generated without the disabled elements,
+  as generate_types generates it. A disabled action kept its parameter type
+  there, and the file changed with whichever tool wrote it last.
 
 ## [0.28.0] - 2026-11-20
 
