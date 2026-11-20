@@ -150,6 +150,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   check` given a feature or a project (`--project`, or the one `.unspa.json`
   links) that the snapshots do not hold now exits 2 instead of passing with
   nothing verified.
+- The navigation reachability of `verify`, `model_check` and `simulate_steps`
+  counts a transition declared on an action and a `transition_surface` effect
+  of an action's outcome: a screen reached only that way read as unreachable,
+  and the screen leading to it as one with no way out.
 
 ## [0.28.0] - 2026-11-20
 

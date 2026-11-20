@@ -12,10 +12,11 @@ import type { Effect } from '$features/behavior-model/domain/value-objects/Effec
  * ever leave it?"
  *
  * Edges come from two places, unioned:
- *   - a surface's declared `transitions[]` (the navigation catalog), and
+ *   - a surface's declared `transitions[]` and its actions' (the navigation
+ *     catalog), and
  *   - every `transition_surface` effect reachable from that surface (on its
- *     actions, their on-blocked fallbacks, and its surface-level rules) — the
- *     navigation that actually fires at runtime.
+ *     actions, their outcomes, their on-blocked fallbacks, and its
+ *     surface-level rules): the navigation that actually fires at runtime.
  *
  * The entry surface is the first declared surface (the convention the dashboard
  * and simulator already use as the starting context). Reachability is a plain
@@ -68,7 +69,13 @@ const outgoingTargets = (surface: Surface): readonly string[] => {
 };
 
 const collectActionTargets = (action: Action, into: string[]): void => {
+  // A transition declared on the action (add_transition with an actionId) is
+  // navigation as much as one declared on its surface.
+  for (const transition of action.transitions ?? []) into.push(String(transition.target));
   for (const effect of action.effects) collectTransitionTarget(effect, into);
+  for (const outcome of action.outcomes ?? []) {
+    for (const effect of outcome.effects ?? []) collectTransitionTarget(effect, into);
+  }
   for (const effect of action.onBlockedEffects ?? []) collectTransitionTarget(effect, into);
   for (const rule of action.rules) collectTransitionTarget(rule.effect, into);
 };

@@ -83,6 +83,49 @@ describe('analyzeSurfaceReachability', () => {
     expect(report.unreachableSurfaces).toEqual([]);
   });
 
+  it("counts an action's declared transition and an outcome's transition as edges", () => {
+    // a reaches b through a transition declared on its action (add_transition
+    // with an actionId), and b reaches c through the effect of an outcome.
+    const a = surface('a');
+    const b = surface('b');
+    const action = (id: string) => ({
+      id: asActionId(id),
+      name: id,
+      intent: 'navigate',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [],
+      emittedEvents: [],
+      transitions: []
+    });
+    const report = analyzeSurfaceReachability(
+      featureWith([
+        { ...a, actions: [{ ...action('a-go'), transitions: [{ id: asTransitionId('a-t'), target: asSurfaceId('b') }] }] },
+        {
+          ...b,
+          actions: [
+            {
+              ...action('b-pay'),
+              outcomes: [
+                {
+                  id: 'b-paid' as never,
+                  name: 'paid',
+                  kind: 'success',
+                  effects: [{ id: asEffectId('b-e'), type: 'transition_surface', target: asSurfaceId('c') }]
+                }
+              ]
+            }
+          ]
+        },
+        surface('c')
+      ])
+    );
+    expect(report.unreachableSurfaces).toEqual([]);
+    expect(report.terminalSurfaces.map((s) => s.surfaceId)).toEqual(['c']);
+  });
+
   it('treats the whole graph as reachable when every surface is wired', () => {
     const report = analyzeSurfaceReachability(
       featureWith([
