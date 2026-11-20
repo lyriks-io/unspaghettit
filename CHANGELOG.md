@@ -67,6 +67,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   several features share (a state path, an event) is judged for a feature
   that holds it in force: disabling one of them no longer silences the drift
   of the others.
+- `get_implementation_status` reads every stored report against the spec as
+  it is now. A report of an action or a surface the spec no longer has is left
+  out and named in `orphanedReports`, instead of counting as implemented (and
+  as proven) in every coverage tallied from this answer; a rule, invariant,
+  event or state declared after the last sync reads missing instead of
+  invisible, and one the spec removed drops out. The stored record is left as
+  the sync wrote it.
 
 ## [0.28.0] - 2026-11-20
 
