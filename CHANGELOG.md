@@ -79,6 +79,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   described) is said to be removed, instead of being told to add the `ac-leaf-`
   prefix; the bare or short id of a criterion a feature carries is given the
   exact key to move the entry to.
+- The `stale` block of `sync_from_index` lists an entry once. An event several
+  actions emit, or a state path several surfaces declare, is one index entry
+  located once per parent, and each location added a row, so one moved
+  signature read as several stale entries.
 
 ## [0.28.0] - 2026-11-20
 

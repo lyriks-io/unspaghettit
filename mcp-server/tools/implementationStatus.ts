@@ -969,8 +969,12 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       }
       /** Per-call drift tally. Surfaced in the ack so re-audit prompts are obvious. */
       const staleEntries: { key: string; file: string; line: number; suggestedLine?: number }[] = [];
+      // A key several parents declare (an event two actions emit, a state path
+      // several surfaces share) is ONE entry, located once per parent: listed once.
+      const staleKeys = new Set<string>();
       const recordStale = (loc: TagLocation, key: string): void => {
-        if (loc.stale) {
+        if (loc.stale && !staleKeys.has(key)) {
+          staleKeys.add(key);
           staleEntries.push({
             key,
             file: loc.file,
