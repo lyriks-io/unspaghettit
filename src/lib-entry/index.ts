@@ -40,6 +40,24 @@ export {
 export type { LibraryKind } from '$features/projects/domain/services/projectLibrary';
 
 export type { Feature } from '$features/behavior-model/domain/entities/Feature';
+export type { Disabled } from '$features/behavior-model/domain/entities/Disabled';
+
+export {
+  DISABLE_REFUSALS,
+  disableElement,
+  disableInMemory,
+  disabledCounts,
+  disabledElements,
+  disabledIndexKeys,
+  enableElement,
+  operativeFeature,
+  scenariosLeftOut
+} from '$features/behavior-model/domain/services/DisabledElements';
+export type {
+  DisableableKind,
+  DisabledElement,
+  LeftOutScenario
+} from '$features/behavior-model/domain/services/DisabledElements';
 export type { Project } from '$features/projects/domain/entities/Project';
 
 // The requirement sentences of a model (EARS for rules, statements and goals,

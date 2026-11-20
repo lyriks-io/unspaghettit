@@ -3,6 +3,7 @@ import type { ActionId, PersonaId, ScenarioId, SurfaceId } from '../value-object
 import type { Operator } from '../value-objects/Operator';
 import type { StatePath } from '../value-objects/StatePath';
 import type { StateValue } from '../value-objects/StateValue';
+import type { Disabled } from './Disabled';
 
 /**
  * Scenarios sit at the action level. Where a Persona answers
@@ -132,4 +133,6 @@ export type Scenario = {
    * single-action preset behavior, so existing scenarios are unaffected.
    */
   readonly steps?: readonly ScenarioStep[];
+  /** Set while the element is put aside: kept and readable, left out of every reading. */
+  readonly disabled?: Disabled;
 };

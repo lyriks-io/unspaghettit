@@ -27,6 +27,12 @@ import { collectFeatureEntityIds } from './short-ids';
 import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 import { asProjectId } from '../../src/features/projects/domain/value-objects/ids';
 import { activeProver } from '../../src/features/prover/loadProver';
+import {
+  disableInMemory,
+  disabledActionRefusal,
+  operativeFeature,
+  scenariosLeftOut
+} from '../../src/features/behavior-model/domain/services/DisabledElements';
 import { errorText, text, type ToolDeps } from './_shared';
 
 /** The most steps one walk runs: a flow, not a load test. */
@@ -62,10 +68,12 @@ const runScenarios = runScenariosUseCase();
 
 /** Every scenario of the feature, as a compact report: failures only as rows. */
 const allScenarios = (
+  whole: Feature,
   feature: Feature,
   projectFeatures: readonly Feature[] | undefined,
   projectInvariants: readonly Invariant[]
 ) => {
+  const leftOut = scenariosLeftOut(whole);
   const output = runScenarios({
     feature,
     ...(projectFeatures ? { projectFeatures } : {}),
@@ -85,18 +93,20 @@ const allScenarios = (
         expectedStatus: row.expectedStatus,
         actualStatus: row.actualStatus,
         reason: row.reason
-      }))
+      })),
+    // The scenarios of disabled elements do not run: counted apart.
+    ...(leftOut.length > 0 ? { disabled: { total: leftOut.length, scenarios: leftOut } } : {})
   };
 };
 
-export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prover: proverState }: ToolDeps): void => {
+export const registerSimulateStepsTool = ({ server, repo, readings, projectRepo, ids, clock, prover: proverState }: ToolDeps): void => {
   // The proof module, where one was asked for: the exploration tries its inputs first.
   const prover = activeProver(proverState ?? { state: 'not-asked' });
   server.registerTool(
     'simulate_steps',
     {
       description:
-        'Simulate a feature WITHOUT saving anything. Walk it step by step: run a sequence of actions from a starting state, threading the state from one to the next, and read what each step did: `status` (success | blocked), `refusedBecause` (the reason of the rule that refused it, a rejected input, a broken invariant), `changes` ([{ path, before, after }] for every state path it moved), `messages`, `emittedEvents`, `movedTo` (the surface it navigated to, or null), `outcome`, and `cascaded` (the event handlers it woke up). A refused step changes nothing and the walk continues from the same state (`stopOnBlocked:true` ends it there; `notRun` counts what was left). The walk ends with `finalState`. `snapshot` is the state to start from, over the declared defaults; `personaId` applies a persona first. A step is { actionId, surfaceId?, parameters?, timeAdvance? }; `$channel` among the parameters says which channel the call arrives through. `runScenarios:true` also runs every scenario of the feature (`scenarios: { run, passed, failed[] }`), and `modelCheck:true` (or { maxDepth, maxStates }) explores its state space like model_check (`modelCheck: { ...report, reachability }`, with `proof` beside it where a proof module is loaded). Steps are optional when one of those is asked. A FEATURE THAT IS NOT SAVED: `operations` (the apply_batch vocabulary) are applied IN MEMORY first, validated the way apply_batch validates them, and never saved; a step may name what they created with `actionRef` / `surfaceRef`. With no `featureId`, or `blank:true`, they build on an empty feature. To keep a model across calls, store the `mintedIds` an answer returns and send them back with the same operations: every id is minted again exactly as before, so a later batch can address what an earlier one created. `newOperationsFrom:<n>` marks the operations from index n on as the new ones: `batch.created` and `batch.scenarios` then describe those alone, like an apply_batch answer. `includeFeature:true` returns the resulting feature. A batch that fails validation answers { ok:false, errors } and runs nothing.',
+        'Simulate a feature WITHOUT saving anything. Walk it step by step: run a sequence of actions from a starting state, threading the state from one to the next, and read what each step did: `status` (success | blocked), `refusedBecause` (the reason of the rule that refused it, a rejected input, a broken invariant), `changes` ([{ path, before, after }] for every state path it moved), `messages`, `emittedEvents`, `movedTo` (the surface it navigated to, or null), `outcome`, and `cascaded` (the event handlers it woke up). A refused step changes nothing and the walk continues from the same state (`stopOnBlocked:true` ends it there; `notRun` counts what was left). The walk ends with `finalState`. `snapshot` is the state to start from, over the declared defaults; `personaId` applies a persona first. A step is { actionId, surfaceId?, parameters?, timeAdvance? }; `$channel` among the parameters says which channel the call arrives through. `runScenarios:true` also runs every scenario of the feature (`scenarios: { run, passed, failed[] }`), and `modelCheck:true` (or { maxDepth, maxStates }) explores its state space like model_check (`modelCheck: { ...report, reachability }`, with `proof` beside it where a proof module is loaded). Steps are optional when one of those is asked. A FEATURE THAT IS NOT SAVED: `operations` (the apply_batch vocabulary) are applied IN MEMORY first, validated the way apply_batch validates them, and never saved; a step may name what they created with `actionRef` / `surfaceRef`. With no `featureId`, or `blank:true`, they build on an empty feature. To keep a model across calls, store the `mintedIds` an answer returns and send them back with the same operations: every id is minted again exactly as before, so a later batch can address what an earlier one created. `newOperationsFrom:<n>` marks the operations from index n on as the new ones: `batch.created` and `batch.scenarios` then describe those alone, like an apply_batch answer. `includeFeature:true` returns the resulting feature. A batch that fails validation answers { ok:false, errors } and runs nothing. DISABLED ELEMENTS run in no reading: the walk, the scenarios and the model check take the model without them (`scenarios.disabled` counts apart the scenarios left out), and `disable: [ids]` disables more for this trial only, in memory, saving nothing.',
       inputSchema: {
         featureId: z.string().optional(),
         blank: z
@@ -127,6 +137,12 @@ export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prov
           ])
           .optional(),
         includeFeature: z.boolean().optional(),
+        disable: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'Ids of elements (an action, a rule, an always-true statement, a scenario, a reachability goal, the feature) to disable for this trial only, in memory, after `operations`: the walk, the scenarios and the model check run without them, and nothing is saved. An id the feature does not hold refuses the trial with that id.'
+          ),
         projectId: z
           .string()
           .optional()
@@ -200,6 +216,23 @@ export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prov
         }
       }
 
+      // Elements disabled for this trial only, over the loaded model and the
+      // operations: nothing is saved, and an id the feature does not hold
+      // refuses the trial with that id.
+      if (input.disable && input.disable.length > 0) {
+        try {
+          feature = disableInMemory(feature, input.disable, {
+            by: 'this trial',
+            at: clock(),
+            reason: 'Disabled in memory for this trial; nothing is saved.'
+          });
+        } catch (e) {
+          return errorText((e as Error).message);
+        }
+      }
+      // What every reading runs: the model without its disabled elements.
+      const operative = operativeFeature(feature);
+
       const resolveRef = (ref: string | undefined, id: string | undefined, what: string) => {
         if (ref) {
           const minted = refs[ref];
@@ -214,6 +247,8 @@ export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prov
           const actionId = resolveRef(s.actionRef, s.actionId, 'actionRef');
           if (!actionId) throw new WalkStepNotFoundError(`Step ${i}: actionId or actionRef is required.`);
           const surfaceId = resolveRef(s.surfaceRef, s.surfaceId, 'surfaceRef');
+          const off = disabledActionRefusal(feature, actionId);
+          if (off) throw new WalkStepNotFoundError(`Step ${i}: ${off}`);
           return {
             actionId,
             ...(surfaceId ? { surfaceId } : {}),
@@ -245,7 +280,7 @@ export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prov
             await Promise.all(
               project.featureIds
                 .filter((id) => String(id) !== String(feature.id))
-                .map((id) => repo.get(id))
+                .map((id) => readings.get(id))
             )
           ).filter((f): f is Feature => f !== null)
         : undefined;
@@ -259,7 +294,7 @@ export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prov
         const walk =
           walkSteps.length > 0
             ? simulateSteps({
-                feature,
+                feature: operative,
                 steps: walkSteps,
                 ...(input.snapshot ? { snapshot: input.snapshot as StateSnapshot } : {}),
                 ...(input.personaId ? { personaId: refs[input.personaId] ?? input.personaId } : {}),
@@ -273,8 +308,8 @@ export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prov
         // The proof module proves the same feature; the exploration tries its inputs first.
         const aid =
           input.modelCheck && prover
-            ? await prover.explorationAid(feature, {
-                projectFeatures: [feature, ...(projectFeatures ?? [])],
+            ? await prover.explorationAid(operative, {
+                projectFeatures: [operative, ...(projectFeatures ?? [])],
                 ...(projectInvariants.length > 0 ? { projectInvariants } : {}),
                 ...(modelCheckOptions.maxDepth !== undefined ? { maxSteps: modelCheckOptions.maxDepth } : {})
               })
@@ -287,12 +322,12 @@ export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prov
             featureId: String(feature.id),
             ...(batch ? { batch } : {}),
             ...(walk ?? {}),
-            ...(input.runScenarios ? { scenarios: allScenarios(feature, projectFeatures, projectInvariants) } : {}),
+            ...(input.runScenarios ? { scenarios: allScenarios(feature, operative, projectFeatures, projectInvariants) } : {}),
             ...(input.modelCheck
               ? {
                   modelCheck: {
                     ...exploreStateSpace(
-                      feature,
+                      operative,
                       {
                         ...modelCheckOptions,
                         ...crossFeature,
@@ -300,7 +335,7 @@ export const registerSimulateStepsTool = ({ server, repo, projectRepo, ids, prov
                       },
                       projectFeatures
                     ),
-                    reachability: analyzeSurfaceReachability(feature),
+                    reachability: analyzeSurfaceReachability(operative),
                     ...(aid ? { proof: aid.readout } : {})
                   }
                 }

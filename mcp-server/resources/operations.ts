@@ -132,9 +132,20 @@ Every update op also accepts its editable fields under \`patch:{...}\` instead o
   update_scenario             { ..., scenarioId, ...partial, personaId?|personaRef?|null, expectedStatus?, expectedAssertions?, expectedTransition?|expectedTransitionRef? }
   update_event                { eventId, ...partial }
 
+## The owner of what an action holds, found by id
+
+  update_scenario / remove_scenario, update_action_rule / remove_action_rule, update_action_invariant / remove_action_invariant, update_effect / remove_effect, update_parameter / remove_parameter / move_parameter
+. The id of the element is unique in the feature, so \`surfaceId\`/\`surfaceRef\` and \`actionId\`/\`actionRef\` may be left out: the surface and the action that hold it are found by that id (given, they narrow the search). Refused when no action holds the id ("no action of this feature holds the scenario <id>") or when several do, naming each candidate with its surfaceId and actionId.
+
 ## REMOVE ops
 
   remove_<kind> { ...ids/refs }. Every add_ has a matching remove_.
+
+## DISABLE ops (put an element aside without removing it)
+
+  disable_element { elementId|elementRef, reason, by?, at? }
+  enable_element  { elementId|elementRef }
+. The element is the feature itself (its id), an action, a rule (of an action or a surface), an always-true statement (an invariant of an action, a surface or the feature), a scenario or a reachability goal. Disabled, it stays in the model under its id with everything it holds and reads as before, marked \`disabled: { by, at, reason }\`; every reading leaves it out (simulation, scenarios, model check, proofs, maturity, spec gaps, exported tests, which write it skipped), and disabling an action or the feature leaves out what it holds. \`reason\` is required, in one line; \`by\` is who asked (default "an MCP client"), \`at\` defaults to now. REFUSED, and the whole batch applies nothing: an empty reason ("Say why the element is disabled."), an id the feature does not hold ("No element of this feature has that id: <id>"), disabling an element disabled already ("This element is disabled already.") and enabling one in force ("This element is enabled already."). Enabling brings it back as it was, under the same id. Its index entries stay: the implementation gaps and status read it disabled, neither missing nor drift.
 
 ## MOVE ops (direction: "up" | "down")
 

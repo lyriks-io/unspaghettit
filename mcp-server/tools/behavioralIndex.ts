@@ -4,6 +4,20 @@ import { errorText, text, type ToolDeps } from './_shared';
 import { inlineIndexSchema, isIndexSourceError, resolveIndexSource } from './_index-source';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { expandFeatureId } from './short-ids';
+import { disabledIndexKeys } from '../../src/features/behavior-model/domain/services/DisabledElements';
+import type { Disabled } from '../../src/features/behavior-model/domain/entities/Disabled';
+import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
+
+/** The marker an entry of the gaps reads disabled under: its action's own, else the feature's. */
+const markerOf = (feature: Feature, entry: { readonly type: string; readonly entityId: string }): Disabled | undefined => {
+  if (entry.type === 'action') {
+    for (const surface of feature.surfaces) {
+      const action = surface.actions.find((a) => String(a.id) === entry.entityId);
+      if (action?.disabled) return action.disabled;
+    }
+  }
+  return feature.disabled;
+};
 
 const indexStats = (index: BehavioralIndex) => {
   const entries = Object.values(index);
@@ -90,7 +104,7 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
     'get_implementation_gaps',
     {
       description:
-        'Cross-references the behavioral index against the feature spec to show which entities are missing from the index, which are partial, and which are fully implemented. Read from .unspa.json by default; pass `index` + `projectId` to cross-reference an index the caller holds instead. Use after get_behavioral_index to know exactly what still needs to be located in the codebase. Each entry carries both the `key` used in .unspa.json (e.g. `state:cart.itemCount`) and the canonical `entityId` accepted by report_implementation_status — for states that\'s the 8-char hex id, distinct from the path. The response includes a `hints[]` block pointing at follow-up tools relevant to what was returned.',
+        'Cross-references the behavioral index against the feature spec to show which entities are missing from the index, which are partial, and which are fully implemented. Read from .unspa.json by default; pass `index` + `projectId` to cross-reference an index the caller holds instead. Use after get_behavioral_index to know exactly what still needs to be located in the codebase. Each entry carries both the `key` used in .unspa.json (e.g. `state:cart.itemCount`) and the canonical `entityId` accepted by report_implementation_status — for states that\'s the 8-char hex id, distinct from the path. The response includes a `hints[]` block pointing at follow-up tools relevant to what was returned. A DISABLED element (an action put aside, or everything a disabled feature holds) is neither missing nor to build: it is listed under `disabled` with its marker { by, at, reason } and counted apart in `stats.disabled`, its entries kept.',
       inputSchema: { featureId: z.string(), ...inlineIndexSchema }
     },
     async ({ featureId, index: inlineIndex, projectId }) => {
@@ -152,9 +166,16 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
         });
       }
 
-      const missing = all.filter((e) => !(e.key in index));
-      const partial = all.filter((e) => index[e.key]?.status === 'partial');
-      const implemented = all.filter((e) => index[e.key]?.status === 'implemented');
+      // A disabled element keeps its entries and reads disabled: neither
+      // missing nor counted among what is to build.
+      const off = disabledIndexKeys(exp);
+      const disabled = all
+        .filter((e) => off.has(e.key))
+        .map((e) => ({ ...e, disabled: markerOf(exp, e) }));
+      const active = all.filter((e) => !off.has(e.key));
+      const missing = active.filter((e) => !(e.key in index));
+      const partial = active.filter((e) => index[e.key]?.status === 'partial');
+      const implemented = active.filter((e) => index[e.key]?.status === 'implemented');
 
       const hints: string[] = [];
       if (missing.length > 0 || partial.length > 0) {
@@ -169,10 +190,17 @@ export const registerBehavioralIndexTools = ({ server, repo, repoContext }: Tool
       }
 
       return text({
-        stats: { total: all.length, implemented: implemented.length, partial: partial.length, missing: missing.length },
+        stats: {
+          total: all.length,
+          implemented: implemented.length,
+          partial: partial.length,
+          missing: missing.length,
+          ...(disabled.length > 0 ? { disabled: disabled.length } : {})
+        },
         missing,
         partial,
         implemented,
+        ...(disabled.length > 0 ? { disabled } : {}),
         hints
       });
     }

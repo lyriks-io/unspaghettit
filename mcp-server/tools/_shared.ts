@@ -26,10 +26,17 @@ import { loadFeaturesByIds } from '../../src/features/behavior-model/application
 import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 import type { RepoContext } from '../server';
 import { expandFeatureId } from './short-ids';
+import { operativeFeature } from '../../src/features/behavior-model/domain/services/DisabledElements';
 
 export type ToolDeps = {
   readonly server: McpServer;
   readonly repo: FeatureRepository;
+  /**
+   * The same features as every reading takes them, without their disabled
+   * elements (OperativeFeatureRepository). Readings load from here; writes and
+   * the reads that show the model as written go through `repo`.
+   */
+  readonly readings: FeatureRepository;
   readonly projectRepo: ProjectRepository;
   readonly clock: Clock;
   readonly ids: IdGenerator;
@@ -376,8 +383,8 @@ export const runMutation = async (
     // taught agents that update_* is broken and pushed them into remove+add
     // loops while their writes were silently stacking up on disk.
     try {
-      const project = await loadProjectContext(deps.repo, deps.projectRepo, String(result.id));
-      const impact = scenarioImpact(result, opts.scenarioScope, project);
+      const project = await loadProjectContext(deps.readings, deps.projectRepo, String(result.id));
+      const impact = scenarioImpact(operativeFeature(result), opts.scenarioScope, project);
       return text(impact === null ? baseAck : { ...baseAck, scenarioImpact: impact });
     } catch (impactError) {
       return text({

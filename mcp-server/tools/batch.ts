@@ -36,6 +36,7 @@ import {
 } from '../../src/shared/domain/IdGenerator';
 import { normalizeFeatureEmittedEvents } from '../../src/features/behavior-model/domain/services/FeatureEmittedEventsNormalizer';
 import { applyOps } from './batch-ops/applyOps';
+import { operativeFeature } from '../../src/features/behavior-model/domain/services/DisabledElements';
 import type { Op } from './batch-ops/opHelpers';
 import { errorText, loadProjectSiblings, text, type ToolDeps } from './_shared';
 import { collectFeatureEntityIds, expandFeatureId } from './short-ids';
@@ -168,7 +169,7 @@ const unmovedGuardWarningsOfBatch = async (
 const opSchemaDescription = `Each op: { kind, ref?, ...kindArgs }. ADD ops mint a new id and (when op.ref is set) remember it so later ops in the same batch can address it via *Ref strings. UPDATE ops take the existing id and a patch. REMOVE ops take the id. MOVE ops take { direction: "up"|"down" }. Full per-op-kind schema in the unspa://operations resource. Load it once before authoring a batch. Common gotcha: add_resource's resource entity has its own "kind" field which collides with the op-kind discriminator. Nest under "resource:{kind,...}" or pass "resourceKind" on the flat form.`;
 
 export const registerBatchTool = (deps: ToolDeps): void => {
-  const { server, repo, projectRepo, clock, ids, repoContext } = deps;
+  const { server, repo, readings, projectRepo, clock, ids, repoContext } = deps;
 
   server.registerTool(
     'apply_batch',
@@ -268,7 +269,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         const recorder = recordingIdGenerator(
           presentIds ? replayingIdGenerator(replayed, ids, (id) => presentIds.has(id)) : ids
         );
-        const applied = applyOps(current, ops, recorder.mint);
+        const applied = applyOps(current, ops, recorder.mint, clock);
         const { refs, mintIdToOp, removedIdToOp } = applied;
         // What the batch created, every add op whether or not it carried a ref,
         // and the state paths it renamed as index keys: what a caller needs to
@@ -351,8 +352,18 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         // direct apply and the commit all answer it the same way. A failure is
         // information: it never blocks the batch, and neither does a run that
         // cannot complete (the answer then says why instead of a verdict).
+        // They run on the operative model, like every reading: what is disabled
+        // (before or after the batch) runs no scenario.
+        let operativeSiblings: Promise<readonly Feature[] | undefined> | null = null;
+        const loadOperativeSiblings = () =>
+          (operativeSiblings ??= loadProjectSiblings(readings, projectRepo, String(featureId)));
         const scenarioReport = validation.valid
-          ? await scenariosOfBatch(current, next, loadSiblings, loadProjectInvariants)
+          ? await scenariosOfBatch(
+              operativeFeature(current),
+              operativeFeature(next),
+              loadOperativeSiblings,
+              loadProjectInvariants
+            )
           : {};
         // What this change touches in the other features of the project. Never
         // blocks anything and never moves `ok`: a shared state path is ordinary
@@ -401,7 +412,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
               refs,
               ...idReport,
               validation,
-              maturity: validation.valid ? scoreFeature(next) : null,
+              maturity: validation.valid ? scoreFeature(operativeFeature(next)) : null,
               ...(validation.valid ? { previousUpdatedAt, updatedAt: previousUpdatedAt } : {}),
               ...scenarioReport,
               ...relatedReport,
@@ -417,7 +428,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
             refs,
             ...idReport,
             validation,
-            maturity: validation.valid ? scoreFeatureTool(next) : null,
+            maturity: validation.valid ? scoreFeatureTool(operativeFeature(next)) : null,
             ...(validation.valid ? { previousUpdatedAt, updatedAt: previousUpdatedAt } : {}),
             ...scenarioReport,
             ...relatedReport,

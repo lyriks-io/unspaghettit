@@ -42,6 +42,14 @@ import {
 } from './short-ids';
 import { loadFeaturesByIds as readFeaturesByIds } from '../../src/features/behavior-model/application/services/bulkRead';
 import { activeProver } from '../../src/features/prover/loadProver';
+import {
+  disabledActionRefusal,
+  scenariosLeftOut
+} from '../../src/features/behavior-model/domain/services/DisabledElements';
+
+/** Whether the action belongs to the surface, for a scenario run narrowed to one surface. */
+const inSurface = (feature: Feature, surfaceId: string, actionId: string): boolean =>
+  feature.surfaces.some((s) => String(s.id) === surfaceId && s.actions.some((a) => String(a.id) === actionId));
 
 /**
  * Load every feature named by `featureIds`, dropping any that no longer resolve.
@@ -60,6 +68,7 @@ const loadFeaturesByIds = async (
 export const registerReadTools = ({
   server,
   repo,
+  readings,
   projectRepo,
   repoContext,
   prover: proverState
@@ -266,19 +275,23 @@ export const registerReadTools = ({
       } catch (e) {
         return errorText((e as Error).message);
       }
-      const exp = await repo.get(asFeatureId(featureId));
-      if (!exp) return errorText(`Feature ${featureId} not found`);
+      const whole = await repo.get(asFeatureId(featureId));
+      const exp = await readings.get(asFeatureId(featureId));
+      if (!exp || !whole) return errorText(`Feature ${featureId} not found`);
       try {
-        surfaceId = expandIdInFeature(exp, surfaceId, 'surfaceId');
-        actionId = expandIdInFeature(exp, actionId, 'actionId');
+        surfaceId = expandIdInFeature(whole, surfaceId, 'surfaceId');
+        actionId = expandIdInFeature(whole, actionId, 'actionId');
       } catch (e) {
         return errorText((e as Error).message);
       }
+      // A disabled action is in the model but runs in no reading: say so by name.
+      const off = disabledActionRefusal(whole, actionId);
+      if (off) return errorText(off);
       // Project siblings let the cascade reach handlers declared outside the
       // focal feature. Loading them is best-effort: a feature that doesn't
       // belong to any project simulates as before (single-feature scope).
       // The project's invariants hold here as in every other engine.
-      const { projectFeatures, projectInvariants } = await loadProjectContext(repo, projectRepo, featureId);
+      const { projectFeatures, projectInvariants } = await loadProjectContext(readings, projectRepo, featureId);
       try {
         const result = dryRunSimulateTool({
           feature: exp,
@@ -315,7 +328,7 @@ export const registerReadTools = ({
       } catch (e) {
         return errorText((e as Error).message);
       }
-      const exp = await repo.get(asFeatureId(featureId));
+      const exp = await readings.get(asFeatureId(featureId));
       if (!exp) return errorText(`Feature ${featureId} not found`);
       if (surfaceId) {
         try {
@@ -526,7 +539,7 @@ export const registerReadTools = ({
       } catch (e) {
         return errorText((e as Error).message);
       }
-      const exp = await repo.get(asFeatureId(featureId));
+      const exp = await readings.get(asFeatureId(featureId));
       if (!exp) return errorText(`Feature ${featureId} not found`);
       try {
         if (!outputPath) {
@@ -551,7 +564,7 @@ export const registerReadTools = ({
     'run_all_scenarios',
     {
       description:
-        'Execute every Scenario (optionally filtered to one surface or action) through the deterministic simulator and assert each one against its expectedStatus + expectedAssertions[]. If a scenario has personaId, that persona baseline is applied before scenario overrides. Turns scenarios from documentation into a CI-grade spec test. Returns per-scenario pass/fail with failed assertion details. Scenarios without expected outcomes still run (they just always pass status, with an empty assertion list).',
+        'Execute every Scenario (optionally filtered to one surface or action) through the deterministic simulator and assert each one against its expectedStatus + expectedAssertions[]. If a scenario has personaId, that persona baseline is applied before scenario overrides. Turns scenarios from documentation into a CI-grade spec test. Returns per-scenario pass/fail with failed assertion details. Scenarios without expected outcomes still run (they just always pass status, with an empty assertion list). A DISABLED element runs in no reading: the scenarios of a disabled scenario, action or feature, and the ones that replay a disabled action, do not run and are counted apart under `disabled: { total, scenarios: [{ scenarioId, name, actionId, actionName, disabled: { by, at, reason } }] }`.',
       inputSchema: {
         featureId: z.string(),
         surfaceId: z.string().optional(),
@@ -564,15 +577,16 @@ export const registerReadTools = ({
       } catch (e) {
         return errorText((e as Error).message);
       }
-      const exp = await repo.get(asFeatureId(featureId));
-      if (!exp) return errorText(`Feature ${featureId} not found`);
+      const whole = await repo.get(asFeatureId(featureId));
+      const exp = await readings.get(asFeatureId(featureId));
+      if (!exp || !whole) return errorText(`Feature ${featureId} not found`);
       try {
-        if (surfaceId) surfaceId = expandIdInFeature(exp, surfaceId, 'surfaceId');
-        if (actionId) actionId = expandIdInFeature(exp, actionId, 'actionId');
+        if (surfaceId) surfaceId = expandIdInFeature(whole, surfaceId, 'surfaceId');
+        if (actionId) actionId = expandIdInFeature(whole, actionId, 'actionId');
       } catch (e) {
         return errorText((e as Error).message);
       }
-      const { projectFeatures, projectInvariants } = await loadProjectContext(repo, projectRepo, featureId);
+      const { projectFeatures, projectInvariants } = await loadProjectContext(readings, projectRepo, featureId);
       try {
         const output = runScenarios({
           feature: exp,
@@ -581,7 +595,13 @@ export const registerReadTools = ({
           ...(projectFeatures ? { projectFeatures } : {}),
           ...(projectInvariants.length > 0 ? { projectInvariants } : {})
         });
-        return text(trackTokens('run_all_scenarios', output));
+        // The scenarios of disabled elements do not run: counted apart, never as absent.
+        const leftOut = scenariosLeftOut(whole).filter(
+          (row) => (!actionId || row.actionId === actionId) && (!surfaceId || inSurface(whole, surfaceId, row.actionId))
+        );
+        return text(
+          trackTokens('run_all_scenarios', leftOut.length > 0 ? { ...output, disabled: { total: leftOut.length, scenarios: leftOut } } : output)
+        );
       } catch (e) {
         return errorText(`run_all_scenarios failed: ${(e as Error).message}`);
       }
@@ -605,9 +625,9 @@ export const registerReadTools = ({
       } catch (e) {
         return errorText((e as Error).message);
       }
-      const exp = await repo.get(asFeatureId(featureId));
+      const exp = await readings.get(asFeatureId(featureId));
       if (!exp) return errorText(`Feature ${featureId} not found`);
-      const projectFeatures = await loadProjectSiblings(repo, projectRepo, featureId);
+      const projectFeatures = await loadProjectSiblings(readings, projectRepo, featureId);
       // The project's cross-feature invariants hold here too, over the other
       // features' state seeded from their defaults, exactly as verify checks
       // them: a feature check that ignored them would pass a model a walk refuses.

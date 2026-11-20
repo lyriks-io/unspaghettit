@@ -6,6 +6,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+An element of the spec can be disabled: inoperative in every reading, still present and readable.
+
+### Added
+
+- `disable_element { elementId, reason, by?, at? }` and `enable_element { elementId }`,
+  two `apply_batch` operations: the feature itself, an action, a rule, an
+  always-true statement, a scenario or a reachability goal is put aside under
+  its id, marked `disabled: { by, at, reason }`, and brought back as it was.
+  An empty reason, an unknown id, disabling twice and enabling an element in
+  force are refused and the batch applies nothing.
+- `simulate_steps` takes `disable: [ids]`: elements disabled in memory for one
+  trial, saving nothing; an id the feature does not hold refuses the trial.
+- The library entry exports `operativeFeature`, `disabledElements`,
+  `disabledCounts`, `disabledIndexKeys`, `scenariosLeftOut` and the two
+  transforms, for hosts that read snapshots in process.
+
+### Changed
+
+- Every reading takes the operative model, without the disabled elements and
+  what a disabled action or feature holds: the simulation, the scenarios, the
+  model check, the proofs, `verify`, the maturity, the spec gaps and the type
+  generation. A proof is kept by the content it was made of, so one made
+  before an element was disabled is made again.
+- `run_all_scenarios` and `simulate_steps` count the scenarios of disabled
+  elements apart (`disabled: { total, scenarios }`); `unspa scenarios export`
+  writes them `it.skip` with who disabled them, when and why.
+- The implementation gaps, status and drift read a disabled element disabled,
+  neither missing nor drifting; its index entries are kept, and disabling or
+  enabling it moves no element version.
+
+### Fixed
+
+- `update_scenario`, `remove_scenario`, and the update and removal of an
+  action's rules, always-true statements, effects and parameters (and
+  `move_parameter`) no longer refuse an op that names the element by its id
+  alone ("missing surfaceId or surfaceRef"): the id is unique in the feature,
+  so the surface and the action holding it are found by it. Refused only when
+  no action holds the id or several do, each candidate named.
+
 ## [0.27.2] - 2026-11-18
 
 A captured source survives a move that fails, and a library promotion stays inside its project.

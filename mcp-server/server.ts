@@ -17,6 +17,7 @@ import { recordCriteriaEvidenceUseCase } from '../src/features/implementation-st
 import type { ProjectRepository } from '../src/features/projects/application/ports/ProjectRepository';
 import { InMemoryProjectRepository } from '../src/features/projects/infrastructure/persistence/InMemoryProjectRepository';
 import { withProjectLibrary } from '../src/features/projects/infrastructure/persistence/ProjectScopedFeatureRepository';
+import { operativeRepository } from '../src/features/behavior-model/infrastructure/persistence/OperativeFeatureRepository';
 import { systemClock, type Clock } from '../src/shared/domain/Clock';
 import { cryptoIdGenerator, type IdGenerator } from '../src/shared/domain/IdGenerator';
 import { registerGuideResource } from './resources/guide';
@@ -184,6 +185,7 @@ export const buildServer = (
   const toolDeps: ToolDeps = {
     server,
     repo,
+    readings: operativeRepository(repo),
     projectRepo,
     clock,
     ids,

@@ -51,6 +51,12 @@ export type DriftReport = {
    * for a whole-project sweep.
    */
   readonly outOfScope: number;
+  /**
+   * Index keys of disabled elements (an element put aside, or what a disabled
+   * action or feature holds): they keep their entries and read disabled here,
+   * neither drift nor orphans. Present only when there is one.
+   */
+  readonly disabled?: readonly string[];
   /** Where the drift is, small enough to survive a capped or skimmed answer. */
   readonly summary: DriftSummary;
 };

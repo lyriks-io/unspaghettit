@@ -9,6 +9,7 @@ import type { Parameter } from './Parameter';
 import type { Rule } from './Rule';
 import type { Scenario } from './Scenario';
 import type { Transition } from './Transition';
+import type { Disabled } from './Disabled';
 
 /**
  * Behavioral roles an action plays in the feature. Multi-valued
@@ -350,6 +351,11 @@ export type Action = {
    * absent means a normal action. Excluded from maturity + spec-gap analysis.
    */
   readonly evolution?: Evolution;
+  /**
+   * Set while the action is put aside: kept and readable, left out of every
+   * reading with everything it holds (its rules, invariants and scenarios).
+   */
+  readonly disabled?: Disabled;
 };
 
 /**

@@ -26,6 +26,8 @@ export type OpContext = {
   readonly refs: Refs;
   readonly mintId: () => string;
   readonly remember: (ref: unknown, id: string) => void;
+  /** The batch's clock, for what an op stamps (when an element was disabled). */
+  readonly now?: () => string;
 };
 
 const get = <K extends string>(op: Op, key: K): unknown => op[key];
@@ -275,4 +277,86 @@ export const buildOverrides = (
     }
   );
   return { state, param };
+};
+
+/** The ops that address an element an action holds, by the key of its id, where it lives and what it is called. */
+const OWNED_BY_ACTION: Readonly<Record<string, { readonly idKey: string; readonly what: string }>> = {
+  update_scenario: { idKey: 'scenarioId', what: 'scenario' },
+  remove_scenario: { idKey: 'scenarioId', what: 'scenario' },
+  update_action_rule: { idKey: 'ruleId', what: 'rule' },
+  remove_action_rule: { idKey: 'ruleId', what: 'rule' },
+  update_action_invariant: { idKey: 'invariantId', what: 'invariant' },
+  remove_action_invariant: { idKey: 'invariantId', what: 'invariant' },
+  update_parameter: { idKey: 'parameterId', what: 'parameter' },
+  remove_parameter: { idKey: 'parameterId', what: 'parameter' },
+  move_parameter: { idKey: 'parameterId', what: 'parameter' },
+  update_effect: { idKey: 'effectId', what: 'effect' },
+  remove_effect: { idKey: 'effectId', what: 'effect' }
+};
+
+type ActionLike = Feature['surfaces'][number]['actions'][number];
+
+const idsIn = (list: unknown): readonly string[] =>
+  Array.isArray(list) ? list.map((e) => String((e as { id?: unknown })?.id ?? '')) : [];
+
+/** Whether the action holds the element this op names, where the op addresses it. */
+const holds = (action: ActionLike, op: Op, idKey: string, id: string): boolean => {
+  switch (idKey) {
+    case 'scenarioId':
+      return idsIn(action.scenarios).includes(id);
+    case 'ruleId':
+      return idsIn(action.rules).includes(id);
+    case 'invariantId':
+      return idsIn(action.invariants).includes(id);
+    case 'parameterId':
+      return idsIn(action.parameters).includes(id);
+    default:
+      // An effect: the action's own (or its blocked-attempt ones), or one its
+      // rules or outcomes hold, which the op then refuses with its direction.
+      return (
+        idsIn(op.onBlocked ? action.onBlockedEffects : action.effects).includes(id) ||
+        action.rules.some((r) => String((r.effect as { id?: unknown } | undefined)?.id ?? '') === id) ||
+        (action.outcomes ?? []).some((o) => idsIn(o.effects).includes(id))
+      );
+  }
+};
+
+/**
+ * An op that names the element of an action by its id alone: the surface and
+ * the action that hold it are found in the feature, since ids are unique there.
+ * Given, surfaceId and actionId still narrow the search (a ref resolves first).
+ * Refused only when no action holds the id, or several do, naming them.
+ */
+export const withActionOwner = (op: Op, feature: Feature, refs: Refs): Op => {
+  const owned = OWNED_BY_ACTION[op.kind];
+  if (!owned) return op;
+  const named = (ref: string, id: string) =>
+    (typeof op[ref] === 'string' && op[ref] !== '') || (typeof op[id] === 'string' && op[id] !== '');
+  const hasSurface = named('surfaceRef', 'surfaceId');
+  const hasAction = named('actionRef', 'actionId');
+  if (hasSurface && hasAction) return op;
+  const id = op[owned.idKey];
+  if (typeof id !== 'string' || id === '') return op;
+  const surfaceId = hasSurface ? resolve(op, refs, 'surfaceRef', 'surfaceId') : null;
+  const actionId = hasAction ? resolve(op, refs, 'actionRef', 'actionId') : null;
+  const owners: { surfaceId: string; actionId: string; actionName: string }[] = [];
+  for (const surface of feature.surfaces) {
+    if (surfaceId !== null && String(surface.id) !== surfaceId) continue;
+    for (const action of surface.actions) {
+      if (actionId !== null && String(action.id) !== actionId) continue;
+      if (holds(action, op, owned.idKey, id))
+        owners.push({ surfaceId: String(surface.id), actionId: String(action.id), actionName: action.name });
+    }
+  }
+  if (owners.length === 0) {
+    throw new Error(`${op.kind}: no action of this feature holds the ${owned.what} "${id}"`);
+  }
+  if (owners.length > 1) {
+    const named = owners.map((o) => `"${o.actionName}" (surfaceId ${o.surfaceId}, actionId ${o.actionId})`).join(', ');
+    throw new Error(
+      `${op.kind}: the ${owned.what} "${id}" is held by several actions: ${named}. Name the one meant with surfaceId and actionId.`
+    );
+  }
+  const [owner] = owners;
+  return { ...op, surfaceId: owner!.surfaceId, actionId: owner!.actionId };
 };
