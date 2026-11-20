@@ -8,6 +8,7 @@ import {
   asActionId,
   asEffectId,
   asFeatureId,
+  asInvariantId,
   asParameterId,
   asPersonaId,
   asRuleId,
@@ -855,5 +856,94 @@ describe('unresolvable scenarios fail instead of aborting the run', () => {
     expect(failed?.pass).toBe(false);
     expect(failed?.summary).toContain('scenario could not run');
     expect(failed?.summary).toContain('c-gone');
+  });
+});
+
+describe('runScenariosUseCase: a step an invariant refuses', () => {
+  // An account that may never go below zero. A scenario first tries to
+  // overdraw (refused, as the step expects), then deposits.
+  const moneyAction = (id: string, name: string, kind: 'add' | 'sub'): Action => ({
+    id: asActionId(id),
+    name,
+    intent: name,
+    parameters: [{ id: asParameterId(`${id}-amount`), name: 'amount', type: 'number', required: true }],
+    requiredStates: [],
+    rules: [],
+    invariants: [],
+    effects: [
+      {
+        id: asEffectId(`${id}-effect`),
+        type: 'set_state',
+        path: asStatePath('balance'),
+        value: {
+          kind,
+          left: { kind: 'state', path: asStatePath('balance') },
+          right: { kind: 'param', name: 'amount' }
+        }
+      }
+    ],
+    emittedEvents: [],
+    transitions: []
+  });
+  const withdraw = moneyAction('withdraw', 'Withdraw', 'sub');
+  const deposit: Action = {
+    ...moneyAction('deposit', 'Deposit', 'add'),
+    scenarios: [
+      {
+        id: asScenarioId('sc-after-refusal'),
+        name: 'A deposit after a refused overdraft',
+        stateOverrides: [],
+        parameterOverrides: [{ parameterName: 'amount', value: 50 }],
+        expectedStatus: 'success',
+        expectedAssertions: [{ path: asStatePath('balance'), operator: 'equals', value: 150 }],
+        steps: [
+          {
+            actionId: asActionId('withdraw'),
+            parameterOverrides: [{ parameterName: 'amount', value: 200 }],
+            expectedStatus: 'blocked'
+          }
+        ]
+      }
+    ]
+  };
+  const account: Feature = {
+    id: asFeatureId('account'),
+    name: 'Account',
+    surfaces: [
+      {
+        id: asSurfaceId('s-account'),
+        name: 'Account',
+        type: 'screen',
+        stateDefinitions: [
+          { id: asStateDefinitionId('d-balance'), path: asStatePath('balance'), type: 'number', defaultValue: 100 }
+        ],
+        actions: [withdraw, deposit],
+        rules: [],
+        invariants: [],
+        transitions: []
+      }
+    ],
+    featureInvariants: [
+      {
+        id: asInvariantId('i-no-overdraft'),
+        name: 'No overdraft',
+        condition: { left: asStatePath('balance'), operator: 'greater_or_equal', right: 0 },
+        message: 'The balance never goes below zero.'
+      }
+    ],
+    personas: [],
+    resources: [],
+    entities: [],
+    createdAt: '2026-11-20T00:00:00.000Z',
+    updatedAt: '2026-11-20T00:00:00.000Z'
+  };
+
+  it('goes on from the state before the refused step, not the broken one', () => {
+    const out = runScenariosUseCase()({ feature: account });
+    const result = out.results[0]!;
+    expect(result.steps[0]?.actualStatus).toBe('blocked');
+    expect(result.steps[0]?.pass).toBe(true);
+    expect(result.summary).toBe('pass. 1 step ok, success, 1 assertion held');
+    expect(result.pass).toBe(true);
   });
 });

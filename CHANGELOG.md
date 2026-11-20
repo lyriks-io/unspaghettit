@@ -15,6 +15,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   refused on every run, and the model check read it dead. Read on the settled
   state, a handler that breaks a project statement, or one of the emitting
   feature, now refuses the action that woke it instead of passing unnoticed.
+- A step of a scenario refused by an always-true statement no longer hands the
+  state it would have broken to the steps after it. A refused overdraft left
+  the balance negative for the next step, so a scenario expecting that refusal
+  failed on a step that was right. The next step starts from the state before
+  the refused one, as in a step-by-step simulation.
 
 ## [0.28.0] - 2026-11-20
 

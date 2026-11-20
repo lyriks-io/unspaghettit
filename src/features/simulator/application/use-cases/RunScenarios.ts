@@ -332,10 +332,14 @@ const runOne = (
       feature,
       ...(projectFeatures ? { projectFeatures } : {})
     });
-    // Thread forward. On a blocked step no success effect landed, so
-    // nextState carries the last good state and later steps run against it —
-    // the step (and so the scenario) is already marked failed below.
-    snapshot = stepResult.nextState;
+    // Thread forward. A rule-refused step lands nothing, so its nextState is
+    // the state before it. A step refused by an invariant reports, as its
+    // nextState, the broken state it would have left: it must not carry into
+    // the next step (a refused overdraft would leave the balance negative for
+    // every step after it), so the state before the step goes on, as in a
+    // step-by-step simulation.
+    snapshot =
+      stepResult.invariantViolations.length > 0 ? stepResult.previousState : stepResult.nextState;
     const stepStatus: 'success' | 'blocked' =
       stepResult.status === 'blocked' ? 'blocked' : 'success';
     const stepExpected = step.expectedStatus ?? 'success';
