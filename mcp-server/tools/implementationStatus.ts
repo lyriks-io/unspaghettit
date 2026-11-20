@@ -142,19 +142,44 @@ const normalizeForMatch = (s: string): string => s.replace(/\s+/g, ' ').trim();
  * Locate the line that still carries the audited signature, using progressively
  * looser matches so refactors (line shifts, multi-line reformatting, dropped
  * `let` prefix from class-field migrations) still resolve. Returns 1-based line
- * or `null` if no plausible match exists. First match wins. Heuristic but
- * correct for the common case of one declaration per file region.
+ * or `null` if no plausible match exists.
+ *
+ * `near` is the line the entry names. A signature is rarely unique in its file
+ * (two handlers ending in the same `return json({ ok: true })`), so the line
+ * named keeps it when it still carries it, and otherwise the occurrence nearest
+ * to it wins within the strongest tier that finds any. Taking the first one in
+ * the file used to read such an entry stale and heal it onto another handler.
  */
-const findSignatureLine = (lines: readonly string[], signature: string): number | null => {
+export const findSignatureLine = (
+  lines: readonly string[],
+  signature: string,
+  near?: number
+): number | null => {
   const target = normalizeForMatch(signature);
+  if (target.length === 0) return null;
+
+  // The line named still carries the whole signature: it has not moved,
+  // whatever else in the file looks like it. A short signature is only taken
+  // as the whole line, since a few characters appear on many lines.
+  if (near !== undefined && near >= 1 && near <= lines.length) {
+    const named = normalizeForMatch(lines[near - 1]!);
+    if (target.length < 6 ? named === target : named.includes(target)) return near;
+  }
   if (target.length < 6) return null;
 
+  const nearest = (matches: readonly number[]): number | null => {
+    if (matches.length === 0) return null;
+    if (near === undefined) return matches[0]!;
+    // Ties go to the earlier line, so the answer never depends on scan order.
+    return matches.reduce((best, line) => (Math.abs(line - near) < Math.abs(best - near) ? line : best));
+  };
   const tryScan = (needle: string): number | null => {
     if (needle.length < 6) return null;
+    const matches: number[] = [];
     for (let i = 0; i < lines.length; i += 1) {
-      if (normalizeForMatch(lines[i]!).includes(needle)) return i + 1;
+      if (normalizeForMatch(lines[i]!).includes(needle)) matches.push(i + 1);
     }
-    return null;
+    return nearest(matches);
   };
 
   // Tier 1: full normalized signature on a single line.
@@ -178,7 +203,7 @@ const findSignatureLine = (lines: readonly string[], signature: string): number 
 /** ±2 line tolerance. A small edit above the entity doesn't count as stale. */
 const FRESH_WINDOW = 2;
 
-const entryToLocation = (
+export const entryToLocation = (
   entry: IndexEntry,
   repoRoot?: string,
   cache?: FileCache
@@ -207,7 +232,7 @@ const entryToLocation = (
     };
   }
 
-  const foundLine = findSignatureLine(lines, entry.signature);
+  const foundLine = findSignatureLine(lines, entry.signature, indexedLine);
   const fresh =
     indexedLine !== undefined &&
     foundLine !== null &&
@@ -492,7 +517,7 @@ export const healIndexLines = (
     if (!entry.signature || !entry.line || entry.line <= 0) continue;
     const lines = readLinesCached(cache, repoRoot, entry.file);
     if (!lines) continue;
-    const foundLine = findSignatureLine(lines, entry.signature);
+    const foundLine = findSignatureLine(lines, entry.signature, entry.line);
     if (foundLine === null) continue;
     if (Math.abs(foundLine - entry.line) <= FRESH_WINDOW) continue;
     nextIndex[key] = { ...entry, line: foundLine };

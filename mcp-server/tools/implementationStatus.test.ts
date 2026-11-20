@@ -6,6 +6,7 @@ import {
   buildExpectedIndexKeys,
   buildKeyOwners,
   findOrphanKeys,
+  entryToLocation,
   findSharedKeys,
   healIndexLines
 } from './implementationStatus';
@@ -121,6 +122,101 @@ describe('healIndexLines', () => {
     const { healed, nextIndex } = healIndexLines(index, root, new Map());
     expect(healed).toHaveLength(0);
     expect(nextIndex['a']?.line).toBe(1);
+  });
+
+  // Two handlers ending the same way: the signature is on the indexed line AND
+  // on an earlier one. The entry has not moved; healing used to rewrite it to
+  // the first occurrence in the file, and persist that wrong line to disk.
+  it('leaves an entry alone when its line still carries a signature the file repeats', () => {
+    writeFixture(
+      root,
+      'routes.ts',
+      [
+        'export const create = async () => {',
+        '  await save();',
+        '  return json({ ok: true });',
+        '};',
+        '',
+        'export const remove = async () => {',
+        '  await drop();',
+        '  return json({ ok: true });',
+        '};'
+      ].join('\n')
+    );
+    const index: BehavioralIndex = {
+      'action:remove': { status: 'implemented', file: 'routes.ts', line: 8, signature: 'return json({ ok: true });' }
+    };
+    const { healed, nextIndex } = healIndexLines(index, root, new Map());
+    expect(healed).toEqual([]);
+    expect(nextIndex['action:remove']?.line).toBe(8);
+  });
+
+  it('heals a moved entry to the occurrence nearest its indexed line', () => {
+    // The signature sits at line 1 and, after six lines were inserted above the
+    // second handler, at line 16 (indexed at 10).
+    const filler = Array.from({ length: 13 }, (_, i) => `const filler${i} = ${i};`);
+    writeFixture(
+      root,
+      'routes.ts',
+      ['  return json({ ok: true });', ...filler, '', '  return json({ ok: true });'].join('\n')
+    );
+    const index: BehavioralIndex = {
+      'action:remove': { status: 'implemented', file: 'routes.ts', line: 10, signature: 'return json({ ok: true });' }
+    };
+    const { healed } = healIndexLines(index, root, new Map());
+    expect(healed).toEqual([{ key: 'action:remove', file: 'routes.ts', previousLine: 10, line: 16 }]);
+  });
+
+  it('reads the line through CRLF endings, tabs and non-ASCII text', () => {
+    const dash = '\u2014';
+    writeFixture(
+      root,
+      'copy.ts',
+      ['const a = 1;', '', '', '', '', '', `\tconst label = 'Saved ${dash} all good';`, ''].join('\r\n')
+    );
+    const index: BehavioralIndex = {
+      'action:copy': { status: 'implemented', file: 'copy.ts', line: 1, signature: `const   label = 'Saved ${dash} all good';` }
+    };
+    const { healed } = healIndexLines(index, root, new Map());
+    expect(healed).toEqual([{ key: 'action:copy', file: 'copy.ts', previousLine: 1, line: 7 }]);
+  });
+});
+
+describe('entryToLocation', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'unspa-locate-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('reads an entry fresh when its line still carries the signature the file repeats', () => {
+    writeFixture(root, 'routes.ts', ['  return json({ ok: true });', '', '', '', '', '  return json({ ok: true });'].join('\n'));
+    const loc = entryToLocation(
+      { status: 'implemented', file: 'routes.ts', line: 6, signature: 'return json({ ok: true });' },
+      root,
+      new Map()
+    );
+    expect(loc.stale).toBeUndefined();
+    expect(loc.line).toBe(6);
+  });
+
+  // A short signature (a closing call, a one-word statement) was never searched
+  // for, so its entry read stale on every sync even at its exact line.
+  it('reads a short signature fresh at its own line', () => {
+    writeFixture(root, 'tick.ts', ['let n = 0;', 'tick();', 'done();'].join('\n'));
+    const loc = entryToLocation({ status: 'implemented', file: 'tick.ts', line: 2, signature: 'tick()' }, root, new Map());
+    expect(loc.stale).toBeUndefined();
+    expect(loc.line).toBe(2);
+  });
+
+  it('still reads stale a signature the file no longer holds', () => {
+    writeFixture(root, 'tick.ts', ['let n = 0;', 'other();'].join('\n'));
+    const loc = entryToLocation({ status: 'implemented', file: 'tick.ts', line: 2, signature: 'tick()' }, root, new Map());
+    expect(loc.stale).toBe(true);
   });
 });
 

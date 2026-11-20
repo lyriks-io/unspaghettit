@@ -49,6 +49,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   that sets a derived state is refused: the engine recomputes a derived state
   before any rule reads it, so the value set was silently replaced and the
   scenario ran from another state than the one it arranged.
+- An index entry whose signature the file repeats (two handlers ending in the
+  same `return json({ ok: true })`) is no longer read stale and moved onto the
+  first occurrence in the file: the line it names keeps it while that line
+  still carries the signature, and a moved entry is healed to the occurrence
+  nearest its line. `sync_from_index` used to rewrite such entries to the wrong
+  line in `.unspa.json`. A short signature (under six characters) is read fresh
+  at its own line instead of stale on every sync.
 
 ## [0.28.0] - 2026-11-20
 
