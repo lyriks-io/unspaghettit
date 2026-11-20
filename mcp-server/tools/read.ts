@@ -233,7 +233,7 @@ export const registerReadTools = ({
   server.registerTool(
     'find_state_references',
     {
-      description: 'Count refs to a state path across rules, effects, invariants, requiredStates, parameter bindings. Run before editing/removing state.',
+      description: 'Count refs to a state path across one feature: rules, effects, invariants (action, surface, feature), requiredStates, parameter bindings, derived states, reachability goals, action outcomes, scenario overrides and assertions (steps included), persona overrides, entity fields. Run before renaming or removing state. A project invariant reading the path lives on the project, not here: get_project lists them.',
       inputSchema: {
         featureId: z.string(),
         statePath: z.string()

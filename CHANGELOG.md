@@ -100,6 +100,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   the feature does not declare, or a rename that leaves an outcome reading the
   old path is refused. Before, the outcome was saved as written and silently
   never matched, or wrote a state nothing read.
+- `find_state_references`, the check to run before renaming or removing a
+  state, now counts every place of the feature that names the path: feature
+  invariants, reachability goals, derived states, action outcomes, scenario
+  overrides and assertions (steps included) and the outer paths a quantifier
+  body reads. It used to answer 0 for those, so a path read only there looked
+  free to rename.
 
 ## [0.28.0] - 2026-11-20
 

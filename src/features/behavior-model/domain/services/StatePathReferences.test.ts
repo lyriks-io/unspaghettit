@@ -15,8 +15,11 @@ import {
   asFeatureId,
   asInvariantId,
   asParameterId,
+  asOutcomeId,
   asPersonaId,
+  asReachabilityGoalId,
   asRuleId,
+  asScenarioId,
   asStateDefinitionId,
   asSurfaceId
 } from '../value-objects/ids';
@@ -107,6 +110,10 @@ const counted = (counts: Partial<Omit<StatePathReferences, 'path'>>): StatePathR
   invariantConditions: 0,
   personaStateOverrides: 0,
   otherDataFields: 0,
+  derivedStates: 0,
+  goalConditions: 0,
+  outcomeReferences: 0,
+  scenarioReferences: 0,
   ...counts
 });
 
@@ -276,6 +283,114 @@ describe('countStatePathReferences', () => {
       ]
     });
     expect(countStatePathReferences(f, ITEMS)).toEqual(counted({ invariantConditions: 3 }));
+  });
+});
+
+describe('the places a rename or a removal reaches beyond rules and effects', () => {
+  it('counts the conditions of feature invariants', () => {
+    const f = feature({
+      surfaces: [surface()],
+      featureInvariants: [invariant({ left: ITEMS, operator: 'lower_or_equal', right: state('cart.items') })]
+    });
+    expect(countStatePathReferences(f, ITEMS)).toEqual(counted({ invariantConditions: 2 }));
+  });
+
+  it('counts the conditions of reachability goals', () => {
+    const f = feature({
+      surfaces: [surface()],
+      reachabilityGoals: [
+        {
+          id: asReachabilityGoalId('g1'),
+          name: 'A full cart',
+          kind: 'reachable',
+          condition: { left: ITEMS, operator: 'greater_than', right: 0 }
+        }
+      ]
+    });
+    expect(countStatePathReferences(f, ITEMS)).toEqual(counted({ goalConditions: 1 }));
+  });
+
+  it('counts the derived expressions that read the path', () => {
+    const f = feature({
+      surfaces: [
+        surface({
+          stateDefinitions: [
+            { id: asStateDefinitionId('d1'), path: asStatePath('cart.double'), type: 'number', defaultValue: 0, derived: { kind: 'mul', left: state('cart.items'), right: lit(2) } }
+          ]
+        })
+      ]
+    });
+    expect(countStatePathReferences(f, ITEMS)).toEqual(counted({ stateDefinitions: 0, derivedStates: 1 }));
+  });
+
+  it('counts the outcome conditions and the outcome effects', () => {
+    const f = feature({
+      surfaces: [
+        surface({
+          actions: [
+            action({
+              outcomes: [
+                {
+                  id: asOutcomeId('o1'),
+                  name: 'Full',
+                  kind: 'success',
+                  condition: { left: ITEMS, operator: 'greater_than', right: 0 },
+                  effects: [setState('cart.total', state('cart.items'))]
+                }
+              ]
+            })
+          ]
+        })
+      ]
+    });
+    expect(countStatePathReferences(f, ITEMS)).toEqual(counted({ outcomeReferences: 2 }));
+  });
+
+  it('counts the scenario overrides and assertions, the steps included', () => {
+    const f = feature({
+      surfaces: [
+        surface({
+          actions: [
+            action({
+              scenarios: [
+                {
+                  id: asScenarioId('sc1'),
+                  name: 'Two items',
+                  stateOverrides: [{ path: ITEMS, value: 2 }],
+                  parameterOverrides: [],
+                  expectedAssertions: [{ path: ITEMS, operator: 'equals', value: 3 }],
+                  steps: [
+                    {
+                      actionId: asActionId('a-other'),
+                      parameterOverrides: [],
+                      expectedAssertions: [{ path: ITEMS, operator: 'equals', value: 2 }]
+                    }
+                  ]
+                }
+              ]
+            })
+          ]
+        })
+      ]
+    });
+    expect(countStatePathReferences(f, ITEMS)).toEqual(counted({ scenarioReferences: 3 }));
+  });
+
+  it('counts an outer path a quantifier body reads, never the element it binds', () => {
+    const condition: RuleCondition = {
+      kind: 'all_match',
+      overPath: asStatePath('cart.lines'),
+      as: 'line',
+      where: {
+        kind: 'all',
+        conditions: [
+          { left: asStatePath('line.qty'), operator: 'lower_or_equal', right: state('cart.items') },
+          { left: ITEMS, operator: 'greater_than', right: 0 }
+        ]
+      }
+    };
+    const f = feature({ surfaces: [surface({ actions: [action({ rules: [rule(condition)] })] })] });
+    expect(countStatePathReferences(f, ITEMS)).toEqual(counted({ ruleConditions: 2 }));
   });
 });
 
