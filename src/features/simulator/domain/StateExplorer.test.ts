@@ -16,6 +16,7 @@ import {
   asSurfaceId
 } from '$features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
+import { asEventName } from '$features/behavior-model/domain/value-objects/EventName';
 import { exploreStateSpace } from './StateExplorer';
 
 const featureWith = (surface: Surface): Feature => ({
@@ -382,6 +383,88 @@ describe('exploreStateSpace: dead versus unreached actions', () => {
     expect(reasons.get('save')).toBe('only 16 of its 864 parameter combinations were tried');
     expect(reasons.get('review')).toBe('another action ran on a sampled parameter grid');
     expect(reasons.get('publish')).toBe('another action ran on a sampled parameter grid');
+  });
+});
+
+describe('exploreStateSpace: event handlers', () => {
+  // "Add expense" appends an expense and emits expense.added; "Recount" runs
+  // on that event and counts it. The count never exceeds the expenses.
+  const expenses = asStatePath('expenses');
+  const expenseCount = asStatePath('expenseCount');
+  const add: Action = {
+    id: asActionId('add'),
+    name: 'Add expense',
+    intent: 'record an expense',
+    parameters: [],
+    requiredStates: [],
+    rules: [
+      {
+        id: asRuleId('full'),
+        category: 'business',
+        condition: { left: expenseCount, operator: 'greater_or_equal', right: 3 },
+        effect: { id: asEffectId('e-full'), type: 'block_action', reason: 'the ledger is full' }
+      }
+    ],
+    invariants: [],
+    effects: [
+      { id: asEffectId('e-append'), type: 'append_to_list', path: expenses, item: 1 },
+      { id: asEffectId('e-emit'), type: 'emit_event', event: asEventName('expense.added') }
+    ],
+    emittedEvents: [asEventName('expense.added')],
+    transitions: []
+  };
+  const recount: Action = {
+    id: asActionId('recount'),
+    name: 'Recount',
+    intent: 'count the expense just added',
+    parameters: [],
+    requiredStates: [],
+    rules: [],
+    invariants: [],
+    effects: [
+      {
+        id: asEffectId('e-recount'),
+        type: 'set_state',
+        path: expenseCount,
+        value: { kind: 'add', left: { kind: 'state', path: expenseCount }, right: { kind: 'literal', value: 1 } }
+      }
+    ],
+    emittedEvents: [],
+    transitions: [],
+    triggeredByEvent: asEventName('expense.added')
+  };
+  const ledger = (actions: readonly Action[]): Feature => ({
+    ...featureWith({
+      ...countSurface(actions, []),
+      stateDefinitions: [
+        { id: asStateDefinitionId('d-expenses'), path: expenses, type: 'array', defaultValue: [] },
+        { id: asStateDefinitionId('d-count'), path: expenseCount, type: 'number', defaultValue: 0 }
+      ]
+    }),
+    featureInvariants: [
+      {
+        id: asInvariantId('counted'),
+        name: 'No more counted than recorded',
+        condition: {
+          left: expenseCount,
+          operator: 'lower_or_equal',
+          right: { kind: 'count', operand: { kind: 'state', path: expenses } }
+        },
+        message: 'an expense was counted that was never recorded'
+      }
+    ]
+  });
+
+  it('runs a handler only when its event is emitted, never on its own', () => {
+    const report = exploreStateSpace(ledger([add, recount]), { maxDepth: 4 });
+    expect(report.invariantViolations).toEqual([]);
+    expect(report.deadActions).toEqual([]);
+  });
+
+  it('still explores a handler of an event nothing in the model emits', () => {
+    // The host may fire it: with no emitter it is explored as it was.
+    const report = exploreStateSpace(ledger([recount]), { maxDepth: 2 });
+    expect(report.invariantViolations.map((v) => v.path)).toEqual([['Recount']]);
   });
 });
 

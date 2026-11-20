@@ -138,6 +138,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   handler elsewhere that refuses a `required` or `transactional` event did not
   roll the emitting action back there, so the model check reached states the
   project never reaches and could fail on them.
+- The model check no longer fires an event handler on its own: a handler runs
+  only in the cascade of the action that emits its event, so a "recount" that
+  counts an added expense was explored with no expense added and reported an
+  invariant violation that cannot happen (and `verify` failed on it). A handler
+  of an event nothing in the project emits is still explored, as the host may
+  fire it.
 
 ## [0.28.0] - 2026-11-20
 

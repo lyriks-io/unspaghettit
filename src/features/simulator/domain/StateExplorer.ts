@@ -1,5 +1,6 @@
 import type { Action } from '$features/behavior-model/domain/entities/Action';
-import { isEvolution } from '$features/behavior-model/domain/entities/Action';
+import { effectiveActor, isEvolution } from '$features/behavior-model/domain/entities/Action';
+import type { Effect } from '$features/behavior-model/domain/value-objects/Effect';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import type { ReachabilityGoalKind } from '$features/behavior-model/domain/entities/ReachabilityGoal';
@@ -212,6 +213,12 @@ export const exploreStateSpace = (
   // Enumerate the moves once. Skip evolution placeholders (no committed body)
   // and actions whose required parameters have no default — record the latter
   // so they read as "not explored", never as "dead".
+  // An event handler runs when its event is emitted, in the cascade of the
+  // action that emits it; fired on its own it reached states the model never
+  // reaches (a "recount" counting an expense nobody added), and broke
+  // invariants there with a counterexample that cannot happen. A handler of an
+  // event nothing in the model emits stays a move: the host may fire it.
+  const emitted = emittedEventNames([feature, ...(projectFeatures ?? [])]);
   const moves: Move[] = [];
   const skippedActions: SkippedAction[] = [];
   const sampledActions: SampledAction[] = [];
@@ -220,6 +227,13 @@ export const exploreStateSpace = (
   for (const surface of feature.surfaces) {
     for (const action of surface.actions) {
       if (isEvolution(action)) continue;
+      if (
+        action.triggeredByEvent !== undefined &&
+        effectiveActor(action) === 'event' &&
+        emitted.has(String(action.triggeredByEvent))
+      ) {
+        continue;
+      }
       const domains = parameterCombinations(action, feature.valueSets, DEFAULT_MAX_COMBOS, {
         surfaceRules: surface.rules,
         surfaceInvariants: surface.invariants,
@@ -523,6 +537,31 @@ export const exploreStateSpace = (
     skippedActions,
     goalResults
   };
+};
+
+/**
+ * The events some committed action of these features emits through an
+ * `emit_event` effect (its own, a rule's or an outcome's): the ones that wake
+ * their handlers in a cascade. A blocked action wakes none, so the effects run
+ * on a block are left out.
+ */
+const emittedEventNames = (features: readonly Feature[]): ReadonlySet<string> => {
+  const names = new Set<string>();
+  const note = (effect: Effect | undefined) => {
+    if (effect?.type === 'emit_event') names.add(String(effect.event));
+  };
+  for (const feature of features) {
+    for (const surface of feature.surfaces) {
+      for (const rule of surface.rules) note(rule.effect);
+      for (const action of surface.actions) {
+        if (isEvolution(action)) continue;
+        for (const effect of action.effects) note(effect);
+        for (const rule of action.rules) note(rule.effect);
+        for (const outcome of action.outcomes ?? []) for (const effect of outcome.effects ?? []) note(effect);
+      }
+    }
+  }
+  return names;
 };
 
 /** Every state key reachable from `starts` (themselves included) along the transition graph. */
