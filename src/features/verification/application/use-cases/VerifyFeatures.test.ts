@@ -7,11 +7,15 @@ import type {
 import {
   asActionId,
   asEffectId,
+  asEventDefinitionId,
   asFeatureId,
+  asInvariantId,
+  asRuleId,
   asStateDefinitionId,
   asSurfaceId
 } from '$features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
+import { asEventName } from '$features/behavior-model/domain/value-objects/EventName';
 import { staticBehavioralIndexReader } from '../../infrastructure/persistence/StaticBehavioralIndexReader';
 import type { IndexedImplementation } from '../../domain/IndexedImplementation';
 import { verifyFeaturesUseCase } from './VerifyFeatures';
@@ -209,6 +213,75 @@ describe('verifyFeaturesUseCase', () => {
     expect(report.features.map((f) => f.featureId)).toEqual(['f1']);
     expect(report.features[0]!.checks.find((c) => c.id === 'invariants')?.status).toBe('pass');
     expect(report.summary.invariantViolations).toBe(0);
+  });
+
+  it('explores one feature with the event handlers of the rest of its project', async () => {
+    // "send" emits a transactional event a handler of the other feature always
+    // refuses, so every send rolls back and the count never moves: the cap
+    // holds. Verified alone, the feature was explored without that handler,
+    // every send landed, and the cap read as broken.
+    const base = feature('send');
+    const send: Feature = {
+      ...base,
+      events: [{ id: asEventDefinitionId('ev-sent'), name: asEventName('message.sent'), delivery: 'transactional' }],
+      featureInvariants: [
+        {
+          id: asInvariantId('cap'),
+          name: 'At most one sent',
+          condition: { left: asStatePath('count'), operator: 'lower_or_equal', right: 1 },
+          message: 'sent twice'
+        }
+      ],
+      surfaces: [
+        {
+          ...base.surfaces[0]!,
+          actions: [{ ...base.surfaces[0]!.actions[0]!, emittedEvents: [asEventName('message.sent')], effects: [
+            ...base.surfaces[0]!.actions[0]!.effects,
+            { id: asEffectId('send-emit'), type: 'emit_event', event: asEventName('message.sent') }
+          ] }]
+        }
+      ]
+    };
+    const other = feature('ledger');
+    const ledger: Feature = {
+      ...other,
+      surfaces: [
+        {
+          ...other.surfaces[0]!,
+          stateDefinitions: [],
+          actions: [
+            {
+              ...other.surfaces[0]!.actions[0]!,
+              name: 'Record',
+              triggeredByEvent: asEventName('message.sent'),
+              effects: [],
+              rules: [
+                {
+                  id: asRuleId('ledger-closed'),
+                  category: 'business',
+                  effect: { id: asEffectId('ledger-block'), type: 'block_action', reason: 'the ledger is closed' }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+    const verify = verifyFeaturesUseCase({
+      features: fakeRepo([send, ledger]),
+      index: staticBehavioralIndexReader([])
+    });
+    const invariantsOf = async (featureIds: readonly string[]) =>
+      (
+        await verify({
+          featureIds: featureIds.map(asFeatureId),
+          projectFeatures: [send, ledger],
+          modelCheck: { maxDepth: 3, maxStates: 50 }
+        })
+      ).features.find((f) => f.featureId === 'send')!.checks.find((c) => c.id === 'invariants')?.status;
+
+    expect(await invariantsOf(['send', 'ledger'])).toBe('pass');
+    expect(await invariantsOf(['send'])).toBe('pass');
   });
 
   it('runs bounded model checking when asked and includes the invariant check', async () => {

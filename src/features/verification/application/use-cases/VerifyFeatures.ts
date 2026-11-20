@@ -207,7 +207,10 @@ export const verifyFeaturesUseCase = (deps: VerifyFeaturesDeps) => {
                     }
                   : {})
               },
-              siblings
+              // Every other feature of the project, like the scenarios: an
+              // event this feature emits wakes its handlers wherever they are,
+              // so a feature verified alone is explored as it runs in its project.
+              projectFeatures.filter((f) => f.id !== feature.id)
             )
           : undefined;
       const featureDrift = drift.stale.filter((d) => d.featureId === String(feature.id));

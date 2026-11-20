@@ -133,6 +133,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   read as a trap, with a precise counterexample path, because the bound cut
   the way back. The model check now searches on from there, up to `maxDepth`
   more steps and within `maxStates`, before it calls a state a trap.
+- `verify` on one feature explores it with the event handlers of the other
+  features of its project, as `model_check` and the scenarios already did: a
+  handler elsewhere that refuses a `required` or `transactional` event did not
+  roll the emitting action back there, so the model check reached states the
+  project never reaches and could fail on them.
 
 ## [0.28.0] - 2026-11-20
 
