@@ -268,6 +268,25 @@ describe('findOrphanKeys', () => {
     }
   });
 
+  // Tonight's orphan: `criterion:ff115da8` was well formed; its criterion had
+  // been removed from the spec. The hint still told the caller to prefix the id,
+  // sending them after a key that does not exist instead of saying the entry
+  // maps a criterion the project no longer has.
+  it('says a well-formed criterion key matches no criterion of the project, rather than its form is wrong', () => {
+    const expected = new Set(['criterion:a1b2c3d4', 'criterion:ac-leaf-b69aca3f-bf96-4e8e-875d-7b38e6ae16c9']);
+    const [orphan] = findOrphanKeys({ 'criterion:ff115da8': indexEntry() }, expected);
+    expect(orphan?.hint).toMatch(/no acceptance criterion of this project has the id `ff115da8`/i);
+    expect(orphan?.hint).toMatch(/removed/);
+  });
+
+  it('names the exact key when the id is the bare or short form of a criterion carried by a feature', () => {
+    const expected = new Set(['criterion:ac-leaf-b69aca3f-bf96-4e8e-875d-7b38e6ae16c9']);
+    for (const key of ['criterion:b69aca3f-bf96-4e8e-875d-7b38e6ae16c9', 'criterion:b69aca3f', 'criterion:ac-leaf-b69aca3f']) {
+      const [orphan] = findOrphanKeys({ [key]: indexEntry() }, expected);
+      expect(orphan?.hint).toContain('`criterion:ac-leaf-b69aca3f-bf96-4e8e-875d-7b38e6ae16c9`');
+    }
+  });
+
   it('keeps naming hex alone for the types that only take one', () => {
     const orphans = findOrphanKeys({ 'action:add-to-cart': indexEntry() }, new Set());
     expect(orphans[0]?.hint).toMatch(/8-char hex/);

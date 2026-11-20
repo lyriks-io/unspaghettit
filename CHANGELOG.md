@@ -74,6 +74,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   event or state declared after the last sync reads missing instead of
   invisible, and one the spec removed drops out. The stored record is left as
   the sync wrote it.
+- An orphan `criterion:` key is told which case it is in. A well-formed id that
+  no criterion of the project holds any more (a criterion removed with what it
+  described) is said to be removed, instead of being told to add the `ac-leaf-`
+  prefix; the bare or short id of a criterion a feature carries is given the
+  exact key to move the entry to.
 
 ## [0.28.0] - 2026-11-20
 

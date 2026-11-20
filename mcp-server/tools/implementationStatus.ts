@@ -416,6 +416,43 @@ export const findSharedKeys = (
   return shared;
 };
 
+const CRITERION_FORMS =
+  'A `criterion` key takes either the 8-char hex id of a criterion declared in the ' +
+  'behaviour model, or `ac-leaf-<id>` for one carried by a feature: the features ' +
+  'section reports that id bare, so prefix it. ' +
+  '`get_feature(verbose:true)` lists the first, `get_section(features)` the second.';
+
+/**
+ * Why a `criterion:` key resolves nowhere, in the case it is in. The id may be
+ * the bare or short form of a criterion a feature carries (then the exact key
+ * is named), or a well-formed id no criterion of the project holds any more:
+ * then the criterion was removed, and telling the caller to fix the form sends
+ * them after a key that does not exist.
+ */
+const criterionOrphanHint = (idPart: string, expectedKeys: ReadonlySet<string>): string => {
+  const bare = idPart.startsWith('ac-leaf-') ? idPart.slice('ac-leaf-'.length) : idPart;
+  const carried = bare.length > 0
+    ? [...expectedKeys].filter(
+        (k) => k.startsWith('criterion:ac-leaf-') && k.slice('criterion:ac-leaf-'.length).startsWith(bare)
+      )
+    : [];
+  if (carried.length === 1) {
+    return `This is the criterion a feature carries under \`${carried[0]}\`: move the entry to that key, keeping its file, line and verification.`;
+  }
+  if (carried.length > 1) {
+    return `Several criteria carried by features start with \`${bare}\`: ${carried.map((k) => `\`${k}\``).join(', ')}. Move the entry to the one it verifies, written whole.`;
+  }
+  const wellFormed = /^[a-f0-9]{8}$/i.test(idPart) || /^ac-leaf-.+$/.test(idPart);
+  if (wellFormed) {
+    return (
+      `No acceptance criterion of this project has the id \`${idPart}\`: it was removed (or replaced), ` +
+      'or it belongs to a feature outside this project. Remove the entry, or move it to the criterion ' +
+      `that replaced it. ${CRITERION_FORMS}`
+    );
+  }
+  return `Got \`${idPart}\`. ${CRITERION_FORMS}`;
+};
+
 /**
  * Compare the user's `.unspa.json` keys against every key the spec actually
  * expects, and return entries that point at nothing. Without this report
@@ -448,14 +485,7 @@ export const findOrphanKeys = (
     // does not exist, which is worse than saying nothing: the form they used was
     // nearly right and the hint denied it.
     if (type === 'criterion') {
-      out.push({
-        key,
-        hint:
-          'A `criterion` key takes either the 8-char hex id of a criterion declared in the ' +
-          'behaviour model, or `ac-leaf-<id>` for one carried by a feature: the features ' +
-          `section reports that id bare, so prefix it. Got \`${idPart}\`. ` +
-          '`get_feature(verbose:true)` lists the first, `get_section(features)` the second.'
-      });
+      out.push({ key, hint: criterionOrphanHint(idPart, expectedKeys) });
       continue;
     }
     if (ID_KEYED_TYPES.has(type) && !HEX_ID_RE.test(idPart)) {
