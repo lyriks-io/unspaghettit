@@ -9,6 +9,7 @@ import type { Expression } from '$features/behavior-model/domain/value-objects/E
 import {
   asActionId,
   asEffectId,
+  asEventDefinitionId,
   asFeatureId,
   asInvariantId,
   asParameterId,
@@ -246,6 +247,31 @@ describe('simulateSteps', () => {
     // The walk goes on from one item, not from the refused two.
     expect(after!.status).toBe('success');
     expect(items(walk.finalState)).toBe(1);
+  });
+
+  it('keeps what an action did when a required handler of its event fails, as the scenarios do', () => {
+    // Check out empties the cart and emits order.placed, a REQUIRED event; its
+    // handler is refused (the ledger is closed). The step reads blocked, so the
+    // failed delivery shows, but the checkout itself happened.
+    const emptyingCheckout = { ...checkout, effects: [...checkout.effects, set('cart.items', 0)] };
+    const closedLedger = { ...countOrder, rules: [block({ left: asStatePath('shop.orders'), operator: 'greater_or_equal', right: 0 }, 'The ledger is closed.')] };
+    const feature = cart({
+      surfaces: [
+        {
+          ...cartSurface,
+          actions: cartSurface.actions.map((a) => (a.id === checkout.id ? emptyingCheckout : a.id === countOrder.id ? closedLedger : a))
+        },
+        thanksSurface
+      ],
+      events: [{ id: asEventDefinitionId('ev-placed'), name: asEventName('order.placed'), delivery: 'required' }]
+    });
+    const walk = simulateSteps({ feature, steps: [{ actionId: 'add' }, { actionId: 'checkout' }] });
+    const placed = walk.steps[1]!;
+    expect(placed.status).toBe('blocked');
+    expect(placed.cascaded?.[0]?.status).toBe('blocked');
+    expect(placed.changes).toEqual([{ path: 'cart.items', before: 1, after: 0 }]);
+    expect(placed.rejectedChanges).toBeUndefined();
+    expect(items(walk.finalState)).toBe(0);
   });
 
   it('checks a project invariant over another feature\'s state, filled from that feature\'s defaults', () => {
