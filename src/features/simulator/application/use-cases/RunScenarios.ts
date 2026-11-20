@@ -11,6 +11,7 @@ import type {
 } from '$features/behavior-model/domain/entities/Scenario';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import type { StateSnapshot } from '$features/behavior-model/domain/value-objects/StatePath';
+import type { StateValue } from '$features/behavior-model/domain/value-objects/StateValue';
 import type { Invariant } from '$features/behavior-model/domain/entities/Invariant';
 import { seedOtherFeatureDefaults } from '$features/behavior-model/domain/services/StateSnapshot';
 import { advanceClock } from '$features/behavior-model/domain/value-objects/SimulationClock';
@@ -193,7 +194,8 @@ const evaluateAssertions = (
   assertions: readonly ScenarioAssertion[],
   status: 'success' | 'blocked',
   snapshot: StateSnapshot,
-  params: ParameterValues
+  params: ParameterValues,
+  constants: ConstantValues
 ): ScenarioAssertionResult[] =>
   assertions.map((a) => {
     if (status === 'blocked') {
@@ -222,7 +224,8 @@ const evaluateAssertions = (
     const held = evaluateCondition(
       { left: a.path, operator: a.operator, right: a.value },
       snapshot,
-      params
+      params,
+      constants
     );
     return {
       path: rawPath,
@@ -231,6 +234,19 @@ const evaluateAssertions = (
       ...(a.description ? { description: a.description } : {})
     };
   });
+
+type ConstantValues = { readonly [name: string]: StateValue };
+
+/**
+ * The feature's named constants by name, so an assertion compared with
+ * `{ kind: 'const', name }` reads the declared value, as the rules and the
+ * effects the scenario runs do.
+ */
+const constantValues = (feature: Feature): ConstantValues => {
+  const out: { [name: string]: StateValue } = {};
+  for (const c of feature.constants ?? []) out[c.name] = c.value;
+  return out;
+};
 
 /**
  * The other features' state a scenario starts from when project invariants
@@ -262,6 +278,7 @@ const runOne = (
   projectInvariants: readonly Invariant[] = []
 ): ScenarioRunResult => {
   const invariants = [...(feature.featureInvariants ?? []), ...projectInvariants];
+  const constants = constantValues(feature);
   const fr = language === 'fr';
   const persona: Persona | null =
     scenario.personaId !== undefined
@@ -332,10 +349,14 @@ const runOne = (
       feature,
       ...(projectFeatures ? { projectFeatures } : {})
     });
-    // Thread forward. On a blocked step no success effect landed, so
-    // nextState carries the last good state and later steps run against it —
-    // the step (and so the scenario) is already marked failed below.
-    snapshot = stepResult.nextState;
+    // Thread forward. A rule-refused step lands nothing, so its nextState is
+    // the state before it. A step refused by an invariant reports, as its
+    // nextState, the broken state it would have left: it must not carry into
+    // the next step (a refused overdraft would leave the balance negative for
+    // every step after it), so the state before the step goes on, as in a
+    // step-by-step simulation.
+    snapshot =
+      stepResult.invariantViolations.length > 0 ? stepResult.previousState : stepResult.nextState;
     const stepStatus: 'success' | 'blocked' =
       stepResult.status === 'blocked' ? 'blocked' : 'success';
     const stepExpected = step.expectedStatus ?? 'success';
@@ -345,7 +366,8 @@ const runOne = (
       step.expectedAssertions ?? [],
       stepStatus,
       stepResult.nextState,
-      stepFilled
+      stepFilled,
+      constants
     );
     const stepAssertionsHold = stepAssertions.every((a) => a.skipped || a.held);
     const stepPass = stepStatusMatches && stepAssertionsHold;
@@ -411,7 +433,8 @@ const runOne = (
     scenario.expectedAssertions ?? [],
     actualStatus,
     finalSnapshot,
-    filledParams
+    filledParams,
+    constants
   );
 
   const expectedStatus = scenario.expectedStatus ?? null;

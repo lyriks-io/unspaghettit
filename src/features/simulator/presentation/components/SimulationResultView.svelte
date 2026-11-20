@@ -275,7 +275,12 @@
       </summary>
       <ul class="ml-3 mt-1 list-disc">
         {#each result.appliedEffects as effect}
-          <li><span class="mono">[{effect.type}]</span> {effect.summary}</li>
+          <li>
+            <span class="mono">[{effect.type}]</span> {effect.summary}
+            {#if effect.notWritten}
+              <span class="text-amber-700">(not written: {effect.notWritten})</span>
+            {/if}
+          </li>
         {/each}
       </ul>
     </details>

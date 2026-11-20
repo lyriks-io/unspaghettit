@@ -61,7 +61,9 @@ const resolveCohort = async (
   if (featureId) {
     const id = await expandFeatureId(repo, featureId);
     const feature = await repo.get(asFeatureId(id));
-    if (!feature) return { features: [], projectInvariants: [] };
+    // An empty cohort reads as "every feature" downstream: a mistyped or
+    // removed feature would be answered with a verdict on all the others.
+    if (!feature) throw new Error(`Feature ${featureId} not found`);
     const owner = await findOwningProject(projectRepo, String(feature.id));
     // The index maps the whole project, so its other features own most keys.
     // A feature no project claims has no known siblings: every feature the

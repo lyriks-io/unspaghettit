@@ -26,6 +26,7 @@ import { addFeatureToProjectUseCase } from '$features/projects/application/use-c
 import { removeFeatureFromProjectUseCase } from '$features/projects/application/use-cases/RemoveFeatureFromProject';
 import { moveFeatureInProjectUseCase } from '$features/projects/application/use-cases/MoveFeatureInProject';
 import { getProjectAggregateUseCase } from '$features/projects/application/use-cases/GetProjectAggregate';
+import { projectInvariantGuard } from '$features/projects/application/services/projectInvariantGuard';
 import { findProjectContainingFeatureUseCase } from '$features/projects/application/use-cases/FindProjectContainingFeature';
 import { enqueueQueueItemUseCase } from '$features/implementation-queue/application/use-cases/EnqueueQueueItem';
 import { dequeueQueueItemUseCase } from '$features/implementation-queue/application/use-cases/DequeueQueueItem';
@@ -129,10 +130,23 @@ export const createContainer = (deps: {
     useCases: {
       createFeature: createFeatureUseCase({ repository, clock, ids }),
       saveFeature: saveFeatureUseCase({ repository, clock }),
-      mutateFeature: mutateFeatureUseCase({ repository, clock }),
+      // A dashboard edit that would leave a project invariant reading a state
+      // no feature declares any more is refused, as on the MCP.
+      mutateFeature: mutateFeatureUseCase({
+        repository,
+        clock,
+        guard: projectInvariantGuard(repository, projectRepository)
+      }),
       deleteFeature: deleteFeatureUseCase({ repository }),
       deleteStateDefinition: (input) =>
-        (deps.stateDeletion ?? new DeleteStateDefinitionUseCase(repository, clock)).execute(input),
+        (
+          deps.stateDeletion ??
+          new DeleteStateDefinitionUseCase(
+            repository,
+            clock,
+            projectInvariantGuard(repository, projectRepository)
+          )
+        ).execute(input),
       listFeatures: listFeaturesUseCase({ repository }),
       listFeaturesWithMaturity: listFeaturesWithMaturityUseCase({ repository, statusRepository }),
       getFeature: getFeatureUseCase({ repository }),

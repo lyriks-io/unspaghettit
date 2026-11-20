@@ -1671,3 +1671,647 @@ describe('parameter types agree with the state they write', () => {
     expect(errorsOf(same).some((e) => e.startsWith('State "dashboard.period" is declared as'))).toBe(false);
   });
 });
+
+describe('comparisons and starts the types alone decide', () => {
+  type Leaf = { left: string; operator: string; right?: unknown };
+  type Parts = {
+    rule?: Leaf;
+    goal?: Leaf;
+    invariant?: Leaf;
+    assertion?: { path: string; operator: string; value?: unknown };
+    scenarioStart?: { path: string; value: unknown };
+    personaStart?: { path: string; value: unknown };
+    append?: string;
+  };
+  // A cart with a number, a string holding dates, an enum and a list.
+  const cart = (parts: Parts): Feature =>
+    ({
+      id: asFeatureId('f-cart'),
+      name: 'Cart',
+      surfaces: [
+        {
+          id: asSurfaceId('s-cart'),
+          name: 'Cart',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-count'), path: asStatePath('cart.count'), type: 'number', defaultValue: 0 },
+            { id: asStateDefinitionId('d-since'), path: asStatePath('cart.since'), type: 'string', defaultValue: '2026-01-01' },
+            { id: asStateDefinitionId('d-status'), path: asStatePath('cart.status'), type: 'enum', enumValues: ['open', 'paid'], defaultValue: 'open' },
+            { id: asStateDefinitionId('d-items'), path: asStatePath('cart.items'), type: 'array', defaultValue: [] }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-add'),
+              name: 'Add item',
+              intent: 'add an item',
+              parameters: [],
+              requiredStates: [],
+              invariants: [],
+              emittedEvents: [],
+              transitions: [],
+              rules: parts.rule
+                ? [
+                    {
+                      id: asRuleId('r-gate'),
+                      category: 'business',
+                      description: 'Gate.',
+                      condition: parts.rule,
+                      effect: { id: asEffectId('e-block'), type: 'block_action', reason: 'No.', description: 'Block.' }
+                    }
+                  ]
+                : [],
+              effects: parts.append
+                ? [{ id: asEffectId('e-append'), type: 'append_to_list', path: asStatePath(parts.append), item: 1, description: 'Add.' }]
+                : [],
+              scenarios:
+                parts.assertion || parts.scenarioStart
+                  ? [
+                      {
+                        id: asScenarioId('sc-add'),
+                        name: 'Adds',
+                        description: 'Adds one.',
+                        stateOverrides: parts.scenarioStart ? [parts.scenarioStart] : [],
+                        parameterOverrides: [],
+                        expectedAssertions: parts.assertion ? [{ ...parts.assertion, description: 'Checked.' }] : []
+                      }
+                    ]
+                  : []
+            }
+          ]
+        }
+      ],
+      featureInvariants: parts.invariant
+        ? [{ id: asInvariantId('i-cart'), name: 'Cart', condition: parts.invariant, message: 'm', description: 'd' }]
+        : [],
+      reachabilityGoals: parts.goal
+        ? [{ id: asReachabilityGoalId('g-paid'), name: 'Paid', kind: 'reachable', condition: parts.goal, description: 'd' }]
+        : [],
+      personas: parts.personaStart
+        ? [{ id: asPersonaId('p-buyer'), name: 'Buyer', description: 'd', stateOverrides: [parts.personaStart], parameterOverrides: [] }]
+        : [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (parts: Parts): readonly string[] => {
+    const result = validateReferenceIntegrity(cart(parts));
+    return result.valid ? [] : result.errors;
+  };
+
+  it('refuses a rule that compares a number with a string', () => {
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'greater_than', right: '3' } })).toEqual([
+      'Action a-add rule r-gate: condition: compares "cart.count", declared as number, greater_than "3" (a string): the result is decided by the types alone, whatever the state holds. Compare with a number value.'
+    ]);
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'equals', right: '3' } })).toHaveLength(1);
+  });
+
+  it('refuses a string ordered against something that is not a date', () => {
+    expect(errorsOf({ rule: { left: 'cart.since', operator: 'lower_than', right: 'yesterday' } })[0]).toMatch(
+      /Compare with an ISO 8601 date/
+    );
+    expect(errorsOf({ rule: { left: 'cart.since', operator: 'lower_than', right: '2026-11-20' } })).toEqual([]);
+  });
+
+  it('refuses the same dead comparison in an invariant and a goal, enum values included', () => {
+    expect(errorsOf({ invariant: { left: 'cart.count', operator: 'greater_or_equal', right: '0' } })).toHaveLength(1);
+    expect(errorsOf({ goal: { left: 'cart.count', operator: 'greater_than', right: true } })).toHaveLength(1);
+    expect(errorsOf({ goal: { left: 'cart.status', operator: 'equals', right: 'payed' } })).toEqual([
+      'Reachability goal g-paid: condition compares against "payed" is not one of the values "cart.status" can hold ("open", "paid").'
+    ]);
+  });
+
+  it('refuses a scenario assertion or a start the model can never hold', () => {
+    expect(errorsOf({ assertion: { path: 'cart.count', operator: 'equals', value: '1' } })).toHaveLength(1);
+    expect(errorsOf({ assertion: { path: 'cart.status', operator: 'not_equals', value: 'payed' } })).toHaveLength(1);
+    expect(errorsOf({ scenarioStart: { path: 'cart.count', value: 'two' } })).toEqual([
+      'Action a-add scenario sc-add: stateOverride sets "two" (a string) into "cart.count", which is declared as number. Give it a number value.'
+    ]);
+    expect(errorsOf({ scenarioStart: { path: 'cart.status', value: 'payed' } })).toHaveLength(1);
+    expect(errorsOf({ personaStart: { path: 'cart.items', value: 3 } })).toHaveLength(1);
+  });
+
+  it('refuses a list effect on a path that is not a list', () => {
+    expect(errorsOf({ append: 'cart.count' })).toEqual([
+      'Action a-add effect e-append: append_to_list targets "cart.count", which is declared as number, not array. Point it at a list, or use set_state.'
+    ]);
+    expect(errorsOf({ append: 'cart.items' })).toEqual([]);
+  });
+
+  it('accepts comparisons the state decides, null, expressions and the operators that read no value', () => {
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'greater_than', right: 3 } })).toEqual([]);
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'equals', right: null } })).toEqual([]);
+    expect(
+      errorsOf({ rule: { left: 'cart.count', operator: 'lower_than', right: { kind: 'count', operand: { kind: 'state', path: 'cart.items' } } } })
+    ).toEqual([]);
+    expect(errorsOf({ rule: { left: 'cart.items', operator: 'contains', right: 'sku-1' } })).toEqual([]);
+    expect(errorsOf({ rule: { left: 'cart.count', operator: 'exists' } })).toEqual([]);
+    expect(errorsOf({ scenarioStart: { path: 'cart.status', value: 'paid' }, assertion: { path: 'cart.count', operator: 'equals', value: 1 } })).toEqual([]);
+  });
+});
+
+describe('a state declared under another one', () => {
+  const withStates = (states: readonly { path: string; type: string; defaultValue: unknown }[]): Feature =>
+    ({
+      id: asFeatureId('f-nest'),
+      name: 'Nest',
+      surfaces: [
+        {
+          id: asSurfaceId('s-nest'),
+          name: 'Nest',
+          type: 'screen',
+          stateDefinitions: states.map((st, i) => ({ id: asStateDefinitionId(`d-${i}`), ...st, path: asStatePath(st.path) })),
+          actions: [],
+          rules: [],
+          invariants: [],
+          transitions: []
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+
+  it('refuses a path under a parent that holds a value', () => {
+    const result = validateReferenceIntegrity(
+      withStates([
+        { path: 'cart', type: 'number', defaultValue: 5 },
+        { path: 'cart.total', type: 'number', defaultValue: 0 }
+      ])
+    );
+    expect(result.valid ? [] : result.errors).toEqual([
+      'State "cart.total" sits under "cart", which is declared as number: a number cannot hold other states, so the two overwrite each other. Rename one of them, or declare "cart" as object.'
+    ]);
+  });
+
+  it('accepts a path under an object, and siblings that only share a prefix of characters', () => {
+    expect(
+      validateReferenceIntegrity(
+        withStates([
+          { path: 'user', type: 'object', defaultValue: {} },
+          { path: 'user.name', type: 'string', defaultValue: '' },
+          { path: 'cart', type: 'number', defaultValue: 0 },
+          { path: 'cartTotal', type: 'number', defaultValue: 0 }
+        ])
+      ).valid
+    ).toBe(true);
+  });
+});
+
+describe('a derived state set from outside', () => {
+  // cart.total is computed from cart.lines: a start or an input written to it
+  // is recomputed away before any rule reads it.
+  const shop = (parts: { scenarioStart?: string; personaStart?: string; bind?: string }): Feature =>
+    ({
+      id: asFeatureId('f-shop'),
+      name: 'Shop',
+      surfaces: [
+        {
+          id: asSurfaceId('s-shop'),
+          name: 'Shop',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-lines'), path: asStatePath('cart.lines'), type: 'array', defaultValue: [] },
+            {
+              id: asStateDefinitionId('d-total'),
+              path: asStatePath('cart.total'),
+              type: 'number',
+              defaultValue: 0,
+              derived: { kind: 'sum', operand: { kind: 'state', path: asStatePath('cart.lines') } }
+            }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-pay'),
+              name: 'Pay',
+              intent: 'pay the cart',
+              parameters: parts.bind
+                ? [{ id: asParameterId('p-amount'), name: 'amount', type: 'number', required: false, bindToStatePath: asStatePath(parts.bind) }]
+                : [],
+              requiredStates: [],
+              rules: [],
+              invariants: [],
+              effects: [],
+              emittedEvents: [],
+              transitions: [],
+              scenarios: parts.scenarioStart
+                ? [
+                    {
+                      id: asScenarioId('sc-pay'),
+                      name: 'Pays',
+                      description: 'Pays.',
+                      stateOverrides: [{ path: asStatePath(parts.scenarioStart), value: parts.scenarioStart === 'cart.lines' ? [100] : 100 }],
+                      parameterOverrides: []
+                    }
+                  ]
+                : []
+            }
+          ]
+        }
+      ],
+      personas: parts.personaStart
+        ? [{ id: asPersonaId('p-rich'), name: 'Rich', description: 'd', stateOverrides: [{ path: asStatePath(parts.personaStart), value: parts.personaStart === 'cart.lines' ? [100] : 100 }], parameterOverrides: [] }]
+        : [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (parts: Parameters<typeof shop>[0]) => {
+    const result = validateReferenceIntegrity(shop(parts));
+    return result.valid ? [] : result.errors;
+  };
+
+  it('refuses a scenario or persona start and a parameter bound to it', () => {
+    expect(errorsOf({ scenarioStart: 'cart.total' })).toEqual([
+      'Action a-pay scenario sc-pay: stateOverride sets "cart.total", a derived path recomputed from its `derived` expression before anything runs, so the value is never seen. Set the paths the expression reads instead.'
+    ]);
+    expect(errorsOf({ personaStart: 'cart.total' })).toHaveLength(1);
+    expect(errorsOf({ bind: 'cart.total' })[0]).toMatch(/bindToStatePath "cart.total" is a derived path/);
+  });
+
+  it('accepts the paths the expression reads', () => {
+    expect(errorsOf({ scenarioStart: 'cart.lines', personaStart: 'cart.lines' })).toHaveLength(0);
+  });
+});
+
+describe('a malformed expression in a value slot', () => {
+  const counter = (value: unknown, condition?: unknown): Feature =>
+    ({
+      id: asFeatureId('f-counter'),
+      name: 'Counter',
+      surfaces: [
+        {
+          id: asSurfaceId('s-counter'),
+          name: 'Counter',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-n'), path: asStatePath('n'), type: 'number', defaultValue: 0 },
+            { id: asStateDefinitionId('d-lines'), path: asStatePath('lines'), type: 'array', defaultValue: [] }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-count'),
+              name: 'Count',
+              intent: 'count',
+              parameters: [],
+              requiredStates: [],
+              invariants: [],
+              emittedEvents: [],
+              transitions: [],
+              rules: condition
+                ? [
+                    {
+                      id: asRuleId('r-cap'),
+                      category: 'business',
+                      description: 'Cap.',
+                      condition,
+                      effect: { id: asEffectId('e-cap'), type: 'block_action', reason: 'Capped.', description: 'Block.' }
+                    }
+                  ]
+                : [],
+              effects: [{ id: asEffectId('e-set'), type: 'set_state', path: asStatePath('n'), value, description: 'Set.' }]
+            }
+          ]
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (value: unknown, condition?: unknown): readonly string[] => {
+    const result = validateReferenceIntegrity(counter(value, condition));
+    return result.valid ? [] : result.errors;
+  };
+  const n = { kind: 'state', path: 'n' };
+
+  it('refuses an object whose kind names no expression, instead of writing it as a literal', () => {
+    expect(errorsOf({ kind: 'multiply', left: n, right: 2 })).toEqual([
+      'Action a-count effect e-set: set_state value: "multiply" is not an expression kind (one of: literal, state, param, const, add, sub, mul, div, mod, min, max, neg, not, sum, count, sum_pluck, count_where, switch). An object literal that carries a "kind" field is written { kind: "literal", value: { ... } }.'
+    ]);
+    expect(errorsOf({ kind: 'add', left: { kind: 'stat', path: 'n' }, right: { kind: 'literal', value: 1 } })).toHaveLength(1);
+  });
+
+  it('refuses an operator without an operand, also once the normalizer filled it as an empty literal', () => {
+    expect(errorsOf({ kind: 'add', left: n })).toEqual([
+      'Action a-count effect e-set: set_state value: "add" has no "right" operand, so it never has a value.'
+    ]);
+    expect(errorsOf({ kind: 'add', left: n, right: { kind: 'literal' } })).toHaveLength(1);
+    expect(errorsOf({ kind: 'sum_pluck', operand: { kind: 'state', path: 'lines' } })[0]).toMatch(/has no "field"/);
+  });
+
+  it('refuses a switch without cases, without a default, or with a case that has no when', () => {
+    expect(errorsOf({ kind: 'switch', default: { kind: 'literal', value: 0 } })[0]).toMatch(/has no "cases" list/);
+    expect(
+      errorsOf({ kind: 'switch', cases: [{ when: { left: 'n', operator: 'greater_than', right: 3 }, then: { kind: 'literal', value: 3 } }] })[0]
+    ).toMatch(/has no "default"/);
+    expect(
+      errorsOf({ kind: 'switch', cases: [{ then: { kind: 'literal', value: 3 } }], default: { kind: 'literal', value: 0 } })[0]
+    ).toMatch(/case 0 has no "when": it matches every time/);
+  });
+
+  it('names a composite condition without its list instead of crashing', () => {
+    const errors = validateFeature(counter(1, { kind: 'any' }));
+    expect(errors.valid ? [] : errors.errors).toContain('Rule r-cap in action a-count: { kind:"any" } needs a "conditions" array.');
+    expect(() => validateReferenceIntegrity(counter(1, { kind: 'any' }))).not.toThrow();
+    expect(errorsOf(1, { left: 'n', operator: 'greater_than', right: { kind: 'max', left: n } })[0]).toMatch(
+      /condition.right: "max" has no "right" operand/
+    );
+  });
+
+  it('accepts well-formed expressions', () => {
+    expect(errorsOf({ kind: 'add', left: n, right: { kind: 'literal', value: 1 } })).toEqual([]);
+    expect(
+      errorsOf({
+        kind: 'switch',
+        cases: [{ when: { left: 'n', operator: 'greater_than', right: 3 }, then: { kind: 'literal', value: 3 } }],
+        default: n
+      })
+    ).toEqual([]);
+  });
+});
+
+describe('a state write among the effects of a blocked attempt', () => {
+  const login = (onBlocked: readonly unknown[]): Feature =>
+    ({
+      id: asFeatureId('f-login'),
+      name: 'Login',
+      surfaces: [
+        {
+          id: asSurfaceId('s-login'),
+          name: 'Login',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-fails'), path: asStatePath('login.failures'), type: 'number', defaultValue: 0, description: 'Failed attempts.' }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-login'),
+              name: 'Log in',
+              intent: 'log in',
+              description: 'Logs in.',
+              parameters: [],
+              requiredStates: [],
+              invariants: [],
+              emittedEvents: [],
+              transitions: [],
+              rules: [],
+              effects: [],
+              onBlockedEffects: onBlocked
+            }
+          ]
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (onBlocked: readonly unknown[]) => {
+    const result = validateFeature(login(onBlocked));
+    return result.valid ? [] : result.errors.filter((e) => e.includes('onBlockedEffect'));
+  };
+
+  it('refuses it: a blocked attempt writes no state, so it would never land', () => {
+    expect(
+      errorsOf([
+        {
+          id: 'e-count',
+          type: 'set_state',
+          path: 'login.failures',
+          value: { kind: 'add', left: { kind: 'state', path: 'login.failures' }, right: { kind: 'literal', value: 1 } },
+          description: 'Count the failure.'
+        }
+      ])
+    ).toEqual([
+      'onBlockedEffect e-count in action a-login: effect type "set_state" writes state, and a blocked attempt writes none, so it never lands. To keep a trace of a refused attempt (a failed-login counter), let the action go through and resolve to an outcome of kind "rejected" whose effects write it.'
+    ]);
+    expect(errorsOf([{ id: 'e-list', type: 'append_to_list', path: 'login.failures', item: 1, description: 'Log it.' }])).toHaveLength(1);
+  });
+
+  it('accepts what a blocked attempt does show: a message, an event, a move', () => {
+    expect(
+      errorsOf([
+        { id: 'e-msg', type: 'show_message', message: 'Wrong password.', tone: 'error', description: 'Say why.' },
+        { id: 'e-ev', type: 'emit_event', event: 'login.refused', description: 'Tell.' }
+      ])
+    ).toEqual([]);
+  });
+});
+
+describe('a scenario that lets time go backwards', () => {
+  const withAdvance = (scenarioAdvance?: unknown, stepAdvance?: unknown): Feature => {
+    const base = storefrontFeature;
+    const surface = base.surfaces[0]!;
+    const action = surface.actions[0]!;
+    return {
+      ...base,
+      surfaces: base.surfaces.map((s, i) =>
+        i === 0
+          ? {
+              ...s,
+              actions: s.actions.map((a, j) =>
+                j === 0
+                  ? {
+                      ...a,
+                      scenarios: [
+                        {
+                          id: asScenarioId('sc-later'),
+                          name: 'Later',
+                          description: 'Runs later.',
+                          stateOverrides: [],
+                          parameterOverrides: [],
+                          ...(scenarioAdvance !== undefined ? { timeAdvance: scenarioAdvance } : {}),
+                          ...(stepAdvance !== undefined
+                            ? { steps: [{ actionId: action.id, surfaceId: surface.id, parameterOverrides: [], timeAdvance: stepAdvance }] }
+                            : {})
+                        }
+                      ]
+                    }
+                  : a
+              )
+            }
+          : s
+      )
+    } as unknown as Feature;
+  };
+  const errorsOf = (f: Feature) => {
+    const result = validateFeature(f);
+    return result.valid ? [] : result.errors.filter((e) => e.includes('timeAdvance'));
+  };
+
+  it('refuses a negative advance, on the scenario and on a step', () => {
+    expect(errorsOf(withAdvance(-5))).toEqual([
+      `Scenario sc-later in action ${String(storefrontFeature.surfaces[0]!.actions[0]!.id)}: timeAdvance -5 moves no time. Give a positive number of logical time units.`
+    ]);
+    expect(errorsOf(withAdvance(undefined, -1))[0]).toMatch(/step 0: timeAdvance -1 moves no time/);
+  });
+
+  it('accepts a positive advance', () => {
+    expect(errorsOf(withAdvance(60, 30))).toEqual([]);
+  });
+});
+
+describe('a quantifier over a state that is not a list', () => {
+  const guarded = (overPath: string): Feature =>
+    ({
+      id: asFeatureId('f-q'),
+      name: 'Orders',
+      surfaces: [
+        {
+          id: asSurfaceId('s-q'),
+          name: 'Orders',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-total'), path: asStatePath('orders.total'), type: 'number', defaultValue: 0 },
+            { id: asStateDefinitionId('d-list'), path: asStatePath('orders.list'), type: 'array', defaultValue: [] }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: []
+        }
+      ],
+      featureInvariants: [
+        {
+          id: asInvariantId('i-paid'),
+          name: 'Every order is paid',
+          condition: { kind: 'all_match', overPath, as: 'order', where: { left: 'order.paid', operator: 'is_true' } },
+          message: 'm',
+          description: 'd'
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+
+  it('refuses it: "every element" of a number always holds', () => {
+    const result = validateReferenceIntegrity(guarded('orders.total'));
+    expect(result.valid ? [] : result.errors).toEqual([
+      'Feature invariant i-paid: all_match ranges over "orders.total", which is declared as number, not array, so it is decided without reading any element. Range over a list.'
+    ]);
+  });
+
+  it('accepts a list', () => {
+    expect(validateReferenceIntegrity(guarded('orders.list')).valid).toBe(true);
+  });
+});
+
+describe('a comparison an input decides by its declared values', () => {
+  // Pick a market: `market` is an enum parameter (inline values, or a value
+  // set), `region` an enum state, `quantity` a number parameter.
+  const pick = (condition: unknown, where: 'rule' | 'invariant' = 'rule', viaValueSet = false): Feature =>
+    ({
+      id: asFeatureId('f-market'),
+      name: 'Market',
+      valueSets: [{ id: asValueSetId('vs-markets'), name: 'Markets', description: 'd', values: ['eu', 'us'] }],
+      surfaces: [
+        {
+          id: asSurfaceId('s-market'),
+          name: 'Market',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-region'), path: asStatePath('region'), type: 'enum', enumValues: ['eu', 'us'], defaultValue: 'eu' },
+            { id: asStateDefinitionId('d-zone'), path: asStatePath('zone'), type: 'enum', enumValues: ['north', 'south'], defaultValue: 'north' }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-pick'),
+              name: 'Pick a market',
+              intent: 'pick',
+              parameters: [
+                viaValueSet
+                  ? { id: asParameterId('p-market'), name: 'market', type: 'enum', valueSetId: asValueSetId('vs-markets'), required: true }
+                  : { id: asParameterId('p-market'), name: 'market', type: 'enum', enumValues: ['eu', 'us'], required: true },
+                { id: asParameterId('p-qty'), name: 'quantity', type: 'number', required: false }
+              ],
+              requiredStates: [],
+              emittedEvents: [],
+              transitions: [],
+              effects: [],
+              rules:
+                where === 'rule'
+                  ? [
+                      {
+                        id: asRuleId('r-market'),
+                        category: 'business',
+                        description: 'Gate.',
+                        condition,
+                        effect: { id: asEffectId('e-block'), type: 'block_action', reason: 'No.', description: 'Refuse.' }
+                      }
+                    ]
+                  : [],
+              invariants:
+                where === 'invariant'
+                  ? [{ id: asInvariantId('i-market'), name: 'Market', condition, message: 'm', description: 'd' }]
+                  : []
+            }
+          ]
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (...args: Parameters<typeof pick>): readonly string[] => {
+    const result = validateReferenceIntegrity(pick(...args));
+    return result.valid ? [] : result.errors;
+  };
+  const market = { kind: 'param', name: 'market' };
+
+  it('refuses an enum parameter compared with a value it never takes, inline values or a value set', () => {
+    expect(errorsOf({ left: market, operator: 'equals', right: 'moon' })).toEqual([
+      'Action a-pick rule r-market: condition compares parameter "market" with "moon", which is not one of the values it takes ("eu", "us"), so the result never depends on the input.'
+    ]);
+    expect(errorsOf({ left: market, operator: 'not_equals', right: 'moon' }, 'rule', true)).toHaveLength(1);
+    expect(errorsOf({ left: market, operator: 'equals', right: { kind: 'literal', value: 'moon' } })).toHaveLength(1);
+    expect(errorsOf({ left: market, operator: 'equals', right: 'moon' }, 'invariant')[0]).toMatch(
+      /^Action a-pick invariant i-market: condition compares parameter "market" with "moon"/
+    );
+  });
+
+  it('refuses an enum parameter compared with an enum state or parameter that shares no value with it', () => {
+    expect(errorsOf({ left: 'zone', operator: 'equals', right: market })).toEqual([
+      'Action a-pick rule r-market: condition compares "zone" ("north", "south") with parameter "market" ("eu", "us"): they share no value, so the result never depends on the input.'
+    ]);
+    expect(errorsOf({ left: 'region', operator: 'equals', right: market })).toEqual([]);
+  });
+
+  it('refuses a parameter compared with a literal its type cannot hold', () => {
+    expect(errorsOf({ left: { kind: 'param', name: 'quantity' }, operator: 'greater_than', right: '10' })[0]).toMatch(
+      /parameter "quantity", declared as number, greater_than "10" \(a string\): the result is decided by the types alone/
+    );
+  });
+
+  it('accepts an input compared with a value it can take', () => {
+    expect(errorsOf({ left: market, operator: 'equals', right: 'us' })).toEqual([]);
+    expect(errorsOf({ left: market, operator: 'equals', right: 'us' }, 'rule', true)).toEqual([]);
+    expect(errorsOf({ left: { kind: 'param', name: 'quantity' }, operator: 'greater_than', right: 10 })).toEqual([]);
+    expect(errorsOf({ left: market, operator: 'exists' })).toEqual([]);
+  });
+});

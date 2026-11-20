@@ -148,7 +148,9 @@ export const flattenLeafConditions = (
   const walk = (node: RuleCondition): void => {
     if (isCompositeCondition(node)) {
       if (node.kind === 'not') walk(node.condition);
-      else for (const sub of node.conditions) walk(sub);
+      // A composite without its list is reported by the shape validator; a
+      // walk that crashed on it would hide that report behind a TypeError.
+      else for (const sub of Array.isArray(node.conditions) ? node.conditions : []) walk(sub);
       return;
     }
     if (isQuantifierCondition(node)) {

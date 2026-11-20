@@ -263,13 +263,26 @@ export const disabledCounts = (
 /**
  * The implementation-index keys of everything disabled, so the gaps, the
  * status and the drift read it disabled, neither missing nor drifting. An
- * action's transitions and events go with it; a disabled feature takes every
- * key it holds, its screens and states included.
+ * action's transitions and events go with it (an event an action in force
+ * still emits stays in force); a disabled feature takes every key it holds,
+ * its screens, states, entities and acceptance criteria included.
  */
 export const disabledIndexKeys = (feature: Feature): ReadonlySet<string> => {
   const keys = new Set<string>();
   const offFeature = isDisabled(feature);
   for (const inv of feature.featureInvariants ?? []) if (offFeature || isDisabled(inv)) keys.add(`invariant:${inv.id}`);
+  if (offFeature) {
+    for (const entity of feature.entities ?? []) keys.add(`entity:${entity.id}`);
+    for (const criterion of feature.acceptanceCriteria ?? []) keys.add(`criterion:${criterion.id}`);
+  }
+  const emittedInForce = new Set<string>();
+  if (!offFeature) {
+    for (const surface of feature.surfaces) {
+      for (const action of surface.actions) {
+        if (!isDisabled(action)) for (const event of action.emittedEvents) emittedInForce.add(String(event));
+      }
+    }
+  }
   for (const surface of feature.surfaces) {
     if (offFeature) {
       keys.add(`surface:${surface.id}`);
@@ -284,6 +297,9 @@ export const disabledIndexKeys = (feature: Feature): ReadonlySet<string> => {
         keys.add(`action:${action.id}`);
         for (const t of action.transitions) keys.add(`transition:${t.id}`);
         for (const e of action.exposures ?? []) keys.add(`exposure:${e.id}`);
+        for (const event of action.emittedEvents) {
+          if (!emittedInForce.has(String(event))) keys.add(`event:${event}`);
+        }
       }
       for (const rule of action.rules) if (off || isDisabled(rule)) keys.add(`rule:${rule.id}`);
       for (const inv of action.invariants) if (off || isDisabled(inv)) keys.add(`invariant:${inv.id}`);

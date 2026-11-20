@@ -128,6 +128,12 @@ const ISO_DATE_RE_LOCAL =
 const isIsoDateStringLocal = (v: unknown): v is string =>
   typeof v === 'string' && ISO_DATE_RE_LOCAL.test(v);
 
+/**
+ * A string the ordering operators can compare: an ISO 8601 date, datetime or
+ * time-of-day. Any other string never orders, so `greater_than` on it is false.
+ */
+export const isOrderableDateString = isIsoDateStringLocal;
+
 const compareLocal = (
   left: StateValue | undefined,
   operator: Operator,
@@ -388,6 +394,77 @@ export const evaluateExpression = (
   }
 };
 
+const describeType = (v: unknown): string =>
+  v === null ? 'null' : Array.isArray(v) ? 'a list' : typeof v === 'object' ? 'an object' : `a ${typeof v}`;
+
+/**
+ * Why a value resolves to nothing, in words: the first cause found walking the
+ * expression (a state holding no value, a parameter not given, a constant not
+ * declared, a division by zero, an operand of the wrong type), or null when it
+ * has a value. The evaluator answers `undefined` for all of them and an effect
+ * then writes nothing; this is what lets a run say so instead of reporting a
+ * write that never happened.
+ */
+export const unresolvedReason = (
+  value: StateValue | Expression | undefined,
+  context: EvaluationContext
+): string | null => {
+  if (value === undefined) return 'it has no value';
+  if (!isExpression(value)) return null;
+  if (evaluateExpression(value, context) !== undefined) return null;
+  const e = value;
+  switch (e.kind) {
+    case 'literal':
+      return 'the literal holds no value';
+    case 'state':
+      return `state "${String(e.path)}" holds no value`;
+    case 'param':
+      return `parameter "${e.name}" was not given`;
+    case 'const':
+      return `constant "${e.name}" is not declared`;
+    case 'neg':
+    case 'not':
+    case 'sum':
+    case 'count':
+    case 'sum_pluck':
+    case 'count_where': {
+      const inner = unresolvedReason(e.operand, context);
+      if (inner) return inner;
+      const operand = evaluateExpression(e.operand, context);
+      if (e.kind === 'neg') return `"neg" needs a number, got ${describeType(operand)}`;
+      if (!Array.isArray(operand)) return `"${e.kind}" needs a list, got ${describeType(operand)}`;
+      if (e.kind === 'sum') return '"sum" needs a list of numbers';
+      if (e.kind === 'sum_pluck') return `"sum_pluck" needs a number in "${e.field}" of every element`;
+      return 'the value could not be computed';
+    }
+    case 'switch': {
+      for (const c of e.cases) {
+        if (evaluateConditionInternal(c.when, context)) return unresolvedReason(c.then, context);
+      }
+      return unresolvedReason(e.default, context) ?? 'no case matched and there is no default';
+    }
+    case 'add':
+    case 'sub':
+    case 'mul':
+    case 'div':
+    case 'mod':
+    case 'min':
+    case 'max': {
+      const inner = unresolvedReason(e.left, context) ?? unresolvedReason(e.right, context);
+      if (inner) return inner;
+      const l = evaluateExpression(e.left, context);
+      const r = evaluateExpression(e.right, context);
+      if (typeof l !== 'number' || typeof r !== 'number') {
+        return `"${e.kind}" needs two numbers, got ${describeType(l)} and ${describeType(r)}`;
+      }
+      if (r === 0 && (e.kind === 'div' || e.kind === 'mod')) {
+        return e.kind === 'div' ? 'division by zero' : 'modulo by zero';
+      }
+      return 'the value could not be computed';
+    }
+  }
+};
+
 /**
  * Resolve either a literal StateValue or an Expression to a concrete value
  * (or undefined when the expression couldn't be computed). This is the
@@ -455,7 +532,9 @@ export const normalizeExpression = (
     case 'switch':
       // Conditions can stay as-is (RuleCondition has its own normalizer path
       // via the feature normalizer's normalizeCondition); only the `then`
-      // and `default` Expression slots need recursive normalization here.
+      // and `default` Expression slots need recursive normalization here. A
+      // switch without its cases list is left as it is: the validator names it.
+      if (!Array.isArray(value.cases)) return value;
       return {
         kind: 'switch',
         cases: value.cases.map((c) => ({

@@ -15,6 +15,7 @@ import { runServeCommand } from './commands/serve';
 import { runThemeCommand } from './commands/theme';
 import { runUninstallCommand } from './commands/uninstall';
 import { runViewCommand } from './commands/view';
+import { intOption } from './util/intOption';
 import { log } from './util/log';
 import {
   formatUpdateNotice,
@@ -171,11 +172,11 @@ program
   .option('--project <id>', 'Verify a specific project\'s features (overrides the .unspa.json link).')
   .option('--model-check', 'Also run bounded model checking (exhaustive state-space exploration). Off by default; it is the costly part.')
   .option('--strict', 'Evidence-first gate: model check, 100% maturity and verified coverage, scenarios required, and drift/dead/unmet/skipped/truncated findings, proven rule flaws and anything the solver left unproven fail.')
-  .option('--max-depth <n>', 'Model-check action-depth bound (default 6).', (v) => Number.parseInt(v, 10))
-  .option('--max-states <n>', 'Model-check state cap (default 2000).', (v) => Number.parseInt(v, 10))
-  .option('--min-maturity <n>', 'Fail any feature scoring below this maturity percentage.', (v) => Number.parseInt(v, 10))
-  .option('--min-verified <n>', 'Fail any feature where fewer than N% of actions are proven against code (via `unspa coverage ingest`).', (v) => Number.parseInt(v, 10))
-  .option('--max-scenario-failures <n>', 'Tolerate up to N failing scenarios before failing (default 0).', (v) => Number.parseInt(v, 10))
+  .option('--max-depth <n>', 'Model-check action-depth bound (default 6).', intOption(1))
+  .option('--max-states <n>', 'Model-check state cap (default 2000).', intOption(1))
+  .option('--min-maturity <n>', 'Fail any feature scoring below this maturity percentage.', intOption(0))
+  .option('--min-verified <n>', 'Fail any feature where fewer than N% of actions are proven against code (via `unspa coverage ingest`).', intOption(0))
+  .option('--max-scenario-failures <n>', 'Tolerate up to N failing scenarios before failing (default 0).', intOption(0))
   .option('--require-scenarios', 'Fail a feature that has no scenarios authored.')
   .option('--fail-on-drift', 'Fail when an implementation was audited against an older spec (default: warn only).')
   .option('--fail-on-dead-actions', 'Fail when an action never fires within the model-check bound (default: warn only).')

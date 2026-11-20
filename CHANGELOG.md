@@ -17,6 +17,194 @@ Each scenario of an action keeps its last result against the code.
   that failed from one nothing ran. Rebuilt from the entry on every report; a
   malformed result is dropped.
 
+### Fixed
+
+- An action whose event handler restores an always-true statement is no longer
+  refused by it: the statements are read on the state the action and its
+  handlers settle on, not between the two. "Add expense" with a "Recount"
+  handler and the statement "the count equals the number of expenses" was
+  refused on every run, and the model check read it dead. Read on the settled
+  state, a handler that breaks a project statement, or one of the emitting
+  feature, now refuses the action that woke it instead of passing unnoticed.
+- A step of a scenario refused by an always-true statement no longer hands the
+  state it would have broken to the steps after it. A refused overdraft left
+  the balance negative for the next step, so a scenario expecting that refusal
+  failed on a step that was right. The next step starts from the state before
+  the refused one, as in a step-by-step simulation.
+- A scenario assertion compared with a named constant (`{ kind: "const" }`)
+  reads its declared value. It read nothing, so the assertion never held and
+  the scenario failed whatever the model did.
+- A write is refused when it compares a state with a literal of a type the
+  state can never hold: `count greater_than "3"` on a number, `equals "3"`, a
+  string ordered against something that is not a date, `contains` on a
+  number. The engine compares without coercion, so such a rule never fired,
+  an invariant never held and a goal was never met, with no error anywhere.
+  Reachability goals and scenario assertions are now checked against an
+  enum's values like rules and invariants, a scenario or persona can no
+  longer start a state with a value of another type or outside its enum, and
+  `append_to_list`, `remove_from_list` and `update_list_item` are refused on a
+  state that is not a list. As with every reference check, a model that
+  already holds one is not blocked by an unrelated edit.
+- An effect whose value cannot be computed (a division or a modulo by zero, a
+  parameter not given, a state holding no value, a sum over something that is
+  not a list) still writes nothing, and now says so: its record in
+  `appliedEffects` carries `notWritten` with the reason, the dashboard shows
+  it, and each step of `simulate_steps` lists it under `notWritten`. The run
+  used to report "set Average to ..." for a write that never happened.
+- A state declared under another one that holds a value (`cart` a number and
+  `cart.total`) is refused. The two are the same slot of the state tree:
+  filling the defaults turned `cart` into an object, and every rule and
+  computation on it read an object instead of its number. A state under one
+  declared as an object is still accepted.
+- A scenario or persona start, or a parameter bound with `bindToStatePath`,
+  that sets a derived state is refused: the engine recomputes a derived state
+  before any rule reads it, so the value set was silently replaced and the
+  scenario ran from another state than the one it arranged.
+- A malformed expression is refused where it is written, with what is wrong:
+  an object whose `kind` names no expression (`"multiply"`, `"stat"`), which
+  was taken for a literal object and written as is into the state; an
+  operator without one of its operands; a `sum_pluck` or `count_where`
+  without its field; a `switch` without cases or without a default; a
+  `switch` case without `when`, which matched every time. Each one left the
+  value missing on every run, with no error. A composite condition without
+  its `conditions` list is named instead of failing the write with a
+  TypeError.
+- A state write among an action's blocked-attempt effects (`onBlocked`:
+  `set_state`, the list effects, `advance_time`) is refused. A blocked attempt
+  writes no state, so such an effect never landed, without a word: a
+  "count the failed logins" written there counted nothing. The refusal says
+  how to record a refused attempt (an outcome of kind `rejected`).
+- A scenario or a step whose `timeAdvance` is negative is refused: time only
+  moves forward, so the advance moved no time at all and a scenario meant to
+  run past an expiry ran before it.
+- `simulate_steps` keeps what an action did when only a `required` handler of
+  its event failed: the step reads blocked, so the failed delivery shows, and
+  the action's own changes stand, as the simulator and the scenarios have it.
+  The walk used to drop them, so it went on from another state than a
+  scenario replaying the same steps.
+- An `all_match` or `any_match` over a state that is not a list is refused.
+  It was decided without reading any element: "every element" always held, so
+  an invariant written that way could never break, and "any element" never
+  did, so a rule written that way never fired.
+- An action rule, an action invariant or an outcome that compares an input
+  with a value it can never take is refused: an enum parameter (its own
+  values or its value set) compared with a value outside them, a parameter
+  compared with a literal of a type it cannot hold, or an enum parameter
+  compared with an enum state or parameter sharing no value with it. The
+  result never depended on the input, silently, exactly as the same
+  comparison on a state, which was already refused.
+- An index entry whose signature the file repeats (two handlers ending in the
+  same `return json({ ok: true })`) is no longer read stale and moved onto the
+  first occurrence in the file: the line it names keeps it while that line
+  still carries the signature, and a moved entry is healed to the occurrence
+  nearest its line. `sync_from_index` used to rewrite such entries to the wrong
+  line in `.unspa.json`. A short signature (under six characters) is read fresh
+  at its own line instead of stale on every sync.
+- `get_drift` no longer reads the entry of an event an action emits as an
+  orphan ("renamed or removed?") when the feature's event catalogue does not
+  declare it. `sync_from_index` and the index keys of a feature own such an
+  event; drift only knew the catalogue, so the entry was never checked and
+  invited its own deletion.
+- Disabling reads whole in the implementation index. A disabled feature's
+  acceptance criteria and entities, and an event only a disabled action emits,
+  read disabled in the gaps and the drift instead of missing or stale. A key
+  several features share (a state path, an event) is judged for a feature
+  that holds it in force: disabling one of them no longer silences the drift
+  of the others.
+- `get_implementation_status` reads every stored report against the spec as
+  it is now. A report of an action or a surface the spec no longer has is left
+  out and named in `orphanedReports`, instead of counting as implemented (and
+  as proven) in every coverage tallied from this answer; a rule, invariant,
+  event or state declared after the last sync reads missing instead of
+  invisible, and one the spec removed drops out. The stored record is left as
+  the sync wrote it.
+- An orphan `criterion:` key is told which case it is in. A well-formed id that
+  no criterion of the project holds any more (a criterion removed with what it
+  described) is said to be removed, instead of being told to add the `ac-leaf-`
+  prefix; the bare or short id of a criterion a feature carries is given the
+  exact key to move the entry to.
+- The `stale` block of `sync_from_index` lists an entry once. An event several
+  actions emit, or a state path several surfaces declare, is one index entry
+  located once per parent, and each location added a row, so one moved
+  signature read as several stale entries.
+- A change to a feature that takes away the last declaration of a state a
+  project invariant reads (a rename, a removal, the surface that held it) is
+  refused, naming the invariant: before, it was saved and the invariant then
+  compared against nothing, blocking every action of the project or holding
+  vacuously. apply_batch (dry run included), the granular writes, save_feature
+  and the dashboard all refuse it; the project batch already refused such an
+  invariant.
+- apply_batch keeps the `derived` expression of `add_state_definition` and
+  `update_state_definition` (`derived:null` clears it), as the granular tools
+  do. It used to drop it without a word, so a computed state declared through
+  a batch (or a simulate_steps draft) was an ordinary state nothing ever
+  recomputed.
+- The condition and the effects of an action's outcome are checked against
+  the declared state like its rules: a path no surface declares, a constant
+  the feature does not declare, or a rename that leaves an outcome reading the
+  old path is refused. Before, the outcome was saved as written and silently
+  never matched, or wrote a state nothing read.
+- `find_state_references`, the check to run before renaming or removing a
+  state, now counts every place of the feature that names the path: feature
+  invariants, reachability goals, derived states, action outcomes, scenario
+  overrides and assertions (steps included) and the outer paths a quantifier
+  body reads. It used to answer 0 for those, so a path read only there looked
+  free to rename.
+- The types module apply_batch writes again after each batch (once
+  generate_types chose its path) is generated without the disabled elements,
+  as generate_types generates it. A disabled action kept its parameter type
+  there, and the file changed with whichever tool wrote it last.
+- The maturity leaves the disabled elements out wherever it is read: the
+  dashboard's feature cards, feature panel and project panel, the builder
+  dashboard and `get_digest` read the saved model and still counted them, so
+  their percentage disagreed with `score_feature` once an element was put
+  aside.
+- A shared state renamed on one side only (the project's
+  `update_state_variable`, or the feature definition that projects it) is no
+  longer silent: the features then no longer share its value, and the
+  registry (`list_state_variables`, the project aggregate), `get_spec_gaps`
+  (`state:projection-path-mismatch`, critical) and the batch that made the
+  rename (`warnings`) now say so.
+- An apply_batch that renames or removes a state an entity field maps (its
+  `path`) warns, naming the field: the field used to keep the old path in
+  silence.
+- The model check reads the feature's constants in a reachability goal and in
+  the starting state: a goal comparing with a constant never held, so
+  `model_check` and `verify` reported it unmet, and a derived state computed
+  from a constant was wrong in the state the search starts from.
+- An `always_reachable` goal no longer reports a trap that is not one: a state
+  near the depth bound whose way back to the goal takes more than one step
+  read as a trap, with a precise counterexample path, because the bound cut
+  the way back. The model check now searches on from there, up to `maxDepth`
+  more steps and within `maxStates`, before it calls a state a trap.
+- `verify` on one feature explores it with the event handlers of the other
+  features of its project, as `model_check` and the scenarios already did: a
+  handler elsewhere that refuses a `required` or `transactional` event did not
+  roll the emitting action back there, so the model check reached states the
+  project never reaches and could fail on them.
+- The model check no longer fires an event handler on its own: a handler runs
+  only in the cascade of the action that emits its event, so a "recount" that
+  counts an added expense was explored with no expense added and reported an
+  invariant violation that cannot happen (and `verify` failed on it). A handler
+  of an event nothing in the project emits is still explored, as the host may
+  fire it.
+- `verify` and `get_drift` scoped to a feature that does not exist answer that
+  it was not found: they fell back to every feature of the store, so a mistyped
+  or removed feature got a passing verdict that was about the others. `unspa
+  check` given a feature or a project (`--project`, or the one `.unspa.json`
+  links) that the snapshots do not hold now exits 2 instead of passing with
+  nothing verified.
+- The navigation reachability of `verify`, `model_check` and `simulate_steps`
+  counts a transition declared on an action and a `transition_surface` effect
+  of an action's outcome: a screen reached only that way read as unreachable,
+  and the screen leading to it as one with no way out.
+- `unspa check` refuses a numeric option that is not a whole number
+  (`--max-depth`, `--max-states`, `--min-maturity`, `--min-verified`,
+  `--max-scenario-failures`): `--max-depth ten` explored the starting state
+  alone and passed, and `--max-scenario-failures` set to something unreadable
+  let every failing scenario through. The model check itself refuses a
+  `maxDepth` or `maxStates` that is not a whole number of at least 1.
+
 ## [0.28.0] - 2026-11-20
 
 An element of the spec can be disabled: inoperative in every reading, still present and readable.

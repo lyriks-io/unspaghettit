@@ -145,10 +145,13 @@ export type StateCoherenceIssue = {
     | 'field-type-mismatch'
     | 'field-enum-mismatch'
     | 'declaration-type-mismatch'
-    | 'declaration-choices-mismatch';
+    | 'declaration-choices-mismatch'
+    | 'projection-path-mismatch';
   readonly message: string;
   /** Every feature the issue involves, so each of them reports it (a declaration disagreement). */
   readonly featureIds?: readonly string[];
+  /** The paths a shared state is projected under instead of its own (a projection-path-mismatch). */
+  readonly projectedPaths?: readonly string[];
 };
 
 /** Every state path a condition reads: the left of each comparison and any state it compares to. */
@@ -169,6 +172,55 @@ const pathsReadBy = (condition: unknown): string[] => {
   visit(condition);
   return out;
 };
+
+/** A project invariant a change leaves reading a state no feature of the project declares. */
+export type LostInvariantPath = {
+  readonly invariantId: string;
+  readonly invariantName: string;
+  readonly path: string;
+};
+
+const declaredStatePaths = (features: readonly Feature[]): Set<string> => {
+  const paths = new Set<string>();
+  for (const feature of features) {
+    for (const surface of feature.surfaces) {
+      for (const definition of surface.stateDefinitions) paths.add(String(definition.path));
+    }
+  }
+  return paths;
+};
+
+/**
+ * The paths project invariants read that the features declared before a change
+ * and no longer declare after it: a rename, a removal, the surface that held
+ * the last declaration. The project batch refuses an invariant over a path no
+ * feature declares; a feature write must not reach that state silently, since
+ * the invariant then compares against nothing (always violated, or always
+ * holding, depending on its operator). `before` and `after` are the whole
+ * project, the changed feature among them.
+ */
+export const invariantPathsLost = (
+  projectInvariants: readonly Invariant[],
+  before: readonly Feature[],
+  after: readonly Feature[]
+): LostInvariantPath[] => {
+  if (projectInvariants.length === 0) return [];
+  const had = declaredStatePaths(before);
+  const has = declaredStatePaths(after);
+  const lost: LostInvariantPath[] = [];
+  for (const invariant of projectInvariants) {
+    for (const path of new Set(pathsReadBy(invariant.condition))) {
+      if (had.has(path) && !has.has(path)) {
+        lost.push({ invariantId: String(invariant.id), invariantName: invariant.name, path });
+      }
+    }
+  }
+  return lost;
+};
+
+/** The refusal for one lost path, naming the invariant and the two ways out. */
+export const lostInvariantPathMessage = (lost: LostInvariantPath): string =>
+  `State "${lost.path}" is read by the project invariant "${lost.invariantName}" (${lost.invariantId}), and after this change no feature of the project declares it. Change or remove that invariant first (apply_project_batch: update_project_invariant or remove_project_invariant), or keep a declaration of "${lost.path}".`;
 
 type Declaration = {
   readonly featureId: string;
@@ -300,6 +352,56 @@ const carries = (stateType: string, fieldType: string): boolean =>
  * Where a canonical state and the entity field it links to disagree. `message`
  * follows `language` (the spec's); ids, paths and types are quoted as they are.
  */
+/**
+ * A state definition carrying the id of a shared state (stateVariableId) under
+ * another path than the shared state's own: a rename made on one side only, a
+ * feature's update_state_definition or the project's update_state_variable.
+ * The definition is still listed as a projection of the shared state, but the
+ * features no longer share its value: one writes a path the other never reads.
+ * One error per shared state, naming every projection that drifted.
+ */
+export const projectionPathIssues = (
+  states: readonly StateVariable[],
+  features: readonly Feature[],
+  language: ReportLanguage = 'en'
+): StateCoherenceIssue[] => {
+  const fr = language === 'fr';
+  const issues: StateCoherenceIssue[] = [];
+  for (const state of states) {
+    const drifted: { readonly featureId: string; readonly featureName: string; readonly path: string }[] = [];
+    for (const feature of features) {
+      for (const surface of feature.surfaces) {
+        for (const definition of surface.stateDefinitions) {
+          if (String(definition.stateVariableId ?? '') !== String(state.id)) continue;
+          if (String(definition.path) === String(state.path)) continue;
+          drifted.push({ featureId: String(feature.id), featureName: feature.name, path: String(definition.path) });
+        }
+      }
+    }
+    if (drifted.length === 0) continue;
+    const quoted = fr ? quoteName('fr', String(state.path)) : `"${String(state.path)}"`;
+    const list = drifted
+      .map((d) =>
+        fr
+          ? `${quoteName('fr', d.featureName)} sous ${quoteName('fr', d.path)}`
+          : `"${d.featureName}" as "${d.path}"`
+      )
+      .join(', ');
+    issues.push({
+      severity: 'error',
+      stateId: String(state.id),
+      path: String(state.path),
+      kind: 'projection-path-mismatch',
+      featureIds: [...new Set([...drifted.map((d) => d.featureId), String(state.owner.featureId)])],
+      projectedPaths: [...new Set(drifted.map((d) => d.path))],
+      message: fr
+        ? `L'état partagé ${quoted} est repris sous un autre chemin : ${list}. Ces features ne partagent plus sa valeur. Redonnez-lui le chemin partagé, ou changez le chemin de l'état partagé (update_state_variable) puis celui de chaque reprise.`
+        : `The shared state ${quoted} is projected under another path: ${list}. Those features no longer share its value. Give the projection the shared path again, or change the shared state's path (update_state_variable) and then each projection's.`
+    });
+  }
+  return issues;
+};
+
 export const stateCoherenceIssues = (
   states: readonly StateVariable[],
   features: readonly Feature[],
@@ -308,7 +410,8 @@ export const stateCoherenceIssues = (
 ): readonly StateCoherenceIssue[] => {
   const fr = language === 'fr';
   const issues: StateCoherenceIssue[] = [
-    ...stateDeclarationIssues(features, projectInvariants, language)
+    ...stateDeclarationIssues(features, projectInvariants, language),
+    ...projectionPathIssues(states, features, language)
   ];
   for (const state of states) {
     const link = state.links?.dataField;

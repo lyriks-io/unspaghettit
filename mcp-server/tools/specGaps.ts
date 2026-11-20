@@ -69,6 +69,8 @@ export const SPEC_GAP_CODES = {
     'Two features declare one state path with different kinds of value (subjectId: the state), so every proof reading it depends on which was read first.',
   'state:declaration-choices-mismatch':
     'Two features declare one choice state allowing different values (subjectId: the state); critical when a project invariant reads it.',
+  'state:projection-path-mismatch':
+    'A feature projects a shared state (its stateVariableId) under another path than the shared one, so the features no longer share its value (subjectId: the state).',
 } as const;
 
 export type SpecGapCode = keyof typeof SPEC_GAP_CODES | `proof:${string}` | 'missing-scenario';
@@ -567,6 +569,10 @@ export const stateCoherenceGaps = (
           ? fr
             ? "Déclarez l'état de la même façon dans chaque feature (même type, mêmes valeurs), ou renommez-le dans celle qui parle d'autre chose."
             : 'Declare the state the same way in every feature (same kind of value, same choices), or rename it in the feature that means something else.'
+          : issue.kind === 'projection-path-mismatch'
+          ? fr
+            ? "Redonnez à la reprise le chemin de l'état partagé, ou changez ce chemin (update_state_variable) puis celui de chaque reprise."
+            : "Give the projection the shared state's path again, or change that path (update_state_variable) and then each projection's."
           : issue.kind === 'missing-data-field'
           ? fr
             ? "Reliez la variable d'état à un champ d'entité existant, ou effacez le lien périmé."

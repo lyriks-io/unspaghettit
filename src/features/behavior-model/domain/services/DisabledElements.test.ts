@@ -15,6 +15,9 @@ import {
   scenariosLeftOut
 } from './DisabledElements';
 import { ADRIEN, VALIDATION, validationFeature } from './DisabledElements.fixture';
+import type { Feature } from '../entities/Feature';
+import { asEventName } from '../value-objects/EventName';
+import { asAcceptanceCriterionId, asEntityId } from '../value-objects/ids';
 
 const actionOf = (feature: ReturnType<typeof validationFeature>, id: string) =>
   feature.surfaces.flatMap((s) => s.actions).find((a) => String(a.id) === id);
@@ -152,5 +155,46 @@ describe('the operative model every reading takes', () => {
     expect(disabledIndexKeys(whole)).toContain(`surface:${VALIDATION.surface}`);
     expect(disabledIndexKeys(whole)).toContain('state:element.validated');
     expect(disabledIndexKeys(whole)).toContain(`invariant:${VALIDATION.invariant}`);
+  });
+
+  // A disabled feature takes every key it holds; its acceptance criteria and its
+  // entities were left out, so get_drift kept judging what verifies them and the
+  // code of its entities, and read them stale.
+  it('names the criteria and the entities of a disabled feature, and the events its actions emit', () => {
+    const base = validationFeature();
+    const held: Feature = {
+      ...base,
+      acceptanceCriteria: [
+        { id: asAcceptanceCriterionId('crit-1'), title: 'An editor validates once', given: 'An editor', when: 'they validate', then: 'it reads validated', expectedOutcome: 'success' }
+      ],
+      entities: [{ id: asEntityId('ent-element'), namespace: 'element', fields: [] } as unknown as Feature['entities'][number]],
+      surfaces: base.surfaces.map((s) => ({
+        ...s,
+        actions: s.actions.map((a) => (String(a.id) === VALIDATION.validate ? { ...a, emittedEvents: [asEventName('element.validated')] } : a))
+      }))
+    };
+    const keys = disabledIndexKeys(disableElement(held, VALIDATION.feature, ADRIEN));
+    expect(keys).toContain('criterion:crit-1');
+    expect(keys).toContain('entity:ent-element');
+    expect(keys).toContain('event:element.validated');
+  });
+
+  // "An action's transitions and events go with it": the events were not.
+  it('names the events a disabled action alone emits, and keeps the ones an action in force emits too', () => {
+    const base = validationFeature();
+    const emitting: Feature = {
+      ...base,
+      surfaces: base.surfaces.map((s) => ({
+        ...s,
+        actions: s.actions.map((a) =>
+          String(a.id) === VALIDATION.validate
+            ? { ...a, emittedEvents: [asEventName('element.validated'), asEventName('element.changed')] }
+            : { ...a, emittedEvents: [asEventName('element.changed')] }
+        )
+      }))
+    };
+    const keys = disabledIndexKeys(disableElement(emitting, VALIDATION.validate, ADRIEN));
+    expect(keys).toContain('event:element.validated');
+    expect(keys).not.toContain('event:element.changed');
   });
 });

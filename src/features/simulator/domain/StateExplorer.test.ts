@@ -4,6 +4,7 @@ import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import {
   asActionId,
+  asConstantId,
   asEffectId,
   asExposureId,
   asFeatureId,
@@ -15,6 +16,7 @@ import {
   asSurfaceId
 } from '$features/behavior-model/domain/value-objects/ids';
 import { asStatePath } from '$features/behavior-model/domain/value-objects/StatePath';
+import { asEventName } from '$features/behavior-model/domain/value-objects/EventName';
 import { exploreStateSpace } from './StateExplorer';
 
 const featureWith = (surface: Surface): Feature => ({
@@ -96,6 +98,28 @@ describe('exploreStateSpace', () => {
     // count=2 is a dead-end: its only move violates the invariant.
     expect(report.deadlockStates).toBe(1);
     expect(report.truncated).toBe(false);
+  });
+
+  it('refuses a bound that is not a whole number instead of exploring the start alone', () => {
+    // A NaN depth explored the starting state only and reported no violation;
+    // a NaN state cap never stopped the search.
+    const feature = featureWith(
+      countSurface(
+        [incr],
+        [
+          {
+            id: asInvariantId('cap'),
+            name: 'count < 3',
+            condition: { left: asStatePath('count'), operator: 'lower_than', right: 3 },
+            message: 'count exceeded 3'
+          }
+        ]
+      )
+    );
+    expect(() => exploreStateSpace(feature, { maxDepth: Number.NaN })).toThrow('maxDepth');
+    expect(() => exploreStateSpace(feature, { maxStates: Number.NaN })).toThrow('maxStates');
+    expect(() => exploreStateSpace(feature, { maxDepth: 0 })).toThrow('maxDepth');
+    expect(() => exploreStateSpace(feature, { maxStates: 2.5 })).toThrow('maxStates');
   });
 
   it('reports an action that can never fire as dead', () => {
@@ -384,6 +408,88 @@ describe('exploreStateSpace: dead versus unreached actions', () => {
   });
 });
 
+describe('exploreStateSpace: event handlers', () => {
+  // "Add expense" appends an expense and emits expense.added; "Recount" runs
+  // on that event and counts it. The count never exceeds the expenses.
+  const expenses = asStatePath('expenses');
+  const expenseCount = asStatePath('expenseCount');
+  const add: Action = {
+    id: asActionId('add'),
+    name: 'Add expense',
+    intent: 'record an expense',
+    parameters: [],
+    requiredStates: [],
+    rules: [
+      {
+        id: asRuleId('full'),
+        category: 'business',
+        condition: { left: expenseCount, operator: 'greater_or_equal', right: 3 },
+        effect: { id: asEffectId('e-full'), type: 'block_action', reason: 'the ledger is full' }
+      }
+    ],
+    invariants: [],
+    effects: [
+      { id: asEffectId('e-append'), type: 'append_to_list', path: expenses, item: 1 },
+      { id: asEffectId('e-emit'), type: 'emit_event', event: asEventName('expense.added') }
+    ],
+    emittedEvents: [asEventName('expense.added')],
+    transitions: []
+  };
+  const recount: Action = {
+    id: asActionId('recount'),
+    name: 'Recount',
+    intent: 'count the expense just added',
+    parameters: [],
+    requiredStates: [],
+    rules: [],
+    invariants: [],
+    effects: [
+      {
+        id: asEffectId('e-recount'),
+        type: 'set_state',
+        path: expenseCount,
+        value: { kind: 'add', left: { kind: 'state', path: expenseCount }, right: { kind: 'literal', value: 1 } }
+      }
+    ],
+    emittedEvents: [],
+    transitions: [],
+    triggeredByEvent: asEventName('expense.added')
+  };
+  const ledger = (actions: readonly Action[]): Feature => ({
+    ...featureWith({
+      ...countSurface(actions, []),
+      stateDefinitions: [
+        { id: asStateDefinitionId('d-expenses'), path: expenses, type: 'array', defaultValue: [] },
+        { id: asStateDefinitionId('d-count'), path: expenseCount, type: 'number', defaultValue: 0 }
+      ]
+    }),
+    featureInvariants: [
+      {
+        id: asInvariantId('counted'),
+        name: 'No more counted than recorded',
+        condition: {
+          left: expenseCount,
+          operator: 'lower_or_equal',
+          right: { kind: 'count', operand: { kind: 'state', path: expenses } }
+        },
+        message: 'an expense was counted that was never recorded'
+      }
+    ]
+  });
+
+  it('runs a handler only when its event is emitted, never on its own', () => {
+    const report = exploreStateSpace(ledger([add, recount]), { maxDepth: 4 });
+    expect(report.invariantViolations).toEqual([]);
+    expect(report.deadActions).toEqual([]);
+  });
+
+  it('still explores a handler of an event nothing in the model emits', () => {
+    // The host may fire it: with no emitter it is explored as it was.
+    const report = exploreStateSpace(ledger([recount]), { maxDepth: 2 });
+    expect(report.invariantViolations.map((v) => v.path)).toEqual([['Recount']]);
+  });
+});
+
 describe('exploreStateSpace — reachability goals', () => {
   const withGoals = (goals: NonNullable<Feature['reachabilityGoals']>): Feature => ({
     ...featureWith(countSurface([incr], [])),
@@ -425,6 +531,62 @@ describe('exploreStateSpace — reachability goals', () => {
     expect(report.goalResults[0]!.counterexamplePath).toBeUndefined();
   });
 
+  it('reads the feature constants in a goal condition', () => {
+    // The goal compares the counter with a constant: it holds after two incr.
+    const report = exploreStateSpace(
+      {
+        ...withGoals([
+          {
+            id: asReachabilityGoalId('g-target'),
+            name: 'count reaches the target',
+            kind: 'reachable',
+            condition: {
+              left: asStatePath('count'),
+              operator: 'equals',
+              right: { kind: 'const', name: 'target' }
+            },
+            description: 'the counter reaches the declared target'
+          }
+        ]),
+        constants: [{ id: asConstantId('c-target'), name: 'target', value: 2, description: 'The target.' }]
+      },
+      { maxDepth: 4 }
+    );
+    expect(report.goalResults[0]!.satisfied).toBe(true);
+  });
+
+  it('computes a derived state that reads a constant in the starting state', () => {
+    // No action at all: the starting state is the only one, and its derived
+    // `limit` reads the constant, so the goal on it holds there.
+    const surface = countSurface([], []);
+    const feature: Feature = {
+      ...featureWith({
+        ...surface,
+        stateDefinitions: [
+          ...surface.stateDefinitions,
+          {
+            id: asStateDefinitionId('d-limit'),
+            path: asStatePath('limit'),
+            type: 'number',
+            defaultValue: 0,
+            derived: { kind: 'const', name: 'cap' }
+          }
+        ]
+      }),
+      constants: [{ id: asConstantId('c-cap'), name: 'cap', value: 5, description: 'The cap.' }],
+      reachabilityGoals: [
+        {
+          id: asReachabilityGoalId('g-limit'),
+          name: 'the limit is the cap',
+          kind: 'reachable',
+          condition: { left: asStatePath('limit'), operator: 'equals', right: 5 },
+          description: 'the derived limit follows the constant'
+        }
+      ]
+    };
+    expect(exploreStateSpace(feature, { maxDepth: 2 }).goalResults[0]!.satisfied).toBe(true);
+  });
+
   it("detects a trap for an 'always_reachable' goal with a counterexample path", () => {
     // Goal: count == 0. The only action increments, so once incr fires the
     // model can never return to 0 — every count>0 state is a trap.
@@ -443,6 +605,82 @@ describe('exploreStateSpace — reachability goals', () => {
     expect(report.goalResults[0]!.satisfied).toBe(false);
     // Shortest path to a trap is a single incr (count 0 → 1).
     expect(report.goalResults[0]!.counterexamplePath).toEqual(['incr']);
+  });
+
+  it("finds no trap for an 'always_reachable' goal whose way back takes two steps past the depth bound", () => {
+    // Reset takes two steps from anywhere: open the menu, then confirm. From
+    // the states at the depth bound the menu opens one step past it, so the
+    // way back was never searched; it still exists, so there is no trap.
+    const menu = asStatePath('menu');
+    const capped: Action = {
+      ...incr,
+      rules: [
+        {
+          id: asRuleId('cap20'),
+          category: 'business',
+          condition: { left: asStatePath('count'), operator: 'greater_or_equal', right: 20 },
+          effect: { id: asEffectId('e-cap20'), type: 'block_action', reason: 'at the cap' }
+        }
+      ]
+    };
+    const openMenu: Action = {
+      id: asActionId('open'),
+      name: 'open',
+      intent: 'open the reset menu',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [{ id: asEffectId('e-open'), type: 'set_state', path: menu, value: true }],
+      emittedEvents: [],
+      transitions: []
+    };
+    const confirm: Action = {
+      id: asActionId('confirm'),
+      name: 'confirm',
+      intent: 'confirm the reset',
+      parameters: [],
+      requiredStates: [],
+      rules: [
+        {
+          id: asRuleId('menu-closed'),
+          category: 'business',
+          condition: { left: menu, operator: 'is_false' },
+          effect: { id: asEffectId('e-closed'), type: 'block_action', reason: 'the menu is closed' }
+        }
+      ],
+      invariants: [],
+      effects: [
+        { id: asEffectId('e-zero'), type: 'set_state', path: asStatePath('count'), value: 0 },
+        { id: asEffectId('e-shut'), type: 'set_state', path: menu, value: false }
+      ],
+      emittedEvents: [],
+      transitions: []
+    };
+    const surface = countSurface([capped, openMenu, confirm], []);
+    const feature: Feature = {
+      ...featureWith({
+        ...surface,
+        stateDefinitions: [
+          ...surface.stateDefinitions,
+          { id: asStateDefinitionId('d-menu'), path: menu, type: 'boolean', defaultValue: false }
+        ]
+      }),
+      reachabilityGoals: [
+        {
+          id: asReachabilityGoalId('g-reset'),
+          name: 'the counter can always be reset',
+          kind: 'always_reachable',
+          condition: { left: asStatePath('count'), operator: 'equals', right: 0 },
+          description: 'a reset stays possible from anywhere'
+        }
+      ]
+    };
+    for (const maxDepth of [2, 6]) {
+      const goal = exploreStateSpace(feature, { maxDepth }).goalResults[0]!;
+      expect(goal.counterexamplePath).toBeUndefined();
+      expect(goal.satisfied).toBe(true);
+    }
   });
 
   it('tries every offered channel when an action reads the caller channel, so a channel-only branch is not dead', () => {

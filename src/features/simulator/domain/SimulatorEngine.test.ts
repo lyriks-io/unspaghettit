@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { simulate } from './SimulatorEngine';
+import { exploreStateSpace } from './StateExplorer';
 import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import type { Action } from '$features/behavior-model/domain/entities/Action';
@@ -1376,5 +1377,128 @@ describe('simulate — a blocked action commits nothing', () => {
     expect(result.emittedEvents.map(String)).toContain('transfer.rejected');
     expect(result.messages.map((m) => m.text)).toContain('Try a smaller amount');
     expect((result.nextState.transfer as { amount: number }).amount).toBe(0);
+  });
+});
+
+describe('simulate: invariants are read on the state the cascade settles', () => {
+  // The documented "B reacts to A" pattern: Add expense records an expense and
+  // emits expense.added; Recount, its handler, keeps the count in step. The
+  // invariant "the count equals the number of expenses" holds once the
+  // handler ran, never between the two.
+  const addExpense: Action = {
+    id: asActionId('add'),
+    name: 'Add expense',
+    intent: 'record an expense',
+    parameters: [],
+    requiredStates: [],
+    rules: [],
+    invariants: [],
+    effects: [
+      { id: asEffectId('append'), type: 'append_to_list', path: asStatePath('expenses'), item: 1 },
+      { id: asEffectId('emit-added'), type: 'emit_event', event: asEventName('expense.added') }
+    ],
+    emittedEvents: [asEventName('expense.added')],
+    transitions: []
+  };
+  const recount = (by: number): Action => ({
+    id: asActionId('recount'),
+    name: 'Recount',
+    intent: 'keep the count in step',
+    parameters: [],
+    requiredStates: [],
+    rules: [],
+    invariants: [],
+    effects: [
+      {
+        id: asEffectId('count-up'),
+        type: 'set_state',
+        path: asStatePath('expenseCount'),
+        value: {
+          kind: 'add',
+          left: { kind: 'state', path: asStatePath('expenseCount') },
+          right: { kind: 'literal', value: by }
+        }
+      }
+    ],
+    emittedEvents: [],
+    transitions: [],
+    triggeredByEvent: asEventName('expense.added')
+  });
+  const counted = {
+    id: asInvariantId('i-counted'),
+    name: 'Every expense is counted',
+    condition: {
+      left: asStatePath('expenseCount'),
+      operator: 'equals' as const,
+      right: { kind: 'count' as const, operand: { kind: 'state' as const, path: asStatePath('expenses') } }
+    },
+    message: 'the count drifted from the expenses'
+  };
+  const ledger = (handler: Action, withInvariant = true): Feature => ({
+    id: asFeatureId('ledger'),
+    name: 'Ledger',
+    surfaces: [
+      {
+        id: asSurfaceId('s-ledger'),
+        name: 'Ledger',
+        type: 'screen',
+        stateDefinitions: [
+          { id: asStateDefinitionId('d-exp'), path: asStatePath('expenses'), type: 'array', defaultValue: [] },
+          { id: asStateDefinitionId('d-cnt'), path: asStatePath('expenseCount'), type: 'number', defaultValue: 0 }
+        ],
+        rules: [],
+        invariants: [],
+        transitions: [],
+        actions: [addExpense, handler]
+      }
+    ],
+    featureInvariants: withInvariant ? [counted] : [],
+    personas: [],
+    resources: [],
+    entities: [],
+    events: [{ id: asEventDefinitionId('ev-added'), name: asEventName('expense.added') }],
+    createdAt: '2026-11-20T00:00:00.000Z',
+    updatedAt: '2026-11-20T00:00:00.000Z'
+  });
+  const runAdd = (feature: Feature, extra: readonly typeof counted[] = []) =>
+    simulate({
+      surface: feature.surfaces[0]!,
+      action: addExpense,
+      snapshot: {},
+      parameters: {},
+      featureInvariants: [...(feature.featureInvariants ?? []), ...extra],
+      feature
+    });
+
+  it('lets the action through when its handler restores the invariant', () => {
+    const result = runAdd(ledger(recount(1)));
+    expect(result.invariantViolations).toEqual([]);
+    expect(result.status).toBe('success');
+    expect(result.nextState).toMatchObject({ expenses: [1], expenseCount: 1 });
+    expect(result.cascadedHandlers?.[0]?.result.status).toBe('success');
+  });
+
+  it('does not read the action dead in the model check', () => {
+    const report = exploreStateSpace(ledger(recount(1)), { maxDepth: 2 });
+    expect(report.invariantViolations.filter((v) => v.actionId === 'add')).toEqual([]);
+    expect(report.deadActions.map((a) => a.actionId)).not.toContain('add');
+  });
+
+  it('refuses the action when the settled state breaks an invariant its handler does not hold', () => {
+    // The invariant rides in from outside the handler's feature (a project
+    // invariant): the handler, checked against its own feature alone, passes.
+    const feature = ledger(recount(2), false);
+    const result = runAdd(feature, [counted]);
+    expect(result.cascadedHandlers?.[0]?.result.status).toBe('success');
+    expect(result.status).toBe('blocked');
+    expect(result.invariantViolations.map((v) => v.invariantName)).toEqual(['Every expense is counted']);
+  });
+
+  it('still refuses an action whose own effects break an invariant when no handler answers', () => {
+    const feature = ledger({ ...recount(1), triggeredByEvent: asEventName('something.else') });
+    const result = runAdd(feature);
+    expect(result.status).toBe('blocked');
+    expect(result.invariantViolations.map((v) => v.invariantName)).toEqual(['Every expense is counted']);
+    expect(result.cascadedHandlers).toBeUndefined();
   });
 });

@@ -32,6 +32,8 @@ import type {
  *
  * A refused step changes nothing and the walk goes on from the same state, since
  * a person who is refused tries the next thing; `stopOnBlocked` ends it instead.
+ * A step blocked only because a `required` handler of its event failed keeps
+ * what the action itself did (the command was accepted, the delivery failed).
  */
 
 export type WalkStep = {
@@ -97,6 +99,12 @@ export type WalkStepResult = {
    * Never applied; the walk goes on from the state before the step.
    */
   readonly rejectedChanges?: readonly StateChange[];
+  /**
+   * Effects of the step that ran but wrote nothing, because their value could
+   * not be computed (a division by zero, a parameter not given, a state
+   * holding no value): the effect and why. Absent when every effect wrote.
+   */
+  readonly notWritten?: readonly { readonly effect: string; readonly reason: string }[];
   readonly messages: readonly SimulationMessage[];
   readonly emittedEvents: readonly string[];
   /** The surface the step moved to, or null when it stayed. */
@@ -266,9 +274,17 @@ export const simulateSteps = (input: WalkInput): WalkResult => {
     });
     const cascaded = flattenCascade(result, names);
     // The simulator reports the state an invariant violation would have left
-    // as `nextState`; a refused step must not carry it into the next one.
+    // as `nextState`; a refused step must not carry it into the next one. Any
+    // other blocked step lands its nextState: the state before it for a rule
+    // or an input that refused it, and the action's own effects when only a
+    // `required` handler of its event failed (the command was accepted, the
+    // delivery was not), exactly as the scenarios thread it.
     const attempted = diffSnapshots(result.previousState, result.nextState);
     const refused = result.status === 'blocked';
+    const broken = result.invariantViolations.length > 0;
+    const notWritten = result.appliedEffects
+      .filter((record) => record.notWritten !== undefined)
+      .map((record) => ({ effect: record.summary, reason: record.notWritten! }));
     results.push({
       index,
       surfaceId: String(surface.id),
@@ -280,8 +296,9 @@ export const simulateSteps = (input: WalkInput): WalkResult => {
       refusedBecause: refusalReasons(result, surface, action),
       // Against the state the step started from, defaults filled, so the first
       // step does not report every declared default as a change.
-      changes: refused ? [] : attempted,
-      ...(refused && attempted.length > 0 ? { rejectedChanges: attempted } : {}),
+      changes: broken ? [] : attempted,
+      ...(broken && attempted.length > 0 ? { rejectedChanges: attempted } : {}),
+      ...(notWritten.length > 0 ? { notWritten } : {}),
       messages: result.messages,
       emittedEvents: result.emittedEvents.map(String),
       movedTo: result.transition
@@ -293,7 +310,7 @@ export const simulateSteps = (input: WalkInput): WalkResult => {
       ...(result.outcome ? { outcome: result.outcome } : {}),
       ...(cascaded.length > 0 ? { cascaded } : {})
     });
-    snapshot = refused ? snapshot : result.nextState;
+    snapshot = broken ? snapshot : result.nextState;
     if (refused && input.stopOnBlocked) {
       return { steps: results, notRun: input.steps.length - index - 1, finalState: snapshot };
     }

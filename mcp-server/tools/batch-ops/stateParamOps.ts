@@ -48,6 +48,11 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
         defaultValue: op.defaultValue as StateDefinition['defaultValue'],
         ...(Array.isArray(op.enumValues) ? { enumValues: op.enumValues as readonly string[] } : {}),
         ...(typeof op.valueSetId === 'string' ? { valueSetId: asValueSetId(op.valueSetId) } : {}),
+        // A computed state, as the granular add_state_definition takes it: the
+        // batch used to drop the expression, leaving a state nothing recomputed.
+        ...(op.derived !== undefined && op.derived !== null
+          ? { derived: op.derived as StateDefinition['derived'] }
+          : {}),
         ...(typeof op.description === 'string' ? { description: op.description } : {}),
         ...(sharedWith ? { sharedWith } : {})
       };
@@ -78,6 +83,12 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
                 o.valueSetId == null ? undefined : asValueSetId(o.valueSetId as string)
             }
           : {}),
+        ...('derived' in o && o.derived !== undefined
+          ? {
+              // null clears it back to an authored state, as the granular tool does.
+              derived: o.derived === null ? undefined : (o.derived as StateDefinition['derived'])
+            }
+          : {}),
         ...(typeof o.description === 'string' ? { description: o.description } : {}),
         ...(Array.isArray(o.sharedWith)
           ? {
@@ -91,6 +102,7 @@ export const applyStateParamOps = (op: Op, ctx: OpContext): Feature | null => {
         'defaultValue',
         'enumValues',
         'valueSetId',
+        'derived',
         'description',
         'sharedWith'
       ]);

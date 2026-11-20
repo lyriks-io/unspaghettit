@@ -69,6 +69,9 @@ const buildIdentifierSets = (feature: Feature): IdentifierSets => {
     for (const def of surface.stateDefinitions) statePaths.add(String(def.path));
     for (const action of surface.actions) {
       actionIds.add(String(action.id));
+      // An event is keyed by its name whether or not the catalogue declares it,
+      // as sync_from_index owns it: the code that emits it is mapped all the same.
+      for (const event of action.emittedEvents) eventNames.add(String(event));
       for (const rule of action.rules) ruleIds.add(String(rule.id));
       for (const inv of action.invariants) invariantIds.add(String(inv.id));
       for (const transition of action.transitions) transitionIds.add(String(transition.id));
@@ -175,8 +178,8 @@ export const detectDrift = (
     const type = entry.key.slice(0, sep);
     const suffix = entry.key.slice(sep + 1);
 
-    const owner = owners.find((o) => owns(o.sets, type, suffix));
-    if (!owner) {
+    const claimants = owners.filter((o) => owns(o.sets, type, suffix));
+    if (claimants.length === 0) {
       // The cohort gets first claim, so a universe can never hide a key the
       // swept features own. Only then may a sibling claim it: someone else's
       // key is neither this sweep's business nor evidence of a rename.
@@ -199,8 +202,11 @@ export const detectDrift = (
     }
 
     // A disabled element keeps its entry and reads disabled: no reading judges
-    // it, so neither can drift.
-    if (disabledKeysOf(owner.feature).has(entry.key)) {
+    // it, so neither can drift. A key several features own (a shared state
+    // path, an event) is judged for one that holds it in force, so disabling
+    // one of them never silences the drift of the others.
+    const owner = claimants.find((o) => !disabledKeysOf(o.feature).has(entry.key));
+    if (!owner) {
       disabled.push(entry.key);
       continue;
     }

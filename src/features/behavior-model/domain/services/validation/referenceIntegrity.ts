@@ -3,9 +3,9 @@ import { CALLER_CHANNEL_PARAM, offeredChannels } from '../../entities/Action';
 import type { Parameter } from '../../entities/Parameter';
 import { ALL_EFFECT_TYPES } from '../../value-objects/Effect';
 import { isParameterType, parameterTypeToStateType } from '../../value-objects/ParameterType';
-import type { StateType } from '../../value-objects/StateValue';
+import { isStateValueAssignableTo, type StateType, type StateValue } from '../../value-objects/StateValue';
 import type { Expression } from '../../value-objects/Expression';
-import { isExpression } from '../../value-objects/Expression';
+import { isExpression, isOrderableDateString } from '../../value-objects/Expression';
 import { CLOCK_NOW_PATH } from '../../value-objects/SimulationClock';
 import { effectiveEnumValues } from '../EnumValues';
 import {
@@ -16,6 +16,7 @@ import {
   type LeafRuleCondition,
   type RuleCondition
 } from '../../value-objects/RuleCondition';
+import { expressionShapeProblems } from './expressionShape';
 import { requireDescription, type ValidationResult } from './shared';
 
 const collectExpressionStatePaths = (expr: Expression, out: string[]): void => {
@@ -47,7 +48,9 @@ const collectExpressionStatePaths = (expr: Expression, out: string[]): void => {
       collectExpressionStatePaths(expr.equals, out);
       return;
     case 'switch':
-      for (const c of expr.cases) {
+      // A malformed switch (no cases list) is reported by expressionShape; the
+      // walk must not crash on it, or no error at all would come back.
+      for (const c of Array.isArray(expr.cases) ? expr.cases : []) {
         for (const leaf of flattenLeafConditions(c.when)) {
           // Skip param-lefts: they reference an action parameter, not a
           // state path on the surface.
@@ -92,7 +95,9 @@ const collectExpressionConstNames = (expr: Expression, out: Set<string>): void =
       collectExpressionConstNames(expr.equals, out);
       return;
     case 'switch':
-      for (const c of expr.cases) {
+      // A malformed switch (no cases list) is reported by expressionShape; the
+      // walk must not crash on it, or no error at all would come back.
+      for (const c of Array.isArray(expr.cases) ? expr.cases : []) {
         for (const leaf of flattenLeafConditions(c.when)) {
           if (isExpression(leaf.right)) collectExpressionConstNames(leaf.right, out);
         }
@@ -146,7 +151,9 @@ const collectExpressionParamNames = (expr: Expression, out: Set<string>): void =
       collectExpressionParamNames(expr.equals, out);
       return;
     case 'switch':
-      for (const c of expr.cases) {
+      // A malformed switch (no cases list) is reported by expressionShape; the
+      // walk must not crash on it, or no error at all would come back.
+      for (const c of Array.isArray(expr.cases) ? expr.cases : []) {
         for (const leaf of flattenLeafConditions(c.when)) {
           if (isParamLeft(leaf.left)) out.add(leaf.left.name);
           if (isExpression(leaf.right)) collectExpressionParamNames(leaf.right, out);
@@ -259,6 +266,24 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     );
   }
 
+  // A path under another declared path. The snapshot is a tree, so "cart"
+  // and "cart.total" are the same slot seen twice: filling the defaults turns
+  // the number "cart" into an object holding "total", and every rule and
+  // arithmetic on "cart" then reads an object. Only a parent declared as an
+  // object can hold other states.
+  for (const [path] of typeByPath) {
+    const segments = path.split('.');
+    for (let i = 1; i < segments.length; i += 1) {
+      const parent = segments.slice(0, i).join('.');
+      const parentType = typeByPath.get(parent);
+      if (parentType === undefined || parentType === 'object') continue;
+      errors.push(
+        `State "${path}" sits under "${parent}", which is declared as ${parentType}: a ${parentType} cannot hold other states, so the two overwrite each other. Rename one of them, or declare "${parent}" as object.`
+      );
+      break;
+    }
+  }
+
   const domainLabel = (path: string): string => {
     const domain = enumDomainByPath.get(path);
     return domain ? ` (${domain.map((v) => `"${v}"`).join(', ')})` : '';
@@ -312,6 +337,68 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     if (!allowed || allowed.includes(value)) return;
     errors.push(
       `${label}: ${what} "${value}" is not one of the values "${path}" can hold (${allowed.map((v) => `"${v}"`).join(', ')}).`
+    );
+  };
+
+  /**
+   * A raw literal of a type the path can never hold. The engine compares
+   * without coercion, so `count equals "3"` on a number, `total greater_than
+   * "10"`, or `tags contains 1` on a string is decided by the types alone: a
+   * rule that never fires, an invariant that never holds, a scenario that
+   * asserts nothing, with no error anywhere. A scenario or persona that starts
+   * a path with such a value tests a state the model can never be in. Like the
+   * enum check, only raw literals are checked (an Expression
+   * resolves at run time), and null, the "cleared" value, is left alone.
+   */
+  const ORDERING = new Set(['greater_than', 'greater_or_equal', 'lower_than', 'lower_or_equal']);
+  const describeLiteral = (value: unknown): string =>
+    `${JSON.stringify(value)} (${Array.isArray(value) ? 'an array' : typeof value === 'object' ? 'an object' : `a ${typeof value}`})`;
+  const comparisonDecidedByTypes = (type: StateType, operator: string, value: StateValue): boolean => {
+    if (ORDERING.has(operator)) {
+      if (type === 'number') return typeof value !== 'number';
+      // Strings order only as ISO 8601 dates (see the condition evaluator).
+      if (type === 'string' || type === 'enum') return !isOrderableDateString(value);
+      return true;
+    }
+    if (operator === 'contains') {
+      if (type === 'array') return false;
+      if (type === 'string' || type === 'enum') return typeof value !== 'string';
+      return true;
+    }
+    if (operator === 'equals' || operator === 'not_equals') return !isStateValueAssignableTo(value, type);
+    // is_true / is_false / exists / does_not_exist read no right-hand value.
+    return false;
+  };
+  const checkComparisonType = (path: unknown, operator: unknown, value: unknown, label: string): void => {
+    if (typeof path !== 'string' || typeof operator !== 'string') return;
+    if (value === undefined || value === null || isExpression(value)) return;
+    const type = typeByPath.get(path);
+    if (type === undefined) return;
+    if (!comparisonDecidedByTypes(type, operator, value as StateValue)) return;
+    const wanted =
+      ORDERING.has(operator) && (type === 'string' || type === 'enum')
+        ? 'an ISO 8601 date (strings order only as dates)'
+        : `a ${type} value`;
+    errors.push(
+      `${label}: compares "${path}", declared as ${type}, ${operator} ${describeLiteral(value)}: the result is decided by the types alone, whatever the state holds. Compare with ${wanted}.`
+    );
+  };
+  const checkWrittenType = (path: unknown, value: unknown, label: string, what: string): void => {
+    if (typeof path !== 'string') return;
+    if (value === undefined || value === null || isExpression(value)) return;
+    const type = typeByPath.get(path);
+    if (type === undefined || isStateValueAssignableTo(value as StateValue, type)) return;
+    errors.push(
+      `${label}: ${what} ${describeLiteral(value)} into "${path}", which is declared as ${type}. Give it a ${type} value.`
+    );
+  };
+
+  // A start that sets a derived path is recomputed away before the first rule
+  // reads it: the scenario runs from another state than the one it arranges.
+  const checkDerivedOverride = (path: unknown, label: string): void => {
+    if (typeof path !== 'string' || !derivedPaths.has(path)) return;
+    errors.push(
+      `${label}: stateOverride sets "${path}", a derived path recomputed from its \`derived\` expression before anything runs, so the value is never seen. Set the paths the expression reads instead.`
     );
   };
 
@@ -465,7 +552,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     const walk = (node: RuleCondition, bound: ReadonlySet<string>, inBody: boolean): void => {
       if (isCompositeCondition(node)) {
         if (node.kind === 'not') walk(node.condition, bound, inBody);
-        else for (const sub of node.conditions) walk(sub, bound, inBody);
+        else for (const sub of Array.isArray(node.conditions) ? node.conditions : []) walk(sub, bound, inBody);
         return;
       }
       if (isQuantifierCondition(node)) {
@@ -474,6 +561,15 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         // the caller via flattenLeafConditions, so only check when in a body.
         if (inBody && !isBoundRef(String(node.overPath), bound) && !paths.has(String(node.overPath))) {
           errors.push(`${label}: quantifier body overPath "${node.overPath}" is not a declared state path.`);
+        }
+        // Over a state that is not a list, "any element" is never true and
+        // "every element" always is: an invariant written that way holds
+        // whatever the state, a rule never fires.
+        const overType = isBoundRef(String(node.overPath), bound) ? undefined : typeByPath.get(String(node.overPath));
+        if (overType !== undefined && overType !== 'array') {
+          errors.push(
+            `${label}: ${node.kind} ranges over "${node.overPath}", which is declared as ${overType}, not array, so it is decided without reading any element. Range over a list.`
+          );
         }
         const nextBound = new Set(bound);
         nextBound.add(node.as);
@@ -523,7 +619,20 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
         );
       }
     };
+    // A list effect on a path that is not a list: append replaces the value
+    // with a one-element list, the others never find an element.
+    const checkListTarget = (verb: string): void => {
+      const path = effect.path as string | undefined;
+      const type = typeof path === 'string' ? typeByPath.get(path) : undefined;
+      if (type === undefined || type === 'array') return;
+      errors.push(
+        `${label} effect ${effect.id}: ${verb} targets "${path}", which is declared as ${type}, not array. Point it at a list, or use set_state.`
+      );
+    };
     const checkValuePaths = (verb: string, value: unknown): void => {
+      for (const problem of expressionShapeProblems(value)) {
+        errors.push(`${label} effect ${effect.id}: ${verb}: ${problem}`);
+      }
       for (const p of statePathsFromEffectValue(value)) {
         if (!paths.has(p)) {
           errors.push(
@@ -551,11 +660,13 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       }
       case 'append_to_list': {
         checkTargetPath('append_to_list');
+        checkListTarget('append_to_list');
         checkValuePaths('append_to_list item', effect.item);
         return;
       }
       case 'remove_from_list': {
         checkTargetPath('remove_from_list');
+        checkListTarget('remove_from_list');
         const where = effect.where as { equals?: unknown } | undefined;
         if (where) checkValuePaths('remove_from_list where.equals', where.equals);
         if (effect.value !== undefined) checkValuePaths('remove_from_list value', effect.value);
@@ -563,6 +674,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       }
       case 'update_list_item': {
         checkTargetPath('update_list_item');
+        checkListTarget('update_list_item');
         const where = effect.where as { equals?: unknown } | undefined;
         if (where) checkValuePaths('update_list_item where.equals', where.equals);
         checkValuePaths('update_list_item value', effect.value);
@@ -644,6 +756,71 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     }
   };
 
+  /**
+   * A comparison an input decides by its declared values alone. A parameter
+   * compared with a value outside its enum (`market equals "moon"` while the
+   * parameter offers "eu" and "us") never holds, or always does with
+   * not_equals; one whose type cannot hold the value (`amount greater_than
+   * "10"`) is decided by the types. An enum parameter compared with an enum
+   * state, or with another enum parameter, that share no value is decided too.
+   * The same checks the states get, for the inputs of an action.
+   */
+  const UNARY_OPERATORS = new Set(['is_true', 'is_false', 'exists', 'does_not_exist']);
+  const literalOf = (value: unknown): { readonly value: unknown } | null => {
+    if (isExpression(value)) return value.kind === 'literal' ? { value: value.value } : null;
+    return { value };
+  };
+  const checkParameterComparison = (
+    leaf: { readonly left: unknown; readonly operator: unknown; readonly right?: unknown },
+    params: readonly Parameter[] | undefined,
+    label: string
+  ): void => {
+    if (!params || typeof leaf.operator !== 'string' || UNARY_OPERATORS.has(leaf.operator)) return;
+    const paramOf = (side: unknown): Parameter | undefined =>
+      isParamLeft(side) || (isExpression(side) && side.kind === 'param')
+        ? params.find((p) => p.name === (side as { name: string }).name)
+        : undefined;
+    const domainOf = (param: Parameter): readonly string[] | undefined =>
+      param.type === 'enum' ? effectiveEnumValues(param, feature.valueSets) : undefined;
+    const quote = (values: readonly string[]): string => values.map((v) => `"${v}"`).join(', ');
+    const left = paramOf(leaf.left);
+    const right = paramOf(leaf.right);
+    if (left) {
+      const literal = literalOf(leaf.right);
+      if (literal && literal.value !== undefined && literal.value !== null) {
+        const domain = domainOf(left);
+        if (domain && domain.length > 0 && typeof literal.value === 'string' && !domain.includes(literal.value)) {
+          errors.push(
+            `${label}: condition compares parameter "${left.name}" with "${literal.value}", which is not one of the values it takes (${quote(domain)}), so the result never depends on the input.`
+          );
+        } else if (isParameterType(left.type)) {
+          const type = parameterTypeToStateType(left.type);
+          if (comparisonDecidedByTypes(type, leaf.operator, literal.value as StateValue)) {
+            errors.push(
+              `${label}: condition compares parameter "${left.name}", declared as ${left.type}, ${leaf.operator} ${describeLiteral(literal.value)}: the result is decided by the types alone, whatever the input. Compare with a ${type} value.`
+            );
+          }
+        }
+      }
+    }
+    if (right) {
+      const rightDomain = domainOf(right);
+      const leftDomain = left
+        ? domainOf(left)
+        : typeof leaf.left === 'string'
+          ? enumDomainByPath.get(leaf.left)
+          : undefined;
+      const leftName = left ? `parameter "${left.name}"` : `"${String(leaf.left)}"`;
+      if (rightDomain && leftDomain && rightDomain.length > 0 && leftDomain.length > 0) {
+        if (!rightDomain.some((v) => leftDomain.includes(v))) {
+          errors.push(
+            `${label}: condition compares ${leftName} (${quote(leftDomain)}) with parameter "${right.name}" (${quote(rightDomain)}): they share no value, so the result never depends on the input.`
+          );
+        }
+      }
+    }
+  };
+
   const checkCondition = (
     condition: RuleCondition | undefined,
     paths: Set<string>,
@@ -655,7 +832,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
      * have no parameter scope and therefore can't put a `{kind:"param"}`
      * on the left. When undefined, param-left is rejected.
      */
-    paramNames?: ReadonlySet<string>
+    paramNames?: ReadonlySet<string>,
+    /** The same parameters with their types and values (action scopes only). */
+    params?: readonly Parameter[]
   ): void => {
     if (!condition) return;
     // Composite (`all`/`any`/`not`) and unconditional rules fan out into
@@ -692,6 +871,11 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       // be true — the rule is dead on arrival. Typically a typo, or a value the
       // author added to the product but not to the enum.
       checkEnumMember(leaf.left, leaf.right, label, 'condition compares against');
+      checkComparisonType(leaf.left, leaf.operator, leaf.right, `${label}: condition`);
+      checkParameterComparison(leaf, params, label);
+      for (const problem of expressionShapeProblems(leaf.right)) {
+        errors.push(`${label}: condition.right: ${problem}`);
+      }
       checkExpressionParams(leaf.right, paramNames, `${label}: condition.right`);
     }
     checkQuantifierBodies(condition, paths, label, paramNames);
@@ -704,6 +888,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     // declared on (or shared into) this surface, same as a condition/effect.
     for (const def of surface.stateDefinitions) {
       if (def.derived === undefined) continue;
+      for (const problem of expressionShapeProblems(def.derived)) {
+        errors.push(`Surface ${surface.id} derived state "${def.path}": ${problem}`);
+      }
       for (const p of statePathsFromEffectValue(def.derived)) {
         if (!paths.has(p)) {
           errors.push(
@@ -802,6 +989,13 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
           continue;
         }
+        // A derived path is recomputed right after the bind: the input would
+        // vanish before any rule read it.
+        if (derivedPaths.has(bound)) {
+          errors.push(
+            `Action ${cap.id} on surface ${surface.id}: parameter "${param.name}" bindToStatePath "${bound}" is a derived path, recomputed from its \`derived\` expression right after the bind, so the input never reaches a rule. Bind the parameter to a path the expression reads instead.`
+          );
+        }
         // The bound value lands in the path before rules run: its type must fit.
         checkParamWrite(
           param,
@@ -812,7 +1006,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       }
       for (const rule of cap.rules) {
         const label = `Action ${cap.id} rule ${rule.id}`;
-        checkCondition(rule.condition, paths, surface.id, label, capParamNames);
+        checkCondition(rule.condition, paths, surface.id, label, capParamNames, cap.parameters);
         checkEffect(
           rule.effect as { id: string; type: string } & Record<string, unknown>,
           surface.id,
@@ -828,7 +1022,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           paths,
           surface.id,
           `Action ${cap.id} invariant ${inv.id}`,
-          capParamNames
+          capParamNames,
+          cap.parameters
         );
       }
       for (const e of cap.effects) {
@@ -850,6 +1045,23 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           capParamNames,
           cap.parameters
         );
+      }
+      // An outcome reads state to be selected and writes it once it is: the
+      // same scope as the action's rules. Unchecked, a typo or a path renamed
+      // away left an outcome that never matched, or a write nothing read.
+      for (const outcome of cap.outcomes ?? []) {
+        const label = `Action ${cap.id} outcome ${outcome.id}`;
+        checkCondition(outcome.condition, paths, surface.id, label, capParamNames, cap.parameters);
+        for (const e of outcome.effects ?? []) {
+          checkEffect(
+            e as { id: string; type: string } & Record<string, unknown>,
+            surface.id,
+            paths,
+            label,
+            capParamNames,
+            cap.parameters
+          );
+        }
       }
     }
   }
@@ -887,6 +1099,10 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       // surface), so the enum-domain check has to be repeated here or they would
       // be the one place a dead comparison still slips through.
       checkEnumMember(leaf.left, leaf.right, `Feature invariant ${inv.id}`, 'condition compares against');
+      checkComparisonType(leaf.left, leaf.operator, leaf.right, `Feature invariant ${inv.id}: condition`);
+      for (const problem of expressionShapeProblems(leaf.right)) {
+        errors.push(`Feature invariant ${inv.id}: condition.right: ${problem}`);
+      }
       checkExpressionParams(leaf.right, undefined, `Feature invariant ${inv.id}: condition.right`);
     }
     checkQuantifierBodies(inv.condition, anySurfacePaths, `Feature invariant ${inv.id}`, undefined);
@@ -929,6 +1145,13 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
             `Reachability goal ${goal.id}: condition.right references unknown state path "${p}".`
           );
         }
+      }
+      // A goal compared with a value its path can never hold is never met:
+      // the same dead comparison the rules and invariants are checked for.
+      checkEnumMember(leaf.left, leaf.right, `Reachability goal ${goal.id}`, 'condition compares against');
+      checkComparisonType(leaf.left, leaf.operator, leaf.right, `Reachability goal ${goal.id}: condition`);
+      for (const problem of expressionShapeProblems(leaf.right)) {
+        errors.push(`Reachability goal ${goal.id}: condition.right: ${problem}`);
       }
       checkExpressionParams(leaf.right, undefined, `Reachability goal ${goal.id}: condition.right`);
     }
@@ -997,6 +1220,11 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       for (const e of cap.onBlockedEffects ?? []) {
         noteConstEffect(e as Record<string, unknown>, `Action ${cap.id} onBlocked`);
       }
+      for (const outcome of cap.outcomes ?? []) {
+        const label = `Action ${cap.id} outcome ${outcome.id}`;
+        noteConstCondition(outcome.condition, label);
+        for (const e of outcome.effects ?? []) noteConstEffect(e as Record<string, unknown>, label);
+      }
     }
   }
   for (const inv of feature.featureInvariants ?? []) {
@@ -1019,7 +1247,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
   // the wrong state and the scenario passes/fails meaninglessly (parameterName
   // is already checked structurally; these were the gap).
   const checkScenarioAssertions = (
-    assertions: readonly { readonly path: unknown }[] | undefined,
+    assertions:
+      | readonly { readonly path: unknown; readonly operator?: unknown; readonly value?: unknown }[]
+      | undefined,
     label: string
   ): void => {
     for (const a of assertions ?? []) {
@@ -1028,6 +1258,8 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           `${label}: expected-assertion path "${a.path}" is not declared on any surface in the feature.`
         );
       }
+      checkEnumMember(a.path, a.value, label, 'expected assertion compares against');
+      checkComparisonType(a.path, a.operator, a.value, `${label}: expected assertion`);
     }
   };
   for (const surface of feature.surfaces) {
@@ -1040,6 +1272,10 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
               `${base}: stateOverride path "${ov.path}" is not declared on any surface in the feature.`
             );
           }
+          // A start the model can never be in: the scenario tests nothing real.
+          checkEnumMember(ov.path, ov.value, base, 'stateOverride sets');
+          checkWrittenType(ov.path, ov.value, base, 'stateOverride sets');
+          checkDerivedOverride(ov.path, base);
         }
         checkScenarioAssertions(scenario.expectedAssertions, base);
         if (
@@ -1092,6 +1328,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           `Persona ${persona.id} ("${persona.name}"): stateOverride path "${ov.path}" is not declared on any surface in the feature.`
         );
       }
+      checkEnumMember(ov.path, ov.value, `Persona ${persona.id} ("${persona.name}")`, 'stateOverride sets');
+      checkWrittenType(ov.path, ov.value, `Persona ${persona.id} ("${persona.name}")`, 'stateOverride sets');
+      checkDerivedOverride(ov.path, `Persona ${persona.id} ("${persona.name}")`);
     }
   }
 

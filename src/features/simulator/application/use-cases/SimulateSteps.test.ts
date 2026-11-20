@@ -9,6 +9,7 @@ import type { Expression } from '$features/behavior-model/domain/value-objects/E
 import {
   asActionId,
   asEffectId,
+  asEventDefinitionId,
   asFeatureId,
   asInvariantId,
   asParameterId,
@@ -248,6 +249,31 @@ describe('simulateSteps', () => {
     expect(items(walk.finalState)).toBe(1);
   });
 
+  it('keeps what an action did when a required handler of its event fails, as the scenarios do', () => {
+    // Check out empties the cart and emits order.placed, a REQUIRED event; its
+    // handler is refused (the ledger is closed). The step reads blocked, so the
+    // failed delivery shows, but the checkout itself happened.
+    const emptyingCheckout = { ...checkout, effects: [...checkout.effects, set('cart.items', 0)] };
+    const closedLedger = { ...countOrder, rules: [block({ left: asStatePath('shop.orders'), operator: 'greater_or_equal', right: 0 }, 'The ledger is closed.')] };
+    const feature = cart({
+      surfaces: [
+        {
+          ...cartSurface,
+          actions: cartSurface.actions.map((a) => (a.id === checkout.id ? emptyingCheckout : a.id === countOrder.id ? closedLedger : a))
+        },
+        thanksSurface
+      ],
+      events: [{ id: asEventDefinitionId('ev-placed'), name: asEventName('order.placed'), delivery: 'required' }]
+    });
+    const walk = simulateSteps({ feature, steps: [{ actionId: 'add' }, { actionId: 'checkout' }] });
+    const placed = walk.steps[1]!;
+    expect(placed.status).toBe('blocked');
+    expect(placed.cascaded?.[0]?.status).toBe('blocked');
+    expect(placed.changes).toEqual([{ path: 'cart.items', before: 1, after: 0 }]);
+    expect(placed.rejectedChanges).toBeUndefined();
+    expect(items(walk.finalState)).toBe(0);
+  });
+
   it('checks a project invariant over another feature\'s state, filled from that feature\'s defaults', () => {
     const capacity: Invariant = {
       id: asInvariantId('cap'),
@@ -301,6 +327,28 @@ describe('simulateSteps', () => {
     expect(walk.steps[1]!.status).toBe('success');
     expect(walk.steps[1]!.changes).toEqual([{ path: 'cart.items', before: 3, after: 0 }]);
     expect((walk.finalState as { clock: { now: number } }).clock.now).toBe(150);
+  });
+
+  it('says which effect wrote nothing because its value could not be computed, and why', () => {
+    const average = action('average', {
+      name: 'Average the orders',
+      effects: [
+        set('cart.items', { kind: 'div', left: state('shop.orders'), right: state('cart.items') }),
+        set('cart.coupon', { kind: 'param', name: 'code' }),
+        set('shop.thanked', true)
+      ]
+    });
+    const feature = cart({ surfaces: [{ ...cartSurface, actions: [...cartSurface.actions, average] }, thanksSurface] });
+    const walk = simulateSteps({ feature, steps: [{ actionId: 'average' }] });
+    const step = walk.steps[0]!;
+    expect(step.status).toBe('success');
+    expect(step.changes).toEqual([{ path: 'shop.thanked', before: false, after: true }]);
+    expect(step.notWritten).toEqual([
+      { effect: 'set Cart items to <expr:div>', reason: 'division by zero' },
+      { effect: 'set Cart coupon to <expr:param>', reason: 'parameter "code" was not given' }
+    ]);
+    // A step whose every effect wrote says nothing about it.
+    expect(simulateSteps({ feature, steps: [{ actionId: 'add' }] }).steps[0]!.notWritten).toBeUndefined();
   });
 
   it('refuses the whole walk, before running any step, when a step names nothing the feature holds', () => {

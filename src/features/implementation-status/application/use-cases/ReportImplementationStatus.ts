@@ -123,7 +123,7 @@ const slugForAuditTag = (
   return result;
 };
 
-const buildExpectedCapabilityEntities = (
+export const buildExpectedCapabilityEntities = (
   action: Action,
   actionSlug: string
 ): ExpectedEntity[] => {
@@ -182,7 +182,7 @@ const buildExpectedCapabilityEntities = (
  * invariants. Tag formats follow the same `@unspa:<type>:<id-or-slug>`
  * policy as action-scoped entities.
  */
-const buildExpectedSurfaceEntities = (surface: Surface): ExpectedEntity[] => {
+export const buildExpectedSurfaceEntities = (surface: Surface): ExpectedEntity[] => {
   const out: ExpectedEntity[] = [];
   const ruleSlugs = new Set<string>();
   const invSlugs = new Set<string>();

@@ -3,6 +3,8 @@ import type { Effect } from '../value-objects/Effect';
 import { isExpression, type Expression } from '../value-objects/Expression';
 import {
   flattenLeafConditions,
+  isCompositeCondition,
+  isQuantifierCondition,
   type RuleCondition
 } from '../value-objects/RuleCondition';
 import type { StatePath } from '../value-objects/StatePath';
@@ -28,6 +30,14 @@ export type StatePathReferences = {
   readonly invariantConditions: number;
   readonly personaStateOverrides: number;
   readonly otherDataFields: number;
+  /** Derived (computed) state expressions that read the path. */
+  readonly derivedStates: number;
+  /** Reachability goal conditions that read the path. */
+  readonly goalConditions: number;
+  /** Action outcomes: the condition that selects one and the effects it applies. */
+  readonly outcomeReferences: number;
+  /** Scenario state overrides and expected assertions, the steps' assertions included. */
+  readonly scenarioReferences: number;
 };
 
 const empty = (path: StatePath): StatePathReferences => ({
@@ -40,7 +50,11 @@ const empty = (path: StatePath): StatePathReferences => ({
   setStateEffects: 0,
   invariantConditions: 0,
   personaStateOverrides: 0,
-  otherDataFields: 0
+  otherDataFields: 0,
+  derivedStates: 0,
+  goalConditions: 0,
+  outcomeReferences: 0,
+  scenarioReferences: 0
 });
 
 const eq = (a: string | undefined, b: string): boolean => a === b;
@@ -145,6 +159,45 @@ const countRefsInEffect = (effect: Effect, target: string): number => {
   }
 };
 
+/** Whether `path` names the element a quantifier binds (`as`), or a field of it. */
+const isBound = (path: string, bound: ReadonlySet<string>): boolean => {
+  for (const name of bound) {
+    if (path === name || path.startsWith(`${name}.`)) return true;
+  }
+  return false;
+};
+
+/**
+ * The outer paths a quantifier body reads. flattenLeafConditions surfaces the
+ * array a quantifier walks but not its body, whose leaves mostly read the
+ * element it binds; a body may still read an outer path ("every line's qty
+ * stays under cart.limit"), and a rename of that path reaches it too.
+ */
+const countRefsInQuantifierBodies = (
+  condition: RuleCondition | undefined,
+  target: string
+): number => {
+  let n = 0;
+  const walk = (node: RuleCondition, bound: ReadonlySet<string>, inBody: boolean): void => {
+    if (isCompositeCondition(node)) {
+      if (node.kind === 'not') walk(node.condition, bound, inBody);
+      else for (const sub of node.conditions) walk(sub, bound, inBody);
+      return;
+    }
+    if (isQuantifierCondition(node)) {
+      // A top-level quantifier's array is counted by the leaf walk already.
+      if (inBody && !isBound(String(node.overPath), bound) && eq(String(node.overPath), target)) n += 1;
+      walk(node.where, new Set([...bound, node.as]), true);
+      return;
+    }
+    if (!inBody || isBound(target, bound)) return;
+    if (typeof node.left === 'string' && eq(node.left, target)) n += 1;
+    n += countStateRefsInExpression(node.right, target);
+  };
+  if (condition) walk(condition, new Set(), false);
+  return n;
+};
+
 // Walks a condition tree and counts every leaf `left == target` plus every
 // state ref buried in a `right`-side Expression. Composite combinators
 // (`all`/`any`/`not`) just fan out; an unconditional rule contributes 0.
@@ -157,7 +210,7 @@ const countRefsInCondition = (
     if (eq(String(leaf.left), target)) n += 1;
     n += countStateRefsInExpression(leaf.right, target);
   }
-  return n;
+  return n + countRefsInQuantifierBodies(condition, target);
 };
 
 export const countStatePathReferences = (
@@ -171,6 +224,9 @@ export const countStatePathReferences = (
   for (const surface of feature.surfaces) {
     for (const def of surface.stateDefinitions) {
       if (eq(String(def.path), target)) mut.stateDefinitions += 1;
+      if (def.derived !== undefined) {
+        mut.derivedStates += countStateRefsInExpression(def.derived, target);
+      }
     }
     for (const cap of surface.actions) {
       for (const required of cap.requiredStates) {
@@ -194,6 +250,24 @@ export const countStatePathReferences = (
       for (const invariant of cap.invariants) {
         mut.invariantConditions += countRefsInCondition(invariant.condition, target);
       }
+      for (const outcome of cap.outcomes ?? []) {
+        mut.outcomeReferences += countRefsInCondition(outcome.condition, target);
+        for (const effect of outcome.effects ?? []) {
+          mut.outcomeReferences += countRefsInEffect(effect, target);
+        }
+      }
+      for (const scenario of cap.scenarios ?? []) {
+        for (const override of scenario.stateOverrides ?? []) {
+          if (eq(String(override.path), target)) mut.scenarioReferences += 1;
+        }
+        const assertions = [
+          ...(scenario.expectedAssertions ?? []),
+          ...(scenario.steps ?? []).flatMap((step) => step.expectedAssertions ?? [])
+        ];
+        for (const assertion of assertions) {
+          if (eq(String(assertion.path), target)) mut.scenarioReferences += 1;
+        }
+      }
     }
     for (const rule of surface.rules) {
       mut.ruleConditions += countRefsInCondition(rule.condition, target);
@@ -202,6 +276,13 @@ export const countStatePathReferences = (
     for (const invariant of surface.invariants) {
       mut.invariantConditions += countRefsInCondition(invariant.condition, target);
     }
+  }
+
+  for (const invariant of feature.featureInvariants ?? []) {
+    mut.invariantConditions += countRefsInCondition(invariant.condition, target);
+  }
+  for (const goal of feature.reachabilityGoals ?? []) {
+    mut.goalConditions += countRefsInCondition(goal.condition, target);
   }
 
   for (const persona of feature.personas) {
@@ -228,7 +309,11 @@ export const totalReferences = (refs: StatePathReferences): number =>
   refs.setStateEffects +
   refs.invariantConditions +
   refs.personaStateOverrides +
-  refs.otherDataFields;
+  refs.otherDataFields +
+  refs.derivedStates +
+  refs.goalConditions +
+  refs.outcomeReferences +
+  refs.scenarioReferences;
 
 export const formatReferenceBreakdown = (refs: StatePathReferences): string => {
   const parts: string[] = [];
@@ -252,5 +337,9 @@ export const formatReferenceBreakdown = (refs: StatePathReferences): string => {
     refs.personaStateOverrides === 1 ? 'persona override' : 'persona overrides'
   );
   push(refs.otherDataFields, refs.otherDataFields === 1 ? 'data field' : 'data fields');
+  push(refs.derivedStates, refs.derivedStates === 1 ? 'derived state' : 'derived states');
+  push(refs.goalConditions, refs.goalConditions === 1 ? 'reachability goal' : 'reachability goals');
+  push(refs.outcomeReferences, refs.outcomeReferences === 1 ? 'outcome reference' : 'outcome references');
+  push(refs.scenarioReferences, refs.scenarioReferences === 1 ? 'scenario reference' : 'scenario references');
   return parts.join(', ');
 };

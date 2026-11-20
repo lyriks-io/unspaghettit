@@ -293,3 +293,31 @@ describe('the implementation index reads a disabled element disabled', () => {
     await server.close();
   });
 });
+
+describe('the gaps read the events of a disabled action disabled', () => {
+  // An event the disabled action alone emits goes with it, and carries the
+  // marker of that action: listed missing, it asked for code to be written for
+  // an emission nothing in force makes.
+  it('lists an event only the disabled action emits under disabled, with its marker', async () => {
+    const { call, repo, disable, server } = await setup();
+    const base = await readFeature(repo);
+    await repo.save({
+      ...base,
+      events: [{ id: 'evt-validated', name: 'element.validated' } as unknown as NonNullable<Feature['events']>[number]],
+      surfaces: base.surfaces.map((s) => ({
+        ...s,
+        actions: s.actions.map((a) =>
+          String(a.id) === VALIDATION.validate ? { ...a, emittedEvents: ['element.validated' as never] } : a
+        )
+      }))
+    });
+    await disable(VALIDATION.validate);
+    const gaps = parse<{ missing: { key: string }[]; disabled?: { key: string; disabled?: unknown }[] }>(
+      await call('get_implementation_gaps', { featureId: VALIDATION.feature, index: {}, projectId: PROJECT_ID })
+    );
+    expect(gaps.missing.map((e) => e.key)).not.toContain('event:element.validated');
+    const row = gaps.disabled?.find((e) => e.key === 'event:element.validated');
+    expect(row?.disabled).toEqual({ by: ADRIEN.by, at: NOW, reason: ADRIEN.reason });
+    await server.close();
+  });
+});

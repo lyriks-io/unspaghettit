@@ -382,3 +382,90 @@ describe('detectDrift on action exposures', () => {
     expect(report.orphans.map((o) => o.key)).toEqual(['exposure:gone']);
   });
 });
+
+// An event is keyed by its name. sync_from_index (buildKeyOwners) and the index
+// keys a feature lists own the events its actions emit, declared in the feature's
+// event catalogue or not; drift only knew the catalogue, so the entry of an event
+// an action emits, in a feature with no catalogue, read as an orphan "renamed or
+// removed", and the entry was never checked.
+describe('detectDrift on an event an action emits', () => {
+  const emitting = (updatedAt: string): Feature => {
+    const base = feature(updatedAt);
+    return {
+      ...base,
+      events: [],
+      surfaces: base.surfaces.map((s) => ({
+        ...s,
+        actions: s.actions.map((a) => ({ ...a, emittedEvents: ['cart.item_added' as never] }))
+      }))
+    };
+  };
+
+  it('owns the key of an emitted event the catalogue does not declare', () => {
+    const report = detectDrift(
+      [emitting('2026-06-10T00:00:00.000Z')],
+      [{ key: 'event:cart.item_added', status: 'implemented', auditedSpecVersion: '2026-06-05T00:00:00.000Z' }]
+    );
+    expect(report.orphans).toEqual([]);
+    expect(report.checked).toBe(1);
+    expect(report.stale.map((s) => s.key)).toEqual(['event:cart.item_added']);
+  });
+
+  it('still reads an event nothing emits or declares as an orphan', () => {
+    const report = detectDrift(
+      [emitting('2026-06-10T00:00:00.000Z')],
+      [{ key: 'event:cart.emptied', status: 'implemented', auditedSpecVersion: '2026-06-05T00:00:00.000Z' }]
+    );
+    expect(report.orphans.map((o) => o.key)).toEqual(['event:cart.emptied']);
+  });
+});
+
+// A key several features own (a shared state path) is judged for the first
+// feature that owns it. When that one is disabled the key read disabled, and
+// the drift of the feature still in force that shares it went silent.
+describe('detectDrift on a key a disabled feature shares', () => {
+  const disabledFirst = (): Feature => ({
+    ...stamped('2026-06-01T00:00:00.000Z', { 'state:cart.total': '2026-06-01T00:00:00.000Z' }),
+    id: asFeatureId('feat-off'),
+    disabled: { by: 'Adrien', at: '2026-06-02T00:00:00.000Z', reason: 'Put aside' }
+  });
+  const inForce = (): Feature => ({
+    ...stamped('2026-06-10T00:00:00.000Z', { 'state:cart.total': '2026-06-10T00:00:00.000Z' }),
+    id: asFeatureId('feat-on')
+  });
+
+  it('judges the key for the feature still in force', () => {
+    const report = detectDrift(
+      [disabledFirst(), inForce()],
+      [{ key: 'state:cart.total', status: 'implemented', auditedSpecVersion: '2026-06-05T00:00:00.000Z' }]
+    );
+    expect(report.disabled ?? []).toEqual([]);
+    expect(report.stale.map((s) => `${s.featureId} ${s.key}`)).toEqual(['feat-on state:cart.total']);
+  });
+
+  it('reads it disabled when every feature owning it is disabled', () => {
+    const report = detectDrift(
+      [disabledFirst()],
+      [{ key: 'state:cart.total', status: 'implemented', auditedSpecVersion: '2026-05-01T00:00:00.000Z' }]
+    );
+    expect(report.disabled).toEqual(['state:cart.total']);
+    expect(report.stale).toEqual([]);
+  });
+
+  it('reads the criteria and the entities of a disabled feature disabled, not stale', () => {
+    const off: Feature = {
+      ...disabledFirst(),
+      acceptanceCriteria: [{ id: 'crit-1', title: 'Totals add up' }],
+      entities: [{ id: 'ent-cart', namespace: 'cart', fields: [] }]
+    } as unknown as Feature;
+    const report = detectDrift(
+      [off],
+      [
+        { key: 'criterion:crit-1', status: 'implemented', auditedSpecVersion: '2026-05-01T00:00:00.000Z' },
+        { key: 'entity:ent-cart', status: 'implemented', auditedSpecVersion: '2026-05-01T00:00:00.000Z' }
+      ]
+    );
+    expect(report.stale).toEqual([]);
+    expect([...(report.disabled ?? [])].sort()).toEqual(['criterion:crit-1', 'entity:ent-cart']);
+  });
+});

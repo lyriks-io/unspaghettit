@@ -18,10 +18,16 @@ import type { Feature } from '../../src/features/behavior-model/domain/entities/
 import { unmovedGuardWarnings } from '../../src/features/behavior-model/domain/services/stateWrites';
 import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
 import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
-import { stateDeclarationIssues } from '../../src/features/projects/domain/services/stateRegistry';
+import { projectInvariantGuard } from '../../src/features/projects/application/services/projectInvariantGuard';
+import {
+  projectionPathIssues,
+  stateDeclarationIssues
+} from '../../src/features/projects/domain/services/stateRegistry';
+import type { Project } from '../../src/features/projects/domain/entities/Project';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
 import { criterionStandingWarnings } from '../../src/features/behavior-model/domain/services/CriterionStanding';
+import { entityFieldPathWarnings } from '../../src/features/behavior-model/domain/services/EntityFieldPaths';
 import {
   detectStaleWrite,
   staleWriteMessage
@@ -148,6 +154,35 @@ const declarationWarningsOfBatch = async (
 };
 
 /**
+ * A state definition this batch moved off the path of the shared state it
+ * projects (its stateVariableId), or a projection it left there: the features
+ * no longer share the value. Said as a warning, only when the batch made it:
+ * renaming the shared state first (update_state_variable) and its projections
+ * after is the way to move one, so neither side can be refused. Advisory: a
+ * failure to compute it leaves the warning out, never the batch.
+ */
+const projectionWarningsOfBatch = async (
+  before: Feature,
+  after: Feature,
+  loadSiblings: () => Promise<readonly Feature[] | undefined>,
+  loadProject: () => Promise<Project | null>
+): Promise<string[]> => {
+  try {
+    const states = (await loadProject())?.stateVariables ?? [];
+    if (states.length === 0) return [];
+    const siblings = (await loadSiblings()) ?? [];
+    const issuesWith = (feature: Feature) =>
+      projectionPathIssues(states, [feature, ...siblings])
+        .filter((issue) => issue.featureIds?.includes(String(after.id)))
+        .map((issue) => issue.message);
+    const known = new Set(issuesWith(before));
+    return issuesWith(after).filter((message) => !known.has(message));
+  } catch {
+    return [];
+  }
+};
+
+/**
  * An action this batch left guarded on a state nothing moves (criterion
  * 3f9c8167): said as a warning at the write, so the author adds what moves the
  * state instead of meeting a "never reached" at the final check. Advisory: a
@@ -170,6 +205,7 @@ const opSchemaDescription = `Each op: { kind, ref?, ...kindArgs }. ADD ops mint 
 
 export const registerBatchTool = (deps: ToolDeps): void => {
   const { server, repo, readings, projectRepo, clock, ids, repoContext } = deps;
+  const guardProject = projectInvariantGuard(repo, projectRepo);
 
   server.registerTool(
     'apply_batch',
@@ -332,21 +368,29 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         // normalizer wires on an action the batch never touched cannot read as
         // an error this batch introduced.
         const introduced = introducedValidationErrors(normalizeFeatureEmittedEvents(current), next);
+        // A batch that would leave a project invariant reading a state no
+        // feature of the project declares any more is refused the same way,
+        // dry run included: the project batch refuses such an invariant, so a
+        // feature batch must not reach it by renaming or removing the path.
+        const refusals =
+          introduced.length === 0 ? [...(await guardProject(current, next))] : introduced;
         const validation: ValidationResult =
-          introduced.length === 0
+          refusals.length === 0
             ? { valid: true }
-            : { valid: false, errors: annotateErrors(introduced) };
+            : { valid: false, errors: annotateErrors(refusals) };
         // One load of the project's other features per call, whichever block
         // asks for them first: the scenarios need them to cascade events, and
         // relatedElsewhere to look for shared state paths.
         let siblings: Promise<readonly Feature[] | undefined> | null = null;
         const loadSiblings = () =>
           (siblings ??= loadProjectSiblings(repo, projectRepo, String(featureId)));
-        let invariants: Promise<readonly Invariant[]> | null = null;
-        const loadProjectInvariants = () =>
-          (invariants ??= findOwningProject(projectRepo, String(featureId)).then(
-            (project) => project?.projectInvariants ?? []
+        let owning: Promise<Project | null> | null = null;
+        const loadProject = () =>
+          (owning ??= findOwningProject(projectRepo, String(featureId)).then(
+            (project) => project ?? null
           ));
+        const loadProjectInvariants = () =>
+          loadProject().then((project) => project?.projectInvariants ?? []);
         // The scenarios of what the batch touched, run on the feature the batch
         // produces. Computed before anything is saved, so the dry run, the
         // direct apply and the commit all answer it the same way. A failure is
@@ -382,6 +426,10 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           ...(validation.valid
             ? await declarationWarningsOfBatch(current, next, loadSiblings, loadProjectInvariants)
             : []),
+          ...(validation.valid
+            ? await projectionWarningsOfBatch(current, next, loadSiblings, loadProject)
+            : []),
+          ...(validation.valid ? entityFieldPathWarnings(current, next) : []),
           ...(validation.valid ? await unmovedGuardWarningsOfBatch(current, next, loadSiblings) : [])
         ];
         const warningReport = standingWarnings.length > 0 ? { warnings: standingWarnings } : {};
@@ -462,7 +510,9 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         const now = clock();
         const saved: Feature = stampElementVersions(current, { ...next, updatedAt: now }, now);
         await repo.save(saved);
-        const codegen = maybeAutoGenerateTypes(saved, repoContext);
+        // Generated from the operative model, as generate_types generates it:
+        // a disabled element has no type, whichever tool wrote the file last.
+        const codegen = maybeAutoGenerateTypes(operativeFeature(saved), repoContext);
         return text({
           ok: true,
           featureId: saved.id,

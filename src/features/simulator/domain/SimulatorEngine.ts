@@ -411,6 +411,9 @@ const simulateInternal = (
         // unchanged pre-action state was already valid, so they hold).
         ...(application.blocked ? [] : action.invariants)
       ].filter((invariant) => !relaxedIds.has(String(invariant.id)));
+  // Checked on the state the action's own effects leave. When the action wakes
+  // event handlers, the step is the action AND its cascade, so the invariants
+  // are checked again on the settled state below, and that verdict stands.
   const invariantViolations = checkInvariants(
     allInvariants,
     application.snapshot,
@@ -433,11 +436,20 @@ const simulateInternal = (
     outcome: selectedOutcome
   });
 
-  // Event-handler cascade. Only triggers on a successful action that emitted
-  // events AND when the caller supplied feature context (otherwise the
+  // Event-handler cascade. Triggers when the action went through its rules
+  // and emitted events AND the caller supplied feature context (otherwise the
   // simulator has nothing to look subscribers up in). Each handler is a
   // full simulation against the running snapshot; if it succeeds, its
   // post-effect snapshot becomes the running snapshot for the next handler.
+  //
+  // The handlers run even when the action's own effects leave an invariant
+  // broken: the documented "B reacts to A" pattern (Add expense emits
+  // expense.added, Recount increments the count) only restores an invariant
+  // such as "the count equals the number of expenses" once its handler ran.
+  // Checked before the cascade, that invariant refused every Add expense, and
+  // the model check read it dead. The verdict is taken on the settled state,
+  // which also catches a handler that breaks an invariant of the emitter, a
+  // project invariant, or one the handler's own feature does not hold.
   //
   // Delivery semantics decide whether a handler failure reaches the emitter:
   // a `best_effort` event (the default) reports the failure but leaves the
@@ -447,7 +459,7 @@ const simulateInternal = (
   // state back to before the action ran so nothing partial lands.
   if (
     feature !== undefined &&
-    status === 'success' &&
+    !application.blocked &&
     baseResult.emittedEvents.length > 0
   ) {
     // Reserve this action's id so an event it emits can't bounce back and
@@ -463,6 +475,12 @@ const simulateInternal = (
     );
     if (cascaded.length === 0) return baseResult;
 
+    const settledViolations = checkInvariants(
+      allInvariants,
+      finalSnapshot,
+      filledParams,
+      constants
+    );
     const deliveryOf = (eventName: EventName): EventDelivery =>
       (feature.events ?? []).find((e) => String(e.name) === String(eventName))?.delivery ??
       'best_effort';
@@ -470,20 +488,20 @@ const simulateInternal = (
       (handler) =>
         handler.result.status !== 'success' && deliveryOf(handler.triggeredBy) !== 'best_effort'
     );
-    if (failedDeliveries.length > 0) {
-      const transactional = failedDeliveries.some(
-        (handler) => deliveryOf(handler.triggeredBy) === 'transactional'
-      );
-      return {
-        ...baseResult,
-        status: 'blocked',
-        // transactional: nothing lands. required: the emitter's own effects
-        // stand, but it is reported blocked so the failed delivery is visible.
-        nextState: transactional ? completeSnapshot : finalSnapshot,
-        cascadedHandlers: cascaded
-      };
-    }
-    return { ...baseResult, nextState: finalSnapshot, cascadedHandlers: cascaded };
+    const transactional = failedDeliveries.some(
+      (handler) => deliveryOf(handler.triggeredBy) === 'transactional'
+    );
+    return {
+      ...baseResult,
+      status: failedDeliveries.length > 0 || settledViolations.length > 0 ? 'blocked' : 'success',
+      invariantViolations: settledViolations,
+      // transactional: nothing lands. required: the emitter's own effects
+      // stand, but it is reported blocked so the failed delivery is visible.
+      // A broken invariant reports the settled state it would have left, as a
+      // violation without a cascade reports the state the action left.
+      nextState: transactional ? completeSnapshot : finalSnapshot,
+      cascadedHandlers: cascaded
+    };
   }
 
   return baseResult;

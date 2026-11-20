@@ -3,6 +3,7 @@ import {
   deepEqualValue,
   isExpression,
   resolveValueOrExpression,
+  unresolvedReason,
   type EvaluationContext,
   type Expression
 } from '../value-objects/Expression';
@@ -17,6 +18,12 @@ export type AppliedEffectRecord = {
   readonly effectId: EffectId;
   readonly type: Effect['type'];
   readonly summary: string;
+  /**
+   * Set when the effect ran but wrote nothing because its value could not be
+   * computed (a division by zero, a parameter not given, a state holding no
+   * value): why, in words. Absent on every effect that did what it says.
+   */
+  readonly notWritten?: string;
 };
 
 export type EffectApplication = {
@@ -116,6 +123,16 @@ const summarize = (effect: Effect): string => {
   }
 };
 
+/** The audit record of an effect that wrote nothing, with why. */
+const unwritten = (
+  record: AppliedEffectRecord,
+  value: Parameters<typeof unresolvedReason>[0],
+  context: EvaluationContext
+): AppliedEffectRecord => {
+  const reason = unresolvedReason(value, context) ?? 'its value could not be computed';
+  return { ...record, notWritten: reason };
+};
+
 /** Read the array at `path`, or `null` when the slot is absent or not an array. */
 const readArray = (snapshot: StateSnapshot, path: StatePath): readonly StateValue[] | null => {
   const current = readPath(snapshot, path);
@@ -169,13 +186,10 @@ export const applyEffect = (
       // `undefined`. Invariants and follow-up rules can still observe the
       // pre-mutation state and react.
       const coerced = coerceSentinel(effect.value, effect.path);
-      const resolved = resolveValueOrExpression(coerced, {
-        snapshot: current.snapshot,
-        parameters,
-        constants
-      });
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters, constants };
+      const resolved = resolveValueOrExpression(coerced, context);
       if (resolved === undefined) {
-        return { ...current, applied: [...current.applied, record] };
+        return { ...current, applied: [...current.applied, unwritten(record, coerced, context)] };
       }
       const nextSnapshot = writePath(current.snapshot, effect.path, resolved);
       return {
@@ -261,7 +275,7 @@ export const applyEffect = (
       // An item that can't be resolved (missing param / non-computable expr)
       // is skipped rather than pushing `undefined` and poisoning the array.
       if (item === undefined) {
-        return { ...current, applied: [...current.applied, record] };
+        return { ...current, applied: [...current.applied, unwritten(record, effect.item, context)] };
       }
       const existing = readArray(current.snapshot, effect.path) ?? [];
       const nextSnapshot = writePath(current.snapshot, effect.path, [...existing, item]);
@@ -282,9 +296,12 @@ export const applyEffect = (
         kept = existing.filter((el) => !elementMatches(el, effect.where!, context));
       } else if (effect.value !== undefined) {
         const target = resolveValueOrExpression(effect.value, context);
-        // Unresolvable comparand removes nothing (safer than removing all).
-        kept =
-          target === undefined ? existing : existing.filter((el) => !deepEqualValue(el, target));
+        // Unresolvable comparand removes nothing (safer than removing all),
+        // and the record says so.
+        if (target === undefined) {
+          return { ...current, applied: [...current.applied, unwritten(record, effect.value, context)] };
+        }
+        kept = existing.filter((el) => !deepEqualValue(el, target));
       } else {
         // No selector: never implicitly clear the whole list.
         kept = existing;
@@ -304,7 +321,7 @@ export const applyEffect = (
       const value = resolveValueOrExpression(effect.value, context);
       // Unresolvable value → leave every element untouched (don't write undefined).
       if (value === undefined) {
-        return { ...current, applied: [...current.applied, record] };
+        return { ...current, applied: [...current.applied, unwritten(record, effect.value, context)] };
       }
       const nextArray = existing.map((el) =>
         elementMatches(el, effect.where, context)
@@ -336,13 +353,10 @@ export const applyEffect = (
       ) {
         return { ...current, applied: [...current.applied, record] };
       }
-      const resolved = resolveValueOrExpression(effect.resultValue, {
-        snapshot: current.snapshot,
-        parameters,
-        constants
-      });
+      const context: EvaluationContext = { snapshot: current.snapshot, parameters, constants };
+      const resolved = resolveValueOrExpression(effect.resultValue, context);
       if (resolved === undefined) {
-        return { ...current, applied: [...current.applied, record] };
+        return { ...current, applied: [...current.applied, unwritten(record, effect.resultValue, context)] };
       }
       const nextSnapshot = writePath(current.snapshot, effect.resultPath, resolved);
       return { ...current, snapshot: nextSnapshot, applied: [...current.applied, record] };

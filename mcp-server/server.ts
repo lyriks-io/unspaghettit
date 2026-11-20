@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { FeatureRepository } from '../src/features/behavior-model/application/ports/FeatureRepository';
 import { mutateFeatureUseCase } from '../src/features/behavior-model/application/use-cases/MutateFeature';
+import { projectInvariantGuard } from '../src/features/projects/application/services/projectInvariantGuard';
 import { exportFeatureToJson } from '../src/features/behavior-model/infrastructure/io/FeatureJson';
 import type { ImplementationStatusRepository } from '../src/features/implementation-status/application/ports/ImplementationStatusRepository';
 import { InMemoryImplementationStatusRepository } from '../src/features/implementation-status/infrastructure/persistence/InMemoryImplementationStatusRepository';
@@ -164,7 +165,13 @@ export const buildServer = (
   // already materialized. Nothing downstream (verify, model_check, scenarios,
   // digests, scoring) has to know references exist; saves strip them back out.
   const repo = withProjectLibrary(featureRepo, projectRepo);
-  const mutateFeature = mutateFeatureUseCase({ repository: repo, clock });
+  // A feature write must not leave a project invariant reading a state no
+  // feature declares any more: refused before it is saved.
+  const mutateFeature = mutateFeatureUseCase({
+    repository: repo,
+    clock,
+    guard: projectInvariantGuard(repo, projectRepo)
+  });
   const reportImplementationStatus = reportImplementationStatusUseCase({
     features: repo,
     statuses: statusRepo,

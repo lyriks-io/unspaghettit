@@ -8,12 +8,18 @@ import { disabledIndexKeys } from '../../src/features/behavior-model/domain/serv
 import type { Disabled } from '../../src/features/behavior-model/domain/entities/Disabled';
 import type { Feature } from '../../src/features/behavior-model/domain/entities/Feature';
 
-/** The marker an entry of the gaps reads disabled under: its action's own, else the feature's. */
+/**
+ * The marker an entry of the gaps reads disabled under: its action's own (for
+ * an event, the disabled action that emits it), else the feature's.
+ */
 const markerOf = (feature: Feature, entry: { readonly type: string; readonly entityId: string }): Disabled | undefined => {
-  if (entry.type === 'action') {
-    for (const surface of feature.surfaces) {
-      const action = surface.actions.find((a) => String(a.id) === entry.entityId);
-      if (action?.disabled) return action.disabled;
+  for (const surface of feature.surfaces) {
+    for (const action of surface.actions) {
+      if (!action.disabled) continue;
+      if (entry.type === 'action' && String(action.id) === entry.entityId) return action.disabled;
+      if (entry.type === 'event' && action.emittedEvents.some((e) => String(e) === entry.entityId)) {
+        return action.disabled;
+      }
     }
   }
   return feature.disabled;

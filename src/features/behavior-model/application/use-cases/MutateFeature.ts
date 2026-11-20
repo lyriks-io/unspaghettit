@@ -47,6 +47,12 @@ export class FeatureNotFoundError extends Error {
 export const mutateFeatureUseCase = (deps: {
   repository: FeatureRepository;
   clock: Clock;
+  /**
+   * What the write must not break outside the feature (its project's
+   * invariants, say): refusals, checked once the feature itself is valid and
+   * before anything is saved. Empty when the change is fine.
+   */
+  guard?: (before: Feature, after: Feature) => Promise<readonly string[]>;
 }) => {
   return async (input: {
     featureId: FeatureId;
@@ -81,6 +87,14 @@ export const mutateFeatureUseCase = (deps: {
       throw new FeatureValidationError(
         'The requested change would introduce new validation errors. (Pre-existing issues elsewhere in the feature are not blocking — fix them whenever; they show up in get_spec_gaps / score_feature.)',
         introduced
+      );
+    }
+
+    const refused = deps.guard ? await deps.guard(current, transformed) : [];
+    if (refused.length > 0) {
+      throw new FeatureValidationError(
+        'The requested change would break a rule of the project the feature belongs to. Nothing was saved.',
+        refused
       );
     }
 

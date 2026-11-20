@@ -43,6 +43,7 @@ import {
 } from '../../src/features/implementation-status/domain/CriteriaEvidence';
 import { trackTokens } from '../metrics';
 import { readStatusDisabled } from '../../src/features/implementation-status/domain/DisabledStatus';
+import { readStatusAgainstSpec } from '../../src/features/implementation-status/application/use-cases/ReadStatusAgainstSpec';
 import { expandFeatureId, expandIdInFeature } from './short-ids';
 
 /** Read audit metadata for a given index key from .unspa.json, if available. */
@@ -149,19 +150,44 @@ const normalizeForMatch = (s: string): string => s.replace(/\s+/g, ' ').trim();
  * Locate the line that still carries the audited signature, using progressively
  * looser matches so refactors (line shifts, multi-line reformatting, dropped
  * `let` prefix from class-field migrations) still resolve. Returns 1-based line
- * or `null` if no plausible match exists. First match wins. Heuristic but
- * correct for the common case of one declaration per file region.
+ * or `null` if no plausible match exists.
+ *
+ * `near` is the line the entry names. A signature is rarely unique in its file
+ * (two handlers ending in the same `return json({ ok: true })`), so the line
+ * named keeps it when it still carries it, and otherwise the occurrence nearest
+ * to it wins within the strongest tier that finds any. Taking the first one in
+ * the file used to read such an entry stale and heal it onto another handler.
  */
-const findSignatureLine = (lines: readonly string[], signature: string): number | null => {
+export const findSignatureLine = (
+  lines: readonly string[],
+  signature: string,
+  near?: number
+): number | null => {
   const target = normalizeForMatch(signature);
+  if (target.length === 0) return null;
+
+  // The line named still carries the whole signature: it has not moved,
+  // whatever else in the file looks like it. A short signature is only taken
+  // as the whole line, since a few characters appear on many lines.
+  if (near !== undefined && near >= 1 && near <= lines.length) {
+    const named = normalizeForMatch(lines[near - 1]!);
+    if (target.length < 6 ? named === target : named.includes(target)) return near;
+  }
   if (target.length < 6) return null;
 
+  const nearest = (matches: readonly number[]): number | null => {
+    if (matches.length === 0) return null;
+    if (near === undefined) return matches[0]!;
+    // Ties go to the earlier line, so the answer never depends on scan order.
+    return matches.reduce((best, line) => (Math.abs(line - near) < Math.abs(best - near) ? line : best));
+  };
   const tryScan = (needle: string): number | null => {
     if (needle.length < 6) return null;
+    const matches: number[] = [];
     for (let i = 0; i < lines.length; i += 1) {
-      if (normalizeForMatch(lines[i]!).includes(needle)) return i + 1;
+      if (normalizeForMatch(lines[i]!).includes(needle)) matches.push(i + 1);
     }
-    return null;
+    return nearest(matches);
   };
 
   // Tier 1: full normalized signature on a single line.
@@ -185,7 +211,7 @@ const findSignatureLine = (lines: readonly string[], signature: string): number 
 /** ±2 line tolerance. A small edit above the entity doesn't count as stale. */
 const FRESH_WINDOW = 2;
 
-const entryToLocation = (
+export const entryToLocation = (
   entry: IndexEntry,
   repoRoot?: string,
   cache?: FileCache
@@ -214,7 +240,7 @@ const entryToLocation = (
     };
   }
 
-  const foundLine = findSignatureLine(lines, entry.signature);
+  const foundLine = findSignatureLine(lines, entry.signature, indexedLine);
   const fresh =
     indexedLine !== undefined &&
     foundLine !== null &&
@@ -397,6 +423,43 @@ export const findSharedKeys = (
   return shared;
 };
 
+const CRITERION_FORMS =
+  'A `criterion` key takes either the 8-char hex id of a criterion declared in the ' +
+  'behaviour model, or `ac-leaf-<id>` for one carried by a feature: the features ' +
+  'section reports that id bare, so prefix it. ' +
+  '`get_feature(verbose:true)` lists the first, `get_section(features)` the second.';
+
+/**
+ * Why a `criterion:` key resolves nowhere, in the case it is in. The id may be
+ * the bare or short form of a criterion a feature carries (then the exact key
+ * is named), or a well-formed id no criterion of the project holds any more:
+ * then the criterion was removed, and telling the caller to fix the form sends
+ * them after a key that does not exist.
+ */
+const criterionOrphanHint = (idPart: string, expectedKeys: ReadonlySet<string>): string => {
+  const bare = idPart.startsWith('ac-leaf-') ? idPart.slice('ac-leaf-'.length) : idPart;
+  const carried = bare.length > 0
+    ? [...expectedKeys].filter(
+        (k) => k.startsWith('criterion:ac-leaf-') && k.slice('criterion:ac-leaf-'.length).startsWith(bare)
+      )
+    : [];
+  if (carried.length === 1) {
+    return `This is the criterion a feature carries under \`${carried[0]}\`: move the entry to that key, keeping its file, line and verification.`;
+  }
+  if (carried.length > 1) {
+    return `Several criteria carried by features start with \`${bare}\`: ${carried.map((k) => `\`${k}\``).join(', ')}. Move the entry to the one it verifies, written whole.`;
+  }
+  const wellFormed = /^[a-f0-9]{8}$/i.test(idPart) || /^ac-leaf-.+$/.test(idPart);
+  if (wellFormed) {
+    return (
+      `No acceptance criterion of this project has the id \`${idPart}\`: it was removed (or replaced), ` +
+      'or it belongs to a feature outside this project. Remove the entry, or move it to the criterion ' +
+      `that replaced it. ${CRITERION_FORMS}`
+    );
+  }
+  return `Got \`${idPart}\`. ${CRITERION_FORMS}`;
+};
+
 /**
  * Compare the user's `.unspa.json` keys against every key the spec actually
  * expects, and return entries that point at nothing. Without this report
@@ -429,14 +492,7 @@ export const findOrphanKeys = (
     // does not exist, which is worse than saying nothing: the form they used was
     // nearly right and the hint denied it.
     if (type === 'criterion') {
-      out.push({
-        key,
-        hint:
-          'A `criterion` key takes either the 8-char hex id of a criterion declared in the ' +
-          'behaviour model, or `ac-leaf-<id>` for one carried by a feature: the features ' +
-          `section reports that id bare, so prefix it. Got \`${idPart}\`. ` +
-          '`get_feature(verbose:true)` lists the first, `get_section(features)` the second.'
-      });
+      out.push({ key, hint: criterionOrphanHint(idPart, expectedKeys) });
       continue;
     }
     if (ID_KEYED_TYPES.has(type) && !HEX_ID_RE.test(idPart)) {
@@ -499,7 +555,7 @@ export const healIndexLines = (
     if (!entry.signature || !entry.line || entry.line <= 0) continue;
     const lines = readLinesCached(cache, repoRoot, entry.file);
     if (!lines) continue;
-    const foundLine = findSignatureLine(lines, entry.signature);
+    const foundLine = findSignatureLine(lines, entry.signature, entry.line);
     if (foundLine === null) continue;
     if (Math.abs(foundLine - entry.line) <= FRESH_WINDOW) continue;
     nextIndex[key] = { ...entry, line: foundLine };
@@ -788,7 +844,7 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
     'get_implementation_status',
     {
       description:
-        'Read the implementation-status sidecar for a feature. Optionally filter to one action or surface. Returns null when nothing has been reported yet. Useful before editing/extending an implementation: "what entities are already tagged, where in the repo do they live, and what real code was captured there?". An action report carries `auditMeta.verifiedAt` when its index entry was proven against the code (every scenario of the action passed in a real run, stamped by `unspa coverage ingest`); absent means claimed, not proven. `auditMeta.scenarioResults`, when the index entry carried it, keeps the last result of each scenario of the action: { passed, at, revision?, dirty? } by scenario id. The WHOLE-FEATURE read (no actionId, no surfaceId) also answers the evidence sync_from_index kept, judged against the spec as it is now: `criteria: [{ criterionId, title, standing, key, indexed, state, stale, file?, line?, verification?, specVersion?, syncedAt? }]` lists EVERY acceptance criterion of the feature, where `state` is verified (last recorded run passed) | failing (it failed) | unverified (a record, no run to read) | none (no record, `indexed` false), and `stale` is true when the criterion (wording, status or relations) changed after the `specVersion` its check was written against, the same comparison get_drift makes; `orphanedCriteria` counts kept records whose criterion no longer exists, which are left out of `criteria`; `verified: { actions, total }` counts action reports carrying verifiedAt over actions that have a report. With nothing reported yet the whole-feature answer is still { status: null } plus those three blocks. Evidence only: none of it feeds maturity or a verdict. A DISABLED element keeps its entries and reads disabled, never missing: the row of a disabled action (every row of a disabled feature) carries `disabled: { by, at, reason }`, and a disabled child the code does not hold moves from `missingEntities` to `disabledEntities`.',
+        'Read the implementation-status sidecar for a feature. Optionally filter to one action or surface. Returns null when nothing has been reported yet. Useful before editing/extending an implementation: "what entities are already tagged, where in the repo do they live, and what real code was captured there?". An action report carries `auditMeta.verifiedAt` when its index entry was proven against the code (every scenario of the action passed in a real run, stamped by `unspa coverage ingest`); absent means claimed, not proven. `auditMeta.scenarioResults`, when the index entry carried it, keeps the last result of each scenario of the action: { passed, at, revision?, dirty? } by scenario id. The WHOLE-FEATURE read (no actionId, no surfaceId) also answers the evidence sync_from_index kept, judged against the spec as it is now: `criteria: [{ criterionId, title, standing, key, indexed, state, stale, file?, line?, verification?, specVersion?, syncedAt? }]` lists EVERY acceptance criterion of the feature, where `state` is verified (last recorded run passed) | failing (it failed) | unverified (a record, no run to read) | none (no record, `indexed` false), and `stale` is true when the criterion (wording, status or relations) changed after the `specVersion` its check was written against, the same comparison get_drift makes; `orphanedCriteria` counts kept records whose criterion no longer exists, which are left out of `criteria`; `verified: { actions, total }` counts action reports carrying verifiedAt over actions that have a report. With nothing reported yet the whole-feature answer is still { status: null } plus those three blocks. Evidence only: none of it feeds maturity or a verdict. Every report is read against the spec as it is NOW, the stored record left as the sync wrote it: a report of an action or surface the spec no longer has is left out and named in `orphanedReports: { actions, surfaces }` (absent when there is none), a child declared since the sync reads missing, and one the spec removed since drops out of expected and found. A DISABLED element keeps its entries and reads disabled, never missing: the row of a disabled action (every row of a disabled feature) carries `disabled: { by, at, reason }`, and a disabled child the code does not hold moves from `missingEntities` to `disabledEntities`.',
       inputSchema: {
         featureId: z.string(),
         actionId: z.string().optional(),
@@ -806,9 +862,12 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
         return errorText((e as Error).message);
       }
       const stored = await getImplementationStatus(asFeatureId(featureId));
-      // A disabled element reads disabled, never missing: its stored report is
-      // read against the feature as it is now, and left as the sync wrote it.
-      const status = stored && exp ? readStatusDisabled(exp, stored) : stored;
+      // The stored reports are read against the feature as it is now, and left
+      // as the sync wrote them: a report of an action or surface the spec no
+      // longer has is counted apart (`orphanedReports`), a child declared since
+      // reads missing, one removed since drops out. A disabled element then
+      // reads disabled, never missing.
+      const status = stored && exp ? readStatusDisabled(exp, readStatusAgainstSpec(exp, stored)) : stored;
       // The evidence blocks belong to the whole-feature read only. They are laid
       // against the feature as it is NOW, so a record whose criterion is gone is
       // counted and left out, and a criterion no sync ever named still has a row.
@@ -917,8 +976,12 @@ export const registerImplementationStatusTools = (deps: ToolDeps): void => {
       }
       /** Per-call drift tally. Surfaced in the ack so re-audit prompts are obvious. */
       const staleEntries: { key: string; file: string; line: number; suggestedLine?: number }[] = [];
+      // A key several parents declare (an event two actions emit, a state path
+      // several surfaces share) is ONE entry, located once per parent: listed once.
+      const staleKeys = new Set<string>();
       const recordStale = (loc: TagLocation, key: string): void => {
-        if (loc.stale) {
+        if (loc.stale && !staleKeys.has(key)) {
+          staleKeys.add(key);
           staleEntries.push({
             key,
             file: loc.file,
