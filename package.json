@@ -25,7 +25,7 @@
   "homepage": "https://github.com/lyriks-io/unspaghettit#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lyriks-io/unspaghettit.git"
+    "url": "git+https://github.com/lyriks-io/unspaghettit.git"
   },
   "bugs": {
     "url": "https://github.com/lyriks-io/unspaghettit/issues"
@@ -59,9 +59,9 @@
     "prepublishOnly": "npm run skills:check && npm run bom:check && npm run lint && npm run build && npm run build:lib && npm test"
   },
   "bin": {
-    "unspa": "./cli/unspa.cjs",
-    "unspaghettit": "./cli/unspaghettit.cjs",
-    "unspa-mcp": "./mcp-server/bin.cjs"
+    "unspa": "cli/unspa.cjs",
+    "unspaghettit": "cli/unspaghettit.cjs",
+    "unspa-mcp": "mcp-server/bin.cjs"
   },
   "main": "./dist/index.js",
   "types": "./dist/types/lib-entry/index.d.ts",
