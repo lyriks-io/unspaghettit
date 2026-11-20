@@ -124,6 +124,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - An apply_batch that renames or removes a state an entity field maps (its
   `path`) warns, naming the field: the field used to keep the old path in
   silence.
+- The model check reads the feature's constants in a reachability goal and in
+  the starting state: a goal comparing with a constant never held, so
+  `model_check` and `verify` reported it unmet, and a derived state computed
+  from a constant was wrong in the state the search starts from.
 
 ## [0.28.0] - 2026-11-20
 

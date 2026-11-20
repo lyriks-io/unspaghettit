@@ -197,6 +197,11 @@ export const exploreStateSpace = (
     options.seedStateDefs ?? []
   );
   const derivedDefs = collectDerivedDefs(allDefs);
+  // The feature's named constants, as the simulator reads them: a goal or a
+  // derived state comparing with one read it as unknown here, so a goal on a
+  // constant never held and a derived state on one was wrong at the start.
+  const constants: { [name: string]: StateValue } = {};
+  for (const constant of feature.constants ?? []) constants[constant.name] = constant.value;
   const checkedInvariants = [
     ...(feature.featureInvariants ?? []),
     ...(options.extraInvariants ?? [])
@@ -248,7 +253,7 @@ export const exploreStateSpace = (
   const goals = feature.reachabilityGoals ?? [];
   const trackGoals = goals.length > 0;
 
-  const initial = recomputeDerived(buildInitialSnapshot(allDefs), derivedDefs);
+  const initial = recomputeDerived(buildInitialSnapshot(allDefs), derivedDefs, constants);
   const initialKey = canonical(initial);
 
   const queue: { snapshot: StateSnapshot; path: readonly string[]; key: string }[] = [
@@ -279,7 +284,7 @@ export const exploreStateSpace = (
     if (goalEvaluated.has(key)) return;
     goalEvaluated.add(key);
     for (const goal of goals) {
-      if (evaluateCondition(goal.condition, snapshot)) {
+      if (evaluateCondition(goal.condition, snapshot, {}, constants)) {
         goalSatisfyingKeys.get(String(goal.id))!.add(key);
       }
     }

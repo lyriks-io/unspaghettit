@@ -4,6 +4,7 @@ import type { Feature } from '$features/behavior-model/domain/entities/Feature';
 import type { Surface } from '$features/behavior-model/domain/entities/Surface';
 import {
   asActionId,
+  asConstantId,
   asEffectId,
   asExposureId,
   asFeatureId,
@@ -423,6 +424,62 @@ describe('exploreStateSpace — reachability goals', () => {
     );
     expect(report.goalResults[0]!.satisfied).toBe(false);
     expect(report.goalResults[0]!.counterexamplePath).toBeUndefined();
+  });
+
+  it('reads the feature constants in a goal condition', () => {
+    // The goal compares the counter with a constant: it holds after two incr.
+    const report = exploreStateSpace(
+      {
+        ...withGoals([
+          {
+            id: asReachabilityGoalId('g-target'),
+            name: 'count reaches the target',
+            kind: 'reachable',
+            condition: {
+              left: asStatePath('count'),
+              operator: 'equals',
+              right: { kind: 'const', name: 'target' }
+            },
+            description: 'the counter reaches the declared target'
+          }
+        ]),
+        constants: [{ id: asConstantId('c-target'), name: 'target', value: 2, description: 'The target.' }]
+      },
+      { maxDepth: 4 }
+    );
+    expect(report.goalResults[0]!.satisfied).toBe(true);
+  });
+
+  it('computes a derived state that reads a constant in the starting state', () => {
+    // No action at all: the starting state is the only one, and its derived
+    // `limit` reads the constant, so the goal on it holds there.
+    const surface = countSurface([], []);
+    const feature: Feature = {
+      ...featureWith({
+        ...surface,
+        stateDefinitions: [
+          ...surface.stateDefinitions,
+          {
+            id: asStateDefinitionId('d-limit'),
+            path: asStatePath('limit'),
+            type: 'number',
+            defaultValue: 0,
+            derived: { kind: 'const', name: 'cap' }
+          }
+        ]
+      }),
+      constants: [{ id: asConstantId('c-cap'), name: 'cap', value: 5, description: 'The cap.' }],
+      reachabilityGoals: [
+        {
+          id: asReachabilityGoalId('g-limit'),
+          name: 'the limit is the cap',
+          kind: 'reachable',
+          condition: { left: asStatePath('limit'), operator: 'equals', right: 5 },
+          description: 'the derived limit follows the constant'
+        }
+      ]
+    };
+    expect(exploreStateSpace(feature, { maxDepth: 2 }).goalResults[0]!.satisfied).toBe(true);
   });
 
   it("detects a trap for an 'always_reachable' goal with a counterexample path", () => {
