@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+
+- An action whose event handler restores an always-true statement is no longer
+  refused by it: the statements are read on the state the action and its
+  handlers settle on, not between the two. "Add expense" with a "Recount"
+  handler and the statement "the count equals the number of expenses" was
+  refused on every run, and the model check read it dead. Read on the settled
+  state, a handler that breaks a project statement, or one of the emitting
+  feature, now refuses the action that woke it instead of passing unnoticed.
+
 ## [0.28.0] - 2026-11-20
 
 An element of the spec can be disabled: inoperative in every reading, still present and readable.
