@@ -27,6 +27,14 @@ export type IndexEntry = {
   /** Number of scenarios that passed at the last verification. */
   readonly verifiedScenarios?: number;
   /**
+   * The last result of each scenario of an action, by scenario id, written by
+   * the results ingestion next to `verifiedAt`: `{ passed, at, revision?, dirty? }`.
+   * The sync carries it into the action report's `auditMeta.scenarioResults`.
+   */
+  readonly scenarioResults?: Readonly<
+    Record<string, { readonly passed: boolean; readonly at: string; readonly revision?: string; readonly dirty?: boolean }>
+  >;
+  /**
    * Pattern hint so the LLM knows what to expect before reading the file.
    * Known values: svelte-route | svelte-store | svelte-component | mcp-tool |
    *               mcp-entrypoint | domain-service

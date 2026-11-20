@@ -87,6 +87,29 @@ describe('implementation status io', () => {
     expect(JSON.parse(exportImplementationStatusToJson(loaded))).toEqual(record);
   });
 
+  it('keeps the last result of each scenario with the action report, and reads it leniently', () => {
+    const record = structuredClone(RECORD_0_23) as {
+      status: { actions: { auditMeta: Record<string, unknown> }[] };
+    };
+    record.status.actions[0]!.auditMeta.scenarioResults = {
+      s1: { passed: true, at: SYNCED, revision: 'abc1234' },
+      s2: { passed: false, at: SYNCED, dirty: true }
+    };
+
+    const loaded = importImplementationStatusFromJson(JSON.stringify(record));
+
+    expect(loaded.actions[0]!.auditMeta?.scenarioResults).toEqual({
+      s1: { passed: true, at: SYNCED, revision: 'abc1234' },
+      s2: { passed: false, at: SYNCED, dirty: true }
+    });
+    expect(JSON.parse(exportImplementationStatusToJson(loaded))).toEqual(record);
+
+    record.status.actions[0]!.auditMeta.scenarioResults = { s1: { passed: 'yes', at: SYNCED }, s2: 'garbage', s3: { passed: false, at: SYNCED } };
+    expect(importImplementationStatusFromJson(JSON.stringify(record)).actions[0]!.auditMeta?.scenarioResults).toEqual({
+      s3: { passed: false, at: SYNCED }
+    });
+  });
+
   it('reads criteria leniently: an unreadable part costs that part, an unnamed record is dropped', () => {
     const record = structuredClone(RECORD_0_23) as { status: { criteria?: unknown } };
     record.status.criteria = [

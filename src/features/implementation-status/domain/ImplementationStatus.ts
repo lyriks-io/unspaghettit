@@ -165,6 +165,49 @@ export type AuditMeta = {
    * leaving a stale one behind. Absent means claimed, not proven.
    */
   readonly verifiedAt?: string;
+  /**
+   * The last result of each scenario of this action against the real code, by
+   * scenario id (the index entry's `scenarioResults`, written by the results
+   * ingestion). Unlike `verifiedAt`, which only says every result passed, it
+   * lets a reader tell a scenario that failed from one nothing ran. Same life as
+   * `verifiedAt`: rebuilt from the entry on every report.
+   */
+  readonly scenarioResults?: Readonly<Record<string, ScenarioResult>>;
+};
+
+/** How one scenario last went against the real code, and on which commit. */
+export type ScenarioResult = {
+  readonly passed: boolean;
+  /** ISO timestamp the result was recorded. */
+  readonly at: string;
+  /** The commit of code it ran on, when known. */
+  readonly revision?: string;
+  /** Set when the run held uncommitted code: it proves no commit. */
+  readonly dirty?: true;
+};
+
+/**
+ * The scenario results an index entry or a stored report carries, read
+ * leniently: a result without its boolean `passed` and its `at` is dropped,
+ * never a reason to refuse the rest. Undefined when none is readable.
+ */
+export const readScenarioResults = (
+  raw: unknown
+): Readonly<Record<string, ScenarioResult>> | undefined => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, ScenarioResult> = {};
+  for (const [scenarioId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!scenarioId || !value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const result = value as Record<string, unknown>;
+    if (typeof result.passed !== 'boolean' || typeof result.at !== 'string' || result.at === '') continue;
+    out[scenarioId] = {
+      passed: result.passed,
+      at: result.at,
+      ...(typeof result.revision === 'string' && result.revision !== '' ? { revision: result.revision } : {}),
+      ...(result.dirty === true ? { dirty: true as const } : {})
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 };
 
 /**

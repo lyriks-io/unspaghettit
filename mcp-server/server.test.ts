@@ -4522,6 +4522,45 @@ describe('MCP server', () => {
         await server.close();
       });
 
+      it('carries the last result of each scenario into the action report, and drops what it cannot read', async () => {
+        const { client, server } = await setup();
+        const { projectId, featureId, refs } = await footsteps(client);
+        const { sync, read } = tools(client, projectId, featureId);
+        const surface = { status: 'implemented', file: 'shore.ts', line: 1, signature: 'export const shore' };
+        const step = { status: 'implemented', file: 'step.ts', line: 1, signature: 'export const step' };
+        const index = (action: Record<string, unknown>) => ({
+          [`surface:${refs.shore}`]: surface,
+          [`action:${refs.step}`]: action
+        });
+        type Meta = { verifiedAt?: string; scenarioResults?: Record<string, unknown> };
+
+        // One scenario failed: no verifiedAt, and the failure is kept apart from what never ran.
+        await sync(
+          index({
+            ...step,
+            scenarioResults: {
+              s1: { passed: true, at, revision: 'abc1234' },
+              s2: { passed: false, at, revision: 'abc1234', dirty: true },
+              s3: { passed: 'yes', at },
+              s4: { passed: true }
+            }
+          })
+        );
+        const whole = await read();
+        expect((whole.actions![0]!.auditMeta as Meta).scenarioResults).toEqual({
+          s1: { passed: true, at, revision: 'abc1234' },
+          s2: { passed: false, at, revision: 'abc1234', dirty: true }
+        });
+        expect((whole.actions![0]!.auditMeta as Meta).verifiedAt).toBeUndefined();
+        const scoped = (await read({ actionId: refs.step! })) as unknown as { action: { auditMeta?: Meta } };
+        expect(scoped.action.auditMeta?.scenarioResults?.s2).toEqual({ passed: false, at, revision: 'abc1234', dirty: true });
+
+        // Rebuilt from the entry on every report: synced without them, they go.
+        await sync(index({ ...step, kind: 'domain-service' }));
+        expect((await read()).actions![0]!.auditMeta).toEqual({ kind: 'domain-service' });
+        await server.close();
+      });
+
       it('never moves maturity, whatever the evidence says', async () => {
         const { client, server } = await setup();
         const { projectId, featureId, refs } = await footsteps(client);
