@@ -417,6 +417,21 @@ export const validateFeature = (feature: Feature): ValidationResult => {
             assertion
           );
         }
+        // Time only moves forward: a negative (or non-finite) advance moved
+        // no time at all, silently, so a scenario "past the expiry" ran
+        // before it.
+        const checkTimeAdvance = (value: unknown, where: string): void => {
+          if (value === undefined) return;
+          if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+            errors.push(
+              `Scenario ${scenario.id} in action ${cap.id}${where}: timeAdvance ${JSON.stringify(value)} moves no time. Give a positive number of logical time units.`
+            );
+          }
+        };
+        checkTimeAdvance((scenario as { readonly timeAdvance?: unknown }).timeAdvance, '');
+        for (const [stepIdx, step] of (scenario.steps ?? []).entries()) {
+          checkTimeAdvance((step as { readonly timeAdvance?: unknown }).timeAdvance, ` step ${stepIdx}`);
+        }
         // Multi-step scenarios: each step replays a real action before the
         // subject action, so its actionId/surfaceId must resolve and its
         // parameterOverrides must name real parameters on THAT action.

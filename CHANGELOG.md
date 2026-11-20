@@ -63,6 +63,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   writes no state, so such an effect never landed, without a word: a
   "count the failed logins" written there counted nothing. The refusal says
   how to record a refused attempt (an outcome of kind `rejected`).
+- A scenario or a step whose `timeAdvance` is negative is refused: time only
+  moves forward, so the advance moved no time at all and a scenario meant to
+  run past an expiry ran before it.
 - An index entry whose signature the file repeats (two handlers ending in the
   same `return json({ ok: true })`) is no longer read stale and moved onto the
   first occurrence in the file: the line it names keeps it while that line

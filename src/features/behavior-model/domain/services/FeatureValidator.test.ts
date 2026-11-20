@@ -2115,3 +2115,56 @@ describe('a state write among the effects of a blocked attempt', () => {
     ).toEqual([]);
   });
 });
+
+describe('a scenario that lets time go backwards', () => {
+  const withAdvance = (scenarioAdvance?: unknown, stepAdvance?: unknown): Feature => {
+    const base = storefrontFeature;
+    const surface = base.surfaces[0]!;
+    const action = surface.actions[0]!;
+    return {
+      ...base,
+      surfaces: base.surfaces.map((s, i) =>
+        i === 0
+          ? {
+              ...s,
+              actions: s.actions.map((a, j) =>
+                j === 0
+                  ? {
+                      ...a,
+                      scenarios: [
+                        {
+                          id: asScenarioId('sc-later'),
+                          name: 'Later',
+                          description: 'Runs later.',
+                          stateOverrides: [],
+                          parameterOverrides: [],
+                          ...(scenarioAdvance !== undefined ? { timeAdvance: scenarioAdvance } : {}),
+                          ...(stepAdvance !== undefined
+                            ? { steps: [{ actionId: action.id, surfaceId: surface.id, parameterOverrides: [], timeAdvance: stepAdvance }] }
+                            : {})
+                        }
+                      ]
+                    }
+                  : a
+              )
+            }
+          : s
+      )
+    } as unknown as Feature;
+  };
+  const errorsOf = (f: Feature) => {
+    const result = validateFeature(f);
+    return result.valid ? [] : result.errors.filter((e) => e.includes('timeAdvance'));
+  };
+
+  it('refuses a negative advance, on the scenario and on a step', () => {
+    expect(errorsOf(withAdvance(-5))).toEqual([
+      `Scenario sc-later in action ${String(storefrontFeature.surfaces[0]!.actions[0]!.id)}: timeAdvance -5 moves no time. Give a positive number of logical time units.`
+    ]);
+    expect(errorsOf(withAdvance(undefined, -1))[0]).toMatch(/step 0: timeAdvance -1 moves no time/);
+  });
+
+  it('accepts a positive advance', () => {
+    expect(errorsOf(withAdvance(60, 30))).toEqual([]);
+  });
+});
