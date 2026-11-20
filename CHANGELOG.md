@@ -83,6 +83,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   actions emit, or a state path several surfaces declare, is one index entry
   located once per parent, and each location added a row, so one moved
   signature read as several stale entries.
+- A change to a feature that takes away the last declaration of a state a
+  project invariant reads (a rename, a removal, the surface that held it) is
+  refused, naming the invariant: before, it was saved and the invariant then
+  compared against nothing, blocking every action of the project or holding
+  vacuously. apply_batch (dry run included), the granular writes, save_feature
+  and the dashboard all refuse it; the project batch already refused such an
+  invariant.
 
 ## [0.28.0] - 2026-11-20
 

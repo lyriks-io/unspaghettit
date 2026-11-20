@@ -5,6 +5,7 @@ import { systemClock } from '../../shared/domain/Clock';
 import { hostOwnsStateDeletion } from './hostIntegration';
 import { getSnapshotRepository } from './snapshotRepository';
 import { createSyncAwareFeatureRepository } from './syncAwareRepositories';
+import { projectInvariantGuard } from '../../features/projects/application/services/projectInvariantGuard';
 import { withProjectLibrary } from '../../features/projects/infrastructure/persistence/ProjectScopedFeatureRepository';
 
 export function stateDeletionCommand(request: Request): StateDeletionCommand {
@@ -15,8 +16,10 @@ export function stateDeletionCommand(request: Request): StateDeletionCommand {
     );
   }
   const { repo, projectRepo } = getSnapshotRepository();
+  const features = withProjectLibrary(createSyncAwareFeatureRepository(repo), projectRepo);
   return new DeleteStateDefinitionUseCase(
-    withProjectLibrary(createSyncAwareFeatureRepository(repo), projectRepo),
-    systemClock
+    features,
+    systemClock,
+    projectInvariantGuard(features, projectRepo)
   );
 }

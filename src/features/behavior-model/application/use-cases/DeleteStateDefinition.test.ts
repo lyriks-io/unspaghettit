@@ -3,7 +3,10 @@ import { DeleteStateDefinitionUseCase } from './DeleteStateDefinition';
 import { InMemoryFeatureRepository } from '../../infrastructure/persistence/InMemoryFeatureRepository';
 import { storefrontFeature } from '../../infrastructure/seed/seedStorefront';
 import { fixedClock } from '$shared/domain/Clock';
-import { asStateDefinitionId } from '../../domain/value-objects/ids';
+import { asInvariantId, asStateDefinitionId } from '../../domain/value-objects/ids';
+import { InMemoryProjectRepository } from '$features/projects/infrastructure/persistence/InMemoryProjectRepository';
+import type { ProjectId } from '$features/projects/domain/value-objects/ids';
+import { projectInvariantGuard } from '$features/projects/application/services/projectInvariantGuard';
 import { asStatePath } from '../../domain/value-objects/StatePath';
 
 it('keeps local reference validation in standalone/Community and deletes an unused state', async () => {
@@ -67,4 +70,55 @@ it('keeps local reference validation in standalone/Community and deletes an unus
       .find((s) => s.id === surface.id)
       ?.stateDefinitions.some((s) => s.id === unused.id)
   ).toBe(false);
+});
+
+it('refuses the deletion when it would leave a project invariant reading a state no feature declares', async () => {
+  const repository = new InMemoryFeatureRepository();
+  const surface = storefrontFeature.surfaces[0]!;
+  const age = {
+    id: asStateDefinitionId('age'),
+    path: asStatePath('profile.age'),
+    type: 'number' as const,
+    defaultValue: 20,
+    description: 'The age of the shopper.'
+  };
+  const baseline = {
+    ...storefrontFeature,
+    surfaces: storefrontFeature.surfaces.map((s) =>
+      s.id === surface.id ? { ...s, stateDefinitions: [...s.stateDefinitions, age] } : s
+    )
+  };
+  await repository.save(baseline);
+  const projects = new InMemoryProjectRepository();
+  await projects.save({
+    id: 'proj-shop' as ProjectId,
+    name: 'Shop',
+    description: 'The shop.',
+    featureIds: [storefrontFeature.id],
+    createdAt: '2026-09-07T12:00:00.000Z',
+    updatedAt: '2026-09-07T12:00:00.000Z',
+    projectInvariants: [
+      {
+        id: asInvariantId('pinv-adult'),
+        name: 'Adult shoppers',
+        condition: { left: age.path, operator: 'greater_or_equal', right: 18 },
+        message: 'Shoppers are adults.',
+        description: 'Every shopper is an adult.'
+      }
+    ]
+  });
+  const command = new DeleteStateDefinitionUseCase(
+    repository,
+    fixedClock('2026-09-07T12:00:00.000Z'),
+    projectInvariantGuard(repository, projects)
+  );
+  const result = await command.execute({
+    projectId: null,
+    featureId: storefrontFeature.id,
+    surfaceId: surface.id,
+    stateDefinitionId: age.id
+  });
+  expect(result).toMatchObject({ ok: false });
+  expect(result.message).toContain('Adult shoppers');
+  expect(await repository.get(storefrontFeature.id)).toEqual(baseline);
 });

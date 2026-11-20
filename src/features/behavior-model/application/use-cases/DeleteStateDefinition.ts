@@ -5,6 +5,7 @@ import type {
 } from '../ports/StateDeletionCommand';
 import type { FeatureRepository } from '../ports/FeatureRepository';
 import type { Clock } from '$shared/domain/Clock';
+import type { Feature } from '../../domain/entities/Feature';
 import { asFeatureId, asSurfaceId, asStateDefinitionId } from '../../domain/value-objects/ids';
 import { removeStateDefinition } from '../../domain/services/FeatureTransforms';
 import { mutateFeatureUseCase } from './MutateFeature';
@@ -13,11 +14,17 @@ import { mutateFeatureUseCase } from './MutateFeature';
 export class DeleteStateDefinitionUseCase implements StateDeletionCommand {
   constructor(
     private readonly repository: FeatureRepository,
-    private readonly clock: Clock
+    private readonly clock: Clock,
+    /** What the deletion must not break in the feature's project (see MutateFeature). */
+    private readonly guard?: (before: Feature, after: Feature) => Promise<readonly string[]>
   ) {}
   async execute(input: StateDeletionInput): Promise<StateDeletionResult> {
     try {
-      await mutateFeatureUseCase({ repository: this.repository, clock: this.clock })({
+      await mutateFeatureUseCase({
+        repository: this.repository,
+        clock: this.clock,
+        ...(this.guard ? { guard: this.guard } : {})
+      })({
         featureId: asFeatureId(input.featureId),
         transform: (feature) =>
           removeStateDefinition(

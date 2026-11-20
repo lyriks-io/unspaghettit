@@ -18,6 +18,7 @@ import type { Feature } from '../../src/features/behavior-model/domain/entities/
 import { unmovedGuardWarnings } from '../../src/features/behavior-model/domain/services/stateWrites';
 import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
 import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
+import { projectInvariantGuard } from '../../src/features/projects/application/services/projectInvariantGuard';
 import { stateDeclarationIssues } from '../../src/features/projects/domain/services/stateRegistry';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
@@ -170,6 +171,7 @@ const opSchemaDescription = `Each op: { kind, ref?, ...kindArgs }. ADD ops mint 
 
 export const registerBatchTool = (deps: ToolDeps): void => {
   const { server, repo, readings, projectRepo, clock, ids, repoContext } = deps;
+  const guardProject = projectInvariantGuard(repo, projectRepo);
 
   server.registerTool(
     'apply_batch',
@@ -332,10 +334,16 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         // normalizer wires on an action the batch never touched cannot read as
         // an error this batch introduced.
         const introduced = introducedValidationErrors(normalizeFeatureEmittedEvents(current), next);
+        // A batch that would leave a project invariant reading a state no
+        // feature of the project declares any more is refused the same way,
+        // dry run included: the project batch refuses such an invariant, so a
+        // feature batch must not reach it by renaming or removing the path.
+        const refusals =
+          introduced.length === 0 ? [...(await guardProject(current, next))] : introduced;
         const validation: ValidationResult =
-          introduced.length === 0
+          refusals.length === 0
             ? { valid: true }
-            : { valid: false, errors: annotateErrors(introduced) };
+            : { valid: false, errors: annotateErrors(refusals) };
         // One load of the project's other features per call, whichever block
         // asks for them first: the scenarios need them to cascade events, and
         // relatedElsewhere to look for shared state paths.

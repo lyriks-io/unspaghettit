@@ -170,6 +170,55 @@ const pathsReadBy = (condition: unknown): string[] => {
   return out;
 };
 
+/** A project invariant a change leaves reading a state no feature of the project declares. */
+export type LostInvariantPath = {
+  readonly invariantId: string;
+  readonly invariantName: string;
+  readonly path: string;
+};
+
+const declaredStatePaths = (features: readonly Feature[]): Set<string> => {
+  const paths = new Set<string>();
+  for (const feature of features) {
+    for (const surface of feature.surfaces) {
+      for (const definition of surface.stateDefinitions) paths.add(String(definition.path));
+    }
+  }
+  return paths;
+};
+
+/**
+ * The paths project invariants read that the features declared before a change
+ * and no longer declare after it: a rename, a removal, the surface that held
+ * the last declaration. The project batch refuses an invariant over a path no
+ * feature declares; a feature write must not reach that state silently, since
+ * the invariant then compares against nothing (always violated, or always
+ * holding, depending on its operator). `before` and `after` are the whole
+ * project, the changed feature among them.
+ */
+export const invariantPathsLost = (
+  projectInvariants: readonly Invariant[],
+  before: readonly Feature[],
+  after: readonly Feature[]
+): LostInvariantPath[] => {
+  if (projectInvariants.length === 0) return [];
+  const had = declaredStatePaths(before);
+  const has = declaredStatePaths(after);
+  const lost: LostInvariantPath[] = [];
+  for (const invariant of projectInvariants) {
+    for (const path of new Set(pathsReadBy(invariant.condition))) {
+      if (had.has(path) && !has.has(path)) {
+        lost.push({ invariantId: String(invariant.id), invariantName: invariant.name, path });
+      }
+    }
+  }
+  return lost;
+};
+
+/** The refusal for one lost path, naming the invariant and the two ways out. */
+export const lostInvariantPathMessage = (lost: LostInvariantPath): string =>
+  `State "${lost.path}" is read by the project invariant "${lost.invariantName}" (${lost.invariantId}), and after this change no feature of the project declares it. Change or remove that invariant first (apply_project_batch: update_project_invariant or remove_project_invariant), or keep a declaration of "${lost.path}".`;
+
 type Declaration = {
   readonly featureId: string;
   readonly featureName: string;

@@ -13,9 +13,11 @@ import { addTag, normalizeTags, removeTag } from '../../src/shared/domain/Tags';
 import { setCoreTag } from '../../src/shared/domain/coreFeatureTag';
 import { ack, errorText, text, writeErrorText, type ToolDeps } from './_shared';
 import { expandFeatureId } from './short-ids';
+import { projectInvariantGuard } from '../../src/features/projects/application/services/projectInvariantGuard';
 
 export const registerFeatureTools = (deps: ToolDeps): void => {
   const { server, repo, clock, ids, mutateFeature } = deps;
+  const guardProject = projectInvariantGuard(repo, deps.projectRepo);
   const createFeature = createFeatureUseCase({ repository: repo, ids, clock });
   const deleteFeature = deleteFeatureUseCase({ repository: repo });
   const tagsSchema = z
@@ -284,6 +286,14 @@ export const registerFeatureTools = (deps: ToolDeps): void => {
         if (introduced.length > 0) {
           return errorText(
             `Save would introduce new validation errors (pre-existing issues are not blocking):\n - ${introduced.join('\n - ')}`
+          );
+        }
+        // A project invariant left reading a state no feature declares any
+        // more is refused here as in apply_batch and the granular writes.
+        const projectRefusals = prior ? await guardProject(prior, candidate) : [];
+        if (projectRefusals.length > 0) {
+          return errorText(
+            `Save would break a rule of the project the feature belongs to. Nothing was saved:\n - ${projectRefusals.join('\n - ')}`
           );
         }
         const now = clock();
