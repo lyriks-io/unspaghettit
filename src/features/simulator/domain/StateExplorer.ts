@@ -121,8 +121,10 @@ export type GoalResult = {
   readonly satisfied: boolean;
   /**
    * `always_reachable` failures: shortest path to a TRAP state from which the
-   * goal can no longer be reached. `reachable` failures have no path (the goal
-   * was simply never reached within bounds).
+   * goal can no longer be reached: no way back was found, the search going on
+   * up to maxDepth more steps past the bound (within maxStates) to look for
+   * one. `reachable` failures have no path (the goal was simply never reached
+   * within bounds).
    */
   readonly counterexamplePath?: readonly string[];
 };
@@ -276,6 +278,11 @@ export const exploreStateSpace = (
   // so frontier states cut at the depth bound still count toward reachability.
   const forwardEdges = new Map<string, Set<string>>();
   const expandedPath = new Map<string, readonly string[]>();
+  // The states found but never expanded (cut by the depth bound or the states
+  // cap), kept for the recovery search below when an always_reachable goal is
+  // declared: the way back to the goal may run through them.
+  const alwaysGoals = goals.filter((goal) => goal.kind === 'always_reachable');
+  const discovered = new Map<string, StateSnapshot>();
   const goalSatisfyingKeys = new Map<string, Set<string>>();
   const goalEvaluated = new Set<string>();
   for (const goal of goals) goalSatisfyingKeys.set(String(goal.id), new Set<string>());
@@ -352,6 +359,7 @@ export const exploreStateSpace = (
             // Evaluate the goal on the successor even if it sits beyond the depth
             // bound (never enqueued) — a frontier state can still BE the goal.
             recordGoalSatisfaction(result.nextState, key);
+            if (alwaysGoals.length > 0 && !discovered.has(key)) discovered.set(key, result.nextState);
           }
           if (!visited.has(key) && node.path.length < maxDepth) {
             visited.add(key);
@@ -364,6 +372,66 @@ export const exploreStateSpace = (
     // A reachable state from which no action could fire at all. Could be a
     // legitimate terminal state, so it's reported as a count, not an error.
     if (!anySuccess) deadlockStates += 1;
+  }
+
+  // Recovery search for always_reachable goals. A state reads as a trap when
+  // no goal state is reachable from it in the graph the search built; but a
+  // state near the bound has its way back cut by the bound itself, so a reset
+  // that takes two steps read as a trap with a precise counterexample path.
+  // From the unexpanded states such a candidate trap reaches, the search goes
+  // on (only to find a way back: no finding, no fired action, no deadlock is
+  // read there) for up to maxDepth more steps, within what is left of
+  // maxStates. A trap is then a state with no way back within that horizon.
+  if (alwaysGoals.length > 0) {
+    const reached = alwaysGoals.map((goal) =>
+      reverseReachable(goalSatisfyingKeys.get(String(goal.id))!, forwardEdges)
+    );
+    const candidates = [...expandedPath.keys()].filter((key) =>
+      reached.some((reaches) => !reaches.has(key))
+    );
+    const seeds = [...forwardClosure(candidates, forwardEdges)].filter(
+      (key) => !expandedPath.has(key) && discovered.has(key)
+    );
+    let budget = Math.max(0, maxStates - statesExplored);
+    const recoveryQueue = seeds.map((key) => ({ key, snapshot: discovered.get(key)!, level: 0 }));
+    const recoverySeen = new Set<string>([...expandedPath.keys(), ...seeds]);
+    while (recoveryQueue.length > 0 && budget > 0) {
+      const node = recoveryQueue.shift()!;
+      budget -= 1;
+      for (const move of moves) {
+        for (const params of move.combos) {
+          const result = simulate({
+            surface: move.surface,
+            action: move.action,
+            snapshot: node.snapshot,
+            parameters: params,
+            featureInvariants: checkedInvariants,
+            feature,
+            ...(projectFeatures ? { projectFeatures } : {})
+          });
+          if (result.invariantViolations.length > 0 || result.status !== 'success') continue;
+          const key = canonical(result.nextState as StateValue);
+          let succ = forwardEdges.get(node.key);
+          if (!succ) {
+            succ = new Set<string>();
+            forwardEdges.set(node.key, succ);
+          }
+          succ.add(key);
+          if (!goalEvaluated.has(key)) {
+            goalEvaluated.add(key);
+            for (const goal of alwaysGoals) {
+              if (evaluateCondition(goal.condition, result.nextState, {}, constants)) {
+                goalSatisfyingKeys.get(String(goal.id))!.add(key);
+              }
+            }
+          }
+          if (!recoverySeen.has(key) && node.level + 1 < maxDepth) {
+            recoverySeen.add(key);
+            recoveryQueue.push({ key, snapshot: result.nextState, level: node.level + 1 });
+          }
+        }
+      }
+    }
   }
 
   const neverFired: DeadAction[] = moves
@@ -455,6 +523,25 @@ export const exploreStateSpace = (
     skippedActions,
     goalResults
   };
+};
+
+/** Every state key reachable from `starts` (themselves included) along the transition graph. */
+const forwardClosure = (
+  starts: readonly string[],
+  forwardEdges: ReadonlyMap<string, ReadonlySet<string>>
+): ReadonlySet<string> => {
+  const reached = new Set<string>(starts);
+  const stack = [...starts];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const next of forwardEdges.get(current) ?? []) {
+      if (!reached.has(next)) {
+        reached.add(next);
+        stack.push(next);
+      }
+    }
+  }
+  return reached;
 };
 
 /**

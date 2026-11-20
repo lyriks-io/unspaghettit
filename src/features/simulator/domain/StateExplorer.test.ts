@@ -502,6 +502,82 @@ describe('exploreStateSpace — reachability goals', () => {
     expect(report.goalResults[0]!.counterexamplePath).toEqual(['incr']);
   });
 
+  it("finds no trap for an 'always_reachable' goal whose way back takes two steps past the depth bound", () => {
+    // Reset takes two steps from anywhere: open the menu, then confirm. From
+    // the states at the depth bound the menu opens one step past it, so the
+    // way back was never searched; it still exists, so there is no trap.
+    const menu = asStatePath('menu');
+    const capped: Action = {
+      ...incr,
+      rules: [
+        {
+          id: asRuleId('cap20'),
+          category: 'business',
+          condition: { left: asStatePath('count'), operator: 'greater_or_equal', right: 20 },
+          effect: { id: asEffectId('e-cap20'), type: 'block_action', reason: 'at the cap' }
+        }
+      ]
+    };
+    const openMenu: Action = {
+      id: asActionId('open'),
+      name: 'open',
+      intent: 'open the reset menu',
+      parameters: [],
+      requiredStates: [],
+      rules: [],
+      invariants: [],
+      effects: [{ id: asEffectId('e-open'), type: 'set_state', path: menu, value: true }],
+      emittedEvents: [],
+      transitions: []
+    };
+    const confirm: Action = {
+      id: asActionId('confirm'),
+      name: 'confirm',
+      intent: 'confirm the reset',
+      parameters: [],
+      requiredStates: [],
+      rules: [
+        {
+          id: asRuleId('menu-closed'),
+          category: 'business',
+          condition: { left: menu, operator: 'is_false' },
+          effect: { id: asEffectId('e-closed'), type: 'block_action', reason: 'the menu is closed' }
+        }
+      ],
+      invariants: [],
+      effects: [
+        { id: asEffectId('e-zero'), type: 'set_state', path: asStatePath('count'), value: 0 },
+        { id: asEffectId('e-shut'), type: 'set_state', path: menu, value: false }
+      ],
+      emittedEvents: [],
+      transitions: []
+    };
+    const surface = countSurface([capped, openMenu, confirm], []);
+    const feature: Feature = {
+      ...featureWith({
+        ...surface,
+        stateDefinitions: [
+          ...surface.stateDefinitions,
+          { id: asStateDefinitionId('d-menu'), path: menu, type: 'boolean', defaultValue: false }
+        ]
+      }),
+      reachabilityGoals: [
+        {
+          id: asReachabilityGoalId('g-reset'),
+          name: 'the counter can always be reset',
+          kind: 'always_reachable',
+          condition: { left: asStatePath('count'), operator: 'equals', right: 0 },
+          description: 'a reset stays possible from anywhere'
+        }
+      ]
+    };
+    for (const maxDepth of [2, 6]) {
+      const goal = exploreStateSpace(feature, { maxDepth }).goalResults[0]!;
+      expect(goal.counterexamplePath).toBeUndefined();
+      expect(goal.satisfied).toBe(true);
+    }
+  });
+
   it('tries every offered channel when an action reads the caller channel, so a channel-only branch is not dead', () => {
     // Only an agent in the page may run it: every other channel is refused.
     const agentOnly: Action = {
