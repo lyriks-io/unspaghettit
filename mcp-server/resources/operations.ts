@@ -132,6 +132,11 @@ Every update op also accepts its editable fields under \`patch:{...}\` instead o
   update_scenario             { ..., scenarioId, ...partial, personaId?|personaRef?|null, expectedStatus?, expectedAssertions?, expectedTransition?|expectedTransitionRef? }
   update_event                { eventId, ...partial }
 
+## The owner of what an action holds, found by id
+
+  update_scenario / remove_scenario, update_action_rule / remove_action_rule, update_action_invariant / remove_action_invariant, update_effect / remove_effect, update_parameter / remove_parameter / move_parameter
+. The id of the element is unique in the feature, so \`surfaceId\`/\`surfaceRef\` and \`actionId\`/\`actionRef\` may be left out: the surface and the action that hold it are found by that id (given, they narrow the search). Refused when no action holds the id ("no action of this feature holds the scenario <id>") or when several do, naming each candidate with its surfaceId and actionId.
+
 ## REMOVE ops
 
   remove_<kind> { ...ids/refs }. Every add_ has a matching remove_.

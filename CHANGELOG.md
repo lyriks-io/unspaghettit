@@ -36,6 +36,15 @@ An element of the spec can be disabled: inoperative in every reading, still pres
   neither missing nor drifting; its index entries are kept, and disabling or
   enabling it moves no element version.
 
+### Fixed
+
+- `update_scenario`, `remove_scenario`, and the update and removal of an
+  action's rules, always-true statements, effects and parameters (and
+  `move_parameter`) no longer refuse an op that names the element by its id
+  alone ("missing surfaceId or surfaceRef"): the id is unique in the feature,
+  so the surface and the action holding it are found by it. Refused only when
+  no action holds the id or several do, each candidate named.
+
 ## [0.27.2] - 2026-11-18
 
 A captured source survives a move that fails, and a library promotion stays inside its project.

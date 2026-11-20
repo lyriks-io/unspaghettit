@@ -5,7 +5,7 @@ import { applyRuleInvariantOps } from './ruleInvariantOps';
 import { applyScenarioEventOps } from './scenarioEventOps';
 import { applyStateParamOps } from './stateParamOps';
 import { applySurfaceActionOps } from './surfaceActionOps';
-import type { Op, OpContext, Refs } from './opHelpers';
+import { withActionOwner, type Op, type OpContext, type Refs } from './opHelpers';
 
 /**
  * One element an add op created. `kind` is the op kind without its `add_`
@@ -242,7 +242,7 @@ export const applyOps = (
     createdByOp.id = null;
     try {
       const ctx: OpContext = { feature: exp, refs, mintId, remember, ...(now ? { now } : {}) };
-      const resolvedOp = withCrossRefs(op, refs);
+      const resolvedOp = withActionOwner(withCrossRefs(op, refs), exp, refs);
       let handled: Feature | null = null;
       for (const handler of familyHandlers) {
         handled = handler(resolvedOp, ctx);
