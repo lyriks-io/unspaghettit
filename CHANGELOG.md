@@ -121,6 +121,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   registry (`list_state_variables`, the project aggregate), `get_spec_gaps`
   (`state:projection-path-mismatch`, critical) and the batch that made the
   rename (`warnings`) now say so.
+- An apply_batch that renames or removes a state an entity field maps (its
+  `path`) warns, naming the field: the field used to keep the old path in
+  silence.
 
 ## [0.28.0] - 2026-11-20
 

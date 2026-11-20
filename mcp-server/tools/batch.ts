@@ -27,6 +27,7 @@ import type { Project } from '../../src/features/projects/domain/entities/Projec
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
 import { criterionStandingWarnings } from '../../src/features/behavior-model/domain/services/CriterionStanding';
+import { entityFieldPathWarnings } from '../../src/features/behavior-model/domain/services/EntityFieldPaths';
 import {
   detectStaleWrite,
   staleWriteMessage
@@ -428,6 +429,7 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           ...(validation.valid
             ? await projectionWarningsOfBatch(current, next, loadSiblings, loadProject)
             : []),
+          ...(validation.valid ? entityFieldPathWarnings(current, next) : []),
           ...(validation.valid ? await unmovedGuardWarningsOfBatch(current, next, loadSiblings) : [])
         ];
         const warningReport = standingWarnings.length > 0 ? { warnings: standingWarnings } : {};
