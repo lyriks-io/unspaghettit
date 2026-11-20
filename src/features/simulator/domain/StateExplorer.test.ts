@@ -100,6 +100,28 @@ describe('exploreStateSpace', () => {
     expect(report.truncated).toBe(false);
   });
 
+  it('refuses a bound that is not a whole number instead of exploring the start alone', () => {
+    // A NaN depth explored the starting state only and reported no violation;
+    // a NaN state cap never stopped the search.
+    const feature = featureWith(
+      countSurface(
+        [incr],
+        [
+          {
+            id: asInvariantId('cap'),
+            name: 'count < 3',
+            condition: { left: asStatePath('count'), operator: 'lower_than', right: 3 },
+            message: 'count exceeded 3'
+          }
+        ]
+      )
+    );
+    expect(() => exploreStateSpace(feature, { maxDepth: Number.NaN })).toThrow('maxDepth');
+    expect(() => exploreStateSpace(feature, { maxStates: Number.NaN })).toThrow('maxStates');
+    expect(() => exploreStateSpace(feature, { maxDepth: 0 })).toThrow('maxDepth');
+    expect(() => exploreStateSpace(feature, { maxStates: 2.5 })).toThrow('maxStates');
+  });
+
   it('reports an action that can never fire as dead', () => {
     const blocked: Action = {
       id: asActionId('locked'),

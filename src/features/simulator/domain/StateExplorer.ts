@@ -189,6 +189,17 @@ export const exploreStateSpace = (
 ): ExplorationReport => {
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
   const maxStates = options.maxStates ?? DEFAULT_MAX_STATES;
+  // A bound that is not a whole number of at least 1 cut the search without a
+  // word: NaN steps explored the start alone and passed, NaN states never
+  // stopped it. Refused, so a host or a mistyped option is told.
+  for (const [name, bound] of [
+    ['maxDepth', maxDepth],
+    ['maxStates', maxStates]
+  ] as const) {
+    if (!Number.isSafeInteger(bound) || bound < 1) {
+      throw new Error(`model check: ${name} must be a whole number of at least 1, got ${String(bound)}.`);
+    }
+  }
 
   // Seed sibling/project state alongside the feature's own so cross-feature
   // invariants resolve against real defaults. A path the feature declares keeps

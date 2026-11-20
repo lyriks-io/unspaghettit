@@ -154,6 +154,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   counts a transition declared on an action and a `transition_surface` effect
   of an action's outcome: a screen reached only that way read as unreachable,
   and the screen leading to it as one with no way out.
+- `unspa check` refuses a numeric option that is not a whole number
+  (`--max-depth`, `--max-states`, `--min-maturity`, `--min-verified`,
+  `--max-scenario-failures`): `--max-depth ten` explored the starting state
+  alone and passed, and `--max-scenario-failures` set to something unreadable
+  let every failing scenario through. The model check itself refuses a
+  `maxDepth` or `maxStates` that is not a whole number of at least 1.
 
 ## [0.28.0] - 2026-11-20
 
