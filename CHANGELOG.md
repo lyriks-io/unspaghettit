@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+Each scenario of an action keeps its last result against the code.
+
+### Added
+
+- An action's index entry may carry `scenarioResults: { <scenarioId>: { passed,
+  at, revision?, dirty? } }`, the last result of each of its scenarios against
+  the code; `sync_from_index` keeps it on the action report as
+  `auditMeta.scenarioResults`, beside `verifiedAt`, so a reader tells a scenario
+  that failed from one nothing ran. Rebuilt from the entry on every report; a
+  malformed result is dropped.
+
 ## [0.28.0] - 2026-11-20
 
 An element of the spec can be disabled: inoperative in every reading, still present and readable.

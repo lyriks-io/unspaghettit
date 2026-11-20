@@ -13,7 +13,10 @@ import type {
   SurfaceImplementationStatus,
   TagLocation
 } from '$features/implementation-status/domain/ImplementationStatus';
-import { ALL_ENTITY_TYPES } from '$features/implementation-status/domain/ImplementationStatus';
+import {
+  ALL_ENTITY_TYPES,
+  readScenarioResults
+} from '$features/implementation-status/domain/ImplementationStatus';
 import type {
   ActionId,
   FeatureId,
@@ -139,6 +142,8 @@ const parseAuditMeta = (raw: unknown): AuditMeta | undefined => {
     out.knownGaps = raw.knownGaps.filter((g): g is string => typeof g === 'string');
   }
   if (typeof raw.verifiedAt === 'string') out.verifiedAt = raw.verifiedAt;
+  const scenarioResults = readScenarioResults(raw.scenarioResults);
+  if (scenarioResults) out.scenarioResults = scenarioResults;
   return Object.keys(out).length > 0 ? (out as AuditMeta) : undefined;
 };
 
