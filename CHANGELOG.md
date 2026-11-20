@@ -6,7 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-Each scenario of an action keeps its last result against the code.
+## [0.29.0] - 2026-11-20
+
+Each scenario of an action keeps its last result against the code, and 35 edge
+cases where the engine was silently wrong now either work or are refused where
+they are written. A new refusal only ever refuses what a write introduces.
 
 ### Added
 
