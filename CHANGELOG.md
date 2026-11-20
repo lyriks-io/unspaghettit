@@ -34,6 +34,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `append_to_list`, `remove_from_list` and `update_list_item` are refused on a
   state that is not a list. As with every reference check, a model that
   already holds one is not blocked by an unrelated edit.
+- An effect whose value cannot be computed (a division or a modulo by zero, a
+  parameter not given, a state holding no value, a sum over something that is
+  not a list) still writes nothing, and now says so: its record in
+  `appliedEffects` carries `notWritten` with the reason, the dashboard shows
+  it, and each step of `simulate_steps` lists it under `notWritten`. The run
+  used to report "set Average to ..." for a write that never happened.
 
 ## [0.28.0] - 2026-11-20
 

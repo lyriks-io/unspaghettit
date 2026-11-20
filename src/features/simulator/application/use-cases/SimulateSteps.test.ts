@@ -303,6 +303,28 @@ describe('simulateSteps', () => {
     expect((walk.finalState as { clock: { now: number } }).clock.now).toBe(150);
   });
 
+  it('says which effect wrote nothing because its value could not be computed, and why', () => {
+    const average = action('average', {
+      name: 'Average the orders',
+      effects: [
+        set('cart.items', { kind: 'div', left: state('shop.orders'), right: state('cart.items') }),
+        set('cart.coupon', { kind: 'param', name: 'code' }),
+        set('shop.thanked', true)
+      ]
+    });
+    const feature = cart({ surfaces: [{ ...cartSurface, actions: [...cartSurface.actions, average] }, thanksSurface] });
+    const walk = simulateSteps({ feature, steps: [{ actionId: 'average' }] });
+    const step = walk.steps[0]!;
+    expect(step.status).toBe('success');
+    expect(step.changes).toEqual([{ path: 'shop.thanked', before: false, after: true }]);
+    expect(step.notWritten).toEqual([
+      { effect: 'set Cart items to <expr:div>', reason: 'division by zero' },
+      { effect: 'set Cart coupon to <expr:param>', reason: 'parameter "code" was not given' }
+    ]);
+    // A step whose every effect wrote says nothing about it.
+    expect(simulateSteps({ feature, steps: [{ actionId: 'add' }] }).steps[0]!.notWritten).toBeUndefined();
+  });
+
   it('refuses the whole walk, before running any step, when a step names nothing the feature holds', () => {
     expect(() => simulateSteps({ feature: cart(), steps: [{ actionId: 'add' }, { actionId: 'nope' }] })).toThrow(
       WalkStepNotFoundError

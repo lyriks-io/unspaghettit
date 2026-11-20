@@ -291,3 +291,53 @@ describe('EffectApplier', () => {
     expect(app.applied.map((a) => a.effectId)).toEqual(['rule-routes', 'fallthrough']);
   });
 });
+
+describe('EffectApplier: an effect whose value cannot be computed', () => {
+  const run = (effect: Parameters<typeof applyEffect>[1], parameters = {}) =>
+    applyEffect(initialApplication({ total: 10, count: 0, lines: [] }), effect, parameters);
+
+  it('writes nothing and records why, instead of a write that never happened', () => {
+    const divided = run({
+      id: asEffectId('avg'),
+      type: 'set_state',
+      path: asStatePath('total'),
+      value: { kind: 'div', left: { kind: 'state', path: asStatePath('total') }, right: { kind: 'state', path: asStatePath('count') } }
+    });
+    expect(divided.snapshot).toEqual({ total: 10, count: 0, lines: [] });
+    expect(divided.applied[0]?.notWritten).toBe('division by zero');
+
+    const modulo = run({
+      id: asEffectId('mod'),
+      type: 'set_state',
+      path: asStatePath('total'),
+      value: { kind: 'mod', left: { kind: 'literal', value: 7 }, right: { kind: 'literal', value: 0 } }
+    });
+    expect(modulo.applied[0]?.notWritten).toBe('modulo by zero');
+
+    const appended = run({
+      id: asEffectId('line'),
+      type: 'append_to_list',
+      path: asStatePath('lines'),
+      item: { kind: 'add', left: { kind: 'state', path: asStatePath('missing.price') }, right: { kind: 'literal', value: 1 } }
+    });
+    expect(appended.snapshot).toEqual({ total: 10, count: 0, lines: [] });
+    expect(appended.applied[0]?.notWritten).toBe('state "missing.price" holds no value');
+
+    const summed = run({
+      id: asEffectId('sum'),
+      type: 'set_state',
+      path: asStatePath('total'),
+      value: { kind: 'sum_pluck', operand: { kind: 'state', path: asStatePath('total') }, field: 'amount' }
+    });
+    expect(summed.applied[0]?.notWritten).toBe('"sum_pluck" needs a list, got a number');
+  });
+
+  it('leaves the record of an effect that wrote as it was', () => {
+    const written = run(
+      { id: asEffectId('w'), type: 'set_state', path: asStatePath('count'), value: { kind: 'param', name: 'n' } },
+      { n: 3 }
+    );
+    expect(written.snapshot).toMatchObject({ count: 3 });
+    expect(written.applied[0]).toEqual({ effectId: 'w', type: 'set_state', summary: 'set Count to <expr:param>' });
+  });
+});

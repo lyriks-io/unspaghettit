@@ -97,6 +97,12 @@ export type WalkStepResult = {
    * Never applied; the walk goes on from the state before the step.
    */
   readonly rejectedChanges?: readonly StateChange[];
+  /**
+   * Effects of the step that ran but wrote nothing, because their value could
+   * not be computed (a division by zero, a parameter not given, a state
+   * holding no value): the effect and why. Absent when every effect wrote.
+   */
+  readonly notWritten?: readonly { readonly effect: string; readonly reason: string }[];
   readonly messages: readonly SimulationMessage[];
   readonly emittedEvents: readonly string[];
   /** The surface the step moved to, or null when it stayed. */
@@ -269,6 +275,9 @@ export const simulateSteps = (input: WalkInput): WalkResult => {
     // as `nextState`; a refused step must not carry it into the next one.
     const attempted = diffSnapshots(result.previousState, result.nextState);
     const refused = result.status === 'blocked';
+    const notWritten = result.appliedEffects
+      .filter((record) => record.notWritten !== undefined)
+      .map((record) => ({ effect: record.summary, reason: record.notWritten! }));
     results.push({
       index,
       surfaceId: String(surface.id),
@@ -282,6 +291,7 @@ export const simulateSteps = (input: WalkInput): WalkResult => {
       // step does not report every declared default as a change.
       changes: refused ? [] : attempted,
       ...(refused && attempted.length > 0 ? { rejectedChanges: attempted } : {}),
+      ...(notWritten.length > 0 ? { notWritten } : {}),
       messages: result.messages,
       emittedEvents: result.emittedEvents.map(String),
       movedTo: result.transition
