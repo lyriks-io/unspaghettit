@@ -61,6 +61,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   declare it. `sync_from_index` and the index keys of a feature own such an
   event; drift only knew the catalogue, so the entry was never checked and
   invited its own deletion.
+- Disabling reads whole in the implementation index. A disabled feature's
+  acceptance criteria and entities, and an event only a disabled action emits,
+  read disabled in the gaps and the drift instead of missing or stale. A key
+  several features share (a state path, an event) is judged for a feature
+  that holds it in force: disabling one of them no longer silences the drift
+  of the others.
 
 ## [0.28.0] - 2026-11-20
 

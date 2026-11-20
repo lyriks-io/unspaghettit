@@ -419,3 +419,53 @@ describe('detectDrift on an event an action emits', () => {
     expect(report.orphans.map((o) => o.key)).toEqual(['event:cart.emptied']);
   });
 });
+
+// A key several features own (a shared state path) is judged for the first
+// feature that owns it. When that one is disabled the key read disabled, and
+// the drift of the feature still in force that shares it went silent.
+describe('detectDrift on a key a disabled feature shares', () => {
+  const disabledFirst = (): Feature => ({
+    ...stamped('2026-06-01T00:00:00.000Z', { 'state:cart.total': '2026-06-01T00:00:00.000Z' }),
+    id: asFeatureId('feat-off'),
+    disabled: { by: 'Adrien', at: '2026-06-02T00:00:00.000Z', reason: 'Put aside' }
+  });
+  const inForce = (): Feature => ({
+    ...stamped('2026-06-10T00:00:00.000Z', { 'state:cart.total': '2026-06-10T00:00:00.000Z' }),
+    id: asFeatureId('feat-on')
+  });
+
+  it('judges the key for the feature still in force', () => {
+    const report = detectDrift(
+      [disabledFirst(), inForce()],
+      [{ key: 'state:cart.total', status: 'implemented', auditedSpecVersion: '2026-06-05T00:00:00.000Z' }]
+    );
+    expect(report.disabled ?? []).toEqual([]);
+    expect(report.stale.map((s) => `${s.featureId} ${s.key}`)).toEqual(['feat-on state:cart.total']);
+  });
+
+  it('reads it disabled when every feature owning it is disabled', () => {
+    const report = detectDrift(
+      [disabledFirst()],
+      [{ key: 'state:cart.total', status: 'implemented', auditedSpecVersion: '2026-05-01T00:00:00.000Z' }]
+    );
+    expect(report.disabled).toEqual(['state:cart.total']);
+    expect(report.stale).toEqual([]);
+  });
+
+  it('reads the criteria and the entities of a disabled feature disabled, not stale', () => {
+    const off: Feature = {
+      ...disabledFirst(),
+      acceptanceCriteria: [{ id: 'crit-1', title: 'Totals add up' }],
+      entities: [{ id: 'ent-cart', namespace: 'cart', fields: [] }]
+    } as unknown as Feature;
+    const report = detectDrift(
+      [off],
+      [
+        { key: 'criterion:crit-1', status: 'implemented', auditedSpecVersion: '2026-05-01T00:00:00.000Z' },
+        { key: 'entity:ent-cart', status: 'implemented', auditedSpecVersion: '2026-05-01T00:00:00.000Z' }
+      ]
+    );
+    expect(report.stale).toEqual([]);
+    expect([...(report.disabled ?? [])].sort()).toEqual(['criterion:crit-1', 'entity:ent-cart']);
+  });
+});
