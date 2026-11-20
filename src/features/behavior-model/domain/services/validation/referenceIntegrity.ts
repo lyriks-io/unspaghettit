@@ -386,6 +386,15 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     );
   };
 
+  // A start that sets a derived path is recomputed away before the first rule
+  // reads it: the scenario runs from another state than the one it arranges.
+  const checkDerivedOverride = (path: unknown, label: string): void => {
+    if (typeof path !== 'string' || !derivedPaths.has(path)) return;
+    errors.push(
+      `${label}: stateOverride sets "${path}", a derived path recomputed from its \`derived\` expression before anything runs, so the value is never seen. Set the paths the expression reads instead.`
+    );
+  };
+
   // Per-surface set of reachable paths: declared on this surface OR declared
   // on another surface whose stateDefinition.sharedWith includes this one.
   const ownPathsBySurface = new Map<string, Set<string>>();
@@ -887,6 +896,13 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           );
           continue;
         }
+        // A derived path is recomputed right after the bind: the input would
+        // vanish before any rule read it.
+        if (derivedPaths.has(bound)) {
+          errors.push(
+            `Action ${cap.id} on surface ${surface.id}: parameter "${param.name}" bindToStatePath "${bound}" is a derived path, recomputed from its \`derived\` expression right after the bind, so the input never reaches a rule. Bind the parameter to a path the expression reads instead.`
+          );
+        }
         // The bound value lands in the path before rules run: its type must fit.
         checkParamWrite(
           param,
@@ -1137,6 +1153,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
           // A start the model can never be in: the scenario tests nothing real.
           checkEnumMember(ov.path, ov.value, base, 'stateOverride sets');
           checkWrittenType(ov.path, ov.value, base, 'stateOverride sets');
+          checkDerivedOverride(ov.path, base);
         }
         checkScenarioAssertions(scenario.expectedAssertions, base);
         if (
@@ -1191,6 +1208,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       }
       checkEnumMember(ov.path, ov.value, `Persona ${persona.id} ("${persona.name}")`, 'stateOverride sets');
       checkWrittenType(ov.path, ov.value, `Persona ${persona.id} ("${persona.name}")`, 'stateOverride sets');
+      checkDerivedOverride(ov.path, `Persona ${persona.id} ("${persona.name}")`);
     }
   }
 

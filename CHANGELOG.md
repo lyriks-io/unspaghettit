@@ -45,6 +45,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   filling the defaults turned `cart` into an object, and every rule and
   computation on it read an object instead of its number. A state under one
   declared as an object is still accepted.
+- A scenario or persona start, or a parameter bound with `bindToStatePath`,
+  that sets a derived state is refused: the engine recomputes a derived state
+  before any rule reads it, so the value set was silently replaced and the
+  scenario ran from another state than the one it arranged.
 
 ## [0.28.0] - 2026-11-20
 

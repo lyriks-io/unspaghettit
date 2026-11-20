@@ -1862,3 +1862,83 @@ describe('a state declared under another one', () => {
     ).toBe(true);
   });
 });
+
+describe('a derived state set from outside', () => {
+  // cart.total is computed from cart.lines: a start or an input written to it
+  // is recomputed away before any rule reads it.
+  const shop = (parts: { scenarioStart?: string; personaStart?: string; bind?: string }): Feature =>
+    ({
+      id: asFeatureId('f-shop'),
+      name: 'Shop',
+      surfaces: [
+        {
+          id: asSurfaceId('s-shop'),
+          name: 'Shop',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-lines'), path: asStatePath('cart.lines'), type: 'array', defaultValue: [] },
+            {
+              id: asStateDefinitionId('d-total'),
+              path: asStatePath('cart.total'),
+              type: 'number',
+              defaultValue: 0,
+              derived: { kind: 'sum', operand: { kind: 'state', path: asStatePath('cart.lines') } }
+            }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-pay'),
+              name: 'Pay',
+              intent: 'pay the cart',
+              parameters: parts.bind
+                ? [{ id: asParameterId('p-amount'), name: 'amount', type: 'number', required: false, bindToStatePath: asStatePath(parts.bind) }]
+                : [],
+              requiredStates: [],
+              rules: [],
+              invariants: [],
+              effects: [],
+              emittedEvents: [],
+              transitions: [],
+              scenarios: parts.scenarioStart
+                ? [
+                    {
+                      id: asScenarioId('sc-pay'),
+                      name: 'Pays',
+                      description: 'Pays.',
+                      stateOverrides: [{ path: asStatePath(parts.scenarioStart), value: parts.scenarioStart === 'cart.lines' ? [100] : 100 }],
+                      parameterOverrides: []
+                    }
+                  ]
+                : []
+            }
+          ]
+        }
+      ],
+      personas: parts.personaStart
+        ? [{ id: asPersonaId('p-rich'), name: 'Rich', description: 'd', stateOverrides: [{ path: asStatePath(parts.personaStart), value: parts.personaStart === 'cart.lines' ? [100] : 100 }], parameterOverrides: [] }]
+        : [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (parts: Parameters<typeof shop>[0]) => {
+    const result = validateReferenceIntegrity(shop(parts));
+    return result.valid ? [] : result.errors;
+  };
+
+  it('refuses a scenario or persona start and a parameter bound to it', () => {
+    expect(errorsOf({ scenarioStart: 'cart.total' })).toEqual([
+      'Action a-pay scenario sc-pay: stateOverride sets "cart.total", a derived path recomputed from its `derived` expression before anything runs, so the value is never seen. Set the paths the expression reads instead.'
+    ]);
+    expect(errorsOf({ personaStart: 'cart.total' })).toHaveLength(1);
+    expect(errorsOf({ bind: 'cart.total' })[0]).toMatch(/bindToStatePath "cart.total" is a derived path/);
+  });
+
+  it('accepts the paths the expression reads', () => {
+    expect(errorsOf({ scenarioStart: 'cart.lines', personaStart: 'cart.lines' })).toHaveLength(0);
+  });
+});
