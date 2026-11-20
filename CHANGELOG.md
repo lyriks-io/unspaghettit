@@ -115,6 +115,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   dashboard and `get_digest` read the saved model and still counted them, so
   their percentage disagreed with `score_feature` once an element was put
   aside.
+- A shared state renamed on one side only (the project's
+  `update_state_variable`, or the feature definition that projects it) is no
+  longer silent: the features then no longer share its value, and the
+  registry (`list_state_variables`, the project aggregate), `get_spec_gaps`
+  (`state:projection-path-mismatch`, critical) and the batch that made the
+  rename (`warnings`) now say so.
 
 ## [0.28.0] - 2026-11-20
 

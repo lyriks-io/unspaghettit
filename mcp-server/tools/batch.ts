@@ -19,7 +19,11 @@ import { unmovedGuardWarnings } from '../../src/features/behavior-model/domain/s
 import type { Invariant } from '../../src/features/behavior-model/domain/entities/Invariant';
 import { findOwningProject } from '../../src/features/projects/application/services/bulkRead';
 import { projectInvariantGuard } from '../../src/features/projects/application/services/projectInvariantGuard';
-import { stateDeclarationIssues } from '../../src/features/projects/domain/services/stateRegistry';
+import {
+  projectionPathIssues,
+  stateDeclarationIssues
+} from '../../src/features/projects/domain/services/stateRegistry';
+import type { Project } from '../../src/features/projects/domain/entities/Project';
 import { asFeatureId } from '../../src/features/behavior-model/domain/value-objects/ids';
 import { stampElementVersions } from '../../src/features/behavior-model/domain/services/FeatureElementVersions';
 import { criterionStandingWarnings } from '../../src/features/behavior-model/domain/services/CriterionStanding';
@@ -143,6 +147,35 @@ const declarationWarningsOfBatch = async (
     return stateDeclarationIssues([after, ...siblings], await loadProjectInvariants())
       .filter((issue) => paths.has(issue.path) && issue.featureIds?.includes(String(after.id)))
       .map((issue) => issue.message);
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * A state definition this batch moved off the path of the shared state it
+ * projects (its stateVariableId), or a projection it left there: the features
+ * no longer share the value. Said as a warning, only when the batch made it:
+ * renaming the shared state first (update_state_variable) and its projections
+ * after is the way to move one, so neither side can be refused. Advisory: a
+ * failure to compute it leaves the warning out, never the batch.
+ */
+const projectionWarningsOfBatch = async (
+  before: Feature,
+  after: Feature,
+  loadSiblings: () => Promise<readonly Feature[] | undefined>,
+  loadProject: () => Promise<Project | null>
+): Promise<string[]> => {
+  try {
+    const states = (await loadProject())?.stateVariables ?? [];
+    if (states.length === 0) return [];
+    const siblings = (await loadSiblings()) ?? [];
+    const issuesWith = (feature: Feature) =>
+      projectionPathIssues(states, [feature, ...siblings])
+        .filter((issue) => issue.featureIds?.includes(String(after.id)))
+        .map((issue) => issue.message);
+    const known = new Set(issuesWith(before));
+    return issuesWith(after).filter((message) => !known.has(message));
   } catch {
     return [];
   }
@@ -350,11 +383,13 @@ export const registerBatchTool = (deps: ToolDeps): void => {
         let siblings: Promise<readonly Feature[] | undefined> | null = null;
         const loadSiblings = () =>
           (siblings ??= loadProjectSiblings(repo, projectRepo, String(featureId)));
-        let invariants: Promise<readonly Invariant[]> | null = null;
-        const loadProjectInvariants = () =>
-          (invariants ??= findOwningProject(projectRepo, String(featureId)).then(
-            (project) => project?.projectInvariants ?? []
+        let owning: Promise<Project | null> | null = null;
+        const loadProject = () =>
+          (owning ??= findOwningProject(projectRepo, String(featureId)).then(
+            (project) => project ?? null
           ));
+        const loadProjectInvariants = () =>
+          loadProject().then((project) => project?.projectInvariants ?? []);
         // The scenarios of what the batch touched, run on the feature the batch
         // produces. Computed before anything is saved, so the dry run, the
         // direct apply and the commit all answer it the same way. A failure is
@@ -389,6 +424,9 @@ export const registerBatchTool = (deps: ToolDeps): void => {
           ...(validation.valid && touchedCriteria ? criterionStandingWarnings(next) : []),
           ...(validation.valid
             ? await declarationWarningsOfBatch(current, next, loadSiblings, loadProjectInvariants)
+            : []),
+          ...(validation.valid
+            ? await projectionWarningsOfBatch(current, next, loadSiblings, loadProject)
             : []),
           ...(validation.valid ? await unmovedGuardWarningsOfBatch(current, next, loadSiblings) : [])
         ];
