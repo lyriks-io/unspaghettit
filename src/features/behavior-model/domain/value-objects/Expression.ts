@@ -532,7 +532,9 @@ export const normalizeExpression = (
     case 'switch':
       // Conditions can stay as-is (RuleCondition has its own normalizer path
       // via the feature normalizer's normalizeCondition); only the `then`
-      // and `default` Expression slots need recursive normalization here.
+      // and `default` Expression slots need recursive normalization here. A
+      // switch without its cases list is left as it is: the validator names it.
+      if (!Array.isArray(value.cases)) return value;
       return {
         kind: 'switch',
         cases: value.cases.map((c) => ({

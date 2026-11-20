@@ -89,6 +89,8 @@ const normalizeCondition = (condition: RuleCondition): RuleCondition => {
     if (condition.kind === 'not') {
       return { kind: 'not', condition: normalizeCondition(condition.condition) };
     }
+    // Left as it is when the list is missing: the validator names that.
+    if (!Array.isArray(condition.conditions)) return condition;
     return {
       kind: condition.kind,
       conditions: condition.conditions.map(normalizeCondition)

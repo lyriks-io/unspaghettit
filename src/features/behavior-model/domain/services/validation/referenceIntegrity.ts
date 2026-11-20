@@ -16,6 +16,7 @@ import {
   type LeafRuleCondition,
   type RuleCondition
 } from '../../value-objects/RuleCondition';
+import { expressionShapeProblems } from './expressionShape';
 import { requireDescription, type ValidationResult } from './shared';
 
 const collectExpressionStatePaths = (expr: Expression, out: string[]): void => {
@@ -47,7 +48,9 @@ const collectExpressionStatePaths = (expr: Expression, out: string[]): void => {
       collectExpressionStatePaths(expr.equals, out);
       return;
     case 'switch':
-      for (const c of expr.cases) {
+      // A malformed switch (no cases list) is reported by expressionShape; the
+      // walk must not crash on it, or no error at all would come back.
+      for (const c of Array.isArray(expr.cases) ? expr.cases : []) {
         for (const leaf of flattenLeafConditions(c.when)) {
           // Skip param-lefts: they reference an action parameter, not a
           // state path on the surface.
@@ -92,7 +95,9 @@ const collectExpressionConstNames = (expr: Expression, out: Set<string>): void =
       collectExpressionConstNames(expr.equals, out);
       return;
     case 'switch':
-      for (const c of expr.cases) {
+      // A malformed switch (no cases list) is reported by expressionShape; the
+      // walk must not crash on it, or no error at all would come back.
+      for (const c of Array.isArray(expr.cases) ? expr.cases : []) {
         for (const leaf of flattenLeafConditions(c.when)) {
           if (isExpression(leaf.right)) collectExpressionConstNames(leaf.right, out);
         }
@@ -146,7 +151,9 @@ const collectExpressionParamNames = (expr: Expression, out: Set<string>): void =
       collectExpressionParamNames(expr.equals, out);
       return;
     case 'switch':
-      for (const c of expr.cases) {
+      // A malformed switch (no cases list) is reported by expressionShape; the
+      // walk must not crash on it, or no error at all would come back.
+      for (const c of Array.isArray(expr.cases) ? expr.cases : []) {
         for (const leaf of flattenLeafConditions(c.when)) {
           if (isParamLeft(leaf.left)) out.add(leaf.left.name);
           if (isExpression(leaf.right)) collectExpressionParamNames(leaf.right, out);
@@ -545,7 +552,7 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     const walk = (node: RuleCondition, bound: ReadonlySet<string>, inBody: boolean): void => {
       if (isCompositeCondition(node)) {
         if (node.kind === 'not') walk(node.condition, bound, inBody);
-        else for (const sub of node.conditions) walk(sub, bound, inBody);
+        else for (const sub of Array.isArray(node.conditions) ? node.conditions : []) walk(sub, bound, inBody);
         return;
       }
       if (isQuantifierCondition(node)) {
@@ -614,6 +621,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       );
     };
     const checkValuePaths = (verb: string, value: unknown): void => {
+      for (const problem of expressionShapeProblems(value)) {
+        errors.push(`${label} effect ${effect.id}: ${verb}: ${problem}`);
+      }
       for (const p of statePathsFromEffectValue(value)) {
         if (!paths.has(p)) {
           errors.push(
@@ -786,6 +796,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       // author added to the product but not to the enum.
       checkEnumMember(leaf.left, leaf.right, label, 'condition compares against');
       checkComparisonType(leaf.left, leaf.operator, leaf.right, `${label}: condition`);
+      for (const problem of expressionShapeProblems(leaf.right)) {
+        errors.push(`${label}: condition.right: ${problem}`);
+      }
       checkExpressionParams(leaf.right, paramNames, `${label}: condition.right`);
     }
     checkQuantifierBodies(condition, paths, label, paramNames);
@@ -798,6 +811,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
     // declared on (or shared into) this surface, same as a condition/effect.
     for (const def of surface.stateDefinitions) {
       if (def.derived === undefined) continue;
+      for (const problem of expressionShapeProblems(def.derived)) {
+        errors.push(`Surface ${surface.id} derived state "${def.path}": ${problem}`);
+      }
       for (const p of statePathsFromEffectValue(def.derived)) {
         if (!paths.has(p)) {
           errors.push(
@@ -1006,6 +1022,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       // be the one place a dead comparison still slips through.
       checkEnumMember(leaf.left, leaf.right, `Feature invariant ${inv.id}`, 'condition compares against');
       checkComparisonType(leaf.left, leaf.operator, leaf.right, `Feature invariant ${inv.id}: condition`);
+      for (const problem of expressionShapeProblems(leaf.right)) {
+        errors.push(`Feature invariant ${inv.id}: condition.right: ${problem}`);
+      }
       checkExpressionParams(leaf.right, undefined, `Feature invariant ${inv.id}: condition.right`);
     }
     checkQuantifierBodies(inv.condition, anySurfacePaths, `Feature invariant ${inv.id}`, undefined);
@@ -1053,6 +1072,9 @@ export const validateReferenceIntegrity = (feature: Feature): ValidationResult =
       // the same dead comparison the rules and invariants are checked for.
       checkEnumMember(leaf.left, leaf.right, `Reachability goal ${goal.id}`, 'condition compares against');
       checkComparisonType(leaf.left, leaf.operator, leaf.right, `Reachability goal ${goal.id}: condition`);
+      for (const problem of expressionShapeProblems(leaf.right)) {
+        errors.push(`Reachability goal ${goal.id}: condition.right: ${problem}`);
+      }
       checkExpressionParams(leaf.right, undefined, `Reachability goal ${goal.id}: condition.right`);
     }
     checkQuantifierBodies(goal.condition, anySurfacePaths, `Reachability goal ${goal.id}`, undefined);

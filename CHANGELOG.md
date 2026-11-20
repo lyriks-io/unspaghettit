@@ -49,6 +49,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   that sets a derived state is refused: the engine recomputes a derived state
   before any rule reads it, so the value set was silently replaced and the
   scenario ran from another state than the one it arranged.
+- A malformed expression is refused where it is written, with what is wrong:
+  an object whose `kind` names no expression (`"multiply"`, `"stat"`), which
+  was taken for a literal object and written as is into the state; an
+  operator without one of its operands; a `sum_pluck` or `count_where`
+  without its field; a `switch` without cases or without a default; a
+  `switch` case without `when`, which matched every time. Each one left the
+  value missing on every run, with no error. A composite condition without
+  its `conditions` list is named instead of failing the write with a
+  TypeError.
 - An index entry whose signature the file repeats (two handlers ending in the
   same `return json({ ok: true })`) is no longer read stale and moved onto the
   first occurrence in the file: the line it names keeps it while that line

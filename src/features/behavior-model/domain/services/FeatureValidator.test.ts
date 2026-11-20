@@ -1942,3 +1942,104 @@ describe('a derived state set from outside', () => {
     expect(errorsOf({ scenarioStart: 'cart.lines', personaStart: 'cart.lines' })).toHaveLength(0);
   });
 });
+
+describe('a malformed expression in a value slot', () => {
+  const counter = (value: unknown, condition?: unknown): Feature =>
+    ({
+      id: asFeatureId('f-counter'),
+      name: 'Counter',
+      surfaces: [
+        {
+          id: asSurfaceId('s-counter'),
+          name: 'Counter',
+          type: 'screen',
+          stateDefinitions: [
+            { id: asStateDefinitionId('d-n'), path: asStatePath('n'), type: 'number', defaultValue: 0 },
+            { id: asStateDefinitionId('d-lines'), path: asStatePath('lines'), type: 'array', defaultValue: [] }
+          ],
+          rules: [],
+          invariants: [],
+          transitions: [],
+          actions: [
+            {
+              id: asActionId('a-count'),
+              name: 'Count',
+              intent: 'count',
+              parameters: [],
+              requiredStates: [],
+              invariants: [],
+              emittedEvents: [],
+              transitions: [],
+              rules: condition
+                ? [
+                    {
+                      id: asRuleId('r-cap'),
+                      category: 'business',
+                      description: 'Cap.',
+                      condition,
+                      effect: { id: asEffectId('e-cap'), type: 'block_action', reason: 'Capped.', description: 'Block.' }
+                    }
+                  ]
+                : [],
+              effects: [{ id: asEffectId('e-set'), type: 'set_state', path: asStatePath('n'), value, description: 'Set.' }]
+            }
+          ]
+        }
+      ],
+      personas: [],
+      resources: [],
+      entities: [],
+      createdAt: '2026-11-20T00:00:00.000Z',
+      updatedAt: '2026-11-20T00:00:00.000Z'
+    }) as unknown as Feature;
+  const errorsOf = (value: unknown, condition?: unknown): readonly string[] => {
+    const result = validateReferenceIntegrity(counter(value, condition));
+    return result.valid ? [] : result.errors;
+  };
+  const n = { kind: 'state', path: 'n' };
+
+  it('refuses an object whose kind names no expression, instead of writing it as a literal', () => {
+    expect(errorsOf({ kind: 'multiply', left: n, right: 2 })).toEqual([
+      'Action a-count effect e-set: set_state value: "multiply" is not an expression kind (one of: literal, state, param, const, add, sub, mul, div, mod, min, max, neg, not, sum, count, sum_pluck, count_where, switch). An object literal that carries a "kind" field is written { kind: "literal", value: { ... } }.'
+    ]);
+    expect(errorsOf({ kind: 'add', left: { kind: 'stat', path: 'n' }, right: { kind: 'literal', value: 1 } })).toHaveLength(1);
+  });
+
+  it('refuses an operator without an operand, also once the normalizer filled it as an empty literal', () => {
+    expect(errorsOf({ kind: 'add', left: n })).toEqual([
+      'Action a-count effect e-set: set_state value: "add" has no "right" operand, so it never has a value.'
+    ]);
+    expect(errorsOf({ kind: 'add', left: n, right: { kind: 'literal' } })).toHaveLength(1);
+    expect(errorsOf({ kind: 'sum_pluck', operand: { kind: 'state', path: 'lines' } })[0]).toMatch(/has no "field"/);
+  });
+
+  it('refuses a switch without cases, without a default, or with a case that has no when', () => {
+    expect(errorsOf({ kind: 'switch', default: { kind: 'literal', value: 0 } })[0]).toMatch(/has no "cases" list/);
+    expect(
+      errorsOf({ kind: 'switch', cases: [{ when: { left: 'n', operator: 'greater_than', right: 3 }, then: { kind: 'literal', value: 3 } }] })[0]
+    ).toMatch(/has no "default"/);
+    expect(
+      errorsOf({ kind: 'switch', cases: [{ then: { kind: 'literal', value: 3 } }], default: { kind: 'literal', value: 0 } })[0]
+    ).toMatch(/case 0 has no "when": it matches every time/);
+  });
+
+  it('names a composite condition without its list instead of crashing', () => {
+    const errors = validateFeature(counter(1, { kind: 'any' }));
+    expect(errors.valid ? [] : errors.errors).toContain('Rule r-cap in action a-count: { kind:"any" } needs a "conditions" array.');
+    expect(() => validateReferenceIntegrity(counter(1, { kind: 'any' }))).not.toThrow();
+    expect(errorsOf(1, { left: 'n', operator: 'greater_than', right: { kind: 'max', left: n } })[0]).toMatch(
+      /condition.right: "max" has no "right" operand/
+    );
+  });
+
+  it('accepts well-formed expressions', () => {
+    expect(errorsOf({ kind: 'add', left: n, right: { kind: 'literal', value: 1 } })).toEqual([]);
+    expect(
+      errorsOf({
+        kind: 'switch',
+        cases: [{ when: { left: 'n', operator: 'greater_than', right: 3 }, then: { kind: 'literal', value: 3 } }],
+        default: n
+      })
+    ).toEqual([]);
+  });
+});
