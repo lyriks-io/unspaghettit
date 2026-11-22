@@ -24,7 +24,7 @@ The script never writes into a repo (no `CLAUDE.md`, `.gitignore`, or skills); i
 npm install -g unspaghettit
 ```
 
-Requires Node.js 20.10 or newer.
+Requires Node.js 22.12 or newer.
 
 ## Wire up your machine (and, optionally, a project)
 

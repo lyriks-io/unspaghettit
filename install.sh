@@ -20,9 +20,9 @@
 
 set -eu
 
-# Node engines floor from package.json ("node": ">=20.10").
-MIN_NODE_MAJOR=20
-MIN_NODE_MINOR=10
+# Node engines floor from package.json ("node": ">=22.12").
+MIN_NODE_MAJOR=22
+MIN_NODE_MINOR=12
 
 # Colors when stdout is a terminal; plain otherwise (e.g. piped into a file).
 if [ -t 1 ]; then
