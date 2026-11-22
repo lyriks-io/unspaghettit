@@ -32,6 +32,20 @@ updates:
       - dependency-name: write-file-atomic
         versions:
           - ">=8.0.0"
+      # SvelteKit 3 and adapter-node 6 are a framework migration (svelte.config.js
+      # goes, $lib becomes #lib, TypeScript 6 and Node 22.17 floors, the custom
+      # dashboard server to review), planned as its own change.
+      - dependency-name: "@sveltejs/kit"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: "@sveltejs/adapter-node"
+        update-types:
+          - version-update:semver-major
+      # TypeScript 7 is the native compiler: the build, svelte-check and the
+      # library types are to move with it as one planned change.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /
