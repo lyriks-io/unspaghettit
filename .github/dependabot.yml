@@ -47,6 +47,16 @@ updates:
       - dependency-name: eslint-plugin-svelte
         update-types:
           - version-update:semver-major
+      # eslint 10 cannot install beside eslint-plugin-svelte 2 (its peer range
+      # stops below 10): the two majors move together, as that same lint change.
+      - dependency-name: eslint
+        update-types:
+          - version-update:semver-major
+      # The types follow the oldest Node the package supports (engines >=22.12),
+      # so the code cannot call an API that floor lacks: move them with the floor.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
       # TypeScript 7 is the native compiler: the build, svelte-check and the
       # library types are to move with it as one planned change.
       - dependency-name: typescript
