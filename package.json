@@ -100,7 +100,7 @@
     "@sveltejs/kit": "^2.70.4",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.0.0",
-    "@types/node": "^22.9.0",
+    "@types/node": "^26.6.6",
     "@types/prompts": "^2.4.9",
     "@types/write-file-atomic": "^4.0.3",
     "@types/ws": "^8.18.1",
