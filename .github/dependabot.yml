@@ -41,6 +41,12 @@ updates:
       - dependency-name: "@sveltejs/adapter-node"
         update-types:
           - version-update:semver-major
+      # eslint-plugin-svelte 3 brings new recommended rules (each keys, resolve()
+      # on links, SvelteMap/SvelteSet, writable $derived) with about 200 findings
+      # across the dashboard: a code change of its own, not a bump.
+      - dependency-name: eslint-plugin-svelte
+        update-types:
+          - version-update:semver-major
       # TypeScript 7 is the native compiler: the build, svelte-check and the
       # library types are to move with it as one planned change.
       - dependency-name: typescript
