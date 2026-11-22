@@ -41,6 +41,15 @@ export const loadMermaid = (): Promise<MermaidApi> => {
         // error diagram to document.body and the orphaned node quietly grows
         // the page (a phantom window scrollbar).
         suppressErrorRendering: true,
+        // Mermaid 12 lays diagrams out with ELK and gives several types a `neo`
+        // look by default. Keep the dagre layout and classic look the dashboard
+        // has always drawn: no re-layout, no restyle, and no elkjs in the
+        // bundle (elkExcluded.ts). Mermaid 12 also widens every flowchart and
+        // statechart node to 120px; `minNodeWidth: 0` keeps them sized to
+        // their label, as before (side by side, mermaid 11 and 12 then draw
+        // the same boxes for all four dialects rendered here).
+        layout: 'dagre',
+        look: 'classic',
         theme: 'base',
         themeVariables: {
           fontFamily: FONT,
@@ -76,11 +85,18 @@ export const loadMermaid = (): Promise<MermaidApi> => {
           // Mindmap branch colors.
           ...branchScale()
         },
-        flowchart: { useMaxWidth: true, curve: 'basis', padding: 10, nodeSpacing: 42, rankSpacing: 56 },
+        flowchart: {
+          useMaxWidth: true,
+          curve: 'basis',
+          padding: 10,
+          nodeSpacing: 42,
+          rankSpacing: 56,
+          minNodeWidth: 0
+        },
         sequence: { useMaxWidth: true, mirrorActors: false, actorMargin: 90, messageMargin: 44 },
         er: { useMaxWidth: true, diagramPadding: 24, entityPadding: 16, minEntityWidth: 140 },
         mindmap: { useMaxWidth: true, padding: 14 },
-        state: { useMaxWidth: true }
+        state: { useMaxWidth: true, minNodeWidth: 0 }
       });
       return mod.default;
     });

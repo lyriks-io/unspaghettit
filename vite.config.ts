@@ -4,9 +4,22 @@ import { defineConfig } from 'vitest/config';
 import { unspaSyncPlugin } from './src/lib/server/sync/vitePlugin';
 import { DEFAULT_DASHBOARD_PORT } from './src/lib/server/sync/dashboardEndpoint';
 import pkg from './package.json';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit(), unspaSyncPlugin()],
+  resolve: {
+    alias: {
+      // Mermaid 12 loads elkjs for its ELK layouts; the dashboard draws with
+      // dagre and bundles no elkjs (see elkExcluded.ts).
+      'elkjs/lib/elk.bundled.js': fileURLToPath(
+        new URL(
+          './src/features/diagram-projection/infrastructure/render/elkExcluded.ts',
+          import.meta.url
+        )
+      )
+    }
+  },
   define: {
     // The running release, inlined at build time so the UI can show it without
     // a fetch and without shipping package.json to the browser. Server code
