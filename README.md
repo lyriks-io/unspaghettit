@@ -38,7 +38,7 @@ Impact reports before you build, post-implementation reports after you build, an
   <a href="https://lyriks.io"><img src="https://img.shields.io/badge/part%20of-Lyriks-bb46f5.svg" alt="Part of Lyriks" /></a>
   <a href="https://github.com/lyriks-io/unspaghettit/actions/workflows/ci.yml"><img src="https://github.com/lyriks-io/unspaghettit/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0.html"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License: AGPL-3.0" /></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%E2%89%A520.10-43853d.svg" alt="Node >= 20.10" /></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%E2%89%A522.12-43853d.svg" alt="Node >= 22.12" /></a>
   <a href="https://www.npmjs.com/package/unspaghettit"><img src="https://img.shields.io/npm/v/unspaghettit.svg" alt="npm" /></a>
 </p>
 
@@ -150,7 +150,7 @@ Then restart your AI client and run `unspa dashboard`.
 
 ### With npm
 
-If you already have Node.js 20.10+:
+If you already have Node.js 22.12+:
 
 ```bash
 npm install -g unspaghettit

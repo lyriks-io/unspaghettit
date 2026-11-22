@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-11-22
+
+Dependencies only. Diagrams look as they did; Node.js 22.12 is now the floor, hence a minor version.
+
+### Changed
+
+- Node.js 22.12 or newer is required (was 20.10). Node 20 reached end of life
+  in April 2026, and mermaid 12 and vitest 5 declare 22.12. `package.json`,
+  both installers and the getting started guide say so.
+- mermaid 12.3.0 (was 11). The dashboard keeps drawing every diagram as
+  before (dagre layout, classic look, nodes sized to their label) instead of
+  mermaid 12's defaults (ELK layout, `neo` look, 120px minimum node width):
+  side by side, mermaid 11 and 12 draw the same boxes for the statechart,
+  flowchart, sequence and ER diagrams it renders. Its build carries no elkjs
+  (EPL-2.0 OR GPL-3.0-or-later): a diagram that asks for ELK says the layout
+  is not bundled.
+- svelte 5.59, @sveltejs/kit 2.70.4, @sveltejs/adapter-node 5.5.8,
+  @sveltejs/vite-plugin-svelte 7.3.1, svelte-check 4.7.8 and vitest 5.1
+  (development dependencies). SvelteKit 3 is left for its own change.
+
+### Security
+
+- katex 0.18 through mermaid 12, past GHSA-238p-pmpm-9mq7 (low), which katex
+  0.16 (through mermaid 11) carried.
+- The repository's lockfile is refreshed within its ranges: the 10 advisories
+  it carried on production dependencies (proxy-addr critical, six high) are
+  gone. Installs from npm resolve these ranges afresh and were not affected
+  by the lockfile.
+
 ## [0.29.0] - 2026-11-20
 
 Each scenario of an action keeps its last result against the code, and 35 edge

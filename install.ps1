@@ -20,9 +20,9 @@
 #>
 
 $ErrorActionPreference = 'Stop'
-# Node engines floor from package.json ("node": ">=20.10").
-$MinNodeMajor = 20
-$MinNodeMinor = 10
+# Node engines floor from package.json ("node": ">=22.12").
+$MinNodeMajor = 22
+$MinNodeMinor = 12
 
 function Write-Head($msg) { Write-Host "`n=== $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "  [ok] $msg" -ForegroundColor Green }
