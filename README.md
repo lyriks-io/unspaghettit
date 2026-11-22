@@ -180,6 +180,7 @@ Unspaghettit models how software **behaves**. That is one layer of a specificati
 | Rules, data, architecture, glossary, one merged knowledge graph | no | yes |
 | Traceability, completion audits, baselines, approvals, generated spec artifacts | no | yes |
 | Storage | plain JSON on your disk | the same JSON, plus PostgreSQL for the workspace |
+| Projects | as many as you like | one (the paid plans open more) |
 | Seats | unlimited, no accounts at all | one user (the paid plans add members) |
 | Price | free, AGPL-3.0 | free, with a licence key |
 

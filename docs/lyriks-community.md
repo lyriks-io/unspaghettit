@@ -4,7 +4,7 @@ Unspaghettit models how software **behaves**: surfaces, actions, typed state, ru
 
 **Lyriks Community** is the free, self-hosted appliance that holds all of that, with Unspaghettit inside it. It embeds this exact dashboard, this exact engine and these exact JSON models, and wraps the rest of the product specification around them.
 
-Free, one operator, on your own machine. Nothing is taken away from Unspaghettit by installing it: the standalone tool stays exactly what it is, under the same AGPL licence.
+Free for one user and one project, on your own machine. Nothing is taken away from Unspaghettit by installing it: the standalone tool stays exactly what it is, under the same AGPL licence.
 
 ## What it adds around the engine
 
@@ -17,7 +17,6 @@ Free, one operator, on your own machine. Nothing is taken away from Unspaghettit
 | **Behavior** | Unspaghettit itself: the same editor, simulator, model checker, maturity score and coverage index you have here. |
 | **System** | Rules, data, architecture, glossary, and one merged knowledge graph across all of it. |
 | **Completion** | Traceability, an external-scope coverage ledger, whole-project completion audits, baselines, approvals, and deterministic specification artifacts generated from the model. |
-| **Delivery** | A roadmap of releases and sprints, and a sync between the spec and your tracker so a feature becomes tickets and the code coming back updates the spec. |
 
 Everything is one workspace: one login, one MCP endpoint for every AI client, PostgreSQL for the workspace, live sync between people and agents, and backups.
 
@@ -25,13 +24,13 @@ Everything is one workspace: one login, one MCP endpoint for every AI client, Po
 
 - **Same engine.** The appliance installs the published `unspaghettit` package and runs the same dashboard binary. Your models are the same plain JSON snapshots, in the same format.
 - **Same MCP vocabulary.** The behavior tools you already prompt with keep working; the appliance adds the workspace tools next to them.
-- **Your models move by copy.** The appliance keeps its own snapshot store, so bringing existing work over is a file copy into it (or an export/import through the dashboard), not a migration.
+- **Your projects move in four steps, no converter.** Export each project to a JSON file, install the appliance, connect your agent over MCP, then let your LLM recreate the project and compare the counts. A few minutes per project: [Move your projects in 4 steps](https://lyriks.io/blog/from-unspaghettit-to-lyriks-community-edition#moving-a-project-in-four-steps).
 - **Still local.** The appliance runs on your machine or your own server. Nothing is sent anywhere by default.
 - **Still yours.** Standalone Unspaghettit remains free and open source under AGPL-3.0, and this page is not a deprecation notice for it.
 
 ## Install
 
-Get a free key at [get.lyriks.io](https://get.lyriks.io/). It arrives by email, bound to that address.
+Get a free key at [lyriks.io/get-started](https://lyriks.io/get-started). It arrives by email, bound to that address.
 
 ```bash
 # Linux / macOS
@@ -43,13 +42,15 @@ curl -fsSL https://get.lyriks.io | sh
 irm https://get.lyriks.io/windows | iex
 ```
 
-The command checks the machine, offers to install what is missing (Docker, and WSL2 on Windows), fetches the appliance into `~/lyriks`, installs it, and runs a smoke test before declaring success. Nothing is asked at install time: no account, no key, no email.
+The command checks the machine, offers to install what is missing (Docker, and WSL2 on Windows), fetches the appliance into `~/lyriks`, installs it, and runs a smoke test before declaring success. No account and no email are asked at install time. The licence key is asked once and is optional: press Enter to skip it, and give it when you claim the installation.
 
-Then open `http://localhost:3000` and claim the installation with the email that received the key, the key itself, and a password you choose. Full walkthrough, variants and troubleshooting: [the install guide](https://get.lyriks.io/docs).
+Then open `http://localhost:3000` and claim the installation with the email that received the key, the key itself, and a password you choose. Full walkthrough, variants and troubleshooting: [the install guide](https://lyriks.io/docs).
 
 ## Editions
 
-Community carries a single operator. **Enterprise** adds named members, invitations and RBAC administration, plus the formal DPO analysis engine; it installs in place over a Community appliance, and a key covers its own edition and every edition below it. Ask at `hello@lyriks.io`.
+Community is free for one user and one project. The paid plans add the rest: **Solo Builder** opens more projects and change simulation, **Team** adds members, **Enterprise** adds the solver that proves rules for every value. A paid key is entered in the app, on its activation page, and switches the installation in place. Plans and prices: [lyriks.io/pricing](https://lyriks.io/pricing).
+
+**Tested Unspaghettit? Thank you.** Every beta tester gets 2 months of Lyriks Enterprise, on us: [claim my 2 months](https://lyriks.io/blog/from-unspaghettit-to-lyriks-community-edition#beta-offer).
 
 ## Turning the offer off
 
