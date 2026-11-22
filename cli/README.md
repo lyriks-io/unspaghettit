@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install
 irm https://raw.githubusercontent.com/lyriks-io/unspaghettit/main/install.ps1 | iex
 ```
 
-Or, if you already have Node.js 20.10+:
+Or, if you already have Node.js 22.12+:
 
 ```bash
 npm install -g unspaghettit

@@ -6,9 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-## [0.29.1] - 2026-11-22
+## [0.30.0] - 2026-11-22
 
-Dependencies only. Diagrams look as they did; Node.js 22.12 is now the floor.
+Dependencies only. Diagrams look as they did; Node.js 22.12 is now the floor, hence a minor version.
 
 ### Changed
 
