@@ -52,6 +52,11 @@ updates:
       - dependency-name: eslint
         update-types:
           - version-update:semver-major
+      # @eslint/js carries eslint's own recommended rules and follows its major:
+      # 10 moves with eslint 10, as that same lint change.
+      - dependency-name: "@eslint/js"
+        update-types:
+          - version-update:semver-major
       # The types follow the oldest Node the package supports (engines >=22.12),
       # so the code cannot call an API that floor lacks: move them with the floor.
       - dependency-name: "@types/node"
